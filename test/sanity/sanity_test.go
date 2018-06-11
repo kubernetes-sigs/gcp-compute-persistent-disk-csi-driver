@@ -44,7 +44,6 @@ func TestSanity(t *testing.T) {
 		t.Fatalf("Failed to get cloud provider: %v", err)
 	}
 
-	// TODO(dyzz): Change this to a fake mounter
 	mounter, err := mountmanager.CreateFakeMounter()
 	if err != nil {
 		t.Fatalf("Failed to get mounter %v", err)

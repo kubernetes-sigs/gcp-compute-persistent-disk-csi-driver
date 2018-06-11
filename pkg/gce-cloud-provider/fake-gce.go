@@ -45,11 +45,11 @@ func FakeCreateCloudProvider(project, zone string) (*FakeCloudProvider, error) {
 }
 
 // Getters
-func (cloud *FakeCloudProvider) GetProject() (string, error) {
-	return cloud.project, nil
+func (cloud *FakeCloudProvider) GetProject() string {
+	return cloud.project
 }
-func (cloud *FakeCloudProvider) GetZone() (string, error) {
-	return cloud.zone, nil
+func (cloud *FakeCloudProvider) GetZone() string {
+	return cloud.zone
 }
 
 // Disk Methods

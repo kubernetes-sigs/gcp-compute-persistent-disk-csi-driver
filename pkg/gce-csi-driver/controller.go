@@ -94,10 +94,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	diskType := "pd-standard"
-	configuredZone, err := gceCS.CloudProvider.GetZone()
-	if err != nil {
-		return nil, status.Error(codes.Internal, "CreateVolume failed to get zone")
-	}
+	configuredZone := gceCS.CloudProvider.GetZone()
 	for k, v := range req.GetParameters() {
 		if k == "csiProvisionerSecretName" || k == "csiProvisionerSecretNamespace" {
 			// These are hardcoded secrets keys required to function but not needed by GCE PD
