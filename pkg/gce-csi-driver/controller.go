@@ -38,22 +38,22 @@ type GCEControllerServer struct {
 }
 
 const (
-	// MaxVolumeSize is the maximum standard and ssd size of 64TB
-	MaxVolumeSize       int64 = 64000000000000
-	DefaultVolumeSize   int64 = 5000000000
-	MinimumDiskSizeInGb       = 5
+	// MaxVolumeSizeInBytes is the maximum standard and ssd size of 64TB
+	MaxVolumeSizeInBytes     int64 = 64 * 1024 * 1024 * 1024 * 1024
+	MinimumVolumeSizeInBytes int64 = 5 * 1024 * 1024 * 1024
+	MinimumDiskSizeInGb            = 5
 
 	DiskTypeSSD      = "pd-ssd"
 	DiskTypeStandard = "pd-standard"
 	diskTypeDefault  = DiskTypeStandard
 
-	diskTypePersistent = "PERSISTENT"
+	attachableDiskTypePersistent = "PERSISTENT"
 )
 
 func getRequestCapacity(capRange *csi.CapacityRange) (capBytes int64) {
 	// TODO: Take another look at these casts/caps. Make sure this func is correct
 	if capRange == nil {
-		capBytes = DefaultVolumeSize
+		capBytes = MinimumVolumeSizeInBytes
 		return
 	}
 
@@ -63,8 +63,8 @@ func getRequestCapacity(capRange *csi.CapacityRange) (capBytes int64) {
 		capBytes = tcap
 	}
 	// Too small, default
-	if capBytes < DefaultVolumeSize {
-		capBytes = DefaultVolumeSize
+	if capBytes < MinimumVolumeSizeInBytes {
+		capBytes = MinimumVolumeSizeInBytes
 	}
 	return
 }
@@ -185,7 +185,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	// TODO: Only allow deletion of volumes that were created by the driver
-	// Assuming ID is of form {project}/{zone}/{id}
+	// Assuming ID is of form {zone}/{id}
 	glog.Infof("DeleteVolume called with request %v", *req)
 
 	// Validate arguments
@@ -282,7 +282,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		Kind:       disk.Kind,
 		Mode:       readWrite,
 		Source:     source,
-		Type:       diskTypePersistent,
+		Type:       attachableDiskTypePersistent,
 	}
 
 	glog.Infof("Attaching disk %#v to instance %v", attachedDiskV1, nodeID)

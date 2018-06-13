@@ -93,7 +93,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: DefaultVolumeSize,
+				CapacityBytes: MinimumVolumeSizeInBytes,
 				Id:            project + "/" + zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
@@ -177,7 +177,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: DefaultVolumeSize,
+				CapacityBytes: MinimumVolumeSizeInBytes,
 				Id:            project + "/" + zone + "/" + "test-vol",
 				Attributes:    nil,
 			},

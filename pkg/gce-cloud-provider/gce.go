@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
@@ -80,6 +79,7 @@ func createCloudServiceWithDefaultServiceAccount() (*compute.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO(dyzz) parameterize version number
 	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", "0.2.0", runtime.GOOS, runtime.GOARCH)
 	return service, nil
 }
@@ -114,15 +114,10 @@ func newDefaultOauthClient() (*http.Client, error) {
 }
 
 func getProjectAndZoneFromMetadata() (string, string, error) {
-	result, err := metadata.Get("instance/zone")
+	zone, err := metadata.Zone()
 	if err != nil {
 		return "", "", err
 	}
-	parts := strings.Split(result, "/")
-	if len(parts) != 4 {
-		return "", "", fmt.Errorf("unexpected response: %s", result)
-	}
-	zone := parts[3]
 	projectID, err := metadata.ProjectID()
 	if err != nil {
 		return "", "", err

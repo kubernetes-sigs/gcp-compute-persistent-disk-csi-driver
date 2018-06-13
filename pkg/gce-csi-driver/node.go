@@ -17,6 +17,7 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
@@ -30,9 +31,13 @@ import (
 type GCENodeServer struct {
 	Driver  *GCEDriver
 	Mounter mountmanager.Mounter
+	// TODO: Only lock mutually exclusive calls and make locking more fine grained
+	mux sync.Mutex
 }
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	ns.mux.Lock()
+	defer ns.mux.Unlock()
 	glog.Infof("NodePublishVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -108,6 +113,8 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 }
 
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	ns.mux.Lock()
+	defer ns.mux.Unlock()
 	glog.Infof("NodeUnpublishVolume called with args: %v", req)
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
@@ -130,6 +137,8 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 }
 
 func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	ns.mux.Lock()
+	defer ns.mux.Unlock()
 	glog.Infof("NodeStageVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -218,6 +227,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 }
 
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	ns.mux.Lock()
+	defer ns.mux.Unlock()
 	glog.Infof("NodeUnstageVolume called with req: %#v", req)
 	// Validate arguments
 	volumeID := req.GetVolumeId()

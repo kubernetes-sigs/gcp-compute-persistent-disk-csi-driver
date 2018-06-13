@@ -12,31 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-STAGINGIMAGE=gcr.io/dyzz-csi-staging/csi/gce-driver
+STAGINGIMAGE=gcr.io/dyzz-csi-staging/csi/gce-pd-driver
 STAGINGVERSION=latest
 
 PRODIMAGE=gcr.io/google-containers/volume-csi/compute-persistent-disk-csi-driver
 PRODVERSION=v0.2.0.alpha
-all: gce-driver
+all: gce-pd-driver
 
-gce-driver:
+gce-pd-driver:
 	mkdir -p bin
-	go build -o bin/gce-csi-driver ./cmd/
-	go build -o bin/gce-csi-driver-test ./test/e2e/
+	go build -o bin/gce-pd-csi-driver ./cmd/
+	go build -o bin/gce-pd-csi-driver-test ./test/e2e/
 
-build-container: gce-driver
-	cp bin/gce-csi-driver deploy/docker
+build-container: gce-pd-driver
+	cp bin/gce-pd-csi-driver deploy/docker
 	docker build -t $(STAGINGIMAGE):$(STAGINGVERSION) deploy/docker
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
-prod-build-container: gce-driver
-	cp bin/gce-csi-driver deploy/docker
+prod-build-container: gce-pd-driver
+	cp bin/gce-pd-csi-driver deploy/docker
 	docker build -t $(PRODIMAGE):$(PRODVERSION) deploy/docker
 
 prod-push-container: prod-build-container
 	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)
 
-test-sanity: gce-driver
+test-sanity: gce-pd-driver
 	go test -timeout 30s github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
