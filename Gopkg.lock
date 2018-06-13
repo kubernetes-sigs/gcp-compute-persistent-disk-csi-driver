@@ -20,12 +20,6 @@
   version = "v1.1.0"
 
 [[projects]]
-  name = "github.com/ghodss/yaml"
-  packages = ["."]
-  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
-  version = "v1.0.0"
-
-[[projects]]
   branch = "master"
   name = "github.com/golang/glog"
   packages = ["."]
@@ -258,21 +252,14 @@
   branch = "master"
   name = "k8s.io/apimachinery"
   packages = [
+    "pkg/types",
     "pkg/util/errors",
     "pkg/util/runtime",
     "pkg/util/sets",
+    "pkg/util/uuid",
     "pkg/util/wait"
   ]
   revision = "e9ff529c66f83aeac6dff90f11ea0c5b7c4d626a"
-
-[[projects]]
-  name = "k8s.io/kubernetes"
-  packages = [
-    "test/e2e_node/builder",
-    "test/e2e_node/remote"
-  ]
-  revision = "81753b10df112992bf51bbc2c2f85208aad78335"
-  version = "v1.10.2"
 
 [[projects]]
   branch = "master"
@@ -283,6 +270,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a2424977070f654f290bc29cc9456939636f5d55ed02196e15392a2604b1785b"
+  inputs-digest = "a487545925d17320b74dd893c91ee15acc87af09db89fdd60f1f5821cc9b2556"
   solver-name = "gps-cdcl"
   solver-version = 1
