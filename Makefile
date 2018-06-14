@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-STAGINGIMAGE=gcr.io/dyzz-csi-staging/csi/gce-pd-driver
+STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 STAGINGVERSION=latest
 
 PRODIMAGE=gcr.io/google-containers/volume-csi/compute-persistent-disk-csi-driver
@@ -25,15 +25,13 @@ gce-pd-driver:
 	go build -o bin/gce-pd-csi-driver-test ./test/e2e/
 
 build-container: gce-pd-driver
-	cp bin/gce-pd-csi-driver deploy/docker
-	docker build -t $(STAGINGIMAGE):$(STAGINGVERSION) deploy/docker
+	docker build -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 prod-build-container: gce-pd-driver
-	cp bin/gce-pd-csi-driver deploy/docker
-	docker build -t $(PRODIMAGE):$(PRODVERSION) deploy/docker
+	docker build -t $(PRODIMAGE):$(PRODVERSION)
 
 prod-push-container: prod-build-container
 	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)

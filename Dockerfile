@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM fedora:26
+FROM golang:1.10.1-alpine3.7 as builder
+WORKDIR /go/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver
+ADD . .
+RUN CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
 
-COPY gce-csi-driver /gce-csi-driver
+FROM alpine:3.7
+COPY --from=builder /go/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 
-RUN yum -y install "*/mkfs.ext4"
-
-ENTRYPOINT ["/gce-csi-driver"]
+ENTRYPOINT ["/gce-pd-csi-driver"]
