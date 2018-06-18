@@ -14,5 +14,5 @@ $ ./deploy/kubernetes/deploy_driver.sh
 ```
 3. Create example PVC and Pod
 ```
-$ kubectl create -f ./examples/demo-pod.yaml
+$ kubectl apply -f ./examples/demo-pod.yaml
 ```
