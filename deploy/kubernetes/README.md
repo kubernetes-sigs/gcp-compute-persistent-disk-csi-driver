@@ -1,15 +1,18 @@
-Step 1 (Create Credentials):
-Create Service Account Credential JSON on GCP:
-    - TODO: Add detailed steps on how to do this
-    - Requires both Compute Owner and Cloud Project Owner permissions
-Create Kubernetes secret:
-    -kubectl create secret generic cloud-sa --from-file=cloud-sa.json
-Modify "controller.yaml" to use your secret
-
-Step 2 (Set up Driver):
-kubectl create -f setup.yaml
-kubectl create -f node.yaml
-kubectl create -f controller.yaml
-
-Step 3 (Run demo [optional]):
-kubectl create -f demo-pod.yaml
+1. One-time per project: Create GCP service account for CSI driver
+    1. Export environment variables for location for service account private key file and name of the service account
+    ```
+    $ export SA_FILE=~/.../cloud-sa.json
+    $ export GCEPD_SA_NAME=sample-service-account
+    ```
+    2. Setup project with script
+    ```
+    $ ./deploy/setup_project.sh
+    ```
+2. Deploy driver to Kubernetes cluster
+```
+$ ./deploy/kubernetes/deploy_driver.sh
+```
+3. Create example PVC and Pod
+```
+$ kubectl create -f ./examples/demo-pod.yaml
+```
