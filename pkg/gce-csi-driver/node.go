@@ -266,5 +266,14 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 }
 
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	glog.Infof("NodeGetInfo called with req: %#v", req)
+
+	resp := &csi.NodeGetInfoResponse{
+		NodeId: ns.Driver.nodeID,
+		// TODO: Set MaxVolumesPerNode based on Node Type
+		// Default of 0 means that CO Decides how many nodes can be published
+		MaxVolumesPerNode:  0,
+		AccessibleTopology: nil,
+	}
+	return resp, nil
 }
