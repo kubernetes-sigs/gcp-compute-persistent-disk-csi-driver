@@ -13,5 +13,4 @@ gcloud iam service-accounts delete "${IAM_NAME}" --quiet
 # Create new Service Account and Keys
 gcloud iam service-accounts create "${GCEPD_SA_NAME}"
 gcloud iam service-accounts keys create "${SA_FILE}" --iam-account "${IAM_NAME}"
-# TODO: Reduce scope of role to only what it necessary when cloud IAM fixes bugs.
-gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role roles/owner
+gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role roles/compute.storageAdmin
