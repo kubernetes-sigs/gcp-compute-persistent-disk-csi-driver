@@ -37,6 +37,8 @@ type GCEControllerServer struct {
 	CloudProvider gce.GCECompute
 }
 
+var _ csi.ControllerServer = &GCEControllerServer{}
+
 const (
 	// MaxVolumeSizeInBytes is the maximum standard and ssd size of 64TB
 	MaxVolumeSizeInBytes     int64 = 64 * 1024 * 1024 * 1024 * 1024
@@ -424,4 +426,16 @@ func (gceCS *GCEControllerServer) ControllerGetCapabilities(ctx context.Context,
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: gceCS.Driver.cscap,
 	}, nil
+}
+
+func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
 }

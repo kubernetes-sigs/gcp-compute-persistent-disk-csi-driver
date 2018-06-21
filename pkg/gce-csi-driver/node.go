@@ -35,6 +35,8 @@ type GCENodeServer struct {
 	mux sync.Mutex
 }
 
+var _ csi.NodeServer = &GCENodeServer{}
+
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	ns.mux.Lock()
 	defer ns.mux.Unlock()
@@ -261,4 +263,17 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: ns.Driver.nscap,
 	}, nil
+}
+
+func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	glog.Infof("NodeGetInfo called with req: %#v", req)
+
+	resp := &csi.NodeGetInfoResponse{
+		NodeId: ns.Driver.nodeID,
+		// TODO: Set MaxVolumesPerNode based on Node Type
+		// Default of 0 means that CO Decides how many nodes can be published
+		MaxVolumesPerNode:  0,
+		AccessibleTopology: nil,
+	}
+	return resp, nil
 }

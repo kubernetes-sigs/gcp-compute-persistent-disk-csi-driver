@@ -10,8 +10,8 @@
 [[projects]]
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go/csi/v0"]
-  revision = "35d9f9d77954980e449e52c3f3e43c21bd8171f5"
-  version = "v0.2.0"
+  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
+  version = "v0.3.0"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
@@ -32,10 +32,11 @@
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
-    "ptypes/timestamp"
+    "ptypes/timestamp",
+    "ptypes/wrappers"
   ]
-  revision = "925541529c1fa6821df4e44ce2723319eb2be768"
-  version = "v1.0.0"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -44,7 +45,7 @@
     "pkg/sanity",
     "utils"
   ]
-  revision = "f8ada4fcf7755cf7a941ac49d0bda967bce403dc"
+  revision = "1bf94ed5c3afa2db7d3117f206f1b00249764790"
 
 [[projects]]
   name = "github.com/onsi/ginkgo"
@@ -270,6 +271,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a487545925d17320b74dd893c91ee15acc87af09db89fdd60f1f5821cc9b2556"
+  inputs-digest = "b2c921894cf05236e2a8a6c0b92e3fc130b530ba84934de6542f92591a6b48ec"
   solver-name = "gps-cdcl"
   solver-version = 1
