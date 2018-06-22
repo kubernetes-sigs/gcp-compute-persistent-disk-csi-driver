@@ -30,7 +30,8 @@ import (
 )
 
 const (
-	diskByIdPath         = "/host/dev/disk/by-id/"
+	diskByHostIdPath     = "/host/dev/disk/by-id/"
+	diskByIdPath         = "/dev/disk/by-id/"
 	diskGooglePrefix     = "google-"
 	diskScsiGooglePrefix = "scsi-0Google_PersistentDisk_"
 	diskPartitionSuffix  = "-part"
@@ -193,6 +194,8 @@ func (m *GCEMounter) GetDiskByIdPaths(pdName string, partition string) []string 
 	devicePaths := []string{
 		path.Join(diskByIdPath, diskGooglePrefix+pdName),
 		path.Join(diskByIdPath, diskScsiGooglePrefix+pdName),
+		path.Join(diskByHostIdPath, diskScsiGooglePrefix+pdName),
+		path.Join(diskByHostIdPath, diskScsiGooglePrefix+pdName),
 	}
 
 	if partition != "" {

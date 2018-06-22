@@ -42,12 +42,25 @@ func (n *E2ERemote) SetupTestPackage(tardir string) error {
 		return fmt.Errorf("Could not find gopath")
 	}
 
-	// TODO(dyzz): build the gce driver instead.
+	// TODO(dyzz): build the gce driver tests instead.
+
+	cmd := exec.Command("ginkgo", "build", "test/e2e")
+	err := cmd.Run()
+
+	if err != nil {
+		return err
+	}
+
+	cmd = exec.Command("cp", "test/e2e/e2e.test", "bin")
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
 
 	buildOutputDir := filepath.Join(gopath, "src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/bin")
 
 	// Copy binaries
-	requiredBins := []string{"gce-csi-driver", "gce-csi-driver-test"}
+	requiredBins := []string{"e2e.test"}
 	for _, bin := range requiredBins {
 		source := filepath.Join(buildOutputDir, bin)
 		if _, err := os.Stat(source); err != nil {
@@ -67,7 +80,7 @@ func (n *E2ERemote) RunTest(host, workspace, results, testArgs, ginkgoArgs strin
 	glog.V(2).Infof("Starting tests on %q", host)
 	cmd := getSSHCommand(" && ",
 		fmt.Sprintf("cd %s", workspace),
-		fmt.Sprintf("./gce-csi-driver-test"),
+		fmt.Sprintf("./e2e.test"),
 	)
 	return SSH(host, "sh", "-c", cmd)
 }

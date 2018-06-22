@@ -43,6 +43,7 @@ var cleanup = flag.Bool("cleanup", true, "If true remove files from remote hosts
 var deleteInstances = flag.Bool("delete-instances", true, "If true, delete any instances created")
 var buildOnly = flag.Bool("build-only", false, "If true, build e2e_gce_pd_test.tar.gz and exit.")
 var ginkgoFlags = flag.String("ginkgo-flags", "", "Passed to ginkgo to specify additional flags such as --skip=.")
+var serviceAccount = flag.String("service-account", "", "GCP Service Account to start the test instance under")
 
 // envs is the type used to collect all node envs. The key is the env name,
 // and the value is the env value
@@ -99,6 +100,18 @@ type TestResult struct {
 func main() {
 	flag.Parse()
 	suite = remote.InitE2ERemote()
+
+	if *serviceAccount == "" {
+		glog.Fatal("You must specify a service account to create an instance under that has at least OWNERS permissions on disks and READER on instances.")
+	}
+
+	if *project == "" {
+		glog.Fatal("Project must be speficied")
+	}
+
+	if *zone == "" {
+		glog.Fatal("Zone must be specified")
+	}
 
 	rand.Seed(time.Now().UTC().UnixNano())
 	if *buildOnly {
@@ -219,7 +232,7 @@ func test(tests []string) *TestResult {
 		ginkgoFlagsStr += (" " + testsToGinkgoFocus(tests))
 	}
 
-	host, err := createInstance()
+	host, err := createInstance(*serviceAccount)
 	if *deleteInstances {
 		defer deleteInstance(host)
 	}
@@ -250,10 +263,11 @@ func test(tests []string) *TestResult {
 }
 
 // Provision a gce instance using image
-func createInstance() (string, error) {
+func createInstance(serviceAccount string) (string, error) {
 	name := "gce-pd-csi-e2e"
 	myuuid := string(uuid.NewUUID())
 	glog.V(2).Infof("Creating instance: %v", name)
+
 	imageURL := "https://www.googleapis.com/compute/v1/projects/eip-images/global/images/debian-9-drawfork-v20180423"
 	i := &compute.Instance{
 		Name:        name,
@@ -278,6 +292,14 @@ func createInstance() (string, error) {
 				},
 			},
 		},
+	}
+
+	if serviceAccount != "" {
+		saObj := &compute.ServiceAccount{
+			Email:  serviceAccount,
+			Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
+		}
+		i.ServiceAccounts = []*compute.ServiceAccount{saObj}
 	}
 
 	var err error

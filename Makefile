@@ -22,7 +22,6 @@ all: gce-pd-driver
 gce-pd-driver:
 	mkdir -p bin
 	go build -o bin/gce-pd-csi-driver ./cmd/
-	go build -o bin/gce-pd-csi-driver-test ./test/e2e/
 
 build-container: gce-pd-driver
 	docker build -t $(STAGINGIMAGE):$(STAGINGVERSION) .

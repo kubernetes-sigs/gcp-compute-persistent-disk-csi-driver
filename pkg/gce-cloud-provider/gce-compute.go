@@ -30,8 +30,8 @@ import (
 
 type GCECompute interface {
 	// Getters
-	GetProject() (string, error)
-	GetZone() (string, error)
+	GetProject() string
+	GetZone() string
 	// Disk Methods
 	GetDiskOrError(ctx context.Context, volumeZone, volumeName string) (*compute.Disk, error)
 	GetAndValidateExistingDisk(ctx context.Context, configuredZone, name, diskType string, reqBytes, limBytes int64) (exists bool, err error)
@@ -47,12 +47,12 @@ type GCECompute interface {
 	WaitForOp(ctx context.Context, op *compute.Operation, zone string) error
 }
 
-func (cloud *CloudProvider) GetProject() (string, error) {
-	return cloud.project, nil
+func (cloud *CloudProvider) GetProject() string {
+	return cloud.project
 }
 
-func (cloud *CloudProvider) GetZone() (string, error) {
-	return cloud.zone, nil
+func (cloud *CloudProvider) GetZone() string {
+	return cloud.zone
 }
 
 func (cloud *CloudProvider) GetDiskOrError(ctx context.Context, volumeZone, volumeName string) (*compute.Disk, error) {
