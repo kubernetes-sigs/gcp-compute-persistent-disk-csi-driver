@@ -117,11 +117,13 @@ func RunRemote(suite TestSuite, archive string, host string, cleanup bool, testA
 		aggErrs = append(aggErrs, err)
 	}
 
-	glog.V(2).Infof("Copying test artifacts from %q", host)
-	scpErr := getTestArtifacts(host, workspace)
-	if scpErr != nil {
-		aggErrs = append(aggErrs, scpErr)
-	}
+	/*
+		glog.V(2).Infof("Copying test artifacts from %q", host)
+		scpErr := getTestArtifacts(host, workspace)
+		if scpErr != nil {
+			aggErrs = append(aggErrs, scpErr)
+		}
+	*/
 
 	return output, len(aggErrs) == 0, utilerrors.NewAggregate(aggErrs)
 }
