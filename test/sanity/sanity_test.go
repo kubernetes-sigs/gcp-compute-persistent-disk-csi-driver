@@ -17,12 +17,12 @@ package sanitytest
 import (
 	"testing"
 
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
-	gce "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
 	compute "google.golang.org/api/compute/v1"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
 )
 
 func TestSanity(t *testing.T) {

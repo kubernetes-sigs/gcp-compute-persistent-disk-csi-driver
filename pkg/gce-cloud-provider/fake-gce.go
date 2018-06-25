@@ -19,11 +19,11 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 type FakeCloudProvider struct {
