@@ -13,11 +13,11 @@
 # limitations under the License.
 
 FROM golang:1.10.1-alpine3.7 as builder
-WORKDIR /go/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver
+WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
 RUN CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
 
 FROM alpine:3.7
-COPY --from=builder /go/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 
 ENTRYPOINT ["/gce-pd-csi-driver"]

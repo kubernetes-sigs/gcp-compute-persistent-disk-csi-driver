@@ -24,15 +24,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi/v0"
-	gce "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

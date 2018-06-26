@@ -21,11 +21,11 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
-	mountmanager "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
-	utils "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 type GCENodeServer struct {

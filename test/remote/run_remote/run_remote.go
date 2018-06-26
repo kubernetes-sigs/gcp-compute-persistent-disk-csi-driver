@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -27,9 +28,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/test/remote/remote"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote/remote"
 
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
@@ -268,7 +270,7 @@ func createInstance(serviceAccount string) (string, error) {
 	myuuid := string(uuid.NewUUID())
 	glog.V(2).Infof("Creating instance: %v", name)
 
-	imageURL := "https://www.googleapis.com/compute/v1/projects/eip-images/global/images/debian-9-drawfork-v20180423"
+	imageURL := "https://www.googleapis.com/compute/v1/projects/ml-images/global/images/debian-9-tf-1-9-v20180626"
 	i := &compute.Instance{
 		Name:        name,
 		MachineType: machineType(""),
@@ -303,8 +305,9 @@ func createInstance(serviceAccount string) (string, error) {
 	}
 
 	var err error
-	if _, err = computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
+	if gotInstance, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
 		op, err := computeService.Instances.Insert(*project, *zone, i).Do()
+		glog.V(4).Infof("Inserted instance in project %v, zone %v: %#v", *project, *zone, i)
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", name, err)
 			if op != nil {
@@ -314,10 +317,24 @@ func createInstance(serviceAccount string) (string, error) {
 		} else if op.Error != nil {
 			return "", fmt.Errorf("could not create instance %s: %+v", name, op.Error)
 		}
+	} else {
+		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation: %#v", i.Name, gotInstance)
+	}
+
+	pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE")
+	if ok {
+		glog.Infof("Running on Jenkins and JENKINS_GCE_SSH_PUBLIC_KEY_FILE set")
+		// If we're on CI add public SSH keys to the instance
+		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
+		if err != nil {
+			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
+		}
+	} else {
+		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE not set, not adding SSH public key to instance")
 	}
 
 	then := time.Now()
-	err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+	err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
 		glog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", name, time.Since(then))
 		var instance *compute.Instance
 		instance, err = computeService.Instances.Get(*project, *zone, name).Do()
@@ -337,9 +354,9 @@ func createInstance(serviceAccount string) (string, error) {
 			remote.AddHostnameIP(name, externalIP)
 		}
 
-		if _, err = remote.SSHNoSudo(name, "echo"); err != nil {
+		if sshOut, err := remote.SSHNoSudo(name, "echo"); err != nil {
 			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", name, err)
-			glog.Error(err)
+			glog.Errorf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
 
@@ -353,6 +370,54 @@ func createInstance(serviceAccount string) (string, error) {
 	// Instance reached running state in time, make sure that cloud-init is complete
 	glog.V(2).Infof("Instance %v has been created successfully", name)
 	return name, nil
+}
+
+func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
+	newKeys := ""
+	i, err := computeService.Instances.Get(project, zone, name).Do()
+	if err != nil {
+		return err
+	}
+	fingerprint := i.Metadata.Fingerprint
+	items := i.Metadata.Items
+	for _, item := range items {
+		if item.Key == "ssh-keys" {
+			glog.V(2).Infof("Found existing ssh-keys, prepending to new key string")
+			newKeys += *item.Value
+			break
+		}
+	}
+	publicKeyByte, err := ioutil.ReadFile(pubKeyFile)
+	if err != nil {
+		return err
+	}
+
+	publicKey := string(publicKeyByte)
+
+	// Take username and prepend it to the public key
+	tokens := strings.Split(publicKey, " ")
+	if len(tokens) != 3 {
+		return fmt.Errorf("Public key not comprised of 3 parts, instead was: %v", publicKey)
+	}
+	publicKey = strings.TrimSpace(tokens[2]) + ":" + publicKey
+
+	newKeys = newKeys + publicKey
+	glog.V(4).Infof("New ssh-keys for instance %v: %v", name, newKeys)
+	newMeta := &compute.Metadata{
+		Fingerprint: fingerprint,
+		Items: []*compute.MetadataItems{
+			&compute.MetadataItems{
+				Key:   "ssh-keys",
+				Value: &newKeys,
+			},
+		},
+	}
+	_, err = computeService.Instances.SetMetadata(project, zone, name, newMeta).Do()
+	if err != nil {
+		return err
+	}
+	return nil
+
 }
 
 func getexternalIP(instance *compute.Instance) string {
@@ -400,6 +465,9 @@ func deleteInstance(host string) {
 	glog.Infof("Deleting instance %q", host)
 	_, err := computeService.Instances.Delete(*project, *zone, host).Do()
 	if err != nil {
+		if gce.IsGCEError(err, "notFound") {
+			return
+		}
 		glog.Errorf("Error deleting instance %q: %v", host, err)
 	}
 }

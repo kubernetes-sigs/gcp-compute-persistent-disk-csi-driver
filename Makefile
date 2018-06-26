@@ -22,6 +22,7 @@ all: gce-pd-driver
 gce-pd-driver:
 	mkdir -p bin
 	go build -o bin/gce-pd-csi-driver ./cmd/
+	go test -c sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e -o bin/e2e.test
 
 build-container: gce-pd-driver
 	docker build -t $(STAGINGIMAGE):$(STAGINGVERSION) .
@@ -36,4 +37,4 @@ prod-push-container: prod-build-container
 	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)
 
 test-sanity: gce-pd-driver
-	go test -timeout 30s github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
+	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$

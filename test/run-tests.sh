@@ -3,7 +3,7 @@
 set -e
 set -x
 
-readonly PKGDIR=github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver
+readonly PKGDIR=sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
 echo "Testing CSI-Sanity"
 go test -timeout 30s "${PKGDIR}/test/sanity/" -run ^TestSanity$
