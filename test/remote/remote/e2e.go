@@ -36,33 +36,30 @@ func InitE2ERemote() TestSuite {
 
 // SetupTestPackage sets up the test package with binaries k8s required for node e2e tests
 func (n *E2ERemote) SetupTestPackage(tardir string) error {
-	// Make sure we can find the newly built binaries
-	gopath, ok := os.LookupEnv("GOPATH")
-	if !ok {
-		return fmt.Errorf("Could not find gopath")
-	}
-
 	// TODO(dyzz): build the gce driver tests instead.
 
-	cmd := exec.Command("ginkgo", "build", "test/e2e")
+	cmd := exec.Command("go", "test", "-c", "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e", "-o", "test/e2e/e2e.test")
 	err := cmd.Run()
 
 	if err != nil {
-		return fmt.Errorf("Failed to ginkgo build test: %v", err)
+		return fmt.Errorf("Failed to build test: %v", err)
 	}
 
-	cmd = exec.Command("cp", "test/e2e/e2e.test", "bin")
+	cmd = exec.Command("mkdir", "-p", "bin")
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed to mkdir bin/: %v", err)
+	}
+
+	cmd = exec.Command("cp", "test/e2e/e2e.test", "bin/e2e.test")
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("Failed to copy: %v", err)
 	}
-
-	buildOutputDir := filepath.Join(gopath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin")
-
 	// Copy binaries
 	requiredBins := []string{"e2e.test"}
 	for _, bin := range requiredBins {
-		source := filepath.Join(buildOutputDir, bin)
+		source := filepath.Join("bin", bin)
 		if _, err := os.Stat(source); err != nil {
 			return fmt.Errorf("failed to locate test binary %s: %v", bin, err)
 		}

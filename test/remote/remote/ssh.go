@@ -19,6 +19,7 @@ package remote
 import (
 	"flag"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"strings"
@@ -69,6 +70,8 @@ func GetHostnameOrIP(hostname string) string {
 	}
 	if *sshUser != "" {
 		host = fmt.Sprintf("%s@%s", *sshUser, host)
+	} else if _, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
+		host = fmt.Sprintf("prow@%s", host)
 	}
 	return host
 }
@@ -92,7 +95,10 @@ func SSHNoSudo(host string, cmd ...string) (string, error) {
 
 // runSSHCommand executes the ssh or scp command, adding the flag provided --ssh-options
 func runSSHCommand(cmd string, args ...string) (string, error) {
-	if *sshKey != "" {
+	if pk, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
+		glog.V(4).Infof("Running on Jenkins, using special private key file at %v", pk)
+		args = append([]string{"-i", pk}, args...)
+	} else if *sshKey != "" {
 		args = append([]string{"-i", *sshKey}, args...)
 	} else if key, found := sshDefaultKeyMap[*sshEnv]; found {
 		args = append([]string{"-i", key}, args...)
