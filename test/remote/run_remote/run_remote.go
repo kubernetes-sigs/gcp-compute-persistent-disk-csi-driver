@@ -27,9 +27,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/test/remote/remote"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote/remote"
 
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"

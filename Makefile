@@ -36,4 +36,4 @@ prod-push-container: prod-build-container
 	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)
 
 test-sanity: gce-pd-driver
-	go test -timeout 30s github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
+	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$

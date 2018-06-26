@@ -48,16 +48,16 @@ func (n *E2ERemote) SetupTestPackage(tardir string) error {
 	err := cmd.Run()
 
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to ginkgo build test: %v", err)
 	}
 
 	cmd = exec.Command("cp", "test/e2e/e2e.test", "bin")
 	err = cmd.Run()
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to copy: %v", err)
 	}
 
-	buildOutputDir := filepath.Join(gopath, "src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/bin")
+	buildOutputDir := filepath.Join(gopath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin")
 
 	// Copy binaries
 	requiredBins := []string{"e2e.test"}

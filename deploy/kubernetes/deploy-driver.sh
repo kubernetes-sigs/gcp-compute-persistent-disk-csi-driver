@@ -3,7 +3,7 @@
 set -o nounset
 set -o errexit
 
-readonly PKGDIR="${GOPATH}/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver"
+readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
 readonly KUBEDEPLOY="${PKGDIR}/deploy/kubernetes"
 
 if ! kubectl get secret cloud-sa;

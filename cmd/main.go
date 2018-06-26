@@ -20,9 +20,9 @@ import (
 
 	"github.com/golang/glog"
 
-	gce "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
-	mountmanager "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
+	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
 func init() {

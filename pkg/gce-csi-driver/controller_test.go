@@ -22,8 +22,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
-	gce "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	utils "github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/utils"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 const (

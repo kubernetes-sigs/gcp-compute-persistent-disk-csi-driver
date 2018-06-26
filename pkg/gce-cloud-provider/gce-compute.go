@@ -20,12 +20,12 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 type GCECompute interface {
