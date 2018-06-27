@@ -2,6 +2,8 @@ WARNING: This driver is in ALPHA currently. This means that there may be
 potentially backwards compatability breaking changes moving forward. Do NOT use
 this drive in a production environment in its current state.
 
+DISCLAIMER: This is not an officially supported Google product
+
 # GCP Compute Persistent Disk CSI Driver
 
 The GCP Compute Persistent Disk CSI Driver is a
