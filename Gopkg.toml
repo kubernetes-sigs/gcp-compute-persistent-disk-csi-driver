@@ -73,8 +73,12 @@
 [prune]
   go-tests = true
   unused-packages = true
+  non-go = true
 
 [[constraint]]
   branch = "master"
   name = "github.com/kubernetes-csi/csi-test"
-
+  
+[[constraint]]
+  branch = "master"
+  name = "k8s.io/test-infra"

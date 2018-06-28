@@ -20,6 +20,12 @@
   version = "v1.1.0"
 
 [[projects]]
+  name = "github.com/ghodss/yaml"
+  packages = ["."]
+  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/golang/glog"
   packages = ["."]
@@ -37,6 +43,18 @@
   ]
   revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  revision = "7554cd9344cec97297fa6649b055a8c98c2a1e55"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  revision = "b7773ae218740a7be65057fc60b366a49b538a44"
 
 [[projects]]
   branch = "master"
@@ -104,10 +122,22 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/sirupsen/logrus"
+  packages = ["."]
+  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
+  version = "v1.0.5"
+
+[[projects]]
   name = "github.com/stretchr/testify"
   packages = ["assert"]
   revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
   version = "v1.2.1"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/crypto"
+  packages = ["ssh/terminal"]
+  revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
@@ -142,7 +172,10 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix"]
+  packages = [
+    "unix",
+    "windows"
+  ]
   revision = "89ac7f292d17a339edab4de8efcba5d8672ff661"
 
 [[projects]]
@@ -182,6 +215,7 @@
   branch = "master"
   name = "google.golang.org/api"
   packages = [
+    "cloudresourcemanager/v1",
     "compute/v0.beta",
     "compute/v1",
     "gensupport",
@@ -264,6 +298,16 @@
 
 [[projects]]
   branch = "master"
+  name = "k8s.io/test-infra"
+  packages = [
+    "boskos/client",
+    "boskos/common",
+    "boskos/storage"
+  ]
+  revision = "b5f298b6851f4db24587301840e7b7630747d315"
+
+[[projects]]
+  branch = "master"
   name = "k8s.io/utils"
   packages = ["exec"]
   revision = "258e2a2fa64568210fbd6267cf1d8fd87c3cb86e"
@@ -271,6 +315,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b2c921894cf05236e2a8a6c0b92e3fc130b530ba84934de6542f92591a6b48ec"
+  inputs-digest = "825b7462ed5f4c6ddc37088dc0c9fa8aff9447fb7a45438bcc845bdda4313069"
   solver-name = "gps-cdcl"
   solver-version = 1
