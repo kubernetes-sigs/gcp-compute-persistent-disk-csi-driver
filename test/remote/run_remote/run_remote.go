@@ -110,8 +110,8 @@ func main() {
 
 	if *runInProw {
 		// Try to get a Boskos project
-		glog.Infof("Running in PROW")
-		glog.Infof("Fetching a Boskos loaned project")
+		glog.V(4).Infof("Running in PROW")
+		glog.V(4).Infof("Fetching a Boskos loaned project")
 
 		p, err := boskos.Acquire("gce-project", "free", "busy")
 		if err != nil {
@@ -129,13 +129,13 @@ func main() {
 		go func(c *client.Client, proj string) {
 			for range time.Tick(time.Minute * 5) {
 				if err := c.UpdateOne(p.Name, "busy", nil); err != nil {
-					glog.Infof("[Boskos] Update %s failed with %v", p, err)
+					glog.Warningf("[Boskos] Update %s failed with %v", p, err)
 				}
 			}
 		}(boskos, p.Name)
 
 		// If we're on CI overwrite the service account
-		glog.Infof("Fetching the default compute service account")
+		glog.V(4).Infof("Fetching the default compute service account")
 
 		c, err := google.DefaultClient(context.TODO(), cloudresourcemanager.CloudPlatformScope)
 		if err != nil {
@@ -333,7 +333,7 @@ func createInstance(serviceAccount string) (string, error) {
 
 	name := "gce-pd-csi-e2e"
 	myuuid := string(uuid.NewUUID())
-	glog.V(2).Infof("Creating instance: %v", name)
+	glog.V(4).Infof("Creating instance: %v", name)
 
 	// TODO: Pick a better boot disk image
 	imageURL := "projects/ml-images/global/images/family/tf-1-9"
@@ -370,7 +370,7 @@ func createInstance(serviceAccount string) (string, error) {
 
 	if _, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
 		op, err := computeService.Instances.Insert(*project, *zone, i).Do()
-		glog.Infof("Inserted instance %v in project %v, zone %v", i.Name, *project, *zone)
+		glog.V(4).Infof("Inserted instance %v in project %v, zone %v", i.Name, *project, *zone)
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", name, err)
 			if op != nil {
@@ -381,11 +381,11 @@ func createInstance(serviceAccount string) (string, error) {
 			return "", fmt.Errorf("could not create instance %s: %+v", name, op.Error)
 		}
 	} else {
-		glog.Infof("Compute service GOT instance %v, skipping instance creation", i.Name)
+		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", i.Name)
 	}
 
 	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
-		glog.Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
+		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
 		// If we're on CI add public SSH keys to the instance
 		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
 		if err != nil {
@@ -522,7 +522,7 @@ func getComputeClient() (*compute.Service, error) {
 }
 
 func deleteInstance(host string) {
-	glog.Infof("Deleting instance %q", host)
+	glog.V(4).Infof("Deleting instance %q", host)
 	_, err := computeService.Instances.Delete(*project, *zone, host).Do()
 	if err != nil {
 		if gce.IsGCEError(err, "notFound") {
