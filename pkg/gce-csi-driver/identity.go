@@ -43,7 +43,7 @@ func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context,
 	glog.V(5).Infof("Using default GetPluginCapabilities")
 	return &csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
-			&csi.PluginCapability{
+			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
 						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,

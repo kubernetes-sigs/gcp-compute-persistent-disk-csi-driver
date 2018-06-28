@@ -466,7 +466,7 @@ func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
 	newMeta := &compute.Metadata{
 		Fingerprint: fingerprint,
 		Items: []*compute.MetadataItems{
-			&compute.MetadataItems{
+			{
 				Key:   "ssh-keys",
 				Value: &newKeys,
 			},
