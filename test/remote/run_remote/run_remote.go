@@ -30,11 +30,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/test-infra/boskos/client"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote/remote"
 
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/cloudresourcemanager/v1"
 	compute "google.golang.org/api/compute/v0.beta"
 )
 
@@ -46,6 +48,7 @@ var deleteInstances = flag.Bool("delete-instances", true, "If true, delete any i
 var buildOnly = flag.Bool("build-only", false, "If true, build e2e_gce_pd_test.tar.gz and exit.")
 var ginkgoFlags = flag.String("ginkgo-flags", "", "Passed to ginkgo to specify additional flags such as --skip=.")
 var serviceAccount = flag.String("service-account", "", "GCP Service Account to start the test instance under")
+var runInProw = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 
 // envs is the type used to collect all node envs. The key is the env name,
 // and the value is the env value
@@ -82,6 +85,8 @@ var (
 	computeService *compute.Service
 	arc            Archive
 	suite          remote.TestSuite
+
+	boskos = client.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
 )
 
 // Archive contains information about the test tar
@@ -103,8 +108,56 @@ func main() {
 	flag.Parse()
 	suite = remote.InitE2ERemote()
 
-	if *serviceAccount == "" {
-		glog.Fatal("You must specify a service account to create an instance under that has at least OWNERS permissions on disks and READER on instances.")
+	if *runInProw {
+		// Try to get a Boskos project
+		glog.Infof("Running in PROW")
+		glog.Infof("Fetching a Boskos loaned project")
+
+		p, err := boskos.Acquire("gce-project", "free", "busy")
+		if err != nil {
+			glog.Fatal("boskos failed to acquire project: %v", err)
+		}
+
+		if p == nil {
+			glog.Fatal("boskos does not have a free gce-project at the moment")
+		}
+
+		glog.Infof("Overwriting supplied project %v with project from Boskos: %v", *project, p.GetName())
+
+		*project = p.GetName()
+
+		go func(c *client.Client, proj string) {
+			for range time.Tick(time.Minute * 5) {
+				if err := c.UpdateOne(p.Name, "busy", nil); err != nil {
+					glog.Infof("[Boskos] Update %s failed with %v", p, err)
+				}
+			}
+		}(boskos, p.Name)
+
+		// If we're on CI overwrite the service account
+		glog.Infof("Fetching the default compute service account")
+
+		c, err := google.DefaultClient(context.TODO(), cloudresourcemanager.CloudPlatformScope)
+		if err != nil {
+			glog.Fatalf("Failed to get Google Default Client: %v", err)
+		}
+
+		cloudresourcemanagerService, err := cloudresourcemanager.New(c)
+		if err != nil {
+			glog.Fatalf("Failed to create new cloudresourcemanager: %v", err)
+		}
+
+		resp, err := cloudresourcemanagerService.Projects.Get(*project).Do()
+		if err != nil {
+			glog.Fatal("Failed to get project %v from Cloud Resource Manager: %v", *project, err)
+		}
+
+		// Default Compute Engine service account
+		// [PROJECT_NUMBER]-compute@developer.gserviceaccount.com
+		sa := fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
+		glog.Infof("Overwriting supplied service account %v with PROW service account %v", *serviceAccount, sa)
+
+		*serviceAccount = sa
 	}
 
 	if *project == "" {
@@ -113,6 +166,10 @@ func main() {
 
 	if *zone == "" {
 		glog.Fatal("Zone must be specified")
+	}
+
+	if *serviceAccount == "" {
+		glog.Fatal("You must specify a service account to create an instance under that has at least OWNERS permissions on disks and READER on instances.")
 	}
 
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -162,6 +219,12 @@ func main() {
 	fmt.Printf("%s<                              FINISH TEST                               <%s\n", blue, noColour)
 	fmt.Printf("%s<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<%s\n", blue, noColour)
 	fmt.Println() // Print an empty line
+
+	if boskos.HasResource() {
+		if berr := boskos.ReleaseAll("dirty"); berr != nil {
+			glog.Fatalf("[Boskos] Fail To Release: %v, kubetest err: %v", berr, err)
+		}
+	}
 
 	// Set the exit code if there were failures
 	if !results.exitOk {
@@ -266,11 +329,14 @@ func test(tests []string) *TestResult {
 
 // Provision a gce instance using image
 func createInstance(serviceAccount string) (string, error) {
+	var err error
+
 	name := "gce-pd-csi-e2e"
 	myuuid := string(uuid.NewUUID())
 	glog.V(2).Infof("Creating instance: %v", name)
 
-	imageURL := "https://www.googleapis.com/compute/v1/projects/ml-images/global/images/debian-9-tf-1-9-v20180626"
+	// TODO: Pick a better boot disk image
+	imageURL := "projects/ml-images/global/images/family/tf-1-9"
 	i := &compute.Instance{
 		Name:        name,
 		MachineType: machineType(""),
@@ -296,18 +362,15 @@ func createInstance(serviceAccount string) (string, error) {
 		},
 	}
 
-	if serviceAccount != "" {
-		saObj := &compute.ServiceAccount{
-			Email:  serviceAccount,
-			Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
-		}
-		i.ServiceAccounts = []*compute.ServiceAccount{saObj}
+	saObj := &compute.ServiceAccount{
+		Email:  serviceAccount,
+		Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
 	}
+	i.ServiceAccounts = []*compute.ServiceAccount{saObj}
 
-	var err error
-	if gotInstance, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
+	if _, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
 		op, err := computeService.Instances.Insert(*project, *zone, i).Do()
-		glog.V(4).Infof("Inserted instance in project %v, zone %v: %#v", *project, *zone, i)
+		glog.Infof("Inserted instance %v in project %v, zone %v", i.Name, *project, *zone)
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", name, err)
 			if op != nil {
@@ -318,19 +381,16 @@ func createInstance(serviceAccount string) (string, error) {
 			return "", fmt.Errorf("could not create instance %s: %+v", name, op.Error)
 		}
 	} else {
-		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation: %#v", i.Name, gotInstance)
+		glog.Infof("Compute service GOT instance %v, skipping instance creation", i.Name)
 	}
 
-	pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE")
-	if ok {
-		glog.Infof("Running on Jenkins and JENKINS_GCE_SSH_PUBLIC_KEY_FILE set")
+	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
+		glog.Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
 		// If we're on CI add public SSH keys to the instance
 		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
 		if err != nil {
 			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
 		}
-	} else {
-		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE not set, not adding SSH public key to instance")
 	}
 
 	then := time.Now()
