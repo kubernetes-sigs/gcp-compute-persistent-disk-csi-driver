@@ -32,7 +32,7 @@ import (
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

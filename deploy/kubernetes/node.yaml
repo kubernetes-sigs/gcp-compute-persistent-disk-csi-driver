@@ -2,15 +2,15 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-gce-node
+  name: csi-gce-pd-node
 spec:
   selector:
     matchLabels:
-      app: csi-gce-driver
+      app: csi-gce-pd-driver
   template:
     metadata:
       labels:
-        app: csi-gce-driver
+        app: csi-gce-pd-driver
     spec:
       serviceAccount: csi-node-sa
       containers:
@@ -32,11 +32,11 @@ spec:
               mountPath: /csi
           #  - name: registrar-socket-dir
           #    mountPath: /var/lib/csi/sockets/
-        - name: gce-driver
+        - name: gce-pd-driver
           securityContext:
             privileged: true
           imagePullPolicy: Always
-          image: gcr.io/dyzz-csi-staging/csi/gce-driver:latest
+          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
