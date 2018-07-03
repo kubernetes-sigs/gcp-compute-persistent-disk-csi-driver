@@ -71,7 +71,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},
@@ -94,7 +94,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: MinimumVolumeSizeInBytes,
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},
@@ -117,7 +117,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},
@@ -132,7 +132,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},
@@ -149,7 +149,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},
@@ -178,7 +178,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: MinimumVolumeSizeInBytes,
-				Id:            project + "/" + zone + "/" + "test-vol",
+				Id:            zone + "/" + "test-vol",
 				Attributes:    nil,
 			},
 		},

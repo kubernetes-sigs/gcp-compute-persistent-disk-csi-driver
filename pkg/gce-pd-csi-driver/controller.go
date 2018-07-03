@@ -52,23 +52,38 @@ const (
 	attachableDiskTypePersistent = "PERSISTENT"
 )
 
-func getRequestCapacity(capRange *csi.CapacityRange) (capBytes int64) {
+func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
 	// TODO: Take another look at these casts/caps. Make sure this func is correct
+	var capBytes int64
+	// Default case where nothing is set
 	if capRange == nil {
 		capBytes = MinimumVolumeSizeInBytes
-		return
+		return capBytes, nil
 	}
 
-	if tcap := capRange.GetRequiredBytes(); tcap > 0 {
-		capBytes = tcap
-	} else if tcap = capRange.GetLimitBytes(); tcap > 0 {
-		capBytes = tcap
+	rBytes := capRange.GetRequiredBytes()
+	rSet := rBytes > 0
+	lBytes := capRange.GetLimitBytes()
+	lSet := lBytes > 0
+
+	if lSet && rSet && lBytes < rBytes {
+		return 0, fmt.Errorf("Limit bytes %v is less than required bytes %v", lBytes, rBytes)
 	}
+	if lSet && lBytes < MinimumVolumeSizeInBytes {
+		return 0, fmt.Errorf("Limit bytes %v is less than minimum volume size: %v", lBytes, MinimumVolumeSizeInBytes)
+	}
+
+	// If Required set just set capacity to that which is Required
+	if rSet {
+		capBytes = rBytes
+	}
+
+	// Limit is more than Required, but larger than Minimum. So we just set capcity to Minimum
 	// Too small, default
 	if capBytes < MinimumVolumeSizeInBytes {
 		capBytes = MinimumVolumeSizeInBytes
 	}
-	return
+	return capBytes, nil
 }
 
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -86,7 +101,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
-	capBytes := getRequestCapacity(capacityRange)
+	capBytes, err := getRequestCapacity(capacityRange)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume Request Capacity is invalid: %v", err))
+	}
 
 	// TODO: Validate volume capabilities
 
