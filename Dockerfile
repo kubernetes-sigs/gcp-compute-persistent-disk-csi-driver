@@ -15,9 +15,13 @@
 FROM golang:1.10.1-alpine3.7 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-RUN CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
 
-FROM alpine:3.7
+# Start from Google Debian base
+FROM gcr.io/google-containers/debian-base-amd64:0.3
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
+
+# Install necessary dependencies
+RUN clean-install util-linux e2fsprogs mount ca-certificates
 
 ENTRYPOINT ["/gce-pd-csi-driver"]
