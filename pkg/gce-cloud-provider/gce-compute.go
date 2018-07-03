@@ -41,6 +41,7 @@ type GCECompute interface {
 	DetachDisk(ctx context.Context, volumeZone, instanceName, volumeName string) (*compute.Operation, error)
 	GetDiskSourceURI(disk *compute.Disk, zone string) string
 	GetDiskTypeURI(zone, diskType string) string
+	WaitForAttach(ctx context.Context, zone, diskName, instanceName string) error
 	// Instance Methods
 	GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*compute.Instance, error)
 	// Operation Methods
@@ -155,6 +156,27 @@ func (cloud *CloudProvider) WaitForOp(ctx context.Context, op *compute.Operation
 		}
 		done := opIsDone(pollOp)
 		return done, err
+	})
+}
+
+func (cloud *CloudProvider) WaitForAttach(ctx context.Context, zone, diskName, instanceName string) error {
+	return wait.Poll(5*time.Second, 2*time.Minute, func() (bool, error) {
+		disk, err := cloud.GetDiskOrError(ctx, zone, diskName)
+		if err != nil {
+			glog.Errorf("GetDiskOrError failed to get disk: %v", err)
+			return false, err
+		}
+
+		if disk == nil {
+			return false, fmt.Errorf("Disk %v could not be found in zone %v", diskName, zone)
+		}
+
+		for _, user := range disk.Users {
+			if strings.Contains(user, instanceName) && strings.Contains(user, zone) {
+				return true, nil
+			}
+		}
+		return false, nil
 	})
 }
 

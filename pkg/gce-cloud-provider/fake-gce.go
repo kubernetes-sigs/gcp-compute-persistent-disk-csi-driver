@@ -34,6 +34,8 @@ type FakeCloudProvider struct {
 	instances map[string]*compute.Instance
 }
 
+var _ GCECompute = &FakeCloudProvider{}
+
 func FakeCreateCloudProvider(project, zone string) (*FakeCloudProvider, error) {
 	return &FakeCloudProvider{
 		project:   project,
@@ -154,6 +156,10 @@ func (cloud *FakeCloudProvider) GetDiskSourceURI(disk *compute.Disk, zone string
 
 func (cloud *FakeCloudProvider) GetDiskTypeURI(zone, diskType string) string {
 	return ""
+}
+
+func (cloud *FakeCloudProvider) WaitForAttach(ctx context.Context, zone, diskName, instanceName string) error {
+	return nil
 }
 
 // Instance Methods
