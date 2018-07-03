@@ -1,7 +1,7 @@
 kind: StatefulSet
 apiVersion: apps/v1beta1
 metadata:
-  name: csi-gce-controller
+  name: csi-gce-pd-controller
 spec:
   serviceName: "csi-gce-pd"
   replicas: 1
@@ -40,9 +40,9 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-        - name: gce-driver
+        - name: gce-pd-driver
           imagePullPolicy: Always
-          image: gcr.io/dyzz-csi-staging/csi/gce-driver:latest
+          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"

@@ -22,7 +22,7 @@ import (
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 )
 
 func TestSanity(t *testing.T) {

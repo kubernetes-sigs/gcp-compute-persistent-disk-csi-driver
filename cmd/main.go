@@ -21,7 +21,7 @@ import (
 	"github.com/golang/glog"
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-csi-driver"
+	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
