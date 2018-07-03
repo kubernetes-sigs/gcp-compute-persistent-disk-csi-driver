@@ -296,6 +296,11 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach operation error: %v", err))
 	}
 
+	err = gceCS.CloudProvider.WaitForAttach(ctx, volumeZone, disk.Name, nodeID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
+	}
+
 	glog.Infof("Disk %v attached to instance %v successfully", disk.Name, nodeID)
 	return pubVolResp, nil
 }

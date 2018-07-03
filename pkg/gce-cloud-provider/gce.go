@@ -44,6 +44,8 @@ type CloudProvider struct {
 	zone    string
 }
 
+var _ GCECompute = &CloudProvider{}
+
 func CreateCloudProvider() (*CloudProvider, error) {
 	svc, err := createCloudService()
 	if err != nil {
