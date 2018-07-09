@@ -46,7 +46,7 @@ func handle() {
 	gceDriver := driver.GetGCEDriver()
 
 	//Initialize GCE Driver (Move setup to main?)
-	cloudProvider, err := gce.CreateCloudProvider()
+	cloudProvider, err := gce.CreateCloudProvider(gceDriver.GetVendorVersion())
 	if err != nil {
 		glog.Fatalf("Failed to get cloud provider: %v", err)
 	}

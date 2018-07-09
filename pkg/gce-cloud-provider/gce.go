@@ -46,8 +46,8 @@ type CloudProvider struct {
 
 var _ GCECompute = &CloudProvider{}
 
-func CreateCloudProvider() (*CloudProvider, error) {
-	svc, err := createCloudService()
+func CreateCloudProvider(vendorVersion string) (*CloudProvider, error) {
+	svc, err := createCloudService(vendorVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -66,13 +66,13 @@ func CreateCloudProvider() (*CloudProvider, error) {
 
 }
 
-func createCloudService() (*compute.Service, error) {
+func createCloudService(vendorVersion string) (*compute.Service, error) {
 	// TODO: support alternate methods of authentication
-	svc, err := createCloudServiceWithDefaultServiceAccount()
+	svc, err := createCloudServiceWithDefaultServiceAccount(vendorVersion)
 	return svc, err
 }
 
-func createCloudServiceWithDefaultServiceAccount() (*compute.Service, error) {
+func createCloudServiceWithDefaultServiceAccount(vendorVersion string) (*compute.Service, error) {
 	client, err := newDefaultOauthClient()
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func createCloudServiceWithDefaultServiceAccount() (*compute.Service, error) {
 		return nil, err
 	}
 	// TODO(dyzz) parameterize version number
-	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", "0.2.0", runtime.GOOS, runtime.GOARCH)
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
 	return service, nil
 }
 
