@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"golang.org/x/net/context"
+	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -27,13 +28,13 @@ import (
 )
 
 const (
-	project = "test-project"
-	zone    = "test-zone"
-	node    = "test-node"
-	driver  = "test-driver"
+	project      = "test-project"
+	zone         = "test-zone"
+	node         = "test-node"
+	driver       = "test-driver"
+	testVolumeId = zone + "/" + "test-vol"
 )
 
-// Create Volume Tests
 func TestCreateVolumeArguments(t *testing.T) {
 	// Define "normal" parameters
 	stdVolCap := []*csi.VolumeCapability{
@@ -71,7 +72,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            zone + "/" + "test-vol",
+				Id:            testVolumeId,
 				Attributes:    nil,
 			},
 		},
@@ -94,7 +95,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: MinimumVolumeSizeInBytes,
-				Id:            zone + "/" + "test-vol",
+				Id:            testVolumeId,
 				Attributes:    nil,
 			},
 		},
@@ -108,7 +109,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 			expErrCode: codes.InvalidArgument,
 		},
 		{
-			// TODO(dyzz) maybe if no params, we should have defaults.
 			name: "success no params",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-vol",
@@ -117,7 +117,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            zone + "/" + "test-vol",
+				Id:            testVolumeId,
 				Attributes:    nil,
 			},
 		},
@@ -132,67 +132,9 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: utils.GbToBytes(20),
-				Id:            zone + "/" + "test-vol",
+				Id:            testVolumeId,
 				Attributes:    nil,
 			},
-		},
-		{
-			name: "success capacity range: full specified",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-vol",
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: utils.GbToBytes(20),
-					LimitBytes:    utils.GbToBytes(50),
-				},
-				VolumeCapabilities: stdVolCap,
-				Parameters:         stdParams,
-			},
-			expVol: &csi.Volume{
-				CapacityBytes: utils.GbToBytes(20),
-				Id:            zone + "/" + "test-vol",
-				Attributes:    nil,
-			},
-		},
-		{
-			name: "fail capacity range: limit less than required",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-vol",
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: utils.GbToBytes(50),
-					LimitBytes:    utils.GbToBytes(20),
-				},
-				VolumeCapabilities: stdVolCap,
-				Parameters:         stdParams,
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
-			name: "success capacity range: only limit specified",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-vol",
-				CapacityRange: &csi.CapacityRange{
-					LimitBytes: utils.GbToBytes(50),
-				},
-				VolumeCapabilities: stdVolCap,
-				Parameters:         stdParams,
-			},
-			expVol: &csi.Volume{
-				CapacityBytes: MinimumVolumeSizeInBytes,
-				Id:            zone + "/" + "test-vol",
-				Attributes:    nil,
-			},
-		},
-		{
-			name: "fail capacity range: only limit specified too low",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-vol",
-				CapacityRange: &csi.CapacityRange{
-					LimitBytes: utils.GbToBytes(2),
-				},
-				VolumeCapabilities: stdVolCap,
-				Parameters:         stdParams,
-			},
-			expErrCode: codes.InvalidArgument,
 		},
 	}
 
@@ -205,7 +147,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, driver, node)
+		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, driver, node, "vendor-version")
 		if err != nil {
 			t.Fatalf("Failed to setup GCE Driver: %v", err)
 		}
@@ -254,20 +196,276 @@ func TestCreateVolumeArguments(t *testing.T) {
 	}
 }
 
-// Test volume already exists
+func TestDeleteVolume(t *testing.T) {
+	testCases := []struct {
+		name   string
+		req    *csi.DeleteVolumeRequest
+		expErr bool
+	}{
+		{
+			name: "valid",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: testVolumeId,
+			},
+		},
+		{
+			name: "invalid id",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: testVolumeId + "/foo",
+			},
+			expErr: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriver(t)
 
-// Test volume with op pending
+		_, err := gceDriver.cs.DeleteVolume(context.TODO(), tc.req)
+		if err == nil && tc.expErr {
+			t.Fatalf("Expected error but got none")
+		}
+		if err != nil && !tc.expErr {
+			t.Fatalf("Did not expect error but got: %v", err)
+		}
 
-// Test DeleteVolume
+		if err != nil {
+			continue
+		}
 
-// Test ControllerPublishVolume
+	}
+}
 
-// Test ControllerUnpublishVolume
+func TestGetRequestCapacity(t *testing.T) {
+	testCases := []struct {
+		name     string
+		capRange *csi.CapacityRange
+		expCap   int64
+		expErr   bool
+	}{
+		{
+			name:     "nil cap range",
+			capRange: nil,
+			expCap:   MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: required below min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes - 1,
+			},
+			expCap: MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: required equals min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes,
+			},
+			expCap: MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: required above min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes + 1,
+			},
+			expCap: MinimumVolumeSizeInBytes + 1,
+		},
+		{
+			name: "fail: limit below min",
+			capRange: &csi.CapacityRange{
+				LimitBytes: MinimumVolumeSizeInBytes - 1,
+			},
+			expErr: true,
+		},
+		{
+			name: "success: limit equal min",
+			capRange: &csi.CapacityRange{
+				LimitBytes: MinimumVolumeSizeInBytes,
+			},
+			expCap: MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: limit above min",
+			capRange: &csi.CapacityRange{
+				LimitBytes: MinimumVolumeSizeInBytes + 1,
+			},
+			expCap: MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: fully specified both above min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: utils.GbToBytes(20),
+				LimitBytes:    utils.GbToBytes(50),
+			},
+			expCap: utils.GbToBytes(20),
+		},
+		{
+			name: "success: fully specified required below min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes - 1,
+				LimitBytes:    utils.GbToBytes(50),
+			},
+			expCap: MinimumVolumeSizeInBytes,
+		},
+		{
+			name: "success: fully specified both below min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes - 2,
+				LimitBytes:    MinimumVolumeSizeInBytes - 1,
+			},
+			expErr: true,
+		},
+		{
+			name: "fail: limit less than required",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: utils.GbToBytes(50),
+				LimitBytes:    utils.GbToBytes(20),
+			},
+			expErr: true,
+		},
+		{
+			name: "fail: limit less than required below min",
+			capRange: &csi.CapacityRange{
+				RequiredBytes: MinimumVolumeSizeInBytes - 2,
+				LimitBytes:    MinimumVolumeSizeInBytes - 3,
+			},
+			expErr: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
 
-// Test ValidateVolumeCapabilities
+		gotCap, err := getRequestCapacity(tc.capRange)
+		if err == nil && tc.expErr {
+			t.Fatalf("Expected error but got none")
+		}
+		if err != nil && !tc.expErr {
+			t.Fatalf("Did not expect error but got: %v", err)
+		}
 
-// Test ListVolumes
+		if err != nil {
+			continue
+		}
 
-// Test GetCapacity
+		if gotCap != tc.expCap {
+			t.Fatalf("Got capacity: %v, expected: %v", gotCap, tc.expCap)
+		}
+	}
+}
 
-// Test ControllerGetCapabilities
+func TestDiskIsAttached(t *testing.T) {
+	testCases := []struct {
+		name        string
+		disk        *compute.Disk
+		instance    *compute.Instance
+		expAttached bool
+	}{
+		{
+			name: "normal-attached",
+			disk: &compute.Disk{
+				Name: "test-disk",
+			},
+			instance: &compute.Instance{
+				Disks: []*compute.AttachedDisk{
+					{
+						DeviceName: "test-disk",
+					},
+				},
+			},
+			expAttached: true,
+		},
+		{
+			name: "normal-not-attached",
+			disk: &compute.Disk{
+				Name: "test-disk",
+			},
+			instance: &compute.Instance{
+				Disks: []*compute.AttachedDisk{
+					{
+						DeviceName: "not-the-test-disk",
+					},
+				},
+			},
+			expAttached: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		if attached := diskIsAttached(tc.disk, tc.instance); attached != tc.expAttached {
+			t.Errorf("Expected disk attached to be %v, but got %v", tc.expAttached, attached)
+		}
+	}
+}
+
+func TestDiskIsAttachedAndCompatible(t *testing.T) {
+	testCases := []struct {
+		name        string
+		disk        *compute.Disk
+		instance    *compute.Instance
+		mode        string
+		expAttached bool
+		expErr      bool
+	}{
+		{
+			name: "normal-attached",
+			disk: &compute.Disk{
+				Name: "test-disk",
+			},
+			instance: &compute.Instance{
+				Disks: []*compute.AttachedDisk{
+					{
+						DeviceName: "test-disk",
+						Mode:       "test-mode",
+					},
+				},
+			},
+			mode:        "test-mode",
+			expAttached: true,
+		},
+		{
+			name: "normal-not-attached",
+			disk: &compute.Disk{
+				Name: "test-disk",
+			},
+			instance: &compute.Instance{
+				Disks: []*compute.AttachedDisk{
+					{
+						DeviceName: "not-the-test-disk",
+						Mode:       "test-mode",
+					},
+				},
+			},
+			mode:        "test-mode",
+			expAttached: false,
+		},
+		{
+			name: "incompatible mode",
+			disk: &compute.Disk{
+				Name: "test-disk",
+			},
+			instance: &compute.Instance{
+				Disks: []*compute.AttachedDisk{
+					{
+						DeviceName: "test-disk",
+						Mode:       "test-mode",
+					},
+				},
+			},
+			mode:        "random-mode",
+			expAttached: true,
+			expErr:      true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		attached, err := diskIsAttachedAndCompatible(tc.disk, tc.instance, nil, tc.mode)
+		if err != nil && !tc.expErr {
+			t.Errorf("Did not expect error but got: %v", err)
+		}
+		if err == nil && tc.expErr {
+			t.Errorf("Expected error but got none")
+		}
+		if attached != tc.expAttached {
+			t.Errorf("Expected disk attached to be %v, but got %v", tc.expAttached, attached)
+		}
+	}
+}

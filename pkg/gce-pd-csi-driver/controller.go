@@ -52,40 +52,6 @@ const (
 	attachableDiskTypePersistent = "PERSISTENT"
 )
 
-func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
-	// TODO: Take another look at these casts/caps. Make sure this func is correct
-	var capBytes int64
-	// Default case where nothing is set
-	if capRange == nil {
-		capBytes = MinimumVolumeSizeInBytes
-		return capBytes, nil
-	}
-
-	rBytes := capRange.GetRequiredBytes()
-	rSet := rBytes > 0
-	lBytes := capRange.GetLimitBytes()
-	lSet := lBytes > 0
-
-	if lSet && rSet && lBytes < rBytes {
-		return 0, fmt.Errorf("Limit bytes %v is less than required bytes %v", lBytes, rBytes)
-	}
-	if lSet && lBytes < MinimumVolumeSizeInBytes {
-		return 0, fmt.Errorf("Limit bytes %v is less than minimum volume size: %v", lBytes, MinimumVolumeSizeInBytes)
-	}
-
-	// If Required set just set capacity to that which is Required
-	if rSet {
-		capBytes = rBytes
-	}
-
-	// Limit is more than Required, but larger than Minimum. So we just set capcity to Minimum
-	// Too small, default
-	if capBytes < MinimumVolumeSizeInBytes {
-		capBytes = MinimumVolumeSizeInBytes
-	}
-	return capBytes, nil
-}
-
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	// TODO: Check create zone against Driver zone. They must MATCH
 	glog.Infof("CreateVolume called with request %v", *req)
@@ -371,31 +337,6 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-// TODO: This abstraction isn't great. We shouldn't need diskIsAttached AND diskIsAttachedAndCompatible to duplicate code
-func diskIsAttached(volume *compute.Disk, instance *compute.Instance) bool {
-	for _, disk := range instance.Disks {
-		if disk.DeviceName == volume.Name {
-			// Disk is attached to node
-			return true
-		}
-	}
-	return false
-}
-
-func diskIsAttachedAndCompatible(volume *compute.Disk, instance *compute.Instance, volumeCapability *csi.VolumeCapability, readWrite string) (bool, error) {
-	for _, disk := range instance.Disks {
-		if disk.DeviceName == volume.Name {
-			// Disk is attached to node
-			if disk.Mode != readWrite {
-				return true, fmt.Errorf("disk mode does not match. Got %v. Want %v", disk.Mode, readWrite)
-			}
-			// TODO: Check volume_capability.
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// TODO: Factor out the volume capability functionality and use as validation in all other functions as well
 	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
@@ -458,4 +399,62 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 
 func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
+	// TODO: Take another look at these casts/caps. Make sure this func is correct
+	var capBytes int64
+	// Default case where nothing is set
+	if capRange == nil {
+		capBytes = MinimumVolumeSizeInBytes
+		return capBytes, nil
+	}
+
+	rBytes := capRange.GetRequiredBytes()
+	rSet := rBytes > 0
+	lBytes := capRange.GetLimitBytes()
+	lSet := lBytes > 0
+
+	if lSet && rSet && lBytes < rBytes {
+		return 0, fmt.Errorf("Limit bytes %v is less than required bytes %v", lBytes, rBytes)
+	}
+	if lSet && lBytes < MinimumVolumeSizeInBytes {
+		return 0, fmt.Errorf("Limit bytes %v is less than minimum volume size: %v", lBytes, MinimumVolumeSizeInBytes)
+	}
+
+	// If Required set just set capacity to that which is Required
+	if rSet {
+		capBytes = rBytes
+	}
+
+	// Limit is more than Required, but larger than Minimum. So we just set capcity to Minimum
+	// Too small, default
+	if capBytes < MinimumVolumeSizeInBytes {
+		capBytes = MinimumVolumeSizeInBytes
+	}
+	return capBytes, nil
+}
+
+func diskIsAttached(volume *compute.Disk, instance *compute.Instance) bool {
+	for _, disk := range instance.Disks {
+		if disk.DeviceName == volume.Name {
+			// Disk is attached to node
+			return true
+		}
+	}
+	return false
+}
+
+func diskIsAttachedAndCompatible(volume *compute.Disk, instance *compute.Instance, volumeCapability *csi.VolumeCapability, readWrite string) (bool, error) {
+	for _, disk := range instance.Disks {
+		if disk.DeviceName == volume.Name {
+			// Disk is attached to node
+			if disk.Mode != readWrite {
+				return true, fmt.Errorf("disk mode does not match. Got %v. Want %v", disk.Mode, readWrite)
+			}
+			// TODO: Check volume_capability.
+			return true, nil
+		}
+	}
+	return false, nil
 }
