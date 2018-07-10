@@ -78,7 +78,8 @@ func init() {
 }
 
 const (
-	defaultMachine = "n1-standard-1"
+	defaultMachine      = "n1-standard-1"
+	defaultFirewallRule = "default-allow-ssh"
 )
 
 var (
@@ -327,12 +328,42 @@ func test(tests []string) *TestResult {
 	return result
 }
 
+// Create default SSH filewall rule if it does not exist
+func createDefaultFirewallRule() error {
+	var err error
+	if _, err = computeService.Firewalls.Get(*project, defaultFirewallRule).Do(); err != nil {
+		glog.Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
+		f := &compute.Firewall{
+			Name: defaultFirewallRule,
+			Allowed: []*compute.FirewallAllowed{
+				{
+					IPProtocol: "tcp",
+					Ports:      []string{"22"},
+				},
+			},
+		}
+		_, err = computeService.Firewalls.Insert(*project, f).Do()
+		if err != nil {
+			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
+		}
+	} else {
+		glog.Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+	}
+	return nil
+}
+
 // Provision a gce instance using image
 func createInstance(serviceAccount string) (string, error) {
 	var err error
 
 	name := "gce-pd-csi-e2e"
 	myuuid := string(uuid.NewUUID())
+
+	err = createDefaultFirewallRule()
+	if err != nil {
+		return "", fmt.Errorf("Failed to create firewall rule: %v", err)
+	}
+
 	glog.V(4).Infof("Creating instance: %v", name)
 
 	// TODO: Pick a better boot disk image
@@ -368,6 +399,15 @@ func createInstance(serviceAccount string) (string, error) {
 	}
 	i.ServiceAccounts = []*compute.ServiceAccount{saObj}
 
+	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
+		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
+		meta, err := generateMetadataWithPublicKey(pubkey)
+		if err != nil {
+			return "", err
+		}
+		i.Metadata = meta
+	}
+
 	if _, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
 		op, err := computeService.Instances.Insert(*project, *zone, i).Do()
 		glog.V(4).Infof("Inserted instance %v in project %v, zone %v", i.Name, *project, *zone)
@@ -382,15 +422,6 @@ func createInstance(serviceAccount string) (string, error) {
 		}
 	} else {
 		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", i.Name)
-	}
-
-	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
-		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
-		// If we're on CI add public SSH keys to the instance
-		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
-		if err != nil {
-			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
-		}
 	}
 
 	then := time.Now()
@@ -418,7 +449,7 @@ func createInstance(serviceAccount string) (string, error) {
 			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
-
+		glog.Infof("Instance %v in state RUNNING and vailable by SSH", name)
 		return true, nil
 	})
 
@@ -431,24 +462,10 @@ func createInstance(serviceAccount string) (string, error) {
 	return name, nil
 }
 
-func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
-	newKeys := ""
-	i, err := computeService.Instances.Get(project, zone, name).Do()
-	if err != nil {
-		return err
-	}
-	fingerprint := i.Metadata.Fingerprint
-	items := i.Metadata.Items
-	for _, item := range items {
-		if item.Key == "ssh-keys" {
-			glog.V(2).Infof("Found existing ssh-keys, prepending to new key string")
-			newKeys += *item.Value
-			break
-		}
-	}
+func generateMetadataWithPublicKey(pubKeyFile string) (*compute.Metadata, error) {
 	publicKeyByte, err := ioutil.ReadFile(pubKeyFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	publicKey := string(publicKeyByte)
@@ -456,27 +473,18 @@ func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
 	// Take username and prepend it to the public key
 	tokens := strings.Split(publicKey, " ")
 	if len(tokens) != 3 {
-		return fmt.Errorf("Public key not comprised of 3 parts, instead was: %v", publicKey)
+		return nil, fmt.Errorf("Public key not comprised of 3 parts, instead was: %v", publicKey)
 	}
 	publicKey = strings.TrimSpace(tokens[2]) + ":" + publicKey
-
-	newKeys = newKeys + publicKey
-	glog.V(4).Infof("New ssh-keys for instance %v: %v", name, newKeys)
 	newMeta := &compute.Metadata{
-		Fingerprint: fingerprint,
 		Items: []*compute.MetadataItems{
 			{
 				Key:   "ssh-keys",
-				Value: &newKeys,
+				Value: &publicKey,
 			},
 		},
 	}
-	_, err = computeService.Instances.SetMetadata(project, zone, name, newMeta).Do()
-	if err != nil {
-		return err
-	}
-	return nil
-
+	return newMeta, nil
 }
 
 func getexternalIP(instance *compute.Instance) string {
