@@ -328,20 +328,15 @@ func test(tests []string) *TestResult {
 	return result
 }
 
-// Provision a gce instance using image
-func createInstance(serviceAccount string) (string, error) {
+// Create default SSH filewall rule if it does not exist
+func createDefaultFirewallRule() error {
 	var err error
-
-	name := "gce-pd-csi-e2e"
-	myuuid := string(uuid.NewUUID())
-
-	// Create default filewall rule if it does not exist
 	if _, err = computeService.Firewalls.Get(*project, defaultFirewallRule).Do(); err != nil {
 		glog.Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
 		f := &compute.Firewall{
 			Name: defaultFirewallRule,
 			Allowed: []*compute.FirewallAllowed{
-				&compute.FirewallAllowed{
+				{
 					IPProtocol: "tcp",
 					Ports:      []string{"22"},
 				},
@@ -349,10 +344,24 @@ func createInstance(serviceAccount string) (string, error) {
 		}
 		_, err = computeService.Firewalls.Insert(*project, f).Do()
 		if err != nil {
-			return "", fmt.Errorf("Failed to insert required default SSH Firewall Rule %v: %v", defaultFirewallRule, err)
+			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
 		}
 	} else {
 		glog.Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+	}
+	return nil
+}
+
+// Provision a gce instance using image
+func createInstance(serviceAccount string) (string, error) {
+	var err error
+
+	name := "gce-pd-csi-e2e"
+	myuuid := string(uuid.NewUUID())
+
+	err = createDefaultFirewallRule()
+	if err != nil {
+		return "", fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
 	glog.V(4).Infof("Creating instance: %v", name)
@@ -397,13 +406,6 @@ func createInstance(serviceAccount string) (string, error) {
 			return "", err
 		}
 		i.Metadata = meta
-		/*glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
-		// If we're on CI add public SSH keys to the instance
-		i.Metadata =
-		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
-		if err != nil {
-			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
-		}*/
 	}
 
 	if _, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
@@ -483,54 +485,6 @@ func generateMetadataWithPublicKey(pubKeyFile string) (*compute.Metadata, error)
 		},
 	}
 	return newMeta, nil
-}
-
-func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
-	newKeys := ""
-	i, err := computeService.Instances.Get(project, zone, name).Do()
-	if err != nil {
-		return err
-	}
-	fingerprint := i.Metadata.Fingerprint
-	items := i.Metadata.Items
-	for _, item := range items {
-		if item.Key == "ssh-keys" {
-			glog.V(2).Infof("Found existing ssh-keys, prepending to new key string")
-			newKeys += *item.Value
-			break
-		}
-	}
-	publicKeyByte, err := ioutil.ReadFile(pubKeyFile)
-	if err != nil {
-		return err
-	}
-
-	publicKey := string(publicKeyByte)
-
-	// Take username and prepend it to the public key
-	tokens := strings.Split(publicKey, " ")
-	if len(tokens) != 3 {
-		return fmt.Errorf("Public key not comprised of 3 parts, instead was: %v", publicKey)
-	}
-	publicKey = strings.TrimSpace(tokens[2]) + ":" + publicKey
-
-	newKeys = newKeys + publicKey
-	glog.V(4).Infof("New ssh-keys for instance %v: %v", name, newKeys)
-	newMeta := &compute.Metadata{
-		Fingerprint: fingerprint,
-		Items: []*compute.MetadataItems{
-			{
-				Key:   "ssh-keys",
-				Value: &newKeys,
-			},
-		},
-	}
-	_, err = computeService.Instances.SetMetadata(project, zone, name, newMeta).Do()
-	if err != nil {
-		return err
-	}
-	return nil
-
 }
 
 func getexternalIP(instance *compute.Instance) string {
