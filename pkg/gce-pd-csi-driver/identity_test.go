@@ -13,3 +13,66 @@ limitations under the License.
 */
 
 package gceGCEDriver
+
+import (
+	"testing"
+
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"golang.org/x/net/context"
+)
+
+func TestGetPluginInfo(t *testing.T) {
+	gceDriver := GetGCEDriver()
+	err := gceDriver.SetupGCEDriver(nil, nil, driver, node)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+
+	resp, err := gceDriver.ids.GetPluginInfo(context.TODO(), &csi.GetPluginInfoRequest{})
+	if err != nil {
+		t.Fatalf("GetPluginInfo returned unexpected error: %v", err)
+	}
+
+	if resp.GetName() != driver {
+		t.Fatalf("Response name expected: %v, got: %v", driver, resp.GetName())
+	}
+
+	respVer := resp.GetVendorVersion()
+	if respVer != vendorVersion {
+		t.Fatalf("Vendor version expected: %v, got: %v", vendorVersion, respVer)
+	}
+}
+
+func TestGetPluginCapabilities(t *testing.T) {
+	gceDriver := GetGCEDriver()
+	err := gceDriver.SetupGCEDriver(nil, nil, driver, node)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+
+	resp, err := gceDriver.ids.GetPluginCapabilities(context.TODO(), &csi.GetPluginCapabilitiesRequest{})
+	if err != nil {
+		t.Fatalf("GetPluginCapabilities returned unexpected error: %v", err)
+	}
+
+	for _, capability := range resp.GetCapabilities() {
+		switch capability.GetService().GetType() {
+		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+		default:
+			t.Fatalf("Unknown capability: %v", capability.GetService().GetType())
+		}
+	}
+}
+
+func TestProbe(t *testing.T) {
+	gceDriver := GetGCEDriver()
+	err := gceDriver.SetupGCEDriver(nil, nil, driver, node)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+
+	_, err = gceDriver.ids.Probe(context.TODO(), &csi.ProbeRequest{})
+	if err != nil {
+		t.Fatalf("Probe returned unexpected error: %v", err)
+	}
+}

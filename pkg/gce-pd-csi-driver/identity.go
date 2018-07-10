@@ -35,7 +35,8 @@ func (gceIdentity *GCEIdentityServer) GetPluginInfo(ctx context.Context, req *cs
 	}
 
 	return &csi.GetPluginInfoResponse{
-		Name: gceIdentity.Driver.name,
+		Name:          gceIdentity.Driver.name,
+		VendorVersion: gceIdentity.Driver.vendorVersion,
 	}, nil
 }
 

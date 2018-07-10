@@ -74,13 +74,15 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	var err error
 	// TODO(dyzz): better defaults
 	driverName := "testdriver"
 	nodeID = "gce-pd-csi-e2e"
+	vendorVersion := "testVendor"
 
 	// TODO(dyzz): Start a driver
 	gceDriver := driver.GetGCEDriver()
-	cloudProvider, err := gce.CreateCloudProvider()
+	gceCloud, err = gce.CreateCloudProvider(vendorVersion)
 
 	Expect(err).To(BeNil(), "Failed to get cloud provider: %v", err)
 
@@ -90,7 +92,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil(), "Failed to get mounter %v", err)
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, driverName, nodeID)
+	err = gceDriver.SetupGCEDriver(gceCloud, mounter, driverName, nodeID, vendorVersion)
 	Expect(err).To(BeNil(), "Failed to initialize GCE CSI Driver: %v", err)
 
 	go func() {
@@ -99,7 +101,6 @@ var _ = BeforeSuite(func() {
 
 	client = createCSIClient()
 
-	gceCloud, err = gce.CreateCloudProvider()
 	Expect(err).To(BeNil(), "Failed to create cloud service")
 	// TODO: This is a hack to make sure the driver is fully up before running the tests, theres probably a better way to do this.
 	time.Sleep(20 * time.Second)

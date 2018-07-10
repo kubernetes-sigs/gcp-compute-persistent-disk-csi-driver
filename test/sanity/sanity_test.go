@@ -31,6 +31,7 @@ func TestSanity(t *testing.T) {
 	nodeID := "io.kubernetes.storage.mock"
 	project := "test-project"
 	zone := "test-zone"
+	vendorVersion := "test-version"
 	// TODO(dyzz): Only one of these can be correct, the way endpoint is defined in GCE driver is INCORRECT
 	endpoint := "unix://tmp/csi.sock"
 	csiSanityEndpoint := "unix:/tmp/csi.sock"
@@ -50,7 +51,7 @@ func TestSanity(t *testing.T) {
 	}
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, driverName, nodeID)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, driverName, nodeID, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
