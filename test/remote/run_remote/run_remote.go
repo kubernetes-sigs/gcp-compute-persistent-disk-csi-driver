@@ -368,6 +368,22 @@ func createInstance(serviceAccount string) (string, error) {
 	}
 	i.ServiceAccounts = []*compute.ServiceAccount{saObj}
 
+	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
+		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
+		meta, err := generateMetadataWithPublicKey(pubkey)
+		if err != nil {
+			return "", err
+		}
+		i.Metadata = meta
+		/*glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
+		// If we're on CI add public SSH keys to the instance
+		i.Metadata =
+		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
+		if err != nil {
+			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
+		}*/
+	}
+
 	if _, err := computeService.Instances.Get(*project, *zone, i.Name).Do(); err != nil {
 		op, err := computeService.Instances.Insert(*project, *zone, i).Do()
 		glog.V(4).Infof("Inserted instance %v in project %v, zone %v", i.Name, *project, *zone)
@@ -382,15 +398,6 @@ func createInstance(serviceAccount string) (string, error) {
 		}
 	} else {
 		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", i.Name)
-	}
-
-	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
-		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
-		// If we're on CI add public SSH keys to the instance
-		err = addPubKeyToInstance(*project, *zone, i.Name, pubkey)
-		if err != nil {
-			return "", fmt.Errorf("could not add Jenkins public key %v to instance %v: %v", pubkey, i.Name, err)
-		}
 	}
 
 	then := time.Now()
@@ -418,7 +425,7 @@ func createInstance(serviceAccount string) (string, error) {
 			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
-
+		glog.Infof("Instance %v in state RUNNING and vailable by SSH", name)
 		return true, nil
 	})
 
@@ -429,6 +436,31 @@ func createInstance(serviceAccount string) (string, error) {
 	// Instance reached running state in time, make sure that cloud-init is complete
 	glog.V(2).Infof("Instance %v has been created successfully", name)
 	return name, nil
+}
+
+func generateMetadataWithPublicKey(pubKeyFile string) (*compute.Metadata, error) {
+	publicKeyByte, err := ioutil.ReadFile(pubKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	publicKey := string(publicKeyByte)
+
+	// Take username and prepend it to the public key
+	tokens := strings.Split(publicKey, " ")
+	if len(tokens) != 3 {
+		return nil, fmt.Errorf("Public key not comprised of 3 parts, instead was: %v", publicKey)
+	}
+	publicKey = strings.TrimSpace(tokens[2]) + ":" + publicKey
+	newMeta := &compute.Metadata{
+		Items: []*compute.MetadataItems{
+			{
+				Key:   "ssh-keys",
+				Value: &publicKey,
+			},
+		},
+	}
+	return newMeta, nil
 }
 
 func addPubKeyToInstance(project, zone, name, pubKeyFile string) error {
