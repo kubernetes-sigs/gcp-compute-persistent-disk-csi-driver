@@ -205,6 +205,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
 	})
+
+	// Test volume already exists
+
+	// Test volume with op pending
 })
 
 func Logf(format string, args ...interface{}) {

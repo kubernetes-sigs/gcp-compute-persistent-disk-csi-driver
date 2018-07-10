@@ -13,3 +13,23 @@ limitations under the License.
 */
 
 package gceGCEDriver
+
+import (
+	"testing"
+
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+)
+
+func initGCEDriver(t *testing.T) *GCEDriver {
+	vendorVersion := "test-vendor"
+	gceDriver := GetGCEDriver()
+	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, driver, node, vendorVersion)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+	return gceDriver
+}
