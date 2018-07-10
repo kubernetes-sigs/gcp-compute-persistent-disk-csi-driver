@@ -39,21 +39,11 @@ type GCEDriver struct {
 	nscap []*csi.NodeServiceCapability
 }
 
-const (
-	vendorVersion = "v0.3.0-alpha"
-)
-
 func GetGCEDriver() *GCEDriver {
-	return &GCEDriver{
-		vendorVersion: vendorVersion,
-	}
+	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) GetVendorVersion() string {
-	return gceDriver.vendorVersion
-}
-
-func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter mountmanager.Mounter, name, nodeID string) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter mountmanager.Mounter, name, nodeID, vendorVersion string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -63,6 +53,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 
 	gceDriver.name = name
 	gceDriver.nodeID = nodeID
+	gceDriver.vendorVersion = vendorVersion
 
 	// Adding Capabilities
 	vcam := []csi.VolumeCapability_AccessMode_Mode{

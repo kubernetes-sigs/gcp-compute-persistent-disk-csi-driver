@@ -78,10 +78,11 @@ var _ = BeforeSuite(func() {
 	// TODO(dyzz): better defaults
 	driverName := "testdriver"
 	nodeID = "gce-pd-csi-e2e"
+	vendorVersion := "testVendor"
 
 	// TODO(dyzz): Start a driver
 	gceDriver := driver.GetGCEDriver()
-	gceCloud, err = gce.CreateCloudProvider(gceDriver.GetVendorVersion())
+	gceCloud, err = gce.CreateCloudProvider(vendorVersion)
 
 	Expect(err).To(BeNil(), "Failed to get cloud provider: %v", err)
 
@@ -91,7 +92,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil(), "Failed to get mounter %v", err)
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(gceCloud, mounter, driverName, nodeID)
+	err = gceDriver.SetupGCEDriver(gceCloud, mounter, driverName, nodeID, vendorVersion)
 	Expect(err).To(BeNil(), "Failed to initialize GCE CSI Driver: %v", err)
 
 	go func() {

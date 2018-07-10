@@ -81,7 +81,6 @@ func createCloudServiceWithDefaultServiceAccount(vendorVersion string) (*compute
 	if err != nil {
 		return nil, err
 	}
-	// TODO(dyzz) parameterize version number
 	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
 	return service, nil
 }

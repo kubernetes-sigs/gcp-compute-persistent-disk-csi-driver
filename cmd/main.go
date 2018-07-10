@@ -30,23 +30,28 @@ func init() {
 }
 
 var (
-	endpoint   = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	driverName = flag.String("drivername", "com.google.csi.gcepd", "name of the driver")
-	nodeID     = flag.String("nodeid", "", "node id")
+	endpoint      = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	driverName    = flag.String("drivername", "com.google.csi.gcepd", "name of the driver")
+	nodeID        = flag.String("nodeid", "", "node id")
+	vendorVersion string
 )
 
 func main() {
 	flag.Parse()
-
 	handle()
 	os.Exit(0)
 }
 
 func handle() {
+	if vendorVersion == "" {
+		glog.Fatalf("vendorVersion must be set at compile time")
+	}
+	glog.Infof("Driver vendor version %v", vendorVersion)
+
 	gceDriver := driver.GetGCEDriver()
 
 	//Initialize GCE Driver (Move setup to main?)
-	cloudProvider, err := gce.CreateCloudProvider(gceDriver.GetVendorVersion())
+	cloudProvider, err := gce.CreateCloudProvider(vendorVersion)
 	if err != nil {
 		glog.Fatalf("Failed to get cloud provider: %v", err)
 	}
@@ -56,7 +61,7 @@ func handle() {
 		glog.Fatalf("Failed to get mounter: %v", err)
 	}
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, *driverName, *nodeID)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, *driverName, *nodeID, vendorVersion)
 	if err != nil {
 		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
