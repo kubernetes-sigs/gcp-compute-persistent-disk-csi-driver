@@ -78,7 +78,8 @@ func init() {
 }
 
 const (
-	defaultMachine = "n1-standard-1"
+	defaultMachine      = "n1-standard-1"
+	defaultFirewallRule = "default-allow-ssh"
 )
 
 var (
@@ -333,6 +334,27 @@ func createInstance(serviceAccount string) (string, error) {
 
 	name := "gce-pd-csi-e2e"
 	myuuid := string(uuid.NewUUID())
+
+	// Create default filewall rule if it does not exist
+	if _, err = computeService.Firewalls.Get(*project, defaultFirewallRule).Do(); err != nil {
+		glog.Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
+		f := &compute.Firewall{
+			Name: defaultFirewallRule,
+			Allowed: []*compute.FirewallAllowed{
+				&compute.FirewallAllowed{
+					IPProtocol: "tcp",
+					Ports:      []string{"22"},
+				},
+			},
+		}
+		_, err = computeService.Firewalls.Insert(*project, f).Do()
+		if err != nil {
+			return "", fmt.Errorf("Failed to insert required default SSH Firewall Rule %v: %v", defaultFirewallRule, err)
+		}
+	} else {
+		glog.Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+	}
+
 	glog.V(4).Infof("Creating instance: %v", name)
 
 	// TODO: Pick a better boot disk image
