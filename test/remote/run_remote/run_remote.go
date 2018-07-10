@@ -399,13 +399,12 @@ func createInstance(serviceAccount string) (string, error) {
 		var instance *compute.Instance
 		instance, err = computeService.Instances.Get(*project, *zone, name).Do()
 		if err != nil {
-			glog.Error(err)
+			glog.Errorf("Failed to get instance %v: %v", name, err)
 			return false, nil
 		}
 
 		if strings.ToUpper(instance.Status) != "RUNNING" {
-			err = fmt.Errorf("instance %s not in state RUNNING, was %s", name, instance.Status)
-			glog.Error(err)
+			glog.Warningf("instance %s not in state RUNNING, was %s", name, instance.Status)
 			return false, nil
 		}
 
@@ -416,7 +415,7 @@ func createInstance(serviceAccount string) (string, error) {
 
 		if sshOut, err := remote.SSHNoSudo(name, "echo"); err != nil {
 			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", name, err)
-			glog.Errorf("SSH encountered an error: %v, output: %v", err, sshOut)
+			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
 
