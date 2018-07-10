@@ -30,7 +30,7 @@ func init() {
 }
 
 var (
-	endpoint      = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	endpoint      = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	driverName    = flag.String("drivername", "com.google.csi.gcepd", "name of the driver")
 	nodeID        = flag.String("nodeid", "", "node id")
 	vendorVersion string

@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	endpoint       = "unix://tmp/csi.sock"
+	endpoint       = "unix:/tmp/csi.sock"
 	addr           = "/tmp/csi.sock"
 	network        = "unix"
 	testNamePrefix = "gcepd-csi-e2e-"

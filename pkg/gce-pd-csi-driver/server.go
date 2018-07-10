@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"net"
+	"net/url"
 	"os"
 	"sync"
 
@@ -70,19 +71,24 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
 
-	proto, addr, err := ParseEndpoint(endpoint)
+	u, err := url.Parse(endpoint)
+
 	if err != nil {
 		glog.Fatal(err.Error())
 	}
 
-	if proto == "unix" {
-		addr = "/" + addr
+	var addr string
+	if u.Scheme == "unix" {
+		addr = u.Path
 		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
 			glog.Fatalf("Failed to remove %s, error: %s", addr, err.Error())
 		}
+	} else {
+		glog.Fatalf("%v endpoint scheme not supported", u.Scheme)
 	}
 
-	listener, err := net.Listen(proto, addr)
+	glog.Infof("Start listening with scheme %v, addr %v", u.Scheme, addr)
+	listener, err := net.Listen(u.Scheme, addr)
 	if err != nil {
 		glog.Fatalf("Failed to listen: %v", err)
 	}
