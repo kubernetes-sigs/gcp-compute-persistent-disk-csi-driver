@@ -394,18 +394,17 @@ func createInstance(serviceAccount string) (string, error) {
 	}
 
 	then := time.Now()
-	err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+	err = wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
 		glog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", name, time.Since(then))
 		var instance *compute.Instance
 		instance, err = computeService.Instances.Get(*project, *zone, name).Do()
 		if err != nil {
-			glog.Error(err)
+			glog.Errorf("Failed to get instance %v: %v", name, err)
 			return false, nil
 		}
 
 		if strings.ToUpper(instance.Status) != "RUNNING" {
-			err = fmt.Errorf("instance %s not in state RUNNING, was %s", name, instance.Status)
-			glog.Error(err)
+			glog.Warningf("instance %s not in state RUNNING, was %s", name, instance.Status)
 			return false, nil
 		}
 
@@ -414,9 +413,9 @@ func createInstance(serviceAccount string) (string, error) {
 			remote.AddHostnameIP(name, externalIP)
 		}
 
-		if sshOut, err := remote.SSHNoSudo(name, "echo"); err != nil {
+		if sshOut, err := remote.SSHCheckAlive(name); err != nil {
 			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", name, err)
-			glog.Errorf("SSH encountered an error: %v, output: %v", err, sshOut)
+			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
 

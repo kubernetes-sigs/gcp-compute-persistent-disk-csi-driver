@@ -93,6 +93,11 @@ func SSHNoSudo(host string, cmd ...string) (string, error) {
 	return runSSHCommand("ssh", append([]string{GetHostnameOrIP(host), "--"}, cmd...)...)
 }
 
+// SSHCheckAlive just pings the server quickly to check whether it is reachable by SSH
+func SSHCheckAlive(host string) (string, error) {
+	return runSSHCommand("ssh", []string{GetHostnameOrIP(host), "-o", "ConnectTimeout=10", "--", "echo"}...)
+}
+
 // runSSHCommand executes the ssh or scp command, adding the flag provided --ssh-options
 func runSSHCommand(cmd string, args ...string) (string, error) {
 	if pk, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
