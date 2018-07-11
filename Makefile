@@ -15,8 +15,8 @@
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 STAGINGVERSION=latest
 
-PRODIMAGE=gcr.io/google-containers/volume-csi/compute-persistent-disk-csi-driver
-PRODVERSION=v0.2.0.alpha
+PRODIMAGE=gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver
+PRODVERSION=v0.1.0.alpha
 
 all: gce-pd-driver
 
@@ -26,7 +26,6 @@ gce-pd-driver:
 	go test -c sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e -o bin/e2e.test
 
 build-container:
-# TODO CHANGE PRODVERSION TO STAGINGVERSION AFTER TESTING
 	docker build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
 push-container: build-container
