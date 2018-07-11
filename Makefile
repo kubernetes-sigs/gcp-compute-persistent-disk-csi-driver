@@ -32,7 +32,7 @@ push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 prod-build-container:
-	docker build --build-arg TAG=$(PRODVERSION) -t $(PRODIMAGE):$(PRODVERSION)
+	docker build --build-arg TAG=$(PRODVERSION) -t $(PRODIMAGE):$(PRODVERSION) .
 
 prod-push-container: prod-build-container
 	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)
