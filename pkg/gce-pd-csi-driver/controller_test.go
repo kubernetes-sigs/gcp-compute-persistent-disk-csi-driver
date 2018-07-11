@@ -213,7 +213,7 @@ func TestDeleteVolume(t *testing.T) {
 			req: &csi.DeleteVolumeRequest{
 				VolumeId: testVolumeId + "/foo",
 			},
-			expErr: true,
+			expErr: false,
 		},
 	}
 	for _, tc := range testCases {
