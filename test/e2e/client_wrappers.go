@@ -20,6 +20,7 @@ import (
 	"time"
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/golang/glog"
 	"google.golang.org/grpc"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -66,6 +67,7 @@ func (c *csiClient) assertCSIConnection() error {
 				grpc.WithInsecure(),
 			)
 			if err != nil {
+				glog.Warningf("Client failed to dail endpoint %v", c.endpoint)
 				return false, nil
 			}
 			return true, nil

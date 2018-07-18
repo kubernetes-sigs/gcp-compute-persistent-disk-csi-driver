@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -82,7 +83,7 @@ var _ = AfterSuite(func() {
 		Logf("Closed the client")
 	}
 
-	instance.DeleteInstance()
+	// instance.DeleteInstance()
 })
 
 var _ = Describe("GCE PD CSI Driver", func() {
@@ -137,45 +138,43 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err := client.NodeUnstageVolume(volId, stageDir)
 			Expect(err).To(BeNil(), "NodeUnstageVolume failed with error")
+			err = rmAll(instance, filepath.Join("/tmp/", volName))
+			Expect(err).To(BeNil(), "Failed to remove temp directory")
 		}()
 
 		// Mount Disk
 		publishDir := filepath.Join("/tmp/", volName, "mount")
 		err = client.NodePublishVolume(volId, stageDir, publishDir)
 		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
+		err = forceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		Expect(err).To(BeNil(), "Chmod failed with error")
 
 		// Write a file
-		/* TODO: This needs to be all changed to SSH commands
+		testFileContents := "test"
 		testFile := filepath.Join(publishDir, "testfile")
-		f, err := os.Create(testFile)
-		Expect(err).To(BeNil(), "Opening file %s failed with error", testFile)
+		err = writeFile(instance, testFile, testFileContents)
+		Expect(err).To(BeNil(), "Failed to write file")
 
-		testString := "test-string"
-		f.WriteString(testString)
-		f.Sync()
-		f.Close()
-
-		*/
 		// Unmount Disk
 		err = client.NodeUnpublishVolume(volId, publishDir)
 		Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
-		/*
-			// Mount disk somewhere else
-			secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
-			err = NodePublishVolume(volId, stageDir, secondPublishDir)
-			Expect(err).To(BeNil(), "NodePublishVolume failed with error")
+		// Mount disk somewhere else
+		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
+		err = client.NodePublishVolume(volId, stageDir, secondPublishDir)
+		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
+		err = forceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		Expect(err).To(BeNil(), "Chmod failed with error")
 
-			// Read File
-			fileContent, err := ioutil.ReadFile(filepath.Join(secondPublishDir, "testfile"))
-			Expect(err).To(BeNil(), "ReadFile failed with error")
-			Expect(string(fileContent)).To(Equal(testString))
+		// Read File
+		secondTestFile := filepath.Join(secondPublishDir, "testfile")
+		readContents, err := readFile(instance, secondTestFile)
+		Expect(err).To(BeNil(), "ReadFile failed with error")
+		Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
 
-
-			// Unmount Disk
-			err = NodeUnpublishVolume(volId, secondPublishDir)
-			Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
-		*/
+		// Unmount Disk
+		err = client.NodeUnpublishVolume(volId, secondPublishDir)
+		Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
 	})
 

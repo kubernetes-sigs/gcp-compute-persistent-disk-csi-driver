@@ -119,3 +119,47 @@ func setupProwConfig() (project, serviceAccount string) {
 	serviceAccount = fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
 	return project, serviceAccount
 }
+
+func forceChmod(instance *remote.InstanceInfo, filePath string, perms string) error {
+	originalumask, err := instance.SSHNoSudo("umask")
+	if err != nil {
+		return fmt.Errorf("failed to umask. Output: %v, errror: %v", originalumask, err)
+	}
+	output, err := instance.SSHNoSudo("umask", "0000")
+	if err != nil {
+		return fmt.Errorf("failed to umask. Output: %v, errror: %v", output, err)
+	}
+	output, err = instance.SSH("chmod", "-R", perms, filePath)
+	if err != nil {
+		return fmt.Errorf("failed to chmod file %s. Output: %v, errror: %v", filePath, output, err)
+	}
+	output, err = instance.SSHNoSudo("umask", originalumask)
+	if err != nil {
+		return fmt.Errorf("failed to umask. Output: %v, errror: %v", output, err)
+	}
+	return nil
+}
+
+func writeFile(instance *remote.InstanceInfo, filePath, fileContents string) error {
+	output, err := instance.SSHNoSudo("echo", fileContents, ">", filePath)
+	if err != nil {
+		return fmt.Errorf("failed to write test file %s. Output: %v, errror: %v", filePath, output, err)
+	}
+	return nil
+}
+
+func readFile(instance *remote.InstanceInfo, filePath string) (string, error) {
+	output, err := instance.SSHNoSudo("cat", filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read test file %s. Output: %v, errror: %v", filePath, output, err)
+	}
+	return output, nil
+}
+
+func rmAll(instance *remote.InstanceInfo, filePath string) error {
+	output, err := instance.SSH("rm", "-rf", filePath)
+	if err != nil {
+		return fmt.Errorf("failed to delete all %s. Output: %v, errror: %v", filePath, output, err)
+	}
+	return nil
+}
