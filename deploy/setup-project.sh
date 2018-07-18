@@ -3,17 +3,40 @@
 set -o nounset
 set -o errexit
 
+readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+readonly KUBEDEPLOY="${PKGDIR}/deploy/kubernetes"
+
+BIND_ROLES="roles/compute.storageAdmin roles/iam.serviceAccountUser projects/${PROJECT}/roles/gcp_compute_persistent_disk_csi_driver_custom_role"
 IAM_NAME="${GCEPD_SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 
-# Cleanup old Service Account and Key
+# Create or Update Custom Role
+if gcloud iam roles describe gcp_compute_persistent_disk_csi_driver_custom_role --project "${PROJECT}";
+then
+  yes | gcloud iam roles update gcp_compute_persistent_disk_csi_driver_custom_role \
+          --project "${PROJECT}"                                                   \
+          --file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
+else
+  gcloud iam roles create gcp_compute_persistent_disk_csi_driver_custom_role \
+    --project "${PROJECT}"                                                   \
+    --file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
+fi
+
+# Delete Service Account Key
 if [ -f $SA_FILE ]; then
   rm "$SA_FILE"
 fi
+# Delete Bindings
+for role in ${BIND_ROLES}
+do
+  gcloud projects remove-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role $role --quiet || true
+done
+# Delete Service Account
 gcloud iam service-accounts delete "$IAM_NAME" --quiet || true
-# TODO: Delete ALL policy bindings
 
 # Create new Service Account and Keys
 gcloud iam service-accounts create "${GCEPD_SA_NAME}"
+for role in ${BIND_ROLES}
+do
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role ${role}
+done
 gcloud iam service-accounts keys create "${SA_FILE}" --iam-account "${IAM_NAME}"
-gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role roles/compute.admin
-gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role roles/iam.serviceAccountUser
