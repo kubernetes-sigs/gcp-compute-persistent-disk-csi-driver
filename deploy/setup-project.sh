@@ -12,12 +12,12 @@ IAM_NAME="${GCEPD_SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 # Create or Update Custom Role
 if gcloud iam roles describe gcp_compute_persistent_disk_csi_driver_custom_role --project "${PROJECT}";
 then
-  yes | gcloud iam roles update gcp_compute_persistent_disk_csi_driver_custom_role \
-          --project "${PROJECT}"                                                   \
+  gcloud iam roles update gcp_compute_persistent_disk_csi_driver_custom_role --quiet \
+          --project "${PROJECT}"                                                     \
           --file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
 else
-  gcloud iam roles create gcp_compute_persistent_disk_csi_driver_custom_role \
-    --project "${PROJECT}"                                                   \
+  gcloud iam roles create gcp_compute_persistent_disk_csi_driver_custom_role --quiet \
+    --project "${PROJECT}"                                                           \
     --file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
 fi
 
@@ -25,11 +25,11 @@ fi
 if [ -f $SA_FILE ]; then
   rm "$SA_FILE"
 fi
-# Delete Bindings
-for role in ${BIND_ROLES}
-do
-  gcloud projects remove-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role $role --quiet || true
-done
+# Delete ALL EXISTING Bindings
+gcloud projects get-iam-policy "${PROJECT}" --format json > "${PKGDIR}/deploy/iam.json"
+sed -i "/serviceAccount:${IAM_NAME}/d" "${PKGDIR}/deploy/iam.json"
+gcloud projects set-iam-policy "${PROJECT}" "${PKGDIR}/deploy/iam.json"
+rm -f "${PKGDIR}/deploy/iam.json"
 # Delete Service Account
 gcloud iam service-accounts delete "$IAM_NAME" --quiet || true
 
