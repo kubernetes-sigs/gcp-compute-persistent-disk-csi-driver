@@ -23,7 +23,6 @@ all: gce-pd-driver
 gce-pd-driver:
 	mkdir -p bin
 	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/
-	go test -c sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e -o bin/e2e.test
 
 build-container:
 	docker build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .

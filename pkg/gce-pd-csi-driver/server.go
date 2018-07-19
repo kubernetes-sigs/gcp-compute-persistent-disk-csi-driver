@@ -70,6 +70,9 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 }
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(logGRPC),
+	}
 
 	u, err := url.Parse(endpoint)
 
@@ -83,6 +86,8 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
 			glog.Fatalf("Failed to remove %s, error: %s", addr, err.Error())
 		}
+	} else if u.Scheme == "tcp" {
+		addr = u.Host
 	} else {
 		glog.Fatalf("%v endpoint scheme not supported", u.Scheme)
 	}
@@ -93,9 +98,6 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		glog.Fatalf("Failed to listen: %v", err)
 	}
 
-	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(logGRPC),
-	}
 	server := grpc.NewServer(opts...)
 	s.server = server
 
@@ -111,6 +113,8 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 
 	glog.Infof("Listening for connections on address: %#v", listener.Addr())
 
-	server.Serve(listener)
+	if err := server.Serve(listener); err != nil {
+		glog.Fatalf("Failed to serve: %v", err)
+	}
 
 }
