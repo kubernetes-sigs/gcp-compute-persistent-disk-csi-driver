@@ -15,14 +15,12 @@ limitations under the License.
 package e2e
 
 import (
-	"flag"
 	"fmt"
 	"path/filepath"
 	"strings"
-	"testing"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote/binremote"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -43,18 +41,7 @@ var (
 	instance *remote.InstanceInfo
 	//gceCloud *gce.CloudProvider
 	nodeID string
-
-	project        = flag.String("project", "", "Project to run tests in")
-	serviceAccount = flag.String("service-account", "", "Service account to bring up instance with")
-	runInProw      = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 )
-
-func TestE2E(t *testing.T) {
-	flag.Parse()
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Google Compute Engine Persistent Disk Container Storage Interface Driver Tests")
-
-}
 
 var _ = BeforeSuite(func() {
 	var err error

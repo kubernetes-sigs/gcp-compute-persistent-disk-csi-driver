@@ -114,7 +114,7 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 	glog.Infof("Listening for connections on address: %#v", listener.Addr())
 
 	if err := server.Serve(listener); err != nil {
-		glog.Warningf("Failed to serve: %v", err)
+		glog.Fatalf("Failed to serve: %v", err)
 	}
 
 }

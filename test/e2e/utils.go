@@ -18,17 +18,22 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"time"
 
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	boskosclient "k8s.io/test-infra/boskos/client"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote/binremote"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
 )
 
 var (
 	boskos = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
+)
+
+const (
+	archiveName = "e2e_gce_pd_test.tar.gz"
 )
 
 func setupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, instanceServiceAccount string) (*remote.InstanceInfo, error) {
@@ -45,8 +50,14 @@ func setupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, i
 	}
 
 	// Create Driver Archive
-	archiveName := "e2e_gce_pd_test.tar.gz"
-	archivePath, err := remote.CreateDriverArchive(archiveName)
+
+	goPath, ok := os.LookupEnv("GOPATH")
+	if !ok {
+		return nil, fmt.Errorf("Could not find environment variable GOPATH")
+	}
+	pkgPath := path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
+	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
+	archivePath, err := remote.CreateDriverArchive(archiveName, pkgPath, binPath)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +69,11 @@ func setupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, i
 	}()
 
 	// Upload archive to instance and run binaries
-	err = instance.UploadAndRun(archivePath, archiveName, instanceName, port)
+	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
+	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s --nodeid=%s > %s/prog.out 2> %s/prog.err < /dev/null &'",
+		workspace, endpoint, instanceName, workspace, workspace)
+	err = instance.UploadAndRun(archivePath, workspace, driverRunCmd)
 	if err != nil {
 		return nil, err
 	}
