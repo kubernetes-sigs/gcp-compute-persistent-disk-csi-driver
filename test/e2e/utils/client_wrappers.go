@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package utils
 
 import (
 	"context"
@@ -40,7 +40,7 @@ var (
 	}
 )
 
-type csiClient struct {
+type CsiClient struct {
 	conn       *grpc.ClientConn
 	idClient   csipb.IdentityClient
 	nodeClient csipb.NodeClient
@@ -49,11 +49,11 @@ type csiClient struct {
 	endpoint string
 }
 
-func createCSIClient(endpoint string) *csiClient {
-	return &csiClient{endpoint: endpoint}
+func CreateCSIClient(endpoint string) *CsiClient {
+	return &CsiClient{endpoint: endpoint}
 }
 
-func (c *csiClient) assertCSIConnection() error {
+func (c *CsiClient) AssertCSIConnection() error {
 	var err error
 
 	if err != nil {
@@ -83,7 +83,11 @@ func (c *csiClient) assertCSIConnection() error {
 	return nil
 }
 
-func (c *csiClient) CreateVolume(volName string) (string, error) {
+func (c *CsiClient) CloseConn() error {
+	return c.conn.Close()
+}
+
+func (c *CsiClient) CreateVolume(volName string) (string, error) {
 	cvr := &csipb.CreateVolumeRequest{
 		Name:               volName,
 		VolumeCapabilities: stdVolCaps,
@@ -95,7 +99,7 @@ func (c *csiClient) CreateVolume(volName string) (string, error) {
 	return cresp.GetVolume().GetId(), nil
 }
 
-func (c *csiClient) DeleteVolume(volId string) error {
+func (c *CsiClient) DeleteVolume(volId string) error {
 	dvr := &csipb.DeleteVolumeRequest{
 		VolumeId: volId,
 	}
@@ -103,7 +107,7 @@ func (c *csiClient) DeleteVolume(volId string) error {
 	return err
 }
 
-func (c *csiClient) ControllerPublishVolume(volId, nodeId string) error {
+func (c *CsiClient) ControllerPublishVolume(volId, nodeId string) error {
 	cpreq := &csipb.ControllerPublishVolumeRequest{
 		VolumeId:         volId,
 		NodeId:           nodeId,
@@ -114,7 +118,7 @@ func (c *csiClient) ControllerPublishVolume(volId, nodeId string) error {
 	return err
 }
 
-func (c *csiClient) ControllerUnpublishVolume(volId, nodeId string) error {
+func (c *CsiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	cupreq := &csipb.ControllerUnpublishVolumeRequest{
 		VolumeId: volId,
 		NodeId:   nodeId,
@@ -123,7 +127,7 @@ func (c *csiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	return err
 }
 
-func (c *csiClient) NodeStageVolume(volId, stageDir string) error {
+func (c *CsiClient) NodeStageVolume(volId, stageDir string) error {
 	nodeStageReq := &csipb.NodeStageVolumeRequest{
 		VolumeId:          volId,
 		StagingTargetPath: stageDir,
@@ -133,7 +137,7 @@ func (c *csiClient) NodeStageVolume(volId, stageDir string) error {
 	return err
 }
 
-func (c *csiClient) NodeUnstageVolume(volId, stageDir string) error {
+func (c *CsiClient) NodeUnstageVolume(volId, stageDir string) error {
 	nodeUnstageReq := &csipb.NodeUnstageVolumeRequest{
 		VolumeId:          volId,
 		StagingTargetPath: stageDir,
@@ -142,7 +146,7 @@ func (c *csiClient) NodeUnstageVolume(volId, stageDir string) error {
 	return err
 }
 
-func (c *csiClient) NodeUnpublishVolume(volumeId, publishDir string) error {
+func (c *CsiClient) NodeUnpublishVolume(volumeId, publishDir string) error {
 	nodeUnpublishReq := &csipb.NodeUnpublishVolumeRequest{
 		VolumeId:   volumeId,
 		TargetPath: publishDir,
@@ -151,7 +155,7 @@ func (c *csiClient) NodeUnpublishVolume(volumeId, publishDir string) error {
 	return err
 }
 
-func (c *csiClient) NodePublishVolume(volumeId, stageDir, publishDir string) error {
+func (c *CsiClient) NodePublishVolume(volumeId, stageDir, publishDir string) error {
 	nodePublishReq := &csipb.NodePublishVolumeRequest{
 		VolumeId:          volumeId,
 		StagingTargetPath: stageDir,

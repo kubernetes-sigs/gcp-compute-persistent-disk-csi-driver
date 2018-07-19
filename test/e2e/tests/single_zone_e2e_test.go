@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package tests
 
 import (
 	"fmt"
@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -37,7 +38,7 @@ const (
 )
 
 var (
-	client   *csiClient
+	client   *utils.CsiClient
 	instance *remote.InstanceInfo
 	//gceCloud *gce.CloudProvider
 	nodeID string
@@ -49,21 +50,21 @@ var _ = BeforeSuite(func() {
 	nodeID = "gce-pd-csi-e2e-us-central1-c"
 	port := "2000"
 	if *runInProw {
-		*project, *serviceAccount = setupProwConfig()
+		*project, *serviceAccount = utils.SetupProwConfig()
 	}
 
 	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
 	Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
-	instance, err = setupInstanceAndDriver(*project, "us-central1-c", nodeID, port, *serviceAccount)
+	instance, err = utils.SetupInstanceAndDriver(*project, "us-central1-c", nodeID, port, *serviceAccount)
 	Expect(err).To(BeNil())
 
-	client = createCSIClient(fmt.Sprintf("localhost:%s", port))
+	client = utils.CreateCSIClient(fmt.Sprintf("localhost:%s", port))
 })
 
 var _ = AfterSuite(func() {
 	// Close the client
-	err := client.conn.Close()
+	err := client.CloseConn()
 	if err != nil {
 		Logf("Failed to close the client")
 	} else {
@@ -76,7 +77,7 @@ var _ = AfterSuite(func() {
 var _ = Describe("GCE PD CSI Driver", func() {
 
 	BeforeEach(func() {
-		err := client.assertCSIConnection()
+		err := client.AssertCSIConnection()
 		Expect(err).To(BeNil(), "Failed to assert csi client connection: %v", err)
 	})
 
@@ -125,7 +126,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err := client.NodeUnstageVolume(volId, stageDir)
 			Expect(err).To(BeNil(), "NodeUnstageVolume failed with error")
-			err = rmAll(instance, filepath.Join("/tmp/", volName))
+			err = utils.RmAll(instance, filepath.Join("/tmp/", volName))
 			Expect(err).To(BeNil(), "Failed to remove temp directory")
 		}()
 
@@ -133,13 +134,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		publishDir := filepath.Join("/tmp/", volName, "mount")
 		err = client.NodePublishVolume(volId, stageDir, publishDir)
 		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
-		err = forceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		err = utils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 		Expect(err).To(BeNil(), "Chmod failed with error")
 
 		// Write a file
 		testFileContents := "test"
 		testFile := filepath.Join(publishDir, "testfile")
-		err = writeFile(instance, testFile, testFileContents)
+		err = utils.WriteFile(instance, testFile, testFileContents)
 		Expect(err).To(BeNil(), "Failed to write file")
 
 		// Unmount Disk
@@ -150,12 +151,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
 		err = client.NodePublishVolume(volId, stageDir, secondPublishDir)
 		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
-		err = forceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		err = utils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 		Expect(err).To(BeNil(), "Chmod failed with error")
 
 		// Read File
 		secondTestFile := filepath.Join(secondPublishDir, "testfile")
-		readContents, err := readFile(instance, secondTestFile)
+		readContents, err := utils.ReadFile(instance, secondTestFile)
 		Expect(err).To(BeNil(), "ReadFile failed with error")
 		Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
 

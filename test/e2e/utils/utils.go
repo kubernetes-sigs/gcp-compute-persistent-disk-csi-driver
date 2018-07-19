@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package utils
 
 import (
 	"context"
@@ -36,7 +36,7 @@ const (
 	archiveName = "e2e_gce_pd_test.tar.gz"
 )
 
-func setupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, instanceServiceAccount string) (*remote.InstanceInfo, error) {
+func SetupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, instanceServiceAccount string) (*remote.InstanceInfo, error) {
 	// Create the instance in the requisite zone
 	instance, err := remote.CreateInstanceInfo(instanceProject, instanceZone, instanceName)
 	if err != nil {
@@ -87,7 +87,7 @@ func setupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, i
 	return instance, nil
 }
 
-func setupProwConfig() (project, serviceAccount string) {
+func SetupProwConfig() (project, serviceAccount string) {
 	// Try to get a Boskos project
 	glog.V(4).Infof("Running in PROW")
 	glog.V(4).Infof("Fetching a Boskos loaned project")
@@ -135,7 +135,7 @@ func setupProwConfig() (project, serviceAccount string) {
 	return project, serviceAccount
 }
 
-func forceChmod(instance *remote.InstanceInfo, filePath string, perms string) error {
+func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string) error {
 	originalumask, err := instance.SSHNoSudo("umask")
 	if err != nil {
 		return fmt.Errorf("failed to umask. Output: %v, errror: %v", originalumask, err)
@@ -155,7 +155,7 @@ func forceChmod(instance *remote.InstanceInfo, filePath string, perms string) er
 	return nil
 }
 
-func writeFile(instance *remote.InstanceInfo, filePath, fileContents string) error {
+func WriteFile(instance *remote.InstanceInfo, filePath, fileContents string) error {
 	output, err := instance.SSHNoSudo("echo", fileContents, ">", filePath)
 	if err != nil {
 		return fmt.Errorf("failed to write test file %s. Output: %v, errror: %v", filePath, output, err)
@@ -163,7 +163,7 @@ func writeFile(instance *remote.InstanceInfo, filePath, fileContents string) err
 	return nil
 }
 
-func readFile(instance *remote.InstanceInfo, filePath string) (string, error) {
+func ReadFile(instance *remote.InstanceInfo, filePath string) (string, error) {
 	output, err := instance.SSHNoSudo("cat", filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read test file %s. Output: %v, errror: %v", filePath, output, err)
@@ -171,7 +171,7 @@ func readFile(instance *remote.InstanceInfo, filePath string) (string, error) {
 	return output, nil
 }
 
-func rmAll(instance *remote.InstanceInfo, filePath string) error {
+func RmAll(instance *remote.InstanceInfo, filePath string) error {
 	output, err := instance.SSH("rm", "-rf", filePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete all %s. Output: %v, errror: %v", filePath, output, err)
