@@ -4,3 +4,4 @@ stage: ALPHA
 includedPermissions:
 - compute.instances.get
 - compute.instances.attachDisk
+- compute.instances.detachDisk
