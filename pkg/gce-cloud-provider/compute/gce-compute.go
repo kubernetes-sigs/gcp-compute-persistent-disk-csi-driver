@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 type GCECompute interface {
@@ -62,11 +62,7 @@ func (cloud *CloudProvider) GetDiskOrError(ctx context.Context, volumeZone, volu
 	glog.Infof("Getting disk %v from zone %v", volumeName, volumeZone)
 	disk, err := svc.Disks.Get(project, volumeZone, volumeName).Context(ctx).Do()
 	if err != nil {
-		if IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("disk %v does not exist", volumeName))
-		}
-
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown disk GET error: %v", err))
+		return nil, err
 	}
 	glog.Infof("Got disk %v from zone %v", volumeName, volumeZone)
 	return disk, nil
@@ -86,12 +82,12 @@ func (cloud *CloudProvider) GetAndValidateExistingDisk(ctx context.Context, conf
 
 	if resp != nil {
 		// Disk already exists
-		requestValid := utils.GbToBytes(resp.SizeGb) >= reqBytes && reqBytes != 0
-		responseValid := utils.GbToBytes(resp.SizeGb) <= limBytes && limBytes != 0
+		requestValid := common.GbToBytes(resp.SizeGb) >= reqBytes && reqBytes != 0
+		responseValid := common.GbToBytes(resp.SizeGb) <= limBytes && limBytes != 0
 		if !requestValid || !responseValid {
 			return true, status.Error(codes.AlreadyExists, fmt.Sprintf(
 				"Disk already exists with incompatible capacity. Need %v (Required) < %v (Existing) < %v (Limit)",
-				reqBytes, utils.GbToBytes(resp.SizeGb), limBytes))
+				reqBytes, common.GbToBytes(resp.SizeGb), limBytes))
 		}
 
 		respType := strings.Split(resp.Type, "/")
@@ -190,11 +186,7 @@ func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone
 	glog.Infof("Getting instance %v from zone %v", instanceName, instanceZone)
 	instance, err := svc.Instances.Get(project, instanceZone, instanceName).Do()
 	if err != nil {
-		if IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("instance %v does not exist", instanceName))
-		}
-
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown instance GET error: %v", err))
+		return nil, err
 	}
 	glog.Infof("Got instance %v from zone %v", instanceName, instanceZone)
 	return instance, nil

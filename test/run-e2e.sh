@@ -5,4 +5,4 @@ set -x
 
 readonly PKGDIR=sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
-go test --v=true "${PKGDIR}/test/e2e/tests" --logtostderr --run-in-prow=true
+go test --v=true "${PKGDIR}/test/e2e/tests" --logtostderr --run-in-prow=true --delete-instances=true

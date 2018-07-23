@@ -17,7 +17,8 @@ package gceGCEDriver
 import (
 	"testing"
 
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 func initGCEDriver(t *testing.T) *GCEDriver {
@@ -27,7 +28,7 @@ func initGCEDriver(t *testing.T) *GCEDriver {
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, driver, node, vendorVersion)
+	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

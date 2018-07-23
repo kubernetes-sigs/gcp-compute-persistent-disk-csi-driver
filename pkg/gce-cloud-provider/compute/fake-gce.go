@@ -21,9 +21,10 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 type FakeCloudProvider struct {
@@ -58,7 +59,7 @@ func (cloud *FakeCloudProvider) GetZone() string {
 func (cloud *FakeCloudProvider) GetDiskOrError(ctx context.Context, volumeZone, volumeName string) (*compute.Disk, error) {
 	disk, ok := cloud.disks[volumeName]
 	if !ok {
-		return nil, fmt.Errorf("Disk %v not found", volumeName)
+		return nil, notFoundError()
 	}
 	return disk, nil
 }
@@ -71,12 +72,12 @@ func (cloud *FakeCloudProvider) GetAndValidateExistingDisk(ctx context.Context, 
 	}
 	if disk != nil {
 		// Check that disk is the same
-		requestValid := utils.GbToBytes(disk.SizeGb) >= reqBytes || reqBytes == 0
-		responseValid := utils.GbToBytes(disk.SizeGb) <= limBytes || limBytes == 0
+		requestValid := common.GbToBytes(disk.SizeGb) >= reqBytes || reqBytes == 0
+		responseValid := common.GbToBytes(disk.SizeGb) <= limBytes || limBytes == 0
 		if !requestValid || !responseValid {
 			return true, status.Error(codes.AlreadyExists, fmt.Sprintf(
 				"Disk already exists with incompatible capacity. Need %v (Required) < %v (Existing) < %v (Limit)",
-				reqBytes, utils.GbToBytes(disk.SizeGb), limBytes))
+				reqBytes, common.GbToBytes(disk.SizeGb), limBytes))
 		}
 
 		respType := strings.Split(disk.Type, "/")
@@ -171,7 +172,7 @@ func (cloud *FakeCloudProvider) InsertInstance(instance *compute.Instance, insta
 func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*compute.Instance, error) {
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
-		return nil, fmt.Errorf("Could not find instance %v", instanceName)
+		return nil, notFoundError()
 	}
 	return instance, nil
 }
@@ -179,4 +180,14 @@ func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, instance
 // Operation Methods
 func (cloud *FakeCloudProvider) WaitForOp(ctx context.Context, op *compute.Operation, zone string) error {
 	return nil
+}
+
+func notFoundError() *googleapi.Error {
+	return &googleapi.Error{
+		Errors: []googleapi.ErrorItem{
+			{
+				Reason: "notFound",
+			},
+		},
+	}
 }

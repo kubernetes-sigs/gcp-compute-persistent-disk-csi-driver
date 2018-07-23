@@ -87,10 +87,13 @@ func (c *CsiClient) CloseConn() error {
 	return c.conn.Close()
 }
 
-func (c *CsiClient) CreateVolume(volName string) (string, error) {
+func (c *CsiClient) CreateVolume(volName string, topReq *csipb.TopologyRequirement) (string, error) {
 	cvr := &csipb.CreateVolumeRequest{
 		Name:               volName,
 		VolumeCapabilities: stdVolCaps,
+	}
+	if topReq != nil {
+		cvr.AccessibilityRequirements = topReq
 	}
 	cresp, err := c.ctrlClient.CreateVolume(context.Background(), cvr)
 	if err != nil {
@@ -165,4 +168,9 @@ func (c *CsiClient) NodePublishVolume(volumeId, stageDir, publishDir string) err
 	}
 	_, err := c.nodeClient.NodePublishVolume(context.Background(), nodePublishReq)
 	return err
+}
+
+func (c *CsiClient) NodeGetInfo() (*csipb.NodeGetInfoResponse, error) {
+	resp, err := c.nodeClient.NodeGetInfo(context.Background(), &csipb.NodeGetInfoRequest{})
+	return resp, err
 }

@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -24,8 +25,8 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 // TODO: Add noisy glog.V(5).Infof() EVERYWHERE
@@ -53,7 +54,6 @@ const (
 )
 
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	// TODO: Check create zone against Driver zone. They must MATCH
 	glog.Infof("CreateVolume called with request %v", *req)
 
 	// Validate arguments
@@ -78,29 +78,50 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	diskType := "pd-standard"
-	configuredZone := gceCS.CloudProvider.GetZone()
+	var configuredZone string
+
 	for k, v := range req.GetParameters() {
 		if k == "csiProvisionerSecretName" || k == "csiProvisionerSecretNamespace" {
 			// These are hardcoded secrets keys required to function but not needed by GCE PD
 			continue
 		}
 		switch strings.ToLower(k) {
-		case "type":
+		case common.ParameterKeyType:
 			glog.Infof("Setting type: %v", v)
 			diskType = v
-		case "zone":
+		case common.ParameterKeyZone:
 			configuredZone = v
 		default:
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid option %q", k))
 		}
 	}
 
+	if req.GetAccessibilityRequirements() != nil {
+		if len(configuredZone) != 0 {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume only one of parameter zone or topology zone may be specified"))
+		}
+		configuredZone, err = pickTopology(req.GetAccessibilityRequirements())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to pick topology: %v", err))
+		}
+	}
+
+	if len(configuredZone) == 0 {
+		// Default to zone that the driver is in
+		configuredZone = gceCS.CloudProvider.GetZone()
+	}
+
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: capBytes,
-			Id:            utils.CombineVolumeId(configuredZone, name),
+			Id:            common.CombineVolumeId(configuredZone, name),
 			// TODO: Are there any attributes we need to add. These get sent to ControllerPublishVolume
 			Attributes: nil,
+			AccessibleTopology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: configuredZone},
+				},
+			},
 		},
 	}
 
@@ -117,7 +138,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return createResp, nil
 	}
 
-	sizeGb := utils.BytesToGb(capBytes)
+	sizeGb := common.BytesToGb(capBytes)
 	if sizeGb < MinimumDiskSizeInGb {
 		sizeGb = MinimumDiskSizeInGb
 	}
@@ -177,7 +198,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		return nil, status.Error(codes.InvalidArgument, "DeleteVolume Volume ID must be provided")
 	}
 
-	zone, name, err := utils.SplitZoneNameId(volumeID)
+	zone, name, err := common.SplitZoneNameId(volumeID)
 	if err != nil {
 		// Cannot find volume associated with this ID because can't even get the name or zone
 		// This is a success according to the spec
@@ -222,9 +243,9 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume capability must be provided")
 	}
 
-	volumeZone, volumeName, err := utils.SplitZoneNameId(volumeID)
+	volumeZone, volumeName, err := common.SplitZoneNameId(volumeID)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
 
 	// TODO: Check volume capability matches
@@ -240,7 +261,10 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, volumeZone, nodeID)
 	if err != nil {
-		return nil, err
+		if gce.IsGCEError(err, "notFound") {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find instance %v: %v", nodeID, err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get instance error: %v", err))
 	}
 
 	readWrite := "READ_WRITE"
@@ -302,7 +326,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Error(codes.InvalidArgument, "ControllerUnpublishVolume Node ID must be provided")
 	}
 
-	volumeZone, volumeName, err := utils.SplitZoneNameId(volumeID)
+	volumeZone, volumeName, err := common.SplitZoneNameId(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -341,12 +365,23 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	// TODO: Factor out the volume capability functionality and use as validation in all other functions as well
 	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
 	// Validate Arguments
+	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume Capabilities must be provided")
+	}
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerUnpublishVolume Volume ID must be provided")
+		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume ID must be provided")
 	}
-	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerUnpublishVolume Volume Capabilities must be provided")
+	z, n, err := common.SplitZoneNameId(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume ID is of improper format, got %v", volumeID))
+	}
+	_, err = gceCS.CloudProvider.GetDiskOrError(ctx, z, n)
+	if err != nil {
+		if gce.IsGCEError(err, "notFound") {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", n, err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
 	}
 
 	for _, c := range req.GetVolumeCapabilities() {
@@ -363,6 +398,29 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 			}, status.Error(codes.InvalidArgument, "Driver does not support mode:"+c.GetAccessMode().Mode.String())
 		}
 		// TODO: Ignoring mount & block types for now.
+	}
+
+	for _, top := range req.GetAccessibleTopology() {
+		for k, v := range top.GetSegments() {
+			switch k {
+			case common.TopologyKeyZone:
+				// take the zone from v and see if it matches with zone
+				if v == z {
+					// Accessible zone matches with storage zone
+					return &csi.ValidateVolumeCapabilitiesResponse{
+						Supported: true,
+					}, nil
+				} else {
+					// Accessible zone does not match
+					return &csi.ValidateVolumeCapabilitiesResponse{
+						Supported: false,
+						Message:   fmt.Sprintf("Volume %s is not accesible from topology %s:%s", volumeID, k, v),
+					}, nil
+				}
+			default:
+				return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities unknown topology segment key")
+			}
+		}
 	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{
@@ -457,4 +515,53 @@ func diskIsAttachedAndCompatible(volume *compute.Disk, instance *compute.Instanc
 		}
 	}
 	return false, nil
+}
+
+func pickTopology(top *csi.TopologyRequirement) (string, error) {
+	reqTop := top.GetRequisite()
+	prefTop := top.GetPreferred()
+
+	// Pick the preferred topology in order
+	if len(prefTop) != 0 {
+		if prefTop[0].GetSegments() == nil {
+			return "", fmt.Errorf("preferred topologies specified but no segments")
+		}
+
+		// GCE PD cloud provider Create has no restrictions so just create in top preferred zone
+		zone, err := getZoneFromSegment(prefTop[0].GetSegments())
+		if err != nil {
+			return "", fmt.Errorf("could not get zone from preferred topology: %v", err)
+		}
+		return zone, nil
+	} else if len(reqTop) != 0 {
+		r := rand.Intn(len(reqTop))
+		if reqTop[r].GetSegments() == nil {
+			return "", fmt.Errorf("requisite topologies specified but no segments in requisite topology %v", r)
+		}
+
+		zone, err := getZoneFromSegment(reqTop[r].GetSegments())
+		if err != nil {
+			return "", fmt.Errorf("could not get zone from requisite topology: %v", err)
+		}
+		return zone, nil
+	} else {
+		return "", fmt.Errorf("accessibility requirements specified but no requisite or preferred topologies")
+	}
+
+}
+
+func getZoneFromSegment(seg map[string]string) (string, error) {
+	var zone string
+	for k, v := range seg {
+		switch k {
+		case common.TopologyKeyZone:
+			zone = v
+		default:
+			return "", fmt.Errorf("topology segment has unknown key %v", k)
+		}
+	}
+	if len(zone) == 0 {
+		return "", fmt.Errorf("topology specified but could not find zone in segment: %v", seg)
+	}
+	return zone, nil
 }

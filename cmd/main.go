@@ -16,11 +16,14 @@ package main
 
 import (
 	"flag"
+	"math/rand"
 	"os"
+	"time"
 
 	"github.com/golang/glog"
 
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -38,6 +41,7 @@ var (
 
 func main() {
 	flag.Parse()
+	rand.Seed(time.Now().UnixNano())
 	handle()
 	os.Exit(0)
 }
@@ -59,7 +63,12 @@ func handle() {
 	mounter := mountmanager.NewSafeMounter()
 	deviceUtils := mountmanager.NewDeviceUtils()
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, *driverName, *nodeID, vendorVersion)
+	ms, err := metadataservice.NewMetadataService()
+	if err != nil {
+		glog.Fatalf("Failed to set up metadata service: %v", err)
+	}
+
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, *driverName, *nodeID, vendorVersion)
 	if err != nil {
 		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

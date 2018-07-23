@@ -19,12 +19,13 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
+	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 func TestGetPluginInfo(t *testing.T) {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, driver, node, vendorVersion)
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, node, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -46,7 +47,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 func TestGetPluginCapabilities(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, driver, node, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, node, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -59,6 +60,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 	for _, capability := range resp.GetCapabilities() {
 		switch capability.GetService().GetType() {
 		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+		case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
 		default:
 			t.Fatalf("Unknown capability: %v", capability.GetService().GetType())
 		}
@@ -67,7 +69,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 
 func TestProbe(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, driver, node, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, node, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

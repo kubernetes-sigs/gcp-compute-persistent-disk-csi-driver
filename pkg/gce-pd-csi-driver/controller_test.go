@@ -15,6 +15,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"reflect"
 	"testing"
 
 	"golang.org/x/net/context"
@@ -23,8 +24,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 const (
@@ -35,9 +37,9 @@ const (
 	testVolumeId = zone + "/" + "test-vol"
 )
 
-func TestCreateVolumeArguments(t *testing.T) {
+var (
 	// Define "normal" parameters
-	stdVolCap := []*csi.VolumeCapability{
+	stdVolCap = []*csi.VolumeCapability{
 		{
 			AccessType: &csi.VolumeCapability_Mount{
 				Mount: &csi.VolumeCapability_MountVolume{},
@@ -47,13 +49,21 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 	}
-	stdCapRange := &csi.CapacityRange{
-		RequiredBytes: utils.GbToBytes(20),
+	stdCapRange = &csi.CapacityRange{
+		RequiredBytes: common.GbToBytes(20),
 	}
-	stdParams := map[string]string{
-		"zone": zone,
-		"type": "test-type",
+	stdParams = map[string]string{
+		common.ParameterKeyZone: zone,
+		common.ParameterKeyType: "test-type",
 	}
+	stdTopology = []*csi.Topology{
+		{
+			Segments: map[string]string{common.TopologyKeyZone: zone},
+		},
+	}
+)
+
+func TestCreateVolumeArguments(t *testing.T) {
 
 	// Define test cases
 	testCases := []struct {
@@ -71,9 +81,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: utils.GbToBytes(20),
-				Id:            testVolumeId,
-				Attributes:    nil,
+				CapacityBytes:      common.GbToBytes(20),
+				Id:                 testVolumeId,
+				Attributes:         nil,
+				AccessibleTopology: stdTopology,
 			},
 		},
 		{
@@ -94,9 +105,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: MinimumVolumeSizeInBytes,
-				Id:            testVolumeId,
-				Attributes:    nil,
+				CapacityBytes:      MinimumVolumeSizeInBytes,
+				Id:                 testVolumeId,
+				Attributes:         nil,
+				AccessibleTopology: stdTopology,
 			},
 		},
 		{
@@ -116,9 +128,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeCapabilities: stdVolCap,
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: utils.GbToBytes(20),
-				Id:            testVolumeId,
-				Attributes:    nil,
+				CapacityBytes:      common.GbToBytes(20),
+				Id:                 testVolumeId,
+				Attributes:         nil,
+				AccessibleTopology: stdTopology,
 			},
 		},
 		{
@@ -131,10 +144,131 @@ func TestCreateVolumeArguments(t *testing.T) {
 				ControllerCreateSecrets: map[string]string{"key1": "this is a random", "crypto": "secret"},
 			},
 			expVol: &csi.Volume{
-				CapacityBytes: utils.GbToBytes(20),
-				Id:            testVolumeId,
-				Attributes:    nil,
+				CapacityBytes:      common.GbToBytes(20),
+				Id:                 testVolumeId,
+				Attributes:         nil,
+				AccessibleTopology: stdTopology,
 			},
+		},
+		{
+			name: "success with topology",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-vol",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         map[string]string{"type": "test-type"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				Id:            "topology-zone/test-vol",
+				Attributes:    nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+					},
+				},
+			},
+		},
+		{
+			name: "success with picking first preferred topology",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-vol",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         map[string]string{"type": "test-type"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				Id:            "topology-zone2/test-vol",
+				Attributes:    nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+				},
+			},
+		},
+		{
+			name: "fail with zone specified in both topology and params",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-vol",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         stdParams,
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "fail with extra topology",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-vol",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         stdParams,
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{"ooblezoners": "topology-zone", common.TopologyKeyZone: "top-zone"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "fail with missing topology zone",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-vol",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         stdParams,
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
 		},
 	}
 
@@ -147,7 +281,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, driver, node, "vendor-version")
+		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, "vendor-version")
 		if err != nil {
 			t.Fatalf("Failed to setup GCE Driver: %v", err)
 		}
@@ -176,23 +310,60 @@ func TestCreateVolumeArguments(t *testing.T) {
 			t.Fatalf("Expected volume %v, got nil volume", tc.expVol)
 		}
 
-		if vol.GetCapacityBytes() != tc.expVol.GetCapacityBytes() {
-			t.Fatalf("Expected volume capacity bytes: %v, got: %v", vol.GetCapacityBytes(), tc.expVol.GetCapacityBytes())
+		if !reflect.DeepEqual(vol, tc.expVol) {
+			t.Fatalf("Expected volume: %#v\nTopology %#v\n\n to equal volume: %#v\nTopology %#v\n\n",
+				vol, vol.GetAccessibleTopology()[0], tc.expVol, tc.expVol.GetAccessibleTopology()[0])
 		}
+	}
+}
 
-		if vol.GetId() != tc.expVol.GetId() {
-			t.Fatalf("Expected volume id: %v, got: %v", vol.GetId(), tc.expVol.GetId())
-		}
+func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
+	req := &csi.CreateVolumeRequest{
+		Name:               "test-vol",
+		CapacityRange:      stdCapRange,
+		VolumeCapabilities: stdVolCap,
+		Parameters:         map[string]string{"type": "test-type"},
+		AccessibilityRequirements: &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+				},
+			},
+		},
+	}
 
-		for akey, aval := range tc.expVol.GetAttributes() {
-			if gotVal, ok := vol.GetAttributes()[akey]; !ok || gotVal != aval {
-				t.Fatalf("Expected volume attribute for key %v: %v, got: %v", akey, aval, gotVal)
-			}
-		}
-		if tc.expVol.GetAttributes() == nil && vol.GetAttributes() != nil {
-			t.Fatalf("Expected volume attributes to be nil, got: %#v", vol.GetAttributes())
-		}
+	gceDriver := GetGCEDriver()
+	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, "vendor-version")
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
 
+	tZones := map[string]bool{}
+	// Start Test
+	for i := 0; i < 50; i++ {
+		resp, err := gceDriver.cs.CreateVolume(context.TODO(), req)
+		if err != nil {
+			t.Fatalf("CreateVolume did not expect error, but got %v", err)
+		}
+		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[common.TopologyKeyZone]
+		if !ok {
+			t.Fatalf("Could not find topology zone in response")
+		}
+		tZones[tZone] = true
+	}
+	// We expect that we should have picked all 3 topology zones here
+	if len(tZones) != 3 {
+		t.Fatalf("Expected all 3 topology zones to be rotated through, got only: %v", tZones)
 	}
 }
 
@@ -293,16 +464,16 @@ func TestGetRequestCapacity(t *testing.T) {
 		{
 			name: "success: fully specified both above min",
 			capRange: &csi.CapacityRange{
-				RequiredBytes: utils.GbToBytes(20),
-				LimitBytes:    utils.GbToBytes(50),
+				RequiredBytes: common.GbToBytes(20),
+				LimitBytes:    common.GbToBytes(50),
 			},
-			expCap: utils.GbToBytes(20),
+			expCap: common.GbToBytes(20),
 		},
 		{
 			name: "success: fully specified required below min",
 			capRange: &csi.CapacityRange{
 				RequiredBytes: MinimumVolumeSizeInBytes - 1,
-				LimitBytes:    utils.GbToBytes(50),
+				LimitBytes:    common.GbToBytes(50),
 			},
 			expCap: MinimumVolumeSizeInBytes,
 		},
@@ -317,8 +488,8 @@ func TestGetRequestCapacity(t *testing.T) {
 		{
 			name: "fail: limit less than required",
 			capRange: &csi.CapacityRange{
-				RequiredBytes: utils.GbToBytes(50),
-				LimitBytes:    utils.GbToBytes(20),
+				RequiredBytes: common.GbToBytes(50),
+				LimitBytes:    common.GbToBytes(20),
 			},
 			expErr: true,
 		},

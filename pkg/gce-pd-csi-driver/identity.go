@@ -51,6 +51,13 @@ func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context,
 					},
 				},
 			},
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
+					},
+				},
+			},
 		},
 	}, nil
 }
