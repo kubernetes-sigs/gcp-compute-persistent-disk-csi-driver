@@ -22,7 +22,6 @@ import (
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
-	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
 func init() {
@@ -56,10 +55,7 @@ func handle() {
 		glog.Fatalf("Failed to get cloud provider: %v", err)
 	}
 
-	mounter, err := mountmanager.CreateMounter()
-	if err != nil {
-		glog.Fatalf("Failed to get mounter: %v", err)
-	}
+	mounter := driver.NewSafeFormatAndMounter()
 
 	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, *driverName, *nodeID, vendorVersion)
 	if err != nil {
