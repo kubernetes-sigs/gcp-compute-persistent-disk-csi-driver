@@ -174,10 +174,10 @@ func NewFakeSafeFormatAndMounter(mountErrs []error) mount.SafeFormatAndMount {
 			return []byte(script.output), script.err
 		*/
 	}
-	fakeMounter := mount.ErrorMounter{&mount.FakeMounter{}, 0, mountErrs}
+	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
 	fakeExec := mount.NewFakeExec(execCallback)
 	return mount.SafeFormatAndMount{
-		Interface: &fakeMounter,
+		Interface: fakeMounter,
 		Exec:      fakeExec,
 	}
 }
