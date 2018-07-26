@@ -31,12 +31,12 @@ sed -i "/serviceAccount:${IAM_NAME}/d" "${PKGDIR}/deploy/iam.json"
 gcloud projects set-iam-policy "${PROJECT}" "${PKGDIR}/deploy/iam.json"
 rm -f "${PKGDIR}/deploy/iam.json"
 # Delete Service Account
-gcloud iam service-accounts delete "$IAM_NAME" --quiet || true
+gcloud iam service-accounts delete "${IAM_NAME}" --project "${PROJECT}" --quiet || true
 
 # Create new Service Account and Keys
-gcloud iam service-accounts create "${GCEPD_SA_NAME}"
+gcloud iam service-accounts create "${GCEPD_SA_NAME}" --project "${PROJECT}"
 for role in ${BIND_ROLES}
 do
   gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role ${role}
 done
-gcloud iam service-accounts keys create "${SA_FILE}" --iam-account "${IAM_NAME}"
+gcloud iam service-accounts keys create "${SA_FILE}" --iam-account "${IAM_NAME}" --project "${PROJECT}"

@@ -21,8 +21,8 @@ import (
 	"github.com/golang/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
+	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
 type GCEDriver struct {
@@ -43,7 +43,7 @@ func GetGCEDriver() *GCEDriver {
 	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter mount.SafeFormatAndMount, name, nodeID, vendorVersion string) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter mountmanager.MountManager, name, nodeID, vendorVersion string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -129,7 +129,7 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter mount.SafeFormatAndMount) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter mountmanager.MountManager) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:  gceDriver,
 		Mounter: mounter,
@@ -140,45 +140,6 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GC
 	return &GCEControllerServer{
 		Driver:        gceDriver,
 		CloudProvider: cloudProvider,
-	}
-}
-
-func NewSafeFormatAndMounter() mount.SafeFormatAndMount {
-	realMounter := mount.New("")
-	realExec := mount.NewOsExec()
-	return mount.SafeFormatAndMount{
-		Interface: realMounter,
-		Exec:      realExec,
-	}
-}
-
-func NewFakeSafeFormatAndMounter(mountErrs []error) mount.SafeFormatAndMount {
-	execCallback := func(cmd string, args ...string) ([]byte, error) {
-		return nil, nil
-		// TODO: Fill out exec callback for errors
-		/*
-			if len(test.execScripts) <= execCallCount {
-				t.Errorf("Unexpected command: %s %v", cmd, args)
-				return nil, nil
-			}
-			script := test.execScripts[execCallCount]
-			execCallCount++
-			if script.command != cmd {
-				t.Errorf("Unexpected command %s. Expecting %s", cmd, script.command)
-			}
-			for j := range args {
-				if args[j] != script.args[j] {
-					t.Errorf("Unexpected args %v. Expecting %v", args, script.args)
-				}
-			}
-			return []byte(script.output), script.err
-		*/
-	}
-	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
-	fakeExec := mount.NewFakeExec(execCallback)
-	return mount.SafeFormatAndMount{
-		Interface: fakeMounter,
-		Exec:      fakeExec,
 	}
 }
 
