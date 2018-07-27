@@ -56,12 +56,10 @@ func handle() {
 		glog.Fatalf("Failed to get cloud provider: %v", err)
 	}
 
-	mounter, err := mountmanager.CreateMounter()
-	if err != nil {
-		glog.Fatalf("Failed to get mounter: %v", err)
-	}
+	mounter := mountmanager.NewSafeMounter()
+	deviceUtils := mountmanager.NewDeviceUtils()
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, *driverName, *nodeID, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, *driverName, *nodeID, vendorVersion)
 	if err != nil {
 		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

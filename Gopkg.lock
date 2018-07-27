@@ -14,12 +14,6 @@
   version = "v0.3.0"
 
 [[projects]]
-  name = "github.com/davecgh/go-spew"
-  packages = ["spew"]
-  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
-  version = "v1.1.0"
-
-[[projects]]
   name = "github.com/ghodss/yaml"
   packages = ["."]
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
@@ -116,22 +110,10 @@
   version = "v1.1"
 
 [[projects]]
-  name = "github.com/pmezard/go-difflib"
-  packages = ["difflib"]
-  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
-  version = "v1.0.0"
-
-[[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
   version = "v1.0.5"
-
-[[projects]]
-  name = "github.com/stretchr/testify"
-  packages = ["assert"]
-  revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
-  version = "v1.2.1"
 
 [[projects]]
   branch = "master"
@@ -216,7 +198,6 @@
   name = "google.golang.org/api"
   packages = [
     "cloudresourcemanager/v1",
-    "compute/v0.beta",
     "compute/v1",
     "gensupport",
     "googleapi",
@@ -288,13 +269,23 @@
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/types",
-    "pkg/util/errors",
     "pkg/util/runtime",
     "pkg/util/sets",
     "pkg/util/uuid",
     "pkg/util/wait"
   ]
   revision = "e9ff529c66f83aeac6dff90f11ea0c5b7c4d626a"
+
+[[projects]]
+  name = "k8s.io/kubernetes"
+  packages = [
+    "pkg/util/file",
+    "pkg/util/io",
+    "pkg/util/mount",
+    "pkg/util/nsenter"
+  ]
+  revision = "b1b29978270dc22fecc592ac55d903350454310a"
+  version = "v1.11.1"
 
 [[projects]]
   branch = "master"
@@ -315,6 +306,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "825b7462ed5f4c6ddc37088dc0c9fa8aff9447fb7a45438bcc845bdda4313069"
+  inputs-digest = "4ca1df328310c5afd5b74eb573280af9e650de8dc4a6573c1aa15de82d72edd9"
   solver-name = "gps-cdcl"
   solver-version = 1

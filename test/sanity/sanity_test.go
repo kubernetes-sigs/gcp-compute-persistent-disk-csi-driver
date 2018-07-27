@@ -17,12 +17,11 @@ package sanitytest
 import (
 	"testing"
 
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
-
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
 func TestSanity(t *testing.T) {
@@ -43,13 +42,11 @@ func TestSanity(t *testing.T) {
 		t.Fatalf("Failed to get cloud provider: %v", err)
 	}
 
-	mounter, err := mountmanager.CreateFakeMounter()
-	if err != nil {
-		t.Fatalf("Failed to get mounter %v", err)
-	}
+	mounter := mountmanager.NewFakeSafeMounter()
+	deviceUtils := mountmanager.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, driverName, nodeID, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, driverName, nodeID, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
