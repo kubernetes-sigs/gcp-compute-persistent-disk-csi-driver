@@ -12,24 +12,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package gceGCEDriver
+package mountmanager
 
-import (
-	"testing"
+import "k8s.io/kubernetes/pkg/util/mount"
 
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
-)
-
-func initGCEDriver(t *testing.T) *GCEDriver {
-	vendorVersion := "test-vendor"
-	gceDriver := GetGCEDriver()
-	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
+func NewSafeMounter() *mount.SafeFormatAndMount {
+	realMounter := mount.New("")
+	realExec := mount.NewOsExec()
+	return &mount.SafeFormatAndMount{
+		Interface: realMounter,
+		Exec:      realExec,
 	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, driver, node, vendorVersion)
-	if err != nil {
-		t.Fatalf("Failed to setup GCE Driver: %v", err)
-	}
-	return gceDriver
+
 }

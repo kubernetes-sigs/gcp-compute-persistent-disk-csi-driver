@@ -21,6 +21,7 @@ import (
 	"github.com/golang/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/kubernetes/pkg/util/mount"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -43,7 +44,8 @@ func GetGCEDriver() *GCEDriver {
 	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter mountmanager.MountManager, name, nodeID, vendorVersion string) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter *mount.SafeFormatAndMount,
+	deviceUtils mountmanager.DeviceUtils, name, nodeID, vendorVersion string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -73,7 +75,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 
 	// Set up RPC Servers
 	gceDriver.ids = NewIdentityServer(gceDriver)
-	gceDriver.ns = NewNodeServer(gceDriver, mounter)
+	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils)
 	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider)
 
 	return nil
@@ -129,10 +131,11 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter mountmanager.MountManager) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils) *GCENodeServer {
 	return &GCENodeServer{
-		Driver:  gceDriver,
-		Mounter: mounter,
+		Driver:      gceDriver,
+		Mounter:     mounter,
+		DeviceUtils: deviceUtils,
 	}
 }
 

@@ -16,14 +16,7 @@ package mountmanager
 
 import "k8s.io/kubernetes/pkg/util/mount"
 
-type FakeGCEMounter struct {
-	// TODO: Info
-	SafeMounter *mount.SafeFormatAndMount
-}
-
-var _ MountManager = &FakeGCEMounter{}
-
-func FakeMounter(mountErrs []error) *FakeGCEMounter {
+func NewFakeSafeMounter() *mount.SafeFormatAndMount {
 	execCallback := func(cmd string, args ...string) ([]byte, error) {
 		return nil, nil
 		// TODO: Fill out exec callback for errors
@@ -47,26 +40,8 @@ func FakeMounter(mountErrs []error) *FakeGCEMounter {
 	}
 	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
 	fakeExec := mount.NewFakeExec(execCallback)
-	return &FakeGCEMounter{
-		SafeMounter: &mount.SafeFormatAndMount{
-			Interface: fakeMounter,
-			Exec:      fakeExec,
-		},
+	return &mount.SafeFormatAndMount{
+		Interface: fakeMounter,
+		Exec:      fakeExec,
 	}
-}
-
-func (m *FakeGCEMounter) GetSafeMounter() *mount.SafeFormatAndMount {
-	return m.SafeMounter
-}
-
-// Returns list of all /dev/disk/by-id/* paths for given PD.
-func (m *FakeGCEMounter) GetDiskByIdPaths(pdName string, partition string) []string {
-	// Don't need to implement this in the fake because we have no actual device paths
-	return nil
-}
-
-// Returns the first path that exists, or empty string if none exist.
-func (m *FakeGCEMounter) VerifyDevicePath(devicePaths []string) (string, error) {
-	// Return any random device path to use as mount source
-	return "/dev/disk/fake-path", nil
 }

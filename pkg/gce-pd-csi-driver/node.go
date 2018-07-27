@@ -24,13 +24,15 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/kubernetes/pkg/util/mount"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 type GCENodeServer struct {
-	Driver  *GCEDriver
-	Mounter mountmanager.MountManager
+	Driver      *GCEDriver
+	Mounter     *mount.SafeFormatAndMount
+	DeviceUtils mountmanager.DeviceUtils
 	// TODO: Only lock mutually exclusive calls and make locking more fine grained
 	mux sync.Mutex
 }
@@ -61,7 +63,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	notMnt, err := ns.Mounter.GetSafeMounter().Interface.IsLikelyNotMountPoint(targetPath)
+	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 	if err != nil && !os.IsNotExist(err) {
 		glog.Errorf("cannot validate mount point: %s %v", targetPath, err)
 		return nil, err
@@ -71,7 +73,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, nil
 	}
 
-	if err := ns.Mounter.GetSafeMounter().Interface.MakeDir(targetPath); err != nil {
+	if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
 		glog.Errorf("mkdir failed on disk %s (%v)", targetPath, err)
 		return nil, err
 	}
@@ -82,19 +84,19 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		options = append(options, "ro")
 	}
 
-	err = ns.Mounter.GetSafeMounter().Interface.Mount(stagingTargetPath, targetPath, "ext4", options)
+	err = ns.Mounter.Interface.Mount(stagingTargetPath, targetPath, "ext4", options)
 	if err != nil {
-		notMnt, mntErr := ns.Mounter.GetSafeMounter().Interface.IsLikelyNotMountPoint(targetPath)
+		notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 		if mntErr != nil {
 			glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
 		}
 		if !notMnt {
-			if mntErr = ns.Mounter.GetSafeMounter().Interface.Unmount(targetPath); mntErr != nil {
+			if mntErr = ns.Mounter.Interface.Unmount(targetPath); mntErr != nil {
 				glog.Errorf("Failed to unmount: %v", mntErr)
 				return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
 			}
-			notMnt, mntErr := ns.Mounter.GetSafeMounter().Interface.IsLikelyNotMountPoint(targetPath)
+			notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 			if mntErr != nil {
 				glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
 				return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
@@ -130,7 +132,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 
 	// TODO: Check volume still exists
 
-	err := ns.Mounter.GetSafeMounter().Interface.Unmount(targetPath)
+	err := ns.Mounter.Interface.Unmount(targetPath)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
 	}
@@ -168,8 +170,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// TODO: Get real partitions
 	partition := ""
 
-	devicePaths := ns.Mounter.GetDiskByIdPaths(volumeName, partition)
-	devicePath, err := ns.Mounter.VerifyDevicePath(devicePaths)
+	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(volumeName, partition)
+	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
 
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error verifying GCE PD (%q) is attached: %v", volumeName, err))
@@ -181,10 +183,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	glog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeName, devicePath)
 
 	// Part 2: Check if mount already exists at targetpath
-	notMnt, err := ns.Mounter.GetSafeMounter().Interface.IsLikelyNotMountPoint(stagingTargetPath)
+	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := ns.Mounter.GetSafeMounter().Interface.MakeDir(stagingTargetPath); err != nil {
+			if err := ns.Mounter.Interface.MakeDir(stagingTargetPath); err != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create directory (%q): %v", stagingTargetPath, err))
 			}
 			notMnt = true
@@ -218,7 +220,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Block volume support is not yet implemented"))
 	}
 
-	err = ns.Mounter.GetSafeMounter().FormatAndMount(devicePath, stagingTargetPath, fstype, options)
+	err = ns.Mounter.FormatAndMount(devicePath, stagingTargetPath, fstype, options)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
@@ -242,7 +244,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Staging Target Path must be provided")
 	}
 
-	err := ns.Mounter.GetSafeMounter().Interface.Unmount(stagingTargetPath)
+	err := ns.Mounter.Interface.Unmount(stagingTargetPath)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed to unmount at path %s: %v", stagingTargetPath, err))
 	}

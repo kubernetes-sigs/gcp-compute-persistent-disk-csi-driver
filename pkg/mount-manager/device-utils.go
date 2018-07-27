@@ -23,7 +23,6 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/utils/exec"
 )
 
@@ -50,41 +49,24 @@ const (
 	defaultMountCommand   = "mount"
 )
 
-// TODO: Info
-type MountManager interface {
-	// TODO: Info
-	GetSafeMounter() *mount.SafeFormatAndMount
-	// TODO: Info
+type DeviceUtils interface {
 	GetDiskByIdPaths(pdName string, partition string) []string
 	// TODO: Info
 	VerifyDevicePath(devicePaths []string) (string, error)
 }
 
 // TODO: Info
-type GCEMounter struct {
-	// TODO: Info
-	SafeMounter *mount.SafeFormatAndMount
+type deviceUtils struct {
 }
 
-var _ MountManager = &GCEMounter{}
+var _ DeviceUtils = &deviceUtils{}
 
-func NewMounter() *GCEMounter {
-	realMounter := mount.New("")
-	realExec := mount.NewOsExec()
-	return &GCEMounter{
-		SafeMounter: &mount.SafeFormatAndMount{
-			Interface: realMounter,
-			Exec:      realExec,
-		},
-	}
-}
-
-func (m *GCEMounter) GetSafeMounter() *mount.SafeFormatAndMount {
-	return m.SafeMounter
+func NewDeviceUtils() *deviceUtils {
+	return &deviceUtils{}
 }
 
 // Returns list of all /dev/disk/by-id/* paths for given PD.
-func (m *GCEMounter) GetDiskByIdPaths(pdName string, partition string) []string {
+func (m *deviceUtils) GetDiskByIdPaths(pdName string, partition string) []string {
 	devicePaths := []string{
 		path.Join(diskByIdPath, diskGooglePrefix+pdName),
 		path.Join(diskByIdPath, diskScsiGooglePrefix+pdName),
@@ -102,7 +84,7 @@ func (m *GCEMounter) GetDiskByIdPaths(pdName string, partition string) []string 
 }
 
 // Returns the first path that exists, or empty string if none exist.
-func (m *GCEMounter) VerifyDevicePath(devicePaths []string) (string, error) {
+func (m *deviceUtils) VerifyDevicePath(devicePaths []string) (string, error) {
 	sdBefore, err := filepath.Glob(diskSDPattern)
 	if err != nil {
 		// Seeing this error means that the diskSDPattern is malformed.
