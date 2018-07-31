@@ -25,14 +25,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
-	utils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/utils"
 )
 
 type GCENodeServer struct {
-	Driver      *GCEDriver
-	Mounter     *mount.SafeFormatAndMount
-	DeviceUtils mountmanager.DeviceUtils
+	Driver          *GCEDriver
+	Mounter         *mount.SafeFormatAndMount
+	DeviceUtils     mountmanager.DeviceUtils
+	MetadataService metadataservice.MetadataService
 	// TODO: Only lock mutually exclusive calls and make locking more fine grained
 	mux sync.Mutex
 }
@@ -159,7 +161,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
 
-	_, volumeName, err := utils.SplitZoneNameId(volumeID)
+	_, volumeName, err := common.SplitZoneNameId(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -270,12 +272,17 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	glog.Infof("NodeGetInfo called with req: %#v", req)
 
+	top := &csi.Topology{
+		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
+	}
+
 	resp := &csi.NodeGetInfoResponse{
 		NodeId: ns.Driver.nodeID,
 		// TODO: Set MaxVolumesPerNode based on Node Type
 		// Default of 0 means that CO Decides how many nodes can be published
+		// Can get from metadata server "machine-type"
 		MaxVolumesPerNode:  0,
-		AccessibleTopology: nil,
+		AccessibleTopology: top,
 	}
 	return resp, nil
 }

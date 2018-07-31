@@ -46,19 +46,25 @@ type InstanceInfo struct {
 	zone    string
 	name    string
 
+	// External IP is filled in after instance creation
+	// TODO: Maybe combine create instance and create instance info so all fields are set up at the same time...
 	externalIP string
 
 	computeService *compute.Service
 }
 
-func CreateInstanceInfo(project, zone, name string) (*InstanceInfo, error) {
-	cs, err := getComputeClient()
-	if err != nil {
-		return nil, err
-	}
+func (i *InstanceInfo) GetIdentity() (string, string, string) {
+	return i.project, i.zone, i.name
+}
+
+func (i *InstanceInfo) GetName() string {
+	return i.name
+}
+
+func CreateInstanceInfo(project, instanceZone, name string, cs *compute.Service) (*InstanceInfo, error) {
 	return &InstanceInfo{
 		project: project,
-		zone:    zone,
+		zone:    instanceZone,
 		name:    name,
 
 		computeService: cs,
@@ -66,7 +72,7 @@ func CreateInstanceInfo(project, zone, name string) (*InstanceInfo, error) {
 }
 
 // Provision a gce instance using image
-func (i *InstanceInfo) CreateInstance(serviceAccount string) error {
+func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 	var err error
 	var instance *compute.Instance
 	glog.V(4).Infof("Creating instance: %v", i.name)
@@ -236,7 +242,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 	return nil
 }
 
-func getComputeClient() (*compute.Service, error) {
+func GetComputeClient() (*compute.Service, error) {
 	const retries = 10
 	const backoff = time.Second * 6
 

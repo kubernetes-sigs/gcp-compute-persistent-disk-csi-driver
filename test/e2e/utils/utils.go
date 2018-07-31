@@ -17,6 +17,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	compute "google.golang.org/api/compute/v1"
 	boskosclient "k8s.io/test-infra/boskos/client"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
 )
@@ -36,21 +38,28 @@ const (
 	archiveName = "e2e_gce_pd_test.tar.gz"
 )
 
-func SetupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, instanceServiceAccount string) (*remote.InstanceInfo, error) {
+type TestContext struct {
+	Instance *remote.InstanceInfo
+	Client   *CsiClient
+}
+
+func SetupInstance(instanceProject, instanceZone, instanceName, instanceServiceAccount string, cs *compute.Service) (*remote.InstanceInfo, error) {
 	// Create the instance in the requisite zone
-	instance, err := remote.CreateInstanceInfo(instanceProject, instanceZone, instanceName)
+	instance, err := remote.CreateInstanceInfo(instanceProject, instanceZone, instanceName, cs)
 	if err != nil {
 		return nil, err
 	}
 
-	err = instance.CreateInstance(instanceServiceAccount)
-
+	err = instance.CreateOrGetInstance(instanceServiceAccount)
 	if err != nil {
 		return nil, err
 	}
+	return instance, nil
+}
 
-	// Create Driver Archive
-
+// TODO: Need a function to clean up this driver from the instance
+func SetupNewDriverAndClient(instance *remote.InstanceInfo) (*TestContext, error) {
+	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
 		return nil, fmt.Errorf("Could not find environment variable GOPATH")
@@ -72,7 +81,7 @@ func SetupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, i
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s --nodeid=%s > %s/prog.out 2> %s/prog.err < /dev/null &'",
-		workspace, endpoint, instanceName, workspace, workspace)
+		workspace, endpoint, instance.GetName(), workspace, workspace)
 	err = instance.UploadAndRun(archivePath, workspace, driverRunCmd)
 	if err != nil {
 		return nil, err
@@ -84,7 +93,13 @@ func SetupInstanceAndDriver(instanceProject, instanceZone, instanceName, port, i
 		return nil, fmt.Errorf("SSH Tunnel pid %v encountered error: %v", res, err)
 	}
 
-	return instance, nil
+	client := CreateCSIClient(fmt.Sprintf("localhost:%s", port))
+	err = client.AssertCSIConnection()
+	if err != nil {
+		return nil, fmt.Errorf("asserting csi connection failed with: %v", err)
+	}
+
+	return &TestContext{Instance: instance, Client: client}, nil
 }
 
 func SetupProwConfig() (project, serviceAccount string) {

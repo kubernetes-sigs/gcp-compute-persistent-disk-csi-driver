@@ -51,7 +51,6 @@ func CreateCloudProvider(vendorVersion string) (*CloudProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Use metadata server or flags to retrieve project and zone. Fallback on flag if necessary
 
 	project, zone, err := getProjectAndZoneFromMetadata()
 	if err != nil {
