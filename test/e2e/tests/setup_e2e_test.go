@@ -24,8 +24,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	compute "google.golang.org/api/compute/v1"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
 var (
@@ -63,7 +63,7 @@ var _ = BeforeSuite(func() {
 		Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
 		Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
-		i, err := testutils.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
+		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
 		Expect(err).To(BeNil())
 
 		testInstances = append(testInstances, i)
