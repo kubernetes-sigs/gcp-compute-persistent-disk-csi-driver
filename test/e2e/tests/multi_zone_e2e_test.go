@@ -19,6 +19,7 @@ import (
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
 var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
@@ -30,8 +31,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should get reasonable topology from nodes with NodeGetInfo", func() {
 		for _, instance := range testInstances {
-			testContext, err := testutils.SetupNewDriverAndClient(instance)
+			testContext, err := testutils.GCEClientAndDriverSetup(instance)
 			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+			defer func() {
+				err := remote.TeardownDriverAndClient(testContext)
+				Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+			}()
 
 			resp, err := testContext.Client.NodeGetInfo()
 			Expect(err).To(BeNil())

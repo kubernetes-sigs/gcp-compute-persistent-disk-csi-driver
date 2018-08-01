@@ -14,17 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package binremote
+package remote
 
 import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/golang/glog"
 )
 
-func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd string) error {
+func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd string) (int, error) {
 
 	// Create the temp staging directory
 	glog.V(4).Infof("Staging test binaries on %q", i.name)
@@ -32,13 +34,13 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	// Do not sudo here, so that we can use scp to copy test archive to the directdory.
 	if output, err := i.SSHNoSudo("mkdir", remoteWorkspace); err != nil {
 		// Exit failure with the error
-		return fmt.Errorf("failed to create remoteWorkspace directory %q on i.name %q: %v output: %q", remoteWorkspace, i.name, err, output)
+		return -1, fmt.Errorf("failed to create remoteWorkspace directory %q on i.name %q: %v output: %q", remoteWorkspace, i.name, err, output)
 	}
 
 	// Copy the archive to the staging directory
 	if output, err := runSSHCommand("scp", archivePath, fmt.Sprintf("%s:%s/", i.GetSSHTarget(), remoteWorkspace)); err != nil {
 		// Exit failure with the error
-		return fmt.Errorf("failed to copy test archive: %v, output: %q", err, output)
+		return -1, fmt.Errorf("failed to copy test archive: %v, output: %q", err, output)
 	}
 
 	// Extract the archive
@@ -52,22 +54,40 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	// we want the extracted files to be owned by the current user.
 	if output, err := i.SSHNoSudo("sh", "-c", cmd); err != nil {
 		// Exit failure with the error
-		return fmt.Errorf("failed to extract test archive: %v, output: %q", err, output)
+		return -1, fmt.Errorf("failed to extract test archive: %v, output: %q", err, output)
 	}
 
 	glog.V(4).Infof("Starting driver on %q", i.name)
 	// When the process is killed the driver should close the TCP endpoint, then we want to download the logs
 	output, err := i.SSH(driverRunCmd)
-
 	if err != nil {
 		// Exit failure with the error
-		return fmt.Errorf("failed start GCE PD driver, got output: %v, error: %v", output, err)
+		return -1, fmt.Errorf("failed start driver, got output: %v, error: %v", output, err)
 	}
 
+	// Get the driver PID
+	// ps -aux | grep  /tmp/gce-pd-e2e-0180801T114407/gce-pd-csi-driver | awk '{print $2}'
+	driverPIDCmd := getSSHCommand(" | ",
+		"ps -aux",
+		fmt.Sprintf("grep %s", remoteWorkspace),
+		"grep -v grep",
+		// All ye who try to deal with escaped/non-escaped quotes with exec beware.
+		//`awk "{print \$2}"`,
+	)
+	driverPIDString, err := i.SSHNoSudo("sh", "-c", driverPIDCmd)
+	if err != nil {
+		// Exit failure with the error
+		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", output, err)
+	}
+
+	driverPID, err := strconv.Atoi(strings.Fields(driverPIDString)[1])
+	if err != nil {
+		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDString, err)
+	}
 	// TODO: return the PID so that we can kill the driver later
 	// Actually just do a pkill -f my_pattern
 
-	return nil
+	return driverPID, nil
 }
 
 func NewWorkspaceDir(workspaceDirPrefix string) string {

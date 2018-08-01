@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	. "github.com/onsi/ginkgo"
@@ -44,8 +45,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create new driver and client
 		// TODO: Should probably actual have some object that includes both client and instance so we can relate the two??
 		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.SetupNewDriverAndClient(testInstances[0])
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
 		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
@@ -135,8 +141,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should create disks in correct zones when topology is specified", func() {
 		///
 		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.SetupNewDriverAndClient(testInstances[0])
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
 		Expect(err).To(BeNil(), "Failed to set up new driver and client")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
 		p, _, _ := testContext.Instance.GetIdentity()
 
 		zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}

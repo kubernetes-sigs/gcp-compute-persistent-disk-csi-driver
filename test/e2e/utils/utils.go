@@ -25,40 +25,15 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
-	compute "google.golang.org/api/compute/v1"
 	boskosclient "k8s.io/test-infra/boskos/client"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/binremote"
+	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
 var (
 	boskos = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
 )
 
-const (
-	archiveName = "e2e_gce_pd_test.tar.gz"
-)
-
-type TestContext struct {
-	Instance *remote.InstanceInfo
-	Client   *CsiClient
-}
-
-func SetupInstance(instanceProject, instanceZone, instanceName, instanceServiceAccount string, cs *compute.Service) (*remote.InstanceInfo, error) {
-	// Create the instance in the requisite zone
-	instance, err := remote.CreateInstanceInfo(instanceProject, instanceZone, instanceName, cs)
-	if err != nil {
-		return nil, err
-	}
-
-	err = instance.CreateOrGetInstance(instanceServiceAccount)
-	if err != nil {
-		return nil, err
-	}
-	return instance, nil
-}
-
-// TODO: Need a function to clean up this driver from the instance
-func SetupNewDriverAndClient(instance *remote.InstanceInfo) (*TestContext, error) {
+func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
@@ -66,40 +41,22 @@ func SetupNewDriverAndClient(instance *remote.InstanceInfo) (*TestContext, error
 	}
 	pkgPath := path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
 	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
-	archivePath, err := remote.CreateDriverArchive(archiveName, pkgPath, binPath)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err = os.Remove(archivePath)
-		if err != nil {
-			glog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
-		}
-	}()
 
-	// Upload archive to instance and run binaries
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
+
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s --nodeid=%s > %s/prog.out 2> %s/prog.err < /dev/null &'",
 		workspace, endpoint, instance.GetName(), workspace, workspace)
-	err = instance.UploadAndRun(archivePath, workspace, driverRunCmd)
-	if err != nil {
-		return nil, err
+
+	config := &remote.ClientConfig{
+		PkgPath:      pkgPath,
+		BinPath:      binPath,
+		WorkspaceDir: workspace,
+		RunDriverCmd: driverRunCmd,
+		Port:         port,
 	}
 
-	// Create an SSH tunnel from port to port
-	res, err := instance.CreateSSHTunnel(port, port)
-	if err != nil {
-		return nil, fmt.Errorf("SSH Tunnel pid %v encountered error: %v", res, err)
-	}
-
-	client := CreateCSIClient(fmt.Sprintf("localhost:%s", port))
-	err = client.AssertCSIConnection()
-	if err != nil {
-		return nil, fmt.Errorf("asserting csi connection failed with: %v", err)
-	}
-
-	return &TestContext{Instance: instance, Client: client}, nil
+	return remote.SetupNewDriverAndClient(instance, config)
 }
 
 func SetupProwConfig() (project, serviceAccount string) {
