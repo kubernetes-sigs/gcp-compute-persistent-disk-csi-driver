@@ -4,6 +4,10 @@ this drive in a production environment in its current state.
 
 DISCLAIMER: This is not an officially supported Google product
 
+Kubernetes Note: setup-cluster.yaml depends on the existence of cluster-roles
+system:csi-external-attacher and system:csi-external-provisioner which are in
+Kubernetes version 1.10.5+
+
 # GCP Compute Persistent Disk CSI Driver
 
 The GCP Compute Persistent Disk CSI Driver is a

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This script will remove the GCP Compute Persistent Disk CSI Driver from the
+# currently available Kubernetes cluster
+
 set -o nounset
 set -o errexit
 
