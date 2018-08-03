@@ -93,9 +93,9 @@ func newDefaultOauthClient() (*http.Client, error) {
 	if gac, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS"); ok {
 		glog.Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
 	} else {
-		glog.Warningf("GOOGLE_APPLICATION_CREDENTIALS env var not set")
+		glog.Warningf("Check GOOGLE_APPLICATION_CREDENTIALS env var not set")
 	}
-	glog.Infof("Using DefaultTokenSource %#v", tokenSource)
+	glog.Infof("Check Using DefaultTokenSource %#v", tokenSource)
 	if err != nil {
 		return nil, err
 	}
