@@ -36,16 +36,21 @@ type GCECompute interface {
 	GetDiskOrError(ctx context.Context, volumeZone, volumeName string) (*compute.Disk, error)
 	GetAndValidateExistingDisk(ctx context.Context, configuredZone, name, diskType string, reqBytes, limBytes int64) (exists bool, err error)
 	InsertDisk(ctx context.Context, zone string, diskToCreate *compute.Disk) (*compute.Operation, error)
+	CreateSnapshot(ctx context.Context, zone, diskName string, snapshotToCreate *compute.Snapshot) (*compute.Operation, error)
+	GetSnapshotOrError(ctx context.Context, snapshotName string) (*compute.Snapshot, error)
+	DeleteSnapshot(ctx context.Context, name string) (*compute.Operation, error)
 	DeleteDisk(ctx context.Context, zone, name string) (*compute.Operation, error)
 	AttachDisk(ctx context.Context, zone, instanceName string, attachedDisk *compute.AttachedDisk) (*compute.Operation, error)
 	DetachDisk(ctx context.Context, volumeZone, instanceName, volumeName string) (*compute.Operation, error)
 	GetDiskSourceURI(disk *compute.Disk, zone string) string
 	GetDiskTypeURI(zone, diskType string) string
 	WaitForAttach(ctx context.Context, zone, diskName, instanceName string) error
+	WaitAndGetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error)
 	// Instance Methods
 	GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*compute.Instance, error)
 	// Operation Methods
 	WaitForOp(ctx context.Context, op *compute.Operation, zone string) error
+	WaitForGlobalOp(ctx context.Context, op *compute.Operation) error
 }
 
 func (cloud *CloudProvider) GetProject() string {
@@ -67,6 +72,23 @@ func (cloud *CloudProvider) GetDiskOrError(ctx context.Context, volumeZone, volu
 	glog.Infof("Got disk %v from zone %v", volumeName, volumeZone)
 	return disk, nil
 }
+
+func (cloud *CloudProvider) GetSnapshotOrError(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	svc := cloud.service
+	project := cloud.project
+	glog.Infof("Getting snapshot %v", snapshotName)
+	snapshot, err := svc.Snapshots.Get(project, snapshotName).Context(ctx).Do()
+	if err != nil {
+		if IsGCEError(err, "notFound") {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("snapshot %v does not exist", snapshotName))
+		}
+
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown snapshot GET error: %v", err))
+	}
+	glog.Infof("Got snapshot %v", snapshot)
+	return snapshot, nil
+}
+
 
 func (cloud *CloudProvider) GetAndValidateExistingDisk(ctx context.Context, configuredZone, name, diskType string, reqBytes, limBytes int64) (exists bool, err error) {
 	svc := cloud.service
@@ -111,8 +133,16 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, zone string, diskToC
 	return cloud.service.Disks.Insert(cloud.project, zone, diskToCreate).Context(ctx).Do()
 }
 
+func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, zone string, diskName string, snapshotToCreate *compute.Snapshot) (*compute.Operation, error) {
+	return cloud.service.Disks.CreateSnapshot(cloud.project, zone, diskName, snapshotToCreate).Context(ctx).Do()
+}
+
 func (cloud *CloudProvider) DeleteDisk(ctx context.Context, zone, name string) (*compute.Operation, error) {
 	return cloud.service.Disks.Delete(cloud.project, zone, name).Context(ctx).Do()
+}
+
+func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, name string) (*compute.Operation, error) {
+	return cloud.service.Snapshots.Delete(cloud.project, name).Context(ctx).Do()
 }
 
 func (cloud *CloudProvider) AttachDisk(ctx context.Context, zone, instanceName string, attachedDisk *compute.AttachedDisk) (*compute.Operation, error) {
@@ -155,6 +185,22 @@ func (cloud *CloudProvider) WaitForOp(ctx context.Context, op *compute.Operation
 	})
 }
 
+
+func (cloud *CloudProvider) WaitForGlobalOp(ctx context.Context, op *compute.Operation) error {
+	svc := cloud.service
+	project := cloud.project
+	// TODO: Double check that these timeouts are reasonable
+	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+		pollOp, err := svc.GlobalOperations.Get(project, op.Name).Context(ctx).Do()
+		if err != nil {
+			glog.Errorf("WaitForOp(op: %#v, zone: %#v) failed to poll the operation", op)
+			return false, err
+		}
+		done := opIsDone(pollOp)
+		return done, err
+	})
+}
+
 func (cloud *CloudProvider) WaitForAttach(ctx context.Context, zone, diskName, instanceName string) error {
 	return wait.Poll(5*time.Second, 2*time.Minute, func() (bool, error) {
 		disk, err := cloud.GetDiskOrError(ctx, zone, diskName)
@@ -174,6 +220,36 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, zone, diskName, i
 		}
 		return false, nil
 	})
+}
+
+// WaitANdGetSnapshot will keep tring to get the VolumeSnapshot response until it is created or failed.
+func (cloud *CloudProvider) WaitAndGetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	timer := time.NewTimer(1*time.Minute)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			glog.V(5).Infof("Checking GCE Snapshot %s.", snapshotName)
+			snapshot, err := cloud.GetSnapshotOrError(ctx, snapshotName)
+			if err != nil {
+				glog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
+			} else if snapshot != nil {
+				if snapshot.Status != "CREATING" {
+					glog.Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
+					return snapshot, nil
+				} else {
+					glog.Infof("Snapshot %s is still creating ...", snapshotName)
+				}
+			}
+		case <-timer.C:
+			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
+		}
+	}
+
+
 }
 
 func opIsDone(op *compute.Operation) bool {

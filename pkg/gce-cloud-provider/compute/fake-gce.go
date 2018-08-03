@@ -33,6 +33,7 @@ type FakeCloudProvider struct {
 
 	disks     map[string]*compute.Disk
 	instances map[string]*compute.Instance
+	snapshots map[string]*compute.Snapshot
 }
 
 var _ GCECompute = &FakeCloudProvider{}
@@ -43,6 +44,7 @@ func FakeCreateCloudProvider(project, zone string) (*FakeCloudProvider, error) {
 		zone:      zone,
 		disks:     map[string]*compute.Disk{},
 		instances: map[string]*compute.Instance{},
+		snapshots: map[string]*compute.Snapshot{},
 	}, nil
 
 }
@@ -62,6 +64,15 @@ func (cloud *FakeCloudProvider) GetDiskOrError(ctx context.Context, volumeZone, 
 		return nil, notFoundError()
 	}
 	return disk, nil
+}
+
+// Disk Methods
+func (cloud *FakeCloudProvider) GetSnapshotOrError(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	snapshot, ok := cloud.snapshots[snapshotName]
+	if !ok {
+		return nil, fmt.Errorf("Snapshot %v not found", snapshotName)
+	}
+	return snapshot, nil
 }
 
 func (cloud *FakeCloudProvider) GetAndValidateExistingDisk(ctx context.Context, configuredZone, name, diskType string, reqBytes, limBytes int64) (exists bool, err error) {
@@ -99,6 +110,11 @@ func (cloud *FakeCloudProvider) GetAndValidateExistingDisk(ctx context.Context, 
 
 func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, zone string, diskToCreate *compute.Disk) (*compute.Operation, error) {
 	cloud.disks[diskToCreate.Name] = diskToCreate
+	return &compute.Operation{}, nil
+}
+
+func (cloud *FakeCloudProvider) DeleteSnapshot(ctx context.Context, name string) (*compute.Operation, error) {
+	delete(cloud.snapshots, name)
 	return &compute.Operation{}, nil
 }
 
@@ -190,4 +206,20 @@ func notFoundError() *googleapi.Error {
 			},
 		},
 	}
+// Operation Methods
+func (cloud *FakeCloudProvider) WaitForGlobalOp(ctx context.Context, op *compute.Operation) error {
+	return nil
+}
+
+func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, zone, diskName string, snapshotToCreate *compute.Snapshot) (*compute.Operation, error) {
+	cloud.snapshots[snapshotToCreate.Name] = snapshotToCreate
+	return &compute.Operation{}, nil
+}
+
+func (cloud *FakeCloudProvider) WaitAndGetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	snapshot, ok := cloud.snapshots[snapshotName]
+	if !ok || snapshot.Status == "CREATING" {
+		return nil, fmt.Errorf("Snapshot %v not found or ready", snapshotName)
+	}
+	return snapshot, nil
 }

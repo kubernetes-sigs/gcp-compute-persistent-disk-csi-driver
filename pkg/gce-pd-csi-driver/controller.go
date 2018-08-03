@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
@@ -447,15 +448,136 @@ func (gceCS *GCEControllerServer) ControllerGetCapabilities(ctx context.Context,
 	}, nil
 }
 
+// CreatSnapshot sends a request to create snapshot to the cloud provider and then waits until the snapshot is created to return the snapshot object back.
 func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	glog.Infof("CreateSnapshot called with request %v", *req)
+	name := req.GetName()
+	sourceId := req.GetSourceVolumeId()
+	volumeZone, volumeName, err := utils.SplitZoneNameId(sourceId)
+	if err != nil {
+		return nil, err
+	}
+	configuredZone := gceCS.CloudProvider.GetZone()
+	glog.Infof("volumezone %s, configuredZone %s", volumeZone, configuredZone)
+
+	if volumeZone != configuredZone {
+		return nil, fmt.Errorf("volumezone %s does not match configuredZone %s", volumeZone, configuredZone)
+	}
+	snapshotToCreate := &compute.Snapshot{
+		Name:        name,
+	}
+
+	createOp, err := gceCS.CloudProvider.CreateSnapshot(ctx, volumeZone, volumeName, snapshotToCreate)
+	if createOp != nil {
+		glog.Infof("Create snapshot operation %v, err %v", createOp, err)
+	}
+	if err != nil {
+		if gce.IsGCEError(err, "alreadyExists") {
+			glog.Warningf("GCE snapshot %s already exists, reusing", name)
+		} else {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("unkown create snapshot error: %v", err))
+		}
+	}
+
+	snapshot, err := gceCS.CloudProvider.WaitAndGetSnapshot(ctx, name)
+	if err != nil {
+		glog.Warning("Fail to get snapshot %s, %v", name, err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unkown create snapshot operation error: %v", err))
+	}
+
+	t, err := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
+	if err !=nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unkown create snapshot operation error: %v", err))
+	}
+	glog.Infof("snapshot timestamp %d", t.UnixNano())
+	var status csi.SnapshotStatus_Type
+	switch snapshot.Status {
+	case "READY":
+			status = csi.SnapshotStatus_READY
+	case "UPLOADING":
+			status = csi.SnapshotStatus_UPLOADING
+	case "FAILED":
+			status = csi.SnapshotStatus_ERROR_UPLOADING
+	case "DELETING":
+		status = csi.SnapshotStatus_READY
+		glog.Infof("snapshot is in DELETING")
+	default:
+		status = csi.SnapshotStatus_UNKNOWN
+	}
+
+	createResp := &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			Id: snapshot.Name,
+			CreatedAt: t.UnixNano(),
+			Status: &csi.SnapshotStatus{
+				Type: status,
+			},
+		},
+	}
+	glog.V(2).Infof("Completed creation of snapshot %v", createResp)
+	return createResp, nil
 }
 
 func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	glog.Infof("Delete called with request %v", *req)
+	snapshotID := req.GetSnapshotId()
+	if len(snapshotID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "DeleteSnapshot Snapshot ID must be provided")
+	}
+
+	deleteOp, err := gceCS.CloudProvider.DeleteSnapshot(ctx, snapshotID)
+	if err != nil {
+		if gce.IsGCEError(err, "resourceInUseByAnotherResource") {
+			return nil, status.Error(codes.FailedPrecondition, fmt.Sprintf("Volume in use: %v", err))
+		}
+		if gce.IsGCEError(err, "notFound") {
+			// Already deleted
+			return &csi.DeleteSnapshotResponse{}, nil
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk error: %v", err))
+	}
+
+	err = gceCS.CloudProvider.WaitForGlobalOp(ctx, deleteOp)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk operation error: %v", err))
+	}
+
+	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	glog.Infof("ListSnapshots called with request %v", *req)
+	if snapshotId := req.GetSnapshotId(); snapshotId != "" {
+	
+		snapshot, err := gceCS.CloudProvider.GetSnapshotOrError(ctx, snapshotId)
+		if err!= nil {
+			return nil, err
+		}
+		var status csi.SnapshotStatus_Type
+		switch snapshot.Status {
+		case "READY":
+				status = csi.SnapshotStatus_READY
+		case "UPLOADING":
+				status = csi.SnapshotStatus_UPLOADING
+		case "FAILED":
+				status = csi.SnapshotStatus_ERROR_UPLOADING
+		}
+		now := time.Now()
+		entry := &csi.ListSnapshotsResponse_Entry {
+			Snapshot: &csi.Snapshot{
+				Id: snapshot.Name,
+				CreatedAt: now.UnixNano(),
+				Status: &csi.SnapshotStatus{
+					Type: status,
+				},
+			},
+		}
+		entries := []*csi.ListSnapshotsResponse_Entry {entry}
+		listSnapshotResp := &csi.ListSnapshotsResponse {
+			Entries: entries,
+		}
+		return listSnapshotResp, nil
+	}
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
