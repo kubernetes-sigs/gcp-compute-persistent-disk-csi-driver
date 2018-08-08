@@ -28,5 +28,6 @@ then
 fi
 
 kubectl apply -f "${KUBEDEPLOY}/setup-cluster.yaml"
+kubectl apply -f "${KUBEDEPLOY}/zonal-sc.yaml"
 kubectl apply -f "${KUBEDEPLOY}/node.yaml"
 kubectl apply -f "${KUBEDEPLOY}/controller.yaml"

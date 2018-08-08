@@ -1,14 +1,3 @@
-apiVersion: storage.k8s.io/v1beta1
-kind: StorageClass
-metadata:
-  name: csi-gce-pd
-provisioner: csi-gce-pd
-parameters:
-  type: pd-standard
-volumeBindingMode: Immediate
-
----
-
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
