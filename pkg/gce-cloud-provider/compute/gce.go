@@ -25,6 +25,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	beta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -32,16 +33,24 @@ import (
 
 const (
 	TokenURL                        = "https://accounts.google.com/o/oauth2/token"
-	diskSourceURITemplateSingleZone = "%s/zones/%s/disks/%s"              // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
-	diskTypeURITemplateSingleZone   = "projects/%s/zones/%s/diskTypes/%s" // projects/{gce.projectID}/zones/{disk.Zone}/diskTypes/{disk.Type}"
+	diskSourceURITemplateSingleZone = "%s/zones/%s/disks/%s"       // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
+	diskSourceURITemplateRegional   = "%s/regions/%s/disks/%s"     //{gce.projectID}/regions/{disk.Region}/disks/repd"
+	diskTypeURITemplateSingleZone   = "%s/zones/%s/diskTypes/%s"   // {gce.projectID}/zones/{disk.Zone}/diskTypes/{disk.Type}"
+	diskTypeURITemplateRegional     = "%s/regions/%s/diskTypes/%s" // {gce.projectID}/regions/{disk.Region}/diskTypes/{disk.Type}"
 
-	gceComputeAPIEndpoint = "https://www.googleapis.com/compute/v1/"
+	regionURITemplate = "projects/%s/regions/%s"
+
+	GCEComputeAPIEndpoint     = "https://www.googleapis.com/compute/v1/"
+	GCEComputeBetaAPIEndpoint = "https://www.googleapis.com/compute/beta/"
+
+	replicaZoneURITemplateSingleZone = "%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 )
 
 type CloudProvider struct {
-	service *compute.Service
-	project string
-	zone    string
+	service     *compute.Service
+	betaService *beta.Service
+	project     string
+	zone        string
 }
 
 var _ GCECompute = &CloudProvider{}
@@ -52,17 +61,36 @@ func CreateCloudProvider(vendorVersion string) (*CloudProvider, error) {
 		return nil, err
 	}
 
+	betasvc, err := createBetaCloudService(vendorVersion)
+	if err != nil {
+		return nil, err
+	}
+
 	project, zone, err := getProjectAndZoneFromMetadata()
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting Project and Zone from Metadata server: %v", err)
 	}
 
 	return &CloudProvider{
-		service: svc,
-		project: project,
-		zone:    zone,
+		service:     svc,
+		betaService: betasvc,
+		project:     project,
+		zone:        zone,
 	}, nil
 
+}
+
+func createBetaCloudService(vendorVersion string) (*beta.Service, error) {
+	client, err := newDefaultOauthClient()
+	if err != nil {
+		return nil, err
+	}
+	service, err := beta.New(client)
+	if err != nil {
+		return nil, err
+	}
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
+	return service, nil
 }
 
 func createCloudService(vendorVersion string) (*compute.Service, error) {
@@ -91,11 +119,11 @@ func newDefaultOauthClient() (*http.Client, error) {
 		compute.CloudPlatformScope,
 		compute.ComputeScope)
 	if gac, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS"); ok {
-		glog.Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
+		glog.V(4).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
 	} else {
 		glog.Warningf("GOOGLE_APPLICATION_CREDENTIALS env var not set")
 	}
-	glog.Infof("Using DefaultTokenSource %#v", tokenSource)
+	glog.V(4).Infof("Using DefaultTokenSource %#v", tokenSource)
 	if err != nil {
 		return nil, err
 	}

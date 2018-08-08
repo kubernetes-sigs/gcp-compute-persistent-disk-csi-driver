@@ -16,8 +16,11 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
+	"sort"
 	"testing"
+	"time"
 
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
@@ -333,7 +336,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 						Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "fake-second-zone"},
+						Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
 					},
 				},
 			},
@@ -945,7 +948,8 @@ func TestPickZonesFromTopology(t *testing.T) {
 	}
 }
 
-func TestPickRandNFromSlice(t *testing.T) {
+func TestPickRandAndConsecutive(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
 	testCases := []struct {
 		name   string
 		slice  []string
@@ -977,8 +981,9 @@ func TestPickRandNFromSlice(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		tot := sets.String{}
+		sort.Strings(tc.slice)
 		for i := 0; i < 25; i++ {
-			theslice, err := pickRandNFromSlice(tc.slice, tc.n)
+			theslice, err := pickRandAndConsecutive(tc.slice, tc.n)
 			if err != nil && !tc.expErr {
 				t.Errorf("Did not expect error but got: %v", err)
 			}
@@ -991,6 +996,23 @@ func TestPickRandNFromSlice(t *testing.T) {
 			if len(theslice) != tc.n {
 				t.Errorf("expected the resulting slice to be length %v, but got %v instead", tc.n, theslice)
 			}
+			// Find where it is in the slice
+			var idx = -1
+			for j, elem := range tc.slice {
+				if elem == theslice[0] {
+					idx = j
+					break
+				}
+			}
+			if idx == -1 {
+				t.Errorf("could not find %v in the original slice %v", theslice[0], tc.slice)
+			}
+			for j := 0; j < tc.n; j++ {
+				if theslice[j] != tc.slice[(idx+j)%len(tc.slice)] {
+					t.Errorf("did not pick sorted consecutive values from the slice")
+				}
+			}
+
 			tot.Insert(theslice...)
 		}
 		if !tot.Equal(sets.NewString(tc.slice...)) {

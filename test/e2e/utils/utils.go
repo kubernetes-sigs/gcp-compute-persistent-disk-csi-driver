@@ -104,6 +104,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 	// Default Compute Engine service account
 	// [PROJECT_NUMBER]-compute@developer.gserviceaccount.com
 	serviceAccount = fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
+	glog.V(4).Infof("Using project %v", project)
 	return project, serviceAccount
 }
 

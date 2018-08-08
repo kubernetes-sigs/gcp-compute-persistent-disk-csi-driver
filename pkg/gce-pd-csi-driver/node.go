@@ -17,6 +17,7 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -44,7 +45,7 @@ var _ csi.NodeServer = &GCENodeServer{}
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	ns.mux.Lock()
 	defer ns.mux.Unlock()
-	glog.Infof("NodePublishVolume called with req: %#v", req)
+	glog.V(4).Infof("NodePublishVolume called with req: %#v", req)
 
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
@@ -71,7 +72,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, err
 	}
 	if !notMnt {
-		// TODO(dyzz): check if mount is compatible. Return OK if it is, or appropriate error.
+		// TODO: check if mount is compatible. Return OK if it is, or appropriate error.
 		return nil, nil
 	}
 
@@ -121,7 +122,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	ns.mux.Lock()
 	defer ns.mux.Unlock()
-	glog.Infof("NodeUnpublishVolume called with args: %v", req)
+	glog.V(4).Infof("NodeUnpublishVolume called with args: %v", req)
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
 	volID := req.GetVolumeId()
@@ -145,7 +146,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	ns.mux.Lock()
 	defer ns.mux.Unlock()
-	glog.Infof("NodeStageVolume called with req: %#v", req)
+	glog.V(4).Infof("NodeStageVolume called with req: %#v", req)
 
 	// Validate Arguments
 	volumeID := req.GetVolumeId()
@@ -161,7 +162,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
 
-	_, volumeName, err := common.SplitZoneNameId(volumeID)
+	volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,17 +173,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// TODO: Get real partitions
 	partition := ""
 
-	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(volumeName, partition)
+	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(volumeKey.Name, partition)
 	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
 
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error verifying GCE PD (%q) is attached: %v", volumeName, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err))
 	}
 	if devicePath == "" {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to find device path out of attempted paths: %v", devicePaths))
 	}
 
-	glog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeName, devicePath)
+	glog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
 	// Part 2: Check if mount already exists at targetpath
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
@@ -235,7 +236,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	ns.mux.Lock()
 	defer ns.mux.Unlock()
-	glog.Infof("NodeUnstageVolume called with req: %#v", req)
+	glog.V(4).Infof("NodeUnstageVolume called with req: %#v", req)
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
@@ -254,15 +255,17 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 }
 
 func (ns *GCENodeServer) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	glog.Infof("NodeGetId called with req: %#v", req)
+	glog.V(4).Infof("NodeGetId called with req: %#v", req)
+
+	nodeID := strings.Join([]string{ns.MetadataService.GetZone(), ns.MetadataService.GetName()}, "/")
 
 	return &csi.NodeGetIdResponse{
-		NodeId: ns.Driver.nodeID,
+		NodeId: nodeID,
 	}, nil
 }
 
 func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	glog.Infof("NodeGetCapabilities called with req: %#v", req)
+	glog.V(4).Infof("NodeGetCapabilities called with req: %#v", req)
 
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: ns.Driver.nscap,
@@ -270,14 +273,16 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 }
 
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	glog.Infof("NodeGetInfo called with req: %#v", req)
+	glog.V(4).Infof("NodeGetInfo called with req: %#v", req)
 
 	top := &csi.Topology{
 		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
+	nodeID := strings.Join([]string{ns.MetadataService.GetZone(), ns.MetadataService.GetName()}, "/")
+
 	resp := &csi.NodeGetInfoResponse{
-		NodeId: ns.Driver.nodeID,
+		NodeId: nodeID,
 		// TODO: Set MaxVolumesPerNode based on Node Type
 		// Default of 0 means that CO Decides how many nodes can be published
 		// Can get from metadata server "machine-type"

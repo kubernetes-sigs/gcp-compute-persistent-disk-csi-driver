@@ -220,5 +220,5 @@ var _ = Describe("GCE PD CSI Driver", func() {
 })
 
 func Logf(format string, args ...interface{}) {
-	fmt.Fprint(GinkgoWriter, args...)
+	fmt.Fprintf(GinkgoWriter, format, args...)
 }

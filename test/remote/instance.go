@@ -172,7 +172,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
-		glog.Infof("Instance %v in state RUNNING and vailable by SSH", i.name)
+		glog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.name)
 		return true, nil
 	})
 
@@ -227,7 +227,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 	glog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
 
 	if _, err = i.computeService.Firewalls.Get(i.project, defaultFirewallRule).Do(); err != nil {
-		glog.Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
+		glog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
 		f := &compute.Firewall{
 			Name: defaultFirewallRule,
 			Allowed: []*compute.FirewallAllowed{
@@ -242,7 +242,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
 		}
 	} else {
-		glog.Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+		glog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
 	}
 	return nil
 }

@@ -27,12 +27,14 @@ import (
 type MetadataService interface {
 	GetZone() string
 	GetProject() string
+	GetName() string
 }
 
 type metadataServiceManager struct {
 	// Current zone the driver is running in
 	zone    string
 	project string
+	name    string
 }
 
 var _ MetadataService = &metadataServiceManager{}
@@ -46,10 +48,15 @@ func NewMetadataService() (MetadataService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project: %v", err)
 	}
+	name, err := metadata.InstanceName()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance name: %v", err)
+	}
 
 	return &metadataServiceManager{
 		project: projectID,
 		zone:    zone,
+		name:    name,
 	}, nil
 }
 
@@ -59,4 +66,8 @@ func (manager *metadataServiceManager) GetZone() string {
 
 func (manager *metadataServiceManager) GetProject() string {
 	return manager.project
+}
+
+func (manager *metadataServiceManager) GetName() string {
+	return manager.name
 }

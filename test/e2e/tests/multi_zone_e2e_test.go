@@ -21,6 +21,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -117,13 +118,20 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		})
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-		// TODO: Validate Disk Created
+		// Validate Disk Created
 		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		zonesSet := sets.NewString(zones...)
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			Expect(zonesSet.Has(actualZone)).To(BeTrue(), "Expected zone %v to exist in zone set %v", actualZone, zones)
+		}
 
 		defer func() {
 			// Delete Disk
@@ -153,9 +161,10 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 func testAttachWriteReadDetach(volId string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) {
 	var err error
 
+	Logf("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volId, instance.GetNodeID(), readOnly)
 	// Attach Disk
 	err = client.ControllerPublishVolume(volId, instance.GetNodeID())
-	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error")
+	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v", volId, instance.GetNodeID())
 
 	defer func() {
 
@@ -212,4 +221,5 @@ func testAttachWriteReadDetach(volId string, volName string, instance *remote.In
 	err = client.NodeUnpublishVolume(volId, secondPublishDir)
 	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
+	Logf("Completed testAttachWriteReadDetach with volume %v node %v\n", volId, instance.GetNodeID())
 }

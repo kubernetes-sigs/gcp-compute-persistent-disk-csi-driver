@@ -58,15 +58,17 @@ var _ = BeforeSuite(func() {
 	betaComputeService, err = remote.GetBetaComputeClient()
 	Expect(err).To(BeNil())
 
+	if *runInProw {
+		*project, *serviceAccount = testutils.SetupProwConfig()
+	}
+
+	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
+	Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
+
+	Logf("Running in project %v with service account %v\n\n", *project, *serviceAccount)
+
 	for _, zone := range zones {
 		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
-
-		if *runInProw {
-			*project, *serviceAccount = testutils.SetupProwConfig()
-		}
-
-		Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
-		Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
 		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
 		Expect(err).To(BeNil())
