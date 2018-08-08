@@ -15,6 +15,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -22,6 +23,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -30,11 +32,11 @@ import (
 )
 
 const (
-	project      = "test-project"
-	zone         = "test-zone"
-	node         = "test-node"
-	driver       = "test-driver"
-	testVolumeId = zone + "/" + "test-vol"
+	project = metadataservice.FakeProject
+	zone    = metadataservice.FakeZone
+	node    = "test-node"
+	driver  = "test-driver"
+	name    = "test-name"
 )
 
 var (
@@ -53,14 +55,16 @@ var (
 		RequiredBytes: common.GbToBytes(20),
 	}
 	stdParams = map[string]string{
-		common.ParameterKeyZone: zone,
 		common.ParameterKeyType: "test-type",
 	}
 	stdTopology = []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
 		},
 	}
+	testVolumeId   = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
+	region, _      = common.GetRegionFromZones([]string{zone})
+	testRegionalId = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
 )
 
 func TestCreateVolumeArguments(t *testing.T) {
@@ -73,9 +77,9 @@ func TestCreateVolumeArguments(t *testing.T) {
 		expErrCode codes.Code
 	}{
 		{
-			name: "success normal",
+			name: "success default",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 				Parameters:         stdParams,
@@ -100,7 +104,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success no capacity range",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				VolumeCapabilities: stdVolCap,
 				Parameters:         stdParams,
 			},
@@ -114,7 +118,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "fail no capabilities",
 			req: &csi.CreateVolumeRequest{
-				Name:          "test-vol",
+				Name:          "test-name",
 				CapacityRange: stdCapRange,
 				Parameters:    stdParams,
 			},
@@ -123,7 +127,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success no params",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 			},
@@ -137,7 +141,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success with random secrets",
 			req: &csi.CreateVolumeRequest{
-				Name:                    "test-vol",
+				Name:                    "test-name",
 				CapacityRange:           stdCapRange,
 				VolumeCapabilities:      stdVolCap,
 				Parameters:              stdParams,
@@ -153,7 +157,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success with topology",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 				Parameters:         map[string]string{"type": "test-type"},
@@ -167,7 +171,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            "topology-zone/test-vol",
+				Id:            fmt.Sprintf("projects/%s/zones/topology-zone/disks/%s", metadataservice.FakeProject, name),
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
@@ -179,7 +183,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success with picking first preferred topology",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 				Parameters:         map[string]string{"type": "test-type"},
@@ -210,7 +214,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            "topology-zone2/test-vol",
+				Id:            fmt.Sprintf("projects/%s/zones/topology-zone2/disks/%s", metadataservice.FakeProject, name),
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
@@ -220,26 +224,9 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "fail with zone specified in both topology and params",
-			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
-				Parameters:         stdParams,
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
-						},
-					},
-				},
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
 			name: "fail with extra topology",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 				Parameters:         stdParams,
@@ -256,7 +243,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "fail with missing topology zone",
 			req: &csi.CreateVolumeRequest{
-				Name:               "test-vol",
+				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCap,
 				Parameters:         stdParams,
@@ -270,6 +257,87 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		// RePD Tests
+		{
+			name: "success with topology with repd",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         map[string]string{common.ParameterKeyReplicationType: replicationTypeRegionalPD},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				Id:            testRegionalId,
+				Attributes:    nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+					},
+				},
+			},
+		},
+		{
+			name: "fail not enough topology with repd",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters: map[string]string{
+					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "success with no toplogy specified with repd",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters: map[string]string{
+					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				Id:            testRegionalId,
+				Attributes:    nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "fake-second-zone"},
+					},
+				},
+			},
+		},
 	}
 
 	// Run test cases
@@ -281,7 +349,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, "vendor-version")
+		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
 		if err != nil {
 			t.Fatalf("Failed to setup GCE Driver: %v", err)
 		}
@@ -295,7 +363,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				t.Fatalf("Could not get error status code from err: %v", serverError)
 			}
 			if serverError.Code() != tc.expErrCode {
-				t.Fatalf("Expected error code: %v, got: %v", tc.expErrCode, serverError.Code())
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
 			}
 			continue
 		}
@@ -311,15 +379,22 @@ func TestCreateVolumeArguments(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(vol, tc.expVol) {
-			t.Fatalf("Expected volume: %#v\nTopology %#v\n\n to equal volume: %#v\nTopology %#v\n\n",
+			errStr := fmt.Sprintf("Expected volume: %#v\nTopology %#v\n\n to equal volume: %#v\nTopology %#v\n\n",
 				vol, vol.GetAccessibleTopology()[0], tc.expVol, tc.expVol.GetAccessibleTopology()[0])
+			if len(vol.GetAccessibleTopology()) != len(tc.expVol.GetAccessibleTopology()) {
+				t.Errorf("Accessible topologies are not the same length, got %v, expected %v", len(vol.GetAccessibleTopology()), len(tc.expVol.GetAccessibleTopology()))
+			}
+			for i := 0; i < len(vol.GetAccessibleTopology()); i++ {
+				errStr = errStr + fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
+			}
+			t.Errorf(errStr)
 		}
 	}
 }
 
 func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 	req := &csi.CreateVolumeRequest{
-		Name:               "test-vol",
+		Name:               "test-name",
 		CapacityRange:      stdCapRange,
 		VolumeCapabilities: stdVolCap,
 		Parameters:         map[string]string{"type": "test-type"},
@@ -343,14 +418,14 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, "vendor-version")
+	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 
 	tZones := map[string]bool{}
 	// Start Test
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 25; i++ {
 		resp, err := gceDriver.cs.CreateVolume(context.TODO(), req)
 		if err != nil {
 			t.Fatalf("CreateVolume did not expect error, but got %v", err)
@@ -561,7 +636,7 @@ func TestDiskIsAttached(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		if attached := diskIsAttached(tc.disk, tc.instance); attached != tc.expAttached {
+		if attached := diskIsAttached(gce.ZonalCloudDisk(tc.disk), tc.instance); attached != tc.expAttached {
 			t.Errorf("Expected disk attached to be %v, but got %v", tc.expAttached, attached)
 		}
 	}
@@ -628,7 +703,7 @@ func TestDiskIsAttachedAndCompatible(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		attached, err := diskIsAttachedAndCompatible(tc.disk, tc.instance, nil, tc.mode)
+		attached, err := diskIsAttachedAndCompatible(gce.ZonalCloudDisk(tc.disk), tc.instance, nil, tc.mode)
 		if err != nil && !tc.expErr {
 			t.Errorf("Did not expect error but got: %v", err)
 		}
@@ -638,5 +713,289 @@ func TestDiskIsAttachedAndCompatible(t *testing.T) {
 		if attached != tc.expAttached {
 			t.Errorf("Expected disk attached to be %v, but got %v", tc.expAttached, attached)
 		}
+	}
+}
+
+func TestGetZonesFromTopology(t *testing.T) {
+	testCases := []struct {
+		name     string
+		topology []*csi.Topology
+		expZones sets.String
+		expErr   bool
+	}{
+		{
+			name: "succes: normal",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+				},
+			},
+			expZones: sets.NewString([]string{"test-zone"}...),
+		},
+		{
+			name: "succes: multiple topologies",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+				},
+			},
+			expZones: sets.NewString([]string{"test-zone", "test-zone2"}...),
+		},
+		{
+			name: "fail: wrong key",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+				},
+				{
+					Segments: map[string]string{"fake-key": "fake-value"},
+				},
+			},
+			expErr: true,
+		},
+		{
+			name: "success: duplicate",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+				},
+			},
+			expZones: sets.NewString([]string{"test-zone"}...),
+		},
+		{
+			name:     "success: empty",
+			topology: []*csi.Topology{},
+			expZones: sets.NewString(),
+		},
+		{
+			name: "fail: wrong key inside",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+				},
+			},
+			expErr: true,
+		},
+		{
+			name:     "success: no topology",
+			expZones: sets.NewString(),
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotZones, err := getZonesFromTopology(tc.topology)
+		if err != nil && !tc.expErr {
+			t.Errorf("Did not expect error but got: %v", err)
+		}
+		if err == nil && tc.expErr {
+			t.Errorf("Expected error but got none")
+		}
+
+		gotZonesSet := sets.NewString(gotZones...)
+		if !gotZonesSet.Equal(tc.expZones) {
+			t.Errorf("Expected zones: %v, instead got: %v", tc.expZones, gotZonesSet)
+		}
+	}
+}
+
+func TestPickZonesFromTopology(t *testing.T) {
+	testCases := []struct {
+		name     string
+		top      *csi.TopologyRequirement
+		numZones int
+		expZones []string
+		expErr   bool
+	}{
+		{
+			name: "success: preferred",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+				},
+			},
+			numZones: 2,
+			expZones: []string{"topology-zone2", "topology-zone3"},
+		},
+		{
+			name: "success: preferred and requisite",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone5"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone6"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+				},
+			},
+			numZones: 5,
+			expZones: []string{"topology-zone2", "topology-zone3", "topology-zone1", "topology-zone5", "topology-zone6"},
+		},
+		{
+			name: "fail: not enough topologies",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+				},
+			},
+			numZones: 4,
+			expErr:   true,
+		},
+		{
+			name: "success: only requisite",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					},
+				},
+			},
+			numZones: 3,
+			expZones: []string{"topology-zone2", "topology-zone3", "topology-zone1"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotZones, err := pickZonesFromTopology(tc.top, tc.numZones)
+		if err != nil && !tc.expErr {
+			t.Errorf("Did not expect error but got: %v", err)
+		}
+		if err == nil && tc.expErr {
+			t.Errorf("Expected error but got none")
+		}
+		if !sets.NewString(gotZones...).Equal(sets.NewString(tc.expZones...)) {
+			t.Errorf("Expected zones: %v, but got: %v", tc.expZones, gotZones)
+		}
+	}
+}
+
+func TestPickRandNFromSlice(t *testing.T) {
+	testCases := []struct {
+		name   string
+		slice  []string
+		n      int
+		expErr bool
+	}{
+		{
+			name:  "success: normal",
+			slice: []string{"test", "second", "third"},
+			n:     2,
+		},
+		{
+			name:  "success: full",
+			slice: []string{"test", "second", "third"},
+			n:     3,
+		},
+		{
+			name:  "success: large",
+			slice: []string{"test", "second", "third", "fourth", "fifth", "sixth"},
+			n:     2,
+		},
+		{
+			name:   "fail: n too large",
+			slice:  []string{},
+			n:      2,
+			expErr: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		tot := sets.String{}
+		for i := 0; i < 25; i++ {
+			theslice, err := pickRandNFromSlice(tc.slice, tc.n)
+			if err != nil && !tc.expErr {
+				t.Errorf("Did not expect error but got: %v", err)
+			}
+			if err == nil && tc.expErr {
+				t.Errorf("Expected error but got none")
+			}
+			if err != nil {
+				break
+			}
+			if len(theslice) != tc.n {
+				t.Errorf("expected the resulting slice to be length %v, but got %v instead", tc.n, theslice)
+			}
+			tot.Insert(theslice...)
+		}
+		if !tot.Equal(sets.NewString(tc.slice...)) {
+			t.Errorf("randomly picking n from slice did not get all %v, instead got only %v", tc.slice, tot)
+		}
+
 	}
 }

@@ -45,8 +45,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s --nodeid=%s > %s/prog.out 2> %s/prog.err < /dev/null &'",
-		workspace, endpoint, instance.GetName(), workspace, workspace)
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s> %s/prog.out 2> %s/prog.err < /dev/null &'",
+		workspace, endpoint, workspace, workspace)
 
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
@@ -66,7 +66,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 
 	p, err := boskos.Acquire("gce-project", "free", "busy")
 	if err != nil {
-		glog.Fatal("boskos failed to acquire project: %v", err)
+		glog.Fatalf("boskos failed to acquire project: %v", err)
 	}
 
 	if p == nil {
@@ -78,7 +78,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 	go func(c *boskosclient.Client, proj string) {
 		for range time.Tick(time.Minute * 5) {
 			if err := c.UpdateOne(p.Name, "busy", nil); err != nil {
-				glog.Warningf("[Boskos] Update %s failed with %v", p, err)
+				glog.Warningf("[Boskos] Update %s failed with %v", p.Name, err)
 			}
 		}
 	}(boskos, p.Name)
@@ -98,7 +98,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 
 	resp, err := cloudresourcemanagerService.Projects.Get(project).Do()
 	if err != nil {
-		glog.Fatal("Failed to get project %v from Cloud Resource Manager: %v", project, err)
+		glog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", project, err)
 	}
 
 	// Default Compute Engine service account

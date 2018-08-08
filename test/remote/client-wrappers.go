@@ -22,6 +22,7 @@ import (
 	csipb "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -37,6 +38,9 @@ var (
 	}
 	stdVolCaps = []*csipb.VolumeCapability{
 		stdVolCap,
+	}
+	stdCapRange = &csipb.CapacityRange{
+		RequiredBytes: common.GbToBytes(20),
 	}
 )
 
@@ -87,10 +91,15 @@ func (c *CsiClient) CloseConn() error {
 	return c.conn.Close()
 }
 
-func (c *CsiClient) CreateVolume(volName string, topReq *csipb.TopologyRequirement) (string, error) {
+func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement) (string, error) {
+	capRange := &csipb.CapacityRange{
+		RequiredBytes: common.GbToBytes(sizeInGb),
+	}
 	cvr := &csipb.CreateVolumeRequest{
 		Name:               volName,
 		VolumeCapabilities: stdVolCaps,
+		Parameters:         params,
+		CapacityRange:      capRange,
 	}
 	if topReq != nil {
 		cvr.AccessibilityRequirements = topReq

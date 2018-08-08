@@ -28,7 +28,7 @@ func initGCEDriver(t *testing.T) *GCEDriver {
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, node, vendorVersion)
+	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
