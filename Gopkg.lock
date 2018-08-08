@@ -198,6 +198,8 @@
   name = "google.golang.org/api"
   packages = [
     "cloudresourcemanager/v1",
+    "compute/v0.alpha",
+    "compute/v0.beta",
     "compute/v1",
     "gensupport",
     "googleapi",
@@ -279,6 +281,7 @@
 [[projects]]
   name = "k8s.io/kubernetes"
   packages = [
+    "pkg/cloudprovider/providers/gce/cloud/meta",
     "pkg/util/file",
     "pkg/util/io",
     "pkg/util/mount",
@@ -306,6 +309,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "52dfe28773229d8cbf1622d274e5f1bf9b9b263f3edb684802cc87095162a5c4"
+  inputs-digest = "fb90607ca6d8901d69d05924ed4f806175e26d643234a7417b3c4f7f694234e1"
   solver-name = "gps-cdcl"
   solver-version = 1
