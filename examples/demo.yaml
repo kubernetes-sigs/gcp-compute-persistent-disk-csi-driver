@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mypvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: csi-gce-pd
+
+---
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: sleepypod
+spec:
+  replicas: 1
+  selector:
+    name: sleepy
+  template:
+    metadata:
+      labels:
+        name: sleepy
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: mypvc
+      containers:
+      - name: sleepycontainer
+        image: gcr.io/google_containers/busybox
+        command:
+          - sleep
+          - "6000"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          readOnly: false
