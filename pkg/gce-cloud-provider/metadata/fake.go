@@ -20,14 +20,24 @@ type fakeServiceManager struct{}
 
 var _ MetadataService = &fakeServiceManager{}
 
+const (
+	FakeZone       = "country-region-zone"
+	FakeSecondZone = "country-region-zone2"
+	FakeProject    = "test-project"
+)
+
 func NewFakeService() MetadataService {
 	return &fakeServiceManager{}
 }
 
 func (manager *fakeServiceManager) GetZone() string {
-	return "test-location"
+	return FakeZone
 }
 
 func (manager *fakeServiceManager) GetProject() string {
-	return "test-project"
+	return FakeProject
+}
+
+func (manager *fakeServiceManager) GetName() string {
+	return "test-name"
 }

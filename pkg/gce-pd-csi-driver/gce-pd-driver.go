@@ -29,7 +29,6 @@ import (
 
 type GCEDriver struct {
 	name          string
-	nodeID        string
 	vendorVersion string
 
 	ids *GCEIdentityServer
@@ -46,16 +45,12 @@ func GetGCEDriver() *GCEDriver {
 }
 
 func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter *mount.SafeFormatAndMount,
-	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, nodeID, vendorVersion string) error {
+	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, vendorVersion string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
-	if nodeID == "" {
-		return fmt.Errorf("NodeID missing")
-	}
 
 	gceDriver.name = name
-	gceDriver.nodeID = nodeID
 	gceDriver.vendorVersion = vendorVersion
 
 	// Adding Capabilities
@@ -77,7 +72,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 	// Set up RPC Servers
 	gceDriver.ids = NewIdentityServer(gceDriver)
 	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils, meta)
-	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider)
+	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider, meta)
 
 	return nil
 }
@@ -85,7 +80,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 func (gceDriver *GCEDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) error {
 	var vca []*csi.VolumeCapability_AccessMode
 	for _, c := range vc {
-		glog.Infof("Enabling volume access mode: %v", c.String())
+		glog.V(4).Infof("Enabling volume access mode: %v", c.String())
 		vca = append(vca, NewVolumeCapabilityAccessMode(c))
 	}
 	gceDriver.vcap = vca
@@ -95,7 +90,7 @@ func (gceDriver *GCEDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapabi
 func (gceDriver *GCEDriver) AddControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_Type) error {
 	var csc []*csi.ControllerServiceCapability
 	for _, c := range cl {
-		glog.Infof("Enabling controller service capability: %v", c.String())
+		glog.V(4).Infof("Enabling controller service capability: %v", c.String())
 		csc = append(csc, NewControllerServiceCapability(c))
 	}
 	gceDriver.cscap = csc
@@ -105,7 +100,7 @@ func (gceDriver *GCEDriver) AddControllerServiceCapabilities(cl []csi.Controller
 func (gceDriver *GCEDriver) AddNodeServiceCapabilities(nl []csi.NodeServiceCapability_RPC_Type) error {
 	var nsc []*csi.NodeServiceCapability
 	for _, n := range nl {
-		glog.Infof("Enabling node service capability: %v", n.String())
+		glog.V(4).Infof("Enabling node service capability: %v", n.String())
 		nsc = append(nsc, NewNodeServiceCapability(n))
 	}
 	gceDriver.nscap = nsc
@@ -141,15 +136,16 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, meta metadataservice.MetadataService) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:        gceDriver,
-		CloudProvider: cloudProvider,
+		Driver:          gceDriver,
+		CloudProvider:   cloudProvider,
+		MetadataService: meta,
 	}
 }
 
 func (gceDriver *GCEDriver) Run(endpoint string) {
-	glog.Infof("Driver: %v", gceDriver.name)
+	glog.V(4).Infof("Driver: %v", gceDriver.name)
 
 	//Start the nonblocking GRPC
 	s := NewNonBlockingGRPCServer()

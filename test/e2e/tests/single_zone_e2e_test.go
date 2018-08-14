@@ -16,7 +16,6 @@ package tests
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -58,7 +57,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := client.CreateVolume(volName, nil)
+		volId, err := client.CreateVolume(volName, nil, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			})
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// TODO: Validate Disk Created
@@ -80,61 +86,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err = client.ControllerPublishVolume(volId, instance.GetName())
-		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error")
-
-		defer func() {
-			// Detach Disk
-			err := client.ControllerUnpublishVolume(volId, instance.GetName())
-			Expect(err).To(BeNil(), "ControllerUnpublishVolume failed with error")
-		}()
-
-		// Stage Disk
-		stageDir := filepath.Join("/tmp/", volName, "stage")
-		client.NodeStageVolume(volId, stageDir)
-		Expect(err).To(BeNil(), "NodeStageVolume failed with error")
-
-		defer func() {
-			// Unstage Disk
-			err := client.NodeUnstageVolume(volId, stageDir)
-			Expect(err).To(BeNil(), "NodeUnstageVolume failed with error")
-			err = testutils.RmAll(instance, filepath.Join("/tmp/", volName))
-			Expect(err).To(BeNil(), "Failed to remove temp directory")
-		}()
-
-		// Mount Disk
-		publishDir := filepath.Join("/tmp/", volName, "mount")
-		err = client.NodePublishVolume(volId, stageDir, publishDir)
-		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
-		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-		Expect(err).To(BeNil(), "Chmod failed with error")
-
-		// Write a file
-		testFileContents := "test"
-		testFile := filepath.Join(publishDir, "testfile")
-		err = testutils.WriteFile(instance, testFile, testFileContents)
-		Expect(err).To(BeNil(), "Failed to write file")
-
-		// Unmount Disk
-		err = client.NodeUnpublishVolume(volId, publishDir)
-		Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
-
-		// Mount disk somewhere else
-		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
-		err = client.NodePublishVolume(volId, stageDir, secondPublishDir)
-		Expect(err).To(BeNil(), "NodePublishVolume failed with error")
-		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-		Expect(err).To(BeNil(), "Chmod failed with error")
-
-		// Read File
-		secondTestFile := filepath.Join(secondPublishDir, "testfile")
-		readContents, err := testutils.ReadFile(instance, secondTestFile)
-		Expect(err).To(BeNil(), "ReadFile failed with error")
-		Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
-
-		// Unmount Disk
-		err = client.NodeUnpublishVolume(volId, secondPublishDir)
-		Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
+		testAttachWriteReadDetach(volId, volName, instance, client, false /* readOnly */)
 
 	})
 
@@ -161,7 +113,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 					},
 				},
 			}
-			volID, err := testContext.Client.CreateVolume(volName, topReq)
+			volID, err := testContext.Client.CreateVolume(volName, nil, defaultSizeGb, topReq)
 			Expect(err).To(BeNil(), "Failed to create volume")
 			defer func() {
 				err = testContext.Client.DeleteVolume(volID)
@@ -174,11 +126,99 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	})
 
-	// Test volume already exists
+	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
+		// Create new driver and client
+		Expect(testInstances).NotTo(BeEmpty())
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
+		Expect(err).To(BeNil(), "Failed to set up new driver and client")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volId, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultSizeGb, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// TODO: Validate Disk Created
+		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// TODO: Validate Disk Deleted
+			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should create and delete disk with default zone", func() {
+		// Create new driver and client
+		Expect(testInstances).NotTo(BeEmpty())
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
+		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volId, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// TODO: Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		defer func() {
+			// Delete Disk
+			client.DeleteVolume(volId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// TODO: Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	// Test volume already exists idempotency
 
 	// Test volume with op pending
 })
 
 func Logf(format string, args ...interface{}) {
-	fmt.Fprint(GinkgoWriter, args...)
+	fmt.Fprintf(GinkgoWriter, format, args...)
 }

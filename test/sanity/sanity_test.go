@@ -28,7 +28,6 @@ import (
 func TestSanity(t *testing.T) {
 	// Set up variables
 	driverName := "test-driver"
-	nodeID := "io.kubernetes.storage.mock"
 	project := "test-project"
 	zone := "test-zone"
 	vendorVersion := "test-version"
@@ -47,16 +46,16 @@ func TestSanity(t *testing.T) {
 	deviceUtils := mountmanager.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, metadataservice.NewFakeService(), driverName, nodeID, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, metadataservice.NewFakeService(), driverName, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
 
 	instance := &compute.Instance{
-		Name:  nodeID,
+		Name:  "test-name",
 		Disks: []*compute.AttachedDisk{},
 	}
-	cloudProvider.InsertInstance(instance, nodeID)
+	cloudProvider.InsertInstance(instance, "test-location", "test-name")
 
 	go func() {
 		gceDriver.Run(endpoint)

@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
@@ -34,8 +35,9 @@ var (
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 
-	testInstances  = []*remote.InstanceInfo{}
-	computeService *compute.Service
+	testInstances      = []*remote.InstanceInfo{}
+	computeService     *compute.Service
+	betaComputeService *computebeta.Service
 )
 
 func TestE2E(t *testing.T) {
@@ -53,15 +55,20 @@ var _ = BeforeSuite(func() {
 	computeService, err = remote.GetComputeClient()
 	Expect(err).To(BeNil())
 
+	betaComputeService, err = remote.GetBetaComputeClient()
+	Expect(err).To(BeNil())
+
+	if *runInProw {
+		*project, *serviceAccount = testutils.SetupProwConfig()
+	}
+
+	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
+	Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
+
+	Logf("Running in project %v with service account %v\n\n", *project, *serviceAccount)
+
 	for _, zone := range zones {
 		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
-
-		if *runInProw {
-			*project, *serviceAccount = testutils.SetupProwConfig()
-		}
-
-		Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
-		Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
 		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
 		Expect(err).To(BeNil())

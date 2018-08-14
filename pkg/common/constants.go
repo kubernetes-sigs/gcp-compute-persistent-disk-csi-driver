@@ -18,8 +18,8 @@ package common
 
 const (
 	// Keys for Storage Class Parameters
-	ParameterKeyZone = "zone"
-	ParameterKeyType = "type"
+	ParameterKeyType            = "type"
+	ParameterKeyReplicationType = "replication-type"
 
 	// Keys for Topology. This key will be shared amonst drivers from GCP
 	TopologyKeyZone = "com.google.topology/zone"

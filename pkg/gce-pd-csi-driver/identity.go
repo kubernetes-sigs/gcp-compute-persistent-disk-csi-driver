@@ -63,6 +63,6 @@ func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context,
 }
 
 func (gceIdentity *GCEIdentityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	glog.Infof("Probe called with args: %#v", req)
+	glog.V(4).Infof("Probe called with args: %#v", req)
 	return &csi.ProbeResponse{}, nil
 }
