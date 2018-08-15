@@ -17,9 +17,14 @@
 set -o nounset
 set -o errexit
 
-. $(dirname $0)/common.sh
-
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+
+source "${PKGDIR}/deploy/common.sh"
+
+ensure_var PROJECT
+ensure_var GCE_PD_SA_NAME
+ensure_var GCE_PD_SA_DIR
+
 readonly KUBEDEPLOY="${PKGDIR}/deploy/kubernetes"
 readonly BIND_ROLES=$(get_needed_roles)
 readonly IAM_NAME="${GCE_PD_SA_NAME}@${PROJECT}.iam.gserviceaccount.com"

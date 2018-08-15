@@ -15,33 +15,110 @@ The GCP Compute Persistent Disk CSI Driver is a
 Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
 
-## Installing
-### Kubernetes
-Templates and further information for installing this driver on Kubernetes are
-in [`./deploy/kubernetes/README.md`](deployREADME)
+## Project Status
+Status: Alpha
+Latest image: `gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.1.0.alpha`
 
-## Development
+### CSI Compatibility
+This plugin is compatible with CSI versions v0.2.0 and v0.3.0
 
-###Manual
+### Kubernetes Compatibility
+This plugin can be used as-is beginning with Kubernetes v1.10.5
 
-Setup [GCP service account first](deployREADME) (one time step)
+### Known Issues
+See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
 
-To bring up developed drivers:
+## Plugin Features
+### CreateVolume Parameters
+| Parameter          | Values               | Default     | Description                                                                                                                 |
+|--------------------|----------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------|
+| "type"             | pd-ssd | pd-standard | pd-standard | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks                          |
+| "replication-type" | none | regional-pd   | none        | Replication type allows you to choose between standard zonal Persistent Disks or highly available Regional Persistent Disks |
+
+### Future Features
+See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
+
+### Topology
+This driver supports only one topology key:
+`com.google.topology/zone`
+that represents availability by zone.
+
+## Kubernetes User Guide
+### Install Driver
+1. [One-time per project] Create GCP service account for the CSI driver and set required roles
 ```
+PROJECT=your-project-here                       # GCP project
+GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
+GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
+./deploy/setup-project.sh
+```
+
+2. Deploy driver to Kubernetes Cluster
+```
+GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
+GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
+./deploy/kubernetes/deploy-driver.sh
+```
+
+### Zonal Example
+1. Create example Zonal Storage Class
+```
+kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
+```
+
+2. Create example PVC and Pod
+```
+kubectl apply -f ./examples/kubernetes/demo-pod.yaml
+```
+
+3. Verify PV is created and bound to PVC
+```
+$ kubectl get pvc
+NAME      STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+podpvc     Bound     pvc-e36abf50-84f3-11e8-8538-42010a800002   10Gi       RWO            csi-gce-pd     9s
+```
+
+4. Verify pod is created and in `RUNNING` state (it may take a few minutes to get to running state)
+```
+NAME                      READY     STATUS    RESTARTS   AGE
+web-server                1/1       Running   0          1m
+```
+
+## Kubernetes Development
+
+### Manual
+To build and install a development version of the driver:
+```
+$ GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
 $ make push-container
+
+# Modify controller.yaml and node.yaml in ./deploy/kubernetes/dev to use dev image
+GCE_PD_DRIVER_VERSION=dev
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
-To bring down drivers:
+To bring down driver:
 ```
 $ ./deploy/kubernetes/delete-driver.sh
 ```
 
 ## Testing
-Unit tests in `_test` files in the same package as the functions tested.
+Running E2E Tests:
+```
+PROJECT=my-project                               # GCP Project to run tests in
+IAM_NAME=my-iam@project.iam.gserviceaccount.com  # Existing IAM Account with GCE PD CSI Driver Permissions
+./test/run-e2e-local.sh
+```
 
-Sanity and E2E tests can be found in `./test/` and more detailed testing
-information is in [`./test/README.md`](testREADME)
+Running Sanity Tests:
+```
+./test/run-sanity.sh
+```
+
+Running Unit Tests:
+```
+./test/run-unit.sh
+```
 
 ## Dependency Management
 Use [dep](https://github.com/golang/dep)
@@ -50,6 +127,3 @@ $ dep ensure
 ```
 
 To modify dependencies or versions change `./Gopkg.toml`
-
-[deployREADME]: deploy/kubernetes/README.md
-[testREADME]: test/README.md
