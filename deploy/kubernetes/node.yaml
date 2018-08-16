@@ -41,6 +41,8 @@ spec:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
           env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/cloud-sa/cloud-sa.json"
             - name: CSI_ENDPOINT
               value: unix:/csi/csi.sock
           volumeMounts:
@@ -51,6 +53,9 @@ spec:
               mountPath: /csi
             - name: device-dir
               mountPath: /host/dev
+            - name: cloud-sa-volume
+              readOnly: true
+              mountPath: "/etc/cloud-sa"
       volumes:
         # TODO(dependency): this will work when kublet registrar functionality exists
         #- name: registrar-socket-dir
@@ -69,3 +74,6 @@ spec:
           hostPath:
             path: /dev
             type: Directory
+        - name: cloud-sa-volume
+          secret:
+            secretName: cloud-sa
