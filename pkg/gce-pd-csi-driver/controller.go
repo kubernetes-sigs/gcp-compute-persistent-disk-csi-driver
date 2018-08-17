@@ -185,7 +185,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		return nil, status.Error(codes.InvalidArgument, "DeleteVolume Volume ID must be provided")
 	}
 
-	volKey, err := common.VolumeIDToKey(volumeID)
+	volKey, _, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		// Cannot find volume associated with this ID because can't even get the name or zone
 		// This is a success according to the spec
@@ -218,7 +218,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume capability must be provided")
 	}
 
-	volKey, err := common.VolumeIDToKey(volumeID)
+	volKey, _, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
@@ -295,7 +295,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Error(codes.InvalidArgument, "ControllerUnpublishVolume Node ID must be provided")
 	}
 
-	volKey, err := common.VolumeIDToKey(volumeID)
+	volKey, _, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +340,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume ID must be provided")
 	}
-	volKey, err := common.VolumeIDToKey(volumeID)
+	volKey, _, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume ID is of improper format, got %v", volumeID))
 	}
