@@ -49,13 +49,18 @@ const (
 	defaultMountCommand   = "mount"
 )
 
+// DeviceUtils are a collection of methods that act on the devices attached
+// to a GCE Instance
 type DeviceUtils interface {
+	// GetDiskByIdPaths returns a list of all possible paths for a
+	// given Persistent Disk
 	GetDiskByIdPaths(pdName string, partition string) []string
-	// TODO: Info
+
+	// VerifyDevicePath returns the first of the list of device paths that
+	// exists on the machine, or an empty string if none exists
 	VerifyDevicePath(devicePaths []string) (string, error)
 }
 
-// TODO: Info
 type deviceUtils struct {
 }
 
@@ -91,7 +96,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string) (string, error) {
 		glog.Errorf("Error filepath.Glob(\"%s\"): %v\r\n", diskSDPattern, err)
 	}
 	sdBeforeSet := sets.NewString(sdBefore...)
-	// TODO: Remove this udevadm stuff. Not applicable because can't access /dev/sd* from container
+	// TODO(#69): Verify udevadm works as intended in driver
 	if err := udevadmChangeToNewDrives(sdBeforeSet); err != nil {
 		// udevadm errors should not block disk detachment, log and continue
 		glog.Errorf("udevadmChangeToNewDrives failed with: %v", err)

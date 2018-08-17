@@ -1,4 +1,4 @@
-#TODO: Force DaemonSet to not run on master.
+#TODO(#40): Force DaemonSet to not run on master.
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -52,7 +52,7 @@ spec:
             - name: device-dir
               mountPath: /host/dev
       volumes:
-        # TODO(dependency): this will work when kublet registrar functionality exists
+        # TODO(#92): this will work when kublet registrar functionality exists
         #- name: registrar-socket-dir
         #  hostPath:
         #    path: /var/lib/kubelet/device-plugins/

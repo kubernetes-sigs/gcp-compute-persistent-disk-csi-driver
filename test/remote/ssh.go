@@ -77,7 +77,7 @@ func (i *InstanceInfo) CreateSSHTunnel(localPort, serverPort string) (int, error
 	if err != nil {
 		return 0, err
 	}
-	// TODO: use this process and kill it at the end of the test as well.
+
 	return cmd.Process.Pid, nil
 }
 

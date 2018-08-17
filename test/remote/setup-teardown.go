@@ -138,7 +138,5 @@ func TeardownDriverAndClient(context *TestContext) error {
 		return fmt.Errorf("failed to kill driver on remote instance, got output %s: %v", output, err)
 	}
 
-	// TODO: Cleanup driver workspace on remote
-
 	return nil
 }

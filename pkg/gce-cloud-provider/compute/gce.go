@@ -94,7 +94,6 @@ func createBetaCloudService(vendorVersion string) (*beta.Service, error) {
 }
 
 func createCloudService(vendorVersion string) (*compute.Service, error) {
-	// TODO: support alternate methods of authentication
 	svc, err := createCloudServiceWithDefaultServiceAccount(vendorVersion)
 	return svc, err
 }

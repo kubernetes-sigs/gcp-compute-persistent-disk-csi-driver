@@ -48,7 +48,6 @@ type InstanceInfo struct {
 	name    string
 
 	// External IP is filled in after instance creation
-	// TODO: Maybe combine create instance and create instance info so all fields are set up at the same time...
 	externalIP string
 
 	computeService *compute.Service
@@ -89,7 +88,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		return fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
-	// TODO: Pick a better boot disk image
+	// TODO(#97): Pick a better boot disk image
 	imageURL := "projects/ml-images/global/images/family/tf-1-9"
 	inst := &compute.Instance{
 		Name:        i.name,
@@ -263,7 +262,7 @@ func GetComputeClient() (*compute.Service, error) {
 		}
 
 		var client *http.Client
-		client, err = google.DefaultClient(context.TODO(), compute.ComputeScope)
+		client, err = google.DefaultClient(context.Background(), compute.ComputeScope)
 		if err != nil {
 			continue
 		}
@@ -293,7 +292,7 @@ func GetBetaComputeClient() (*computebeta.Service, error) {
 		}
 
 		var client *http.Client
-		client, err = google.DefaultClient(context.TODO(), computebeta.ComputeScope)
+		client, err = google.DefaultClient(context.Background(), computebeta.ComputeScope)
 		if err != nil {
 			continue
 		}

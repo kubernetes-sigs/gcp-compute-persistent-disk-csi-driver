@@ -358,7 +358,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		}
 
 		// Start Test
-		resp, err := gceDriver.cs.CreateVolume(context.TODO(), tc.req)
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		//check response
 		if err != nil {
 			serverError, ok := status.FromError(err)
@@ -429,7 +429,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 	tZones := map[string]bool{}
 	// Start Test
 	for i := 0; i < 25; i++ {
-		resp, err := gceDriver.cs.CreateVolume(context.TODO(), req)
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
 		if err != nil {
 			t.Fatalf("CreateVolume did not expect error, but got %v", err)
 		}
@@ -470,7 +470,7 @@ func TestDeleteVolume(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t)
 
-		_, err := gceDriver.cs.DeleteVolume(context.TODO(), tc.req)
+		_, err := gceDriver.cs.DeleteVolume(context.Background(), tc.req)
 		if err == nil && tc.expErr {
 			t.Fatalf("Expected error but got none")
 		}

@@ -34,10 +34,6 @@ import (
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
-// TODO: Add noisy glog.V(5).Infof() EVERYWHERE
-// TODO: Improve errors to only expose codes at top level
-// TODO: Improve error prefix to explicitly state what function it is in.
-
 type GCEControllerServer struct {
 	Driver          *GCEDriver
 	CloudProvider   gce.GCECompute
@@ -82,9 +78,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume Request Capacity is invalid: %v", err))
 	}
 
-	// TODO: Validate volume capabilities
+	// TODO(#94): Validate volume capabilities
 
-	// TODO: Support fs type. Can vendor in api-machinery stuff for sets etc.
+	// TODO(#93): Support fs type parameter
+
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	diskType := "pd-standard"
@@ -180,8 +177,6 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	// TODO: Only allow deletion of volumes that were created by the driver
-	// Assuming ID is of form {zone}/{id}
 	glog.V(4).Infof("DeleteVolume called with request %v", *req)
 
 	// Validate arguments
@@ -228,10 +223,9 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
 
-	// TODO: Check volume capability matches
+	// TODO(#94): Check volume capability matches
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
-		// TODO: Info gets sent to NodePublishVolume. Send something if necessary.
 		PublishInfo: nil,
 	}
 
@@ -336,7 +330,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 }
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	// TODO: Factor out the volume capability functionality and use as validation in all other functions as well
+	// TODO(#94): Factor out the volume capability functionality and use as validation in all other functions as well
 	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
 	// Validate Arguments
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
@@ -449,7 +443,6 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 }
 
 func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
-	// TODO: Take another look at these casts/caps. Make sure this func is correct
 	var capBytes int64
 	// Default case where nothing is set
 	if capRange == nil {
@@ -499,7 +492,7 @@ func diskIsAttachedAndCompatible(volume *gce.CloudDisk, instance *compute.Instan
 			if disk.Mode != readWrite {
 				return true, fmt.Errorf("disk mode does not match. Got %v. Want %v", disk.Mode, readWrite)
 			}
-			// TODO: Check volume_capability.
+			// TODO(#94): Check volume_capability.
 			return true, nil
 		}
 	}
@@ -532,7 +525,6 @@ func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int) ([]string
 			return nil, fmt.Errorf("need %v zones from topology, only got %v unique zones", numZones, reqSet.Union(prefSet).Len())
 		}
 		// Add the remaining number of zones into the set
-		// TODO: Maybe we should pick a random set to get
 		nSlice, err := pickRandAndConsecutive(remainingZones.List(), remainingNumZones)
 		if err != nil {
 			return nil, err
@@ -600,7 +592,7 @@ func getDefaultZonesInRegion(gceCS *GCEControllerServer, existingZones []string,
 		return nil, fmt.Errorf("failed to get region from zones: %v", err)
 	}
 	needToGet := numZones - len(existingZones)
-	totZones, err := gceCS.CloudProvider.ListZones(context.TODO(), region)
+	totZones, err := gceCS.CloudProvider.ListZones(context.Background(), region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list zones from cloud provider: %v", err)
 	}
