@@ -20,7 +20,7 @@ Status: Alpha
 Latest image: `gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.1.0.alpha`
 
 ### CSI Compatibility
-This plugin is compatible with CSI versions v0.2.0 and v0.3.0
+This plugin is compatible with CSI versions [v0.2.0](https://github.com/container-storage-interface/spec/blob/v0.2.0/spec.md) and [v0.3.0](https://github.com/container-storage-interface/spec/blob/v0.3.0/spec.md)
 
 ### Kubernetes Compatibility
 This plugin can be used as-is beginning with Kubernetes v1.10.5
@@ -32,8 +32,8 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 ### CreateVolume Parameters
 | Parameter          | Values               | Default     | Description                                                                                                                 |
 |--------------------|----------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------|
-| "type"             | pd-ssd | pd-standard | pd-standard | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks                          |
-| "replication-type" | none | regional-pd   | none        | Replication type allows you to choose between standard zonal Persistent Disks or highly available Regional Persistent Disks |
+| "type"             | pd-ssd OR pd-standard | pd-standard | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks                          |
+| "replication-type" | none OR regional-pd   | none        | Replication type allows you to choose between standard zonal Persistent Disks or highly available Regional Persistent Disks |
 
 ### Future Features
 See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
@@ -47,28 +47,28 @@ that represents availability by zone.
 ### Install Driver
 1. [One-time per project] Create GCP service account for the CSI driver and set required roles
 ```
-PROJECT=your-project-here                       # GCP project
-GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
-GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
-./deploy/setup-project.sh
+$ PROJECT=your-project-here                       # GCP project
+$ GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
+$ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
+$ ./deploy/setup-project.sh
 ```
 
 2. Deploy driver to Kubernetes Cluster
 ```
-GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
-GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
-./deploy/kubernetes/deploy-driver.sh
+$ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
+$ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
+$ ./deploy/kubernetes/deploy-driver.sh
 ```
 
 ### Zonal Example
 1. Create example Zonal Storage Class
 ```
-kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
+$ kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
 ```
 
 2. Create example PVC and Pod
 ```
-kubectl apply -f ./examples/kubernetes/demo-pod.yaml
+$ kubectl apply -f ./examples/kubernetes/demo-pod.yaml
 ```
 
 3. Verify PV is created and bound to PVC
@@ -80,6 +80,7 @@ podpvc     Bound     pvc-e36abf50-84f3-11e8-8538-42010a800002   10Gi       RWO  
 
 4. Verify pod is created and in `RUNNING` state (it may take a few minutes to get to running state)
 ```
+$ kubectl get pods
 NAME                      READY     STATUS    RESTARTS   AGE
 web-server                1/1       Running   0          1m
 ```
@@ -93,7 +94,7 @@ $ GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push 
 $ make push-container
 
 # Modify controller.yaml and node.yaml in ./deploy/kubernetes/dev to use dev image
-GCE_PD_DRIVER_VERSION=dev
+$ GCE_PD_DRIVER_VERSION=dev
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
@@ -105,19 +106,19 @@ $ ./deploy/kubernetes/delete-driver.sh
 ## Testing
 Running E2E Tests:
 ```
-PROJECT=my-project                               # GCP Project to run tests in
-IAM_NAME=my-iam@project.iam.gserviceaccount.com  # Existing IAM Account with GCE PD CSI Driver Permissions
-./test/run-e2e-local.sh
+$ PROJECT=my-project                               # GCP Project to run tests in
+$ IAM_NAME=my-iam@project.iam.gserviceaccount.com  # Existing IAM Account with GCE PD CSI Driver Permissions
+$ ./test/run-e2e-local.sh
 ```
 
 Running Sanity Tests:
 ```
-./test/run-sanity.sh
+$ ./test/run-sanity.sh
 ```
 
 Running Unit Tests:
 ```
-./test/run-unit.sh
+$ ./test/run-unit.sh
 ```
 
 ## Dependency Management
