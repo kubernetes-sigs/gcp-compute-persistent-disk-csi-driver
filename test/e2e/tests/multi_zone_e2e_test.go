@@ -32,8 +32,6 @@ import (
 var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	BeforeEach(func() {
 		Expect(len(testInstances)).To(BeNumerically(">", 1))
-		// TODO: Check whether the instances are in different zones???
-		// I Think there should be a better way of guaranteeing this. Like a map from zone to instance for testInstances (?)
 	})
 
 	It("Should get reasonable topology from nodes with NodeGetInfo", func() {
@@ -138,7 +136,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			controllerClient.DeleteVolume(volId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-			// TODO: Validate Disk Deleted
+			// Validate Disk Deleted
 			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()

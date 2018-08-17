@@ -149,9 +149,10 @@ func (gceDriver *GCEDriver) Run(endpoint string) {
 
 	//Start the nonblocking GRPC
 	s := NewNonBlockingGRPCServer()
-	// TODO: Only start specific servers based on a flag.
+	// TODO(#34): Only start specific servers based on a flag.
 	// In the future have this only run specific combinations of servers depending on which version this is.
 	// The schema for that was in util. basically it was just s.start but with some nil servers.
+
 	s.Start(endpoint, gceDriver.ids, gceDriver.cs, gceDriver.ns)
 	s.Wait()
 }

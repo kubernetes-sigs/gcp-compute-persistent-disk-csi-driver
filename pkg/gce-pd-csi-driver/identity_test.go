@@ -30,7 +30,7 @@ func TestGetPluginInfo(t *testing.T) {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 
-	resp, err := gceDriver.ids.GetPluginInfo(context.TODO(), &csi.GetPluginInfoRequest{})
+	resp, err := gceDriver.ids.GetPluginInfo(context.Background(), &csi.GetPluginInfoRequest{})
 	if err != nil {
 		t.Fatalf("GetPluginInfo returned unexpected error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 
-	resp, err := gceDriver.ids.GetPluginCapabilities(context.TODO(), &csi.GetPluginCapabilitiesRequest{})
+	resp, err := gceDriver.ids.GetPluginCapabilities(context.Background(), &csi.GetPluginCapabilitiesRequest{})
 	if err != nil {
 		t.Fatalf("GetPluginCapabilities returned unexpected error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestProbe(t *testing.T) {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 
-	_, err = gceDriver.ids.Probe(context.TODO(), &csi.ProbeRequest{})
+	_, err = gceDriver.ids.Probe(context.Background(), &csi.ProbeRequest{})
 	if err != nil {
 		t.Fatalf("Probe returned unexpected error: %v", err)
 	}

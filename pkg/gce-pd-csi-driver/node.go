@@ -72,8 +72,8 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, err
 	}
 	if !notMnt {
-		// TODO: check if mount is compatible. Return OK if it is, or appropriate error.
-		return nil, nil
+		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
+		return nil, status.Error(codes.Unimplemented, "NodePublishVolume Mount point already exists, but cannot determine whether it is compatible or not")
 	}
 
 	if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
@@ -92,27 +92,27 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 		if mntErr != nil {
 			glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
-			return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to check whether target path is a mount point: %v", err))
 		}
 		if !notMnt {
 			if mntErr = ns.Mounter.Interface.Unmount(targetPath); mntErr != nil {
 				glog.Errorf("Failed to unmount: %v", mntErr)
-				return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to unmount target path: %v", err))
 			}
 			notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 			if mntErr != nil {
 				glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
-				return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to check whether target path is a mount point: %v", err))
 			}
 			if !notMnt {
 				// This is very odd, we don't expect it.  We'll try again next sync loop.
 				glog.Errorf("%s is still mounted, despite call to unmount().  Will try again next sync loop.", targetPath)
-				return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume something is wrong with mounting: %v", err))
 			}
 		}
 		os.Remove(targetPath)
 		glog.Errorf("Mount of disk %s failed: %v", targetPath, err)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("TODO: %v", err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume mount of disk failed: %v", err))
 	}
 
 	glog.V(4).Infof("Successfully mounted %s", targetPath)
@@ -133,7 +133,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	// TODO: Check volume still exists
+	// TODO(#96): Check volume still exists
 
 	err := ns.Mounter.Interface.Unmount(targetPath)
 	if err != nil {
@@ -167,10 +167,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, err
 	}
 
-	// TODO: Check volume still exists?
-
 	// Part 1: Get device path of attached device
-	// TODO: Get real partitions
+	// TODO(#83): Get real partitions
 	partition := ""
 
 	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(volumeKey.Name, partition)
@@ -199,9 +197,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	if !notMnt {
-		// TODO: Validate disk mode
-
-		// TODO: Check who is mounted here. No error if its us
+		// TODO(#95): Check who is mounted here. No error if its us
 		return nil, fmt.Errorf("already a mount point")
 
 	}
@@ -215,11 +211,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			fstype = mnt.FsType
 		}
 		for _, flag := range mnt.MountFlags {
-			// TODO: Not sure if MountFlags == options
 			options = append(options, flag)
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
-		// TODO: Block volume support
+		// TODO(#64): Block volume support
 		return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Block volume support is not yet implemented"))
 	}
 
@@ -283,7 +278,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 
 	resp := &csi.NodeGetInfoResponse{
 		NodeId: nodeID,
-		// TODO: Set MaxVolumesPerNode based on Node Type
+		// TODO(#19): Set MaxVolumesPerNode based on Node Type
 		// Default of 0 means that CO Decides how many nodes can be published
 		// Can get from metadata server "machine-type"
 		MaxVolumesPerNode:  0,

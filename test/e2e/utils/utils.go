@@ -86,7 +86,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 	// If we're on CI overwrite the service account
 	glog.V(4).Infof("Fetching the default compute service account")
 
-	c, err := google.DefaultClient(context.TODO(), cloudresourcemanager.CloudPlatformScope)
+	c, err := google.DefaultClient(context.Background(), cloudresourcemanager.CloudPlatformScope)
 	if err != nil {
 		glog.Fatalf("Failed to get Google Default Client: %v", err)
 	}

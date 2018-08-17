@@ -380,7 +380,6 @@ func (cloud *CloudProvider) getRegionalDiskTypeURI(region, diskType string) stri
 func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, op *compute.Operation, zone string) error {
 	svc := cloud.service
 	project := cloud.project
-	// TODO: Double check that these timeouts are reasonable
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := svc.ZoneOperations.Get(project, zone, op.Name).Context(ctx).Do()
 		if err != nil {
@@ -393,7 +392,6 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, op *compute.Oper
 }
 
 func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, op *computebeta.Operation, region string) error {
-	// TODO: Double check that these timeouts are reasonable
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := cloud.betaService.RegionOperations.Get(cloud.project, region, op.Name).Context(ctx).Do()
 		if err != nil {

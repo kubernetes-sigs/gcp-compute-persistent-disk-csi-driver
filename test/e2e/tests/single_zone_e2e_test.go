@@ -42,7 +42,6 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	It("Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 		// Create new driver and client
-		// TODO: Should probably actual have some object that includes both client and instance so we can relate the two??
 		Expect(testInstances).NotTo(BeEmpty())
 		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
 		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
@@ -67,7 +66,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			})
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-		// TODO: Validate Disk Created
+		// Validate Disk Created
 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
@@ -80,7 +79,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			client.DeleteVolume(volId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-			// TODO: Validate Disk Deleted
+			// Validate Disk Deleted
 			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
@@ -151,7 +150,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-		// TODO: Validate Disk Created
+		// Validate Disk Created
 		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
@@ -171,7 +170,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			controllerClient.DeleteVolume(volId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-			// TODO: Validate Disk Deleted
+			// Validate Disk Deleted
 			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
@@ -195,7 +194,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volId, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-		// TODO: Validate Disk Created
+		// Validate Disk Created
 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
@@ -208,7 +207,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			client.DeleteVolume(volId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-			// TODO: Validate Disk Deleted
+			// Validate Disk Deleted
 			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()

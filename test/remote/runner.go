@@ -84,8 +84,6 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	if err != nil {
 		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDString, err)
 	}
-	// TODO: return the PID so that we can kill the driver later
-	// Actually just do a pkill -f my_pattern
 
 	return driverPID, nil
 }
