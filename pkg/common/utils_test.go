@@ -107,10 +107,11 @@ func TestVolumeIDToKey(t *testing.T) {
 	testRegion := "test-region"
 
 	testCases := []struct {
-		name   string
-		volID  string
-		expKey *meta.Key
-		expErr bool
+		name         string
+		volID        string
+		expPartition string
+		expKey       *meta.Key
+		expErr       bool
 	}{
 		{
 			name:   "normal zonal",
@@ -132,10 +133,27 @@ func TestVolumeIDToKey(t *testing.T) {
 			volID:  "this/is/wrong/but/right/num",
 			expErr: true,
 		},
+		{
+			name:         "zonal with partition",
+			volID:        fmt.Sprintf(volIDZoneFmt, testProject, testZone, testName) + fmt.Sprintf("/partitions/%s", "1"),
+			expPartition: "1",
+			expKey:       meta.ZonalKey(testName, testZone),
+		},
+		{
+			name:         "regional with partition",
+			volID:        fmt.Sprintf(volIDRegionFmt, testProject, testRegion, testName) + fmt.Sprintf("/partitions/%s", "1"),
+			expPartition: "1",
+			expKey:       meta.RegionalKey(testName, testRegion),
+		},
+		{
+			name:   "malformed with partition",
+			volID:  fmt.Sprintf(volIDRegionFmt, testRegion, testZone, testName) + fmt.Sprintf("/bloblab/%s", "1"),
+			expErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotKey, err := VolumeIDToKey(tc.volID)
+		gotKey, gotPartition, err := VolumeIDToKey(tc.volID)
 		if err == nil && tc.expErr {
 			t.Errorf("Expected error but got none")
 		}
@@ -148,6 +166,9 @@ func TestVolumeIDToKey(t *testing.T) {
 
 		if !reflect.DeepEqual(gotKey, tc.expKey) {
 			t.Errorf("Got key %v, but expected %v, from volume ID %v", gotKey, tc.expKey, tc.volID)
+		}
+		if gotPartition != tc.expPartition {
+			t.Errorf("Got partition %v, but expected %v, from volume ID %v", gotPartition, tc.expPartition, tc.volID)
 		}
 	}
 

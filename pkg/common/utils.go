@@ -28,10 +28,17 @@ const (
 	// Volume ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
 	// "projects/{projectName}/regions/{regionName}/disks/{diskName}"
-	volIDToplogyKey    = 2
-	volIDToplogyValue  = 3
-	volIDDiskNameValue = 5
-	volIDTotalElements = 6
+	// OR
+	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}/partitions/{partition}"
+	// "projects/{projectName}/regions/{regionName}/disks/{diskName}/partitions/{partition}"
+
+	volIDToplogyKey                 = 2
+	volIDToplogyValue               = 3
+	volIDDiskNameValue              = 5
+	volIDPartitionKey               = 6
+	volIDPartitionValue             = 7
+	volIDTotalElements              = 6
+	volIDTotalElementsWithPartition = 8
 
 	// Node ID Expected Format
 	// "{zoneName}/{instanceName}"
@@ -50,26 +57,37 @@ func GbToBytes(Gb int64) int64 {
 	return Gb * 1024 * 1024 * 1024
 }
 
-func VolumeIDToKey(id string) (*meta.Key, error) {
-	splitId := strings.Split(id, "/")
-	if len(splitId) != volIDTotalElements {
-		return nil, fmt.Errorf("failed to get id components. Expected projects/{project}/zones/{zone}/disks/{name}. Got: %s", id)
+func VolumeIDToKey(id string) (*meta.Key, string, error) {
+	splitID := strings.Split(id, "/")
+	partition := ""
+	if !(len(splitID) == volIDTotalElements || len(splitID) == volIDTotalElementsWithPartition) {
+		return nil, partition, fmt.Errorf("failed to get id components. Expected projects/{project}/zones/{zone}/disks/{name}(/partition/{partition}). Got: %s", id)
 	}
-	if splitId[volIDToplogyKey] == "zones" {
-		return meta.ZonalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
-	} else if splitId[volIDToplogyKey] == "regions" {
-		return meta.RegionalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
+
+	if len(splitID) == volIDTotalElementsWithPartition {
+		if splitID[volIDPartitionKey] == "partitions" {
+			partition = splitID[volIDPartitionValue]
+		} else {
+			return nil, partition, fmt.Errorf("could not get id components, expected partitions, got: %v", splitID[volIDPartitionKey])
+		}
+	}
+
+	if splitID[volIDToplogyKey] == "zones" {
+		return meta.ZonalKey(splitID[volIDDiskNameValue], splitID[volIDToplogyValue]), partition, nil
+	} else if splitID[volIDToplogyKey] == "regions" {
+		return meta.RegionalKey(splitID[volIDDiskNameValue], splitID[volIDToplogyValue]), partition, nil
 	} else {
-		return nil, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitId[volIDToplogyKey])
+		return nil, partition, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitID[volIDToplogyKey])
 	}
+
 }
 
 func NodeIDToZoneAndName(id string) (string, string, error) {
-	splitId := strings.Split(id, "/")
-	if len(splitId) != nodeIDTotalElements {
+	splitID := strings.Split(id, "/")
+	if len(splitID) != nodeIDTotalElements {
 		return "", "", fmt.Errorf("failed to get id components. expected {zone}/{name}. Got: %s", id)
 	}
-	return splitId[nodeIDZoneValue], splitId[nodeIDNameValue], nil
+	return splitID[nodeIDZoneValue], splitID[nodeIDNameValue], nil
 }
 
 func GetRegionFromZones(zones []string) (string, error) {
