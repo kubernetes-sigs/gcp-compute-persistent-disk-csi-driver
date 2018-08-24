@@ -73,7 +73,13 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	}
 	if !notMnt {
 		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
-		return nil, status.Error(codes.Unimplemented, "NodePublishVolume Mount point already exists, but cannot determine whether it is compatible or not")
+		/*
+			1) Target Path MUST be the vol referenced by vol ID
+			2) VolumeCapability MUST match
+			3) Readonly MUST match
+
+		*/
+		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
 	if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
@@ -198,7 +204,13 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	if !notMnt {
 		// TODO(#95): Check who is mounted here. No error if its us
-		return nil, fmt.Errorf("already a mount point")
+		/*
+			1) Target Path MUST be the vol referenced by vol ID
+			2) VolumeCapability MUST match
+			3) Readonly MUST match
+
+		*/
+		return &csi.NodeStageVolumeResponse{}, nil
 
 	}
 
