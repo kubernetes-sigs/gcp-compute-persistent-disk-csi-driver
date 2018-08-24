@@ -80,8 +80,6 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// TODO(#94): Validate volume capabilities
 
-	// TODO(#93): Support fs type parameter
-
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	diskType := "pd-standard"
