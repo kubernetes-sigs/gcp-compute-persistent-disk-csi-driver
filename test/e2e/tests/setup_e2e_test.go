@@ -35,7 +35,7 @@ var (
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 
-	testInstances      = []*remote.InstanceInfo{}
+	testContexts       = []*remote.TestContext{}
 	computeService     *compute.Service
 	betaComputeService *computebeta.Service
 )
@@ -73,22 +73,28 @@ var _ = BeforeSuite(func() {
 		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
 		Expect(err).To(BeNil())
 
-		testInstances = append(testInstances, i)
-	}
+		// Create new driver and client
+		testContext, err := testutils.GCEClientAndDriverSetup(i)
+		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
 
+		testContexts = append(testContexts, testContext)
+
+	}
 })
 
 var _ = AfterSuite(func() {
-	/*
-		err := node.client.CloseConn()
-		if err != nil {
-			Logf("Failed to close the client")
-		} else {
-			Logf("Closed the client")
-	*/
-	for _, i := range testInstances {
+
+	for _, tc := range testContexts {
+		err := remote.TeardownDriverAndClient(tc)
+		Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
 		if *deleteInstances {
-			i.DeleteInstance()
+			tc.Instance.DeleteInstance()
 		}
 	}
 })
+
+func getRandomTestContext() *remote.TestContext {
+	Expect(testContexts).ToNot(BeEmpty())
+	rn := rand.Intn(len(testContexts))
+	return testContexts[rn]
+}

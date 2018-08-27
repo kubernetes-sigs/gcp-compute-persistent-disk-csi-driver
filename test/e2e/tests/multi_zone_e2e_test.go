@@ -31,18 +31,11 @@ import (
 
 var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	BeforeEach(func() {
-		Expect(len(testInstances)).To(BeNumerically(">", 1))
+		Expect(len(testContexts)).To(BeNumerically(">", 1))
 	})
 
 	It("Should get reasonable topology from nodes with NodeGetInfo", func() {
-		for _, instance := range testInstances {
-			testContext, err := testutils.GCEClientAndDriverSetup(instance)
-			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-			defer func() {
-				err := remote.TeardownDriverAndClient(testContext)
-				Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-			}()
-
+		for _, testContext := range testContexts {
 			resp, err := testContext.Client.NodeGetInfo()
 			Expect(err).To(BeNil())
 
@@ -65,24 +58,17 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should successfully run through entire lifecycle of an RePD volume on instances in 2 zones", func() {
 		// Create new driver and client
 
-		Expect(testInstances).NotTo(BeEmpty())
+		Expect(testContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, i := range testInstances {
-			_, z, _ := i.GetIdentity()
+		for _, tc := range testContexts {
+			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
-				c, err := testutils.GCEClientAndDriverSetup(i)
-				Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-				zoneToContext[z] = c
+				zoneToContext[z] = tc
 				zones = append(zones, z)
-
-				defer func() {
-					err := remote.TeardownDriverAndClient(c)
-					Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-				}()
 			}
 			if len(zoneToContext) == 2 {
 				break

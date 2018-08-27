@@ -88,8 +88,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		return fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
-	// TODO(#97): Pick a better boot disk image
-	imageURL := "projects/ml-images/global/images/family/tf-1-9"
+	imageURL := "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-1804-lts"
 	inst := &compute.Instance{
 		Name:        i.name,
 		MachineType: machineType(i.zone, ""),
