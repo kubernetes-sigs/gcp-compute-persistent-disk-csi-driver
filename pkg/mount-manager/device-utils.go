@@ -27,13 +27,12 @@ import (
 )
 
 const (
-	diskByHostIdPath     = "/host/dev/disk/by-id/"
 	diskByIdPath         = "/dev/disk/by-id/"
 	diskGooglePrefix     = "google-"
 	diskScsiGooglePrefix = "scsi-0Google_PersistentDisk_"
 	diskPartitionSuffix  = "-part"
-	diskSDPath           = "/host/dev/sd"
-	diskSDPattern        = "/host/dev/sd*"
+	diskSDPath           = "/dev/sd"
+	diskSDPattern        = "/dev/sd*"
 	// How many times to retry for a consistent read of /proc/mounts.
 	maxListTries = 3
 	// Number of fields per line in /proc/mounts as per the fstab man page.
@@ -75,8 +74,6 @@ func (m *deviceUtils) GetDiskByIdPaths(deviceName string, partition string) []st
 	devicePaths := []string{
 		path.Join(diskByIdPath, diskGooglePrefix+deviceName),
 		path.Join(diskByIdPath, diskScsiGooglePrefix+deviceName),
-		path.Join(diskByHostIdPath, diskScsiGooglePrefix+deviceName),
-		path.Join(diskByHostIdPath, diskScsiGooglePrefix+deviceName),
 	}
 
 	if partition != "" {
