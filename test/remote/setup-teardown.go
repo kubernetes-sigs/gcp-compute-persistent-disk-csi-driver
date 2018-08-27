@@ -22,10 +22,7 @@ import (
 
 	"github.com/golang/glog"
 	compute "google.golang.org/api/compute/v1"
-)
-
-const (
-	archiveName = "e2e_driver_binaries.tar.gz"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 // TestContext holds the CSI Client handle to a remotely connected Driver
@@ -75,6 +72,7 @@ func SetupInstance(instanceProject, instanceZone, instanceName, instanceServiceA
 // a CSI client to it through SHH tunnelling. It returns a TestContext with both a handle to the instance
 // that the driver is on and the CSI Client object to make CSI calls to the remote driver.
 func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*TestContext, error) {
+	archiveName := fmt.Sprintf("e2e_driver_binaries_%s.tar.gz", uuid.NewUUID())
 	archivePath, err := CreateDriverArchive(archiveName, config.PkgPath, config.BinPath)
 	if err != nil {
 		return nil, err

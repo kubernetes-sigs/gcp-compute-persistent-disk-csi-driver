@@ -47,7 +47,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := client.CreateVolume(volName, nil, defaultSizeGb,
+		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -67,7 +67,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volId)
+			client.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -76,7 +76,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		testAttachWriteReadDetach(volId, volName, instance, client, false /* readOnly */)
+		testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
 
 	})
 
@@ -124,7 +124,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := controllerClient.CreateVolume(volName, map[string]string{
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
 			common.ParameterKeyReplicationType: "regional-pd",
 		}, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
@@ -146,7 +146,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 		defer func() {
 			// Delete Disk
-			controllerClient.DeleteVolume(volId)
+			controllerClient.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -164,7 +164,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
+		volID, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -177,7 +177,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volId)
+			client.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted

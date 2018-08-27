@@ -48,6 +48,9 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
+	tcc := make(chan *remote.TestContext)
+	defer close(tcc)
+
 	zones := []string{"us-central1-c", "us-central1-b"}
 
 	rand.Seed(time.Now().UnixNano())
@@ -68,17 +71,25 @@ var _ = BeforeSuite(func() {
 	Logf("Running in project %v with service account %v\n\n", *project, *serviceAccount)
 
 	for _, zone := range zones {
-		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+		go func(curZone string) {
+			defer GinkgoRecover()
+			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
+			Logf("Setting up node %s\n", nodeID)
 
-		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
-		Expect(err).To(BeNil())
+			i, err := remote.SetupInstance(*project, curZone, nodeID, *serviceAccount, computeService)
+			Expect(err).To(BeNil())
 
-		// Create new driver and client
-		testContext, err := testutils.GCEClientAndDriverSetup(i)
-		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+			// Create new driver and client
+			testContext, err := testutils.GCEClientAndDriverSetup(i)
+			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+			tcc <- testContext
+		}(zone)
+	}
 
-		testContexts = append(testContexts, testContext)
-
+	for i := 0; i < len(zones); i++ {
+		tc := <-tcc
+		Logf("Test Context for node %s set up\n", tc.Instance.GetName())
+		testContexts = append(testContexts, tc)
 	}
 })
 
