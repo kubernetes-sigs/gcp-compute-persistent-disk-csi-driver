@@ -21,8 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	. "github.com/onsi/ginkgo"
@@ -41,14 +39,7 @@ const (
 var _ = Describe("GCE PD CSI Driver", func() {
 
 	It("Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
-		// Create new driver and client
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
@@ -56,7 +47,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := client.CreateVolume(volName, nil, defaultSizeGb,
+		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -76,7 +67,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volId)
+			client.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -85,19 +76,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		testAttachWriteReadDetach(volId, volName, instance, client, false /* readOnly */)
+		testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
 
 	})
 
 	It("Should create disks in correct zones when topology is specified", func() {
-		///
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Failed to set up new driver and client")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
 		p, _, _ := testContext.Instance.GetIdentity()
 
@@ -126,14 +111,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	})
 
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
-		// Create new driver and client
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Failed to set up new driver and client")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client
@@ -145,7 +124,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := controllerClient.CreateVolume(volName, map[string]string{
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
 			common.ParameterKeyReplicationType: "regional-pd",
 		}, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
@@ -167,7 +146,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 		defer func() {
 			// Delete Disk
-			controllerClient.DeleteVolume(volId)
+			controllerClient.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -177,21 +156,15 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	})
 
 	It("Should create and delete disk with default zone", func() {
-		// Create new driver and client
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
+		volID, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -204,7 +177,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volId)
+			client.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted

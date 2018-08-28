@@ -35,7 +35,7 @@ var (
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 
-	testInstances      = []*remote.InstanceInfo{}
+	testContexts       = []*remote.TestContext{}
 	computeService     *compute.Service
 	betaComputeService *computebeta.Service
 )
@@ -48,6 +48,9 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
+	tcc := make(chan *remote.TestContext)
+	defer close(tcc)
+
 	zones := []string{"us-central1-c", "us-central1-b"}
 
 	rand.Seed(time.Now().UnixNano())
@@ -68,27 +71,41 @@ var _ = BeforeSuite(func() {
 	Logf("Running in project %v with service account %v\n\n", *project, *serviceAccount)
 
 	for _, zone := range zones {
-		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+		go func(curZone string) {
+			defer GinkgoRecover()
+			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
+			Logf("Setting up node %s\n", nodeID)
 
-		i, err := remote.SetupInstance(*project, zone, nodeID, *serviceAccount, computeService)
-		Expect(err).To(BeNil())
+			i, err := remote.SetupInstance(*project, curZone, nodeID, *serviceAccount, computeService)
+			Expect(err).To(BeNil())
 
-		testInstances = append(testInstances, i)
+			// Create new driver and client
+			testContext, err := testutils.GCEClientAndDriverSetup(i)
+			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+			tcc <- testContext
+		}(zone)
 	}
 
+	for i := 0; i < len(zones); i++ {
+		tc := <-tcc
+		Logf("Test Context for node %s set up\n", tc.Instance.GetName())
+		testContexts = append(testContexts, tc)
+	}
 })
 
 var _ = AfterSuite(func() {
-	/*
-		err := node.client.CloseConn()
-		if err != nil {
-			Logf("Failed to close the client")
-		} else {
-			Logf("Closed the client")
-	*/
-	for _, i := range testInstances {
+
+	for _, tc := range testContexts {
+		err := remote.TeardownDriverAndClient(tc)
+		Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
 		if *deleteInstances {
-			i.DeleteInstance()
+			tc.Instance.DeleteInstance()
 		}
 	}
 })
+
+func getRandomTestContext() *remote.TestContext {
+	Expect(testContexts).ToNot(BeEmpty())
+	rn := rand.Intn(len(testContexts))
+	return testContexts[rn]
+}

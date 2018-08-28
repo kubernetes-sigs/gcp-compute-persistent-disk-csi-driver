@@ -31,18 +31,11 @@ import (
 
 var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	BeforeEach(func() {
-		Expect(len(testInstances)).To(BeNumerically(">", 1))
+		Expect(len(testContexts)).To(BeNumerically(">", 1))
 	})
 
 	It("Should get reasonable topology from nodes with NodeGetInfo", func() {
-		for _, instance := range testInstances {
-			testContext, err := testutils.GCEClientAndDriverSetup(instance)
-			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-			defer func() {
-				err := remote.TeardownDriverAndClient(testContext)
-				Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-			}()
-
+		for _, testContext := range testContexts {
 			resp, err := testContext.Client.NodeGetInfo()
 			Expect(err).To(BeNil())
 
@@ -65,24 +58,17 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should successfully run through entire lifecycle of an RePD volume on instances in 2 zones", func() {
 		// Create new driver and client
 
-		Expect(testInstances).NotTo(BeEmpty())
+		Expect(testContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, i := range testInstances {
-			_, z, _ := i.GetIdentity()
+		for _, tc := range testContexts {
+			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
-				c, err := testutils.GCEClientAndDriverSetup(i)
-				Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-				zoneToContext[z] = c
+				zoneToContext[z] = tc
 				zones = append(zones, z)
-
-				defer func() {
-					err := remote.TeardownDriverAndClient(c)
-					Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-				}()
 			}
 			if len(zoneToContext) == 2 {
 				break
@@ -102,7 +88,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volId, err := controllerClient.CreateVolume(volName, map[string]string{
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
 			common.ParameterKeyReplicationType: "regional-pd",
 		}, defaultSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
@@ -133,7 +119,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		defer func() {
 			// Delete Disk
-			controllerClient.DeleteVolume(volId)
+			controllerClient.DeleteVolume(volID)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -148,7 +134,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			if i >= 1 {
 				readOnly = true
 			}
-			testAttachWriteReadDetach(volId, volName, testContext.Instance, testContext.Client, readOnly)
+			testAttachWriteReadDetach(volID, volName, testContext.Instance, testContext.Client, readOnly)
 			i = i + 1
 		}
 
@@ -156,29 +142,29 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 })
 
-func testAttachWriteReadDetach(volId string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) {
+func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) {
 	var err error
 
-	Logf("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volId, instance.GetNodeID(), readOnly)
+	Logf("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
 	// Attach Disk
-	err = client.ControllerPublishVolume(volId, instance.GetNodeID())
-	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v", volId, instance.GetNodeID())
+	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
+	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v", volID, instance.GetNodeID())
 
 	defer func() {
 
 		// Detach Disk
-		err = client.ControllerUnpublishVolume(volId, instance.GetNodeID())
+		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 		Expect(err).To(BeNil(), "ControllerUnpublishVolume failed with error")
 	}()
 
 	// Stage Disk
 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	client.NodeStageVolume(volId, stageDir)
+	client.NodeStageVolume(volID, stageDir)
 	Expect(err).To(BeNil(), "NodeStageVolume failed with error")
 
 	defer func() {
 		// Unstage Disk
-		err = client.NodeUnstageVolume(volId, stageDir)
+		err = client.NodeUnstageVolume(volID, stageDir)
 		Expect(err).To(BeNil(), "NodeUnstageVolume failed with error")
 		err = testutils.RmAll(instance, filepath.Join("/tmp/", volName))
 		Expect(err).To(BeNil(), "Failed to remove temp directory")
@@ -186,7 +172,7 @@ func testAttachWriteReadDetach(volId string, volName string, instance *remote.In
 
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
-	err = client.NodePublishVolume(volId, stageDir, publishDir)
+	err = client.NodePublishVolume(volID, stageDir, publishDir)
 	Expect(err).To(BeNil(), "NodePublishVolume failed with error")
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 	Expect(err).To(BeNil(), "Chmod failed with error")
@@ -199,12 +185,12 @@ func testAttachWriteReadDetach(volId string, volName string, instance *remote.In
 	}
 
 	// Unmount Disk
-	err = client.NodeUnpublishVolume(volId, publishDir)
+	err = client.NodeUnpublishVolume(volID, publishDir)
 	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
 	// Mount disk somewhere else
 	secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
-	err = client.NodePublishVolume(volId, stageDir, secondPublishDir)
+	err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
 	Expect(err).To(BeNil(), "NodePublishVolume failed with error")
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 	Expect(err).To(BeNil(), "Chmod failed with error")
@@ -216,8 +202,8 @@ func testAttachWriteReadDetach(volId string, volName string, instance *remote.In
 	Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
 
 	// Unmount Disk
-	err = client.NodeUnpublishVolume(volId, secondPublishDir)
+	err = client.NodeUnpublishVolume(volID, secondPublishDir)
 	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
-	Logf("Completed testAttachWriteReadDetach with volume %v node %v\n", volId, instance.GetNodeID())
+	Logf("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
 }
