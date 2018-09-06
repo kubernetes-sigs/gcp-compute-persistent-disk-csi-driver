@@ -1622,8 +1622,11 @@ var _ = DescribeSanity("CreateSnapshot [Controller Server]", func(sc *SanityCont
 		Expect(snap1).NotTo(BeNil())
 		verifySnapshotInfo(snap1.GetSnapshot())
 
+		volume2, err := c.CreateVolume(context.Background(), MakeCreateVolumeReq(sc, "CreateSnapshot-volume-3"))
+		Expect(err).ToNot(HaveOccurred())
+
 		By("creating a snapshot with the same name but different volume source id")
-		req2 := MakeCreateSnapshotReq(sc, "CreateSnapshot-snapshot-2", "test001", nil)
+		req2 := MakeCreateSnapshotReq(sc, "CreateSnapshot-snapshot-2", volume2.GetVolume().GetId(), nil)
 		_, err = c.CreateSnapshot(context.Background(), req2)
 		Expect(err).To(HaveOccurred())
 		serverError, ok := status.FromError(err)

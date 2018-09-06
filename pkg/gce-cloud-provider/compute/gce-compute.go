@@ -32,7 +32,8 @@ import (
 )
 
 const (
-	operationStatusDone = "DONE"
+	operationStatusDone            = "DONE"
+	waitForSnapshotCreationTimeOut = 2 * time.Minute
 )
 
 type GCECompute interface {
@@ -43,7 +44,7 @@ type GCECompute interface {
 	DeleteDisk(ctx context.Context, volumeKey *meta.Key) error
 	AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
 	DetachDisk(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
-	GetDiskSourceURI(disk *CloudDisk, volKey *meta.Key) string
+	GetDiskSourceURI(volKey *meta.Key) string
 	GetDiskTypeURI(volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
 	// Regional Disk Methods
@@ -52,6 +53,10 @@ type GCECompute interface {
 	GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*compute.Instance, error)
 	// Zone Methods
 	ListZones(ctx context.Context, region string) ([]string, error)
+	ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*compute.Snapshot, string, error)
+	GetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error)
+	CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error)
+	DeleteSnapshot(ctx context.Context, snapshotName string) error
 }
 
 func (cloud *CloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
@@ -64,6 +69,19 @@ func (cloud *CloudProvider) ListZones(ctx context.Context, region string) ([]str
 		zones = append(zones, zone.Name)
 	}
 	return zones, nil
+
+}
+
+func (cloud *CloudProvider) ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*compute.Snapshot, string, error) {
+	snapshots := []*compute.Snapshot{}
+	snapshotList, err := cloud.service.Snapshots.List(cloud.project).Filter(filter).MaxResults(maxEntries).PageToken(pageToken).Do()
+	if err != nil {
+		return snapshots, "", err
+	}
+	for _, snapshot := range snapshotList.Items {
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, snapshotList.NextPageToken, nil
 
 }
 
@@ -298,7 +316,7 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, region, name
 }
 
 func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
-	source := cloud.GetDiskSourceURI(disk, volKey)
+	source := cloud.GetDiskSourceURI(volKey)
 
 	attachedDiskV1 := &compute.AttachedDisk{
 		DeviceName: disk.GetName(),
@@ -331,31 +349,31 @@ func (cloud *CloudProvider) DetachDisk(ctx context.Context, volKey *meta.Key, in
 	return nil
 }
 
-func (cloud *CloudProvider) GetDiskSourceURI(disk *CloudDisk, volKey *meta.Key) string {
-	switch disk.Type() {
+func (cloud *CloudProvider) GetDiskSourceURI(volKey *meta.Key) string {
+	switch volKey.Type() {
 	case Zonal:
-		return cloud.getZonalDiskSourceURI(disk.ZonalDisk, volKey.Zone)
+		return cloud.getZonalDiskSourceURI(volKey.Name, volKey.Zone)
 	case Regional:
-		return cloud.getRegionalDiskSourceURI(disk.RegionalDisk, volKey.Region)
+		return cloud.getRegionalDiskSourceURI(volKey.Name, volKey.Region)
 	default:
 		return ""
 	}
 }
 
-func (cloud *CloudProvider) getZonalDiskSourceURI(disk *compute.Disk, zone string) string {
+func (cloud *CloudProvider) getZonalDiskSourceURI(diskName, zone string) string {
 	return cloud.service.BasePath + fmt.Sprintf(
 		diskSourceURITemplateSingleZone,
 		cloud.project,
 		zone,
-		disk.Name)
+		diskName)
 }
 
-func (cloud *CloudProvider) getRegionalDiskSourceURI(disk *computebeta.Disk, region string) string {
+func (cloud *CloudProvider) getRegionalDiskSourceURI(diskName, region string) string {
 	return cloud.betaService.BasePath + fmt.Sprintf(
 		diskSourceURITemplateRegional,
 		cloud.project,
 		region,
-		disk.Name)
+		diskName)
 }
 
 func (cloud *CloudProvider) GetDiskTypeURI(volKey *meta.Key, diskType string) string {
@@ -399,6 +417,20 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, op *computebe
 			return false, err
 		}
 		done, err := regionalOpIsDone(pollOp)
+		return done, err
+	})
+}
+
+func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, op *compute.Operation) error {
+	svc := cloud.service
+	project := cloud.project
+	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+		pollOp, err := svc.GlobalOperations.Get(project, op.Name).Context(ctx).Do()
+		if err != nil {
+			glog.Errorf("waitForGlobalOp(op: %#v) failed to poll the operation", op)
+			return false, err
+		}
+		done, err := opIsDone(pollOp)
 		return done, err
 	})
 }
@@ -455,4 +487,98 @@ func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone
 	}
 	glog.V(4).Infof("Got instance %v from zone %v", instanceName, instanceZone)
 	return instance, nil
+}
+
+func (cloud *CloudProvider) GetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	svc := cloud.service
+	project := cloud.project
+	glog.V(4).Infof("Getting snapshot %v", snapshotName)
+	snapshot, err := svc.Snapshots.Get(project, snapshotName).Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+	glog.V(4).Infof("Got snapshot %v", snapshotName)
+	return snapshot, nil
+}
+
+func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, snapshotName string) error {
+	op, err := cloud.service.Snapshots.Delete(cloud.project, snapshotName).Context(ctx).Do()
+	if err != nil {
+		if IsGCEError(err, "notFound") {
+			// Already deleted
+			return nil
+		}
+		return err
+	}
+	err = cloud.waitForGlobalOp(ctx, op)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error) {
+	switch volKey.Type() {
+	case meta.Zonal:
+		return cloud.createZonalDiskSnapshot(ctx, volKey, snapshotName)
+	case meta.Regional:
+		return cloud.createRegionalDiskSnapshot(ctx, volKey, snapshotName)
+	default:
+		return nil, fmt.Errorf("could not create snapshot, key was neither zonal nor regional, instead got: %v", volKey.String())
+	}
+}
+
+func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error) {
+	snapshotToCreate := &compute.Snapshot{
+		Name: snapshotName,
+	}
+
+	_, err := cloud.service.Disks.CreateSnapshot(cloud.project, volKey.Zone, volKey.Name, snapshotToCreate).Context(ctx).Do()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cloud.waitForSnapshotCreation(ctx, snapshotName)
+}
+
+func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error) {
+	snapshotToCreate := &computebeta.Snapshot{
+		Name: snapshotName,
+	}
+
+	_, err := cloud.betaService.RegionDisks.CreateSnapshot(cloud.project, volKey.Region, volKey.Name, snapshotToCreate).Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	return cloud.waitForSnapshotCreation(ctx, snapshotName)
+
+}
+
+func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	timer := time.NewTimer(waitForSnapshotCreationTimeOut)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			glog.V(5).Infof("Checking GCE Snapshot %s.", snapshotName)
+			snapshot, err := cloud.GetSnapshot(ctx, snapshotName)
+			if err != nil {
+				glog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
+			} else if snapshot != nil {
+				if snapshot.Status != "CREATING" {
+					glog.V(5).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
+					return snapshot, nil
+				} else {
+					glog.V(5).Infof("Snapshot %s is still creating ...", snapshotName)
+				}
+			}
+		case <-timer.C:
+			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
+		}
+	}
 }

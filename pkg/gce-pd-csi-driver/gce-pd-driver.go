@@ -62,6 +62,8 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 	csc := []csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+		csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 	}
 	gceDriver.AddControllerServiceCapabilities(csc)
 	ns := []csi.NodeServiceCapability_RPC_Type{

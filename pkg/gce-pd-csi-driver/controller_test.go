@@ -65,10 +65,255 @@ var (
 			Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
 		},
 	}
-	testVolumeId   = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
-	region, _      = common.GetRegionFromZones([]string{zone})
-	testRegionalId = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
+	testVolumeId         = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
+	region, _            = common.GetRegionFromZones([]string{zone})
+	testRegionalId       = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
+	testSnapshotId       = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
+	totalSnapshotsNumber = 5
 )
+
+func TestCreateSnapshotArguments(t *testing.T) {
+	timestamp, _ := time.Parse(time.RFC3339, gce.Timestamp)
+	// Define test cases
+	testCases := []struct {
+		name        string
+		req         *csi.CreateSnapshotRequest
+		expSnapshot *csi.Snapshot
+		expErrCode  codes.Code
+	}{
+		{
+			name: "success default snapshot of zonal disk",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeId,
+			},
+			expSnapshot: &csi.Snapshot{
+				Id:             testSnapshotId,
+				SourceVolumeId: testVolumeId,
+				CreatedAt:      timestamp.UnixNano(),
+				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
+				Status: &csi.SnapshotStatus{
+					Type: csi.SnapshotStatus_UPLOADING,
+				},
+			},
+		},
+		{
+			name: "fail no name",
+			req: &csi.CreateSnapshotRequest{
+				Name:           "",
+				SourceVolumeId: testVolumeId,
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "fail no source volume name",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: "",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "fail wrong source volume",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: "/test/wrongname",
+			},
+			expErrCode: codes.NotFound,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		gceDriver := GetGCEDriver()
+		fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
+		if err != nil {
+			t.Fatalf("Failed to setup GCE Driver: %v", err)
+		}
+
+		// Start Test
+		resp, err := gceDriver.cs.CreateSnapshot(context.Background(), tc.req)
+		//check response
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		// Make sure responses match
+		snapshot := resp.GetSnapshot()
+		if snapshot == nil {
+			// If one is nil but not both
+			t.Fatalf("Expected snapshot %v, got nil snapshot", tc.expSnapshot)
+		}
+
+		if !reflect.DeepEqual(snapshot, tc.expSnapshot) {
+			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshot, tc.expSnapshot)
+			t.Errorf(errStr)
+		}
+	}
+}
+func TestDeleteSnapshot(t *testing.T) {
+	testCases := []struct {
+		name       string
+		req        *csi.DeleteSnapshotRequest
+		expErrCode codes.Code
+	}{
+		{
+			name: "valid",
+			req: &csi.DeleteSnapshotRequest{
+				SnapshotId: testSnapshotId,
+			},
+		},
+		{
+			name: "invalid id",
+			req: &csi.DeleteSnapshotRequest{
+				SnapshotId: testSnapshotId + "/foo",
+			},
+		},
+		{
+			name: "empty id",
+			req: &csi.DeleteSnapshotRequest{
+				SnapshotId: "",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriver(t)
+
+		_, err := gceDriver.cs.DeleteSnapshot(context.Background(), tc.req)
+		//check response
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			t.Logf("get server error %v", serverError)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+	}
+}
+
+func TestListSnapshotsArguments(t *testing.T) {
+	// Define test cases
+	testCases := []struct {
+		name         string
+		req          *csi.ListSnapshotsRequest
+		expSnapshots int
+		expErrCode   codes.Code
+	}{
+		{
+			name: "valid",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testSnapshotId,
+			},
+			expSnapshots: 1,
+		},
+		{
+			name: "invalid id",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testSnapshotId + "/foo",
+			},
+			expSnapshots: 0,
+		},
+		{
+			name: "no id",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: "",
+			},
+			expSnapshots: totalSnapshotsNumber + 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		gceDriver := GetGCEDriver()
+		fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
+		if err != nil {
+			t.Fatalf("Failed to setup GCE Driver: %v", err)
+		}
+
+		createReq := &csi.CreateSnapshotRequest{
+			Name:           name,
+			SourceVolumeId: testVolumeId,
+		}
+		gceDriver.cs.CreateSnapshot(context.Background(), createReq)
+
+		for i := 0; i < totalSnapshotsNumber; i++ {
+			volumeId := fmt.Sprintf("%s%d", testVolumeId, i)
+			nameId := fmt.Sprintf("%s%d", name, i)
+			createReq := &csi.CreateSnapshotRequest{
+				Name:           nameId,
+				SourceVolumeId: volumeId,
+			}
+			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
+			if err != nil {
+				t.Errorf("error %v", err)
+			}
+		}
+
+		// Start Test
+		resp, err := gceDriver.cs.ListSnapshots(context.Background(), tc.req)
+		//check response
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		// Make sure responses match
+		snapshots := resp.GetEntries()
+		//expectsnapshots := expSnapshot.GetEntries()
+		if (snapshots == nil || len(snapshots) == 0) && tc.expSnapshots == 0 {
+			continue
+		}
+
+		if snapshots == nil || len(snapshots) == 0 {
+			// If one is nil or empty but not both
+			t.Fatalf("Expected snapshots number %v, got no snapshot", tc.expSnapshots)
+		}
+		if len(snapshots) != tc.expSnapshots {
+			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshots[0].Snapshot, tc.expSnapshots)
+			t.Errorf(errStr)
+		}
+	}
+}
 
 func TestCreateVolumeArguments(t *testing.T) {
 
