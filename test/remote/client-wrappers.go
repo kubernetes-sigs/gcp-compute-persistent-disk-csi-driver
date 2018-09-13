@@ -183,3 +183,25 @@ func (c *CsiClient) NodeGetInfo() (*csipb.NodeGetInfoResponse, error) {
 	resp, err := c.nodeClient.NodeGetInfo(context.Background(), &csipb.NodeGetInfoRequest{})
 	return resp, err
 }
+
+func (c *CsiClient) CreateSnapshot(snapshotName, sourceVolumeId string, params map[string]string) (string, error) {
+
+	csr := &csipb.CreateSnapshotRequest{
+		Name:           snapshotName,
+		SourceVolumeId: sourceVolumeId,
+		Parameters:     params,
+	}
+	cresp, err := c.ctrlClient.CreateSnapshot(context.Background(), csr)
+	if err != nil {
+		return "", err
+	}
+	return cresp.GetSnapshot().GetId(), nil
+}
+
+func (c *CsiClient) DeleteSnapshot(snapshotId string) error {
+	dsr := &csipb.DeleteSnapshotRequest{
+		SnapshotId: snapshotId,
+	}
+	_, err := c.ctrlClient.DeleteSnapshot(context.Background(), dsr)
+	return err
+}

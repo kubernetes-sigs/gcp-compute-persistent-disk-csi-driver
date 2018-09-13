@@ -17,8 +17,10 @@ package tests
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 
@@ -189,6 +191,151 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	// Test volume already exists idempotency
 
 	// Test volume with op pending
+
+	It("Should create and delete snapshot for the volume with default zone", func() {
+		// Create new driver and client
+		Expect(testInstances).NotTo(BeEmpty())
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
+		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volId, err := client.CreateVolume(volName, nil, defaultSizeGb, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		snapshotId, err := client.CreateSnapshot(snapshotName, volId, nil)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotId)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
+
+	It("Should create and delete snapshot for RePD in two zones ", func() {
+		// Create new driver and client
+		Expect(testInstances).NotTo(BeEmpty())
+		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
+		Expect(err).To(BeNil(), "Failed to set up new driver and client")
+		defer func() {
+			err := remote.TeardownDriverAndClient(testContext)
+			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
+		}()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volId, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultSizeGb, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		snapshotId, err := controllerClient.CreateSnapshot(snapshotName, volId, nil)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := controllerClient.DeleteVolume(volId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = controllerClient.DeleteSnapshot(snapshotId)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
 })
 
 func Logf(format string, args ...interface{}) {
