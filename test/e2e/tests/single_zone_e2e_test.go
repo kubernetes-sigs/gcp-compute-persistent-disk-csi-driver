@@ -193,14 +193,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	// Test volume with op pending
 
 	It("Should create and delete snapshot for the volume with default zone", func() {
-		// Create new driver and client
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
@@ -258,14 +252,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	})
 
 	It("Should create and delete snapshot for RePD in two zones ", func() {
-		// Create new driver and client
-		Expect(testInstances).NotTo(BeEmpty())
-		testContext, err := testutils.GCEClientAndDriverSetup(testInstances[0])
-		Expect(err).To(BeNil(), "Failed to set up new driver and client")
-		defer func() {
-			err := remote.TeardownDriverAndClient(testContext)
-			Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
-		}()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client

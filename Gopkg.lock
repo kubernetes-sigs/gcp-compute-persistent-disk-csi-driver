@@ -51,13 +51,13 @@
   revision = "b7773ae218740a7be65057fc60b366a49b538a44"
 
 [[projects]]
-  branch = "v0.3.0"
+  branch = "master"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "pkg/sanity",
     "utils"
   ]
-  revision = "53045fadb43cf34da55260ee767f7e45645388e9"
+  revision = "b36d955d7be3e91bab6aa63d5253e2b8381ca4be"
 
 [[projects]]
   name = "github.com/onsi/ginkgo"
@@ -309,6 +309,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fb90607ca6d8901d69d05924ed4f806175e26d643234a7417b3c4f7f694234e1"
+  inputs-digest = "44011c1bd50ec7dd76d6a9a32661e882daf3fcc37d57af3b0d87d84fef2fcf55"
   solver-name = "gps-cdcl"
   solver-version = 1
