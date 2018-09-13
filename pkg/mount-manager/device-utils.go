@@ -54,7 +54,7 @@ const (
 type DeviceUtils interface {
 	// GetDiskByIdPaths returns a list of all possible paths for a
 	// given Persistent Disk
-	GetDiskByIdPaths(pdName string, partition string) []string
+	GetDiskByIdPaths(deviceName string, partition string) []string
 
 	// VerifyDevicePath returns the first of the list of device paths that
 	// exists on the machine, or an empty string if none exists
@@ -71,12 +71,12 @@ func NewDeviceUtils() *deviceUtils {
 }
 
 // Returns list of all /dev/disk/by-id/* paths for given PD.
-func (m *deviceUtils) GetDiskByIdPaths(pdName string, partition string) []string {
+func (m *deviceUtils) GetDiskByIdPaths(deviceName string, partition string) []string {
 	devicePaths := []string{
-		path.Join(diskByIdPath, diskGooglePrefix+pdName),
-		path.Join(diskByIdPath, diskScsiGooglePrefix+pdName),
-		path.Join(diskByHostIdPath, diskScsiGooglePrefix+pdName),
-		path.Join(diskByHostIdPath, diskScsiGooglePrefix+pdName),
+		path.Join(diskByIdPath, diskGooglePrefix+deviceName),
+		path.Join(diskByIdPath, diskScsiGooglePrefix+deviceName),
+		path.Join(diskByHostIdPath, diskScsiGooglePrefix+deviceName),
+		path.Join(diskByHostIdPath, diskScsiGooglePrefix+deviceName),
 	}
 
 	if partition != "" {
