@@ -28,10 +28,12 @@ const (
 	// Volume ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
 	// "projects/{projectName}/regions/{regionName}/disks/{diskName}"
-	volIDToplogyKey    = 2
-	volIDToplogyValue  = 3
-	volIDDiskNameValue = 5
-	volIDTotalElements = 6
+	volIDToplogyKey       = 2
+	volIDToplogyValue     = 3
+	volIDDiskNameValue    = 5
+	volIDTotalElements    = 6
+	snapshotTotalElements = 5
+	snapshotTopologyKey   = 2
 
 	// Node ID Expected Format
 	// "{zoneName}/{instanceName}"
@@ -61,6 +63,18 @@ func VolumeIDToKey(id string) (*meta.Key, error) {
 		return meta.RegionalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
 	} else {
 		return nil, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitId[volIDToplogyKey])
+	}
+}
+
+func SnapshotIDToKey(id string) (string, error) {
+	splitId := strings.Split(id, "/")
+	if len(splitId) != snapshotTotalElements {
+		return "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
+	}
+	if splitId[snapshotTopologyKey] == "global" {
+		return splitId[snapshotTotalElements-1], nil
+	} else {
+		return "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
 	}
 }
 

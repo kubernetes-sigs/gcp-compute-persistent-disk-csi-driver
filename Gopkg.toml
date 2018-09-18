@@ -76,7 +76,7 @@
   non-go = true
 
 [[constraint]]
-  branch = "v0.3.0"
+  branch = "master"
   name = "github.com/kubernetes-csi/csi-test"
   
 [[constraint]]
