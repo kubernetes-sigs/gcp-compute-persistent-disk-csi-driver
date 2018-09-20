@@ -1,5 +1,6 @@
 # Compiled binaries and deployment files 
 bin/
+test/k8s-integration/src/
 
 # Personal testing
 /my_test/
