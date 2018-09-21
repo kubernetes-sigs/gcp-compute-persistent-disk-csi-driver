@@ -849,15 +849,13 @@ func TestGetRequestCapacity(t *testing.T) {
 func TestDiskIsAttached(t *testing.T) {
 	testCases := []struct {
 		name        string
-		disk        *compute.Disk
+		deviceName  string
 		instance    *compute.Instance
 		expAttached bool
 	}{
 		{
-			name: "normal-attached",
-			disk: &compute.Disk{
-				Name: "test-disk",
-			},
+			name:       "normal-attached",
+			deviceName: "test-disk",
 			instance: &compute.Instance{
 				Disks: []*compute.AttachedDisk{
 					{
@@ -868,10 +866,8 @@ func TestDiskIsAttached(t *testing.T) {
 			expAttached: true,
 		},
 		{
-			name: "normal-not-attached",
-			disk: &compute.Disk{
-				Name: "test-disk",
-			},
+			name:       "normal-not-attached",
+			deviceName: "test-disk",
 			instance: &compute.Instance{
 				Disks: []*compute.AttachedDisk{
 					{
@@ -884,7 +880,7 @@ func TestDiskIsAttached(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		if attached := diskIsAttached(gce.ZonalCloudDisk(tc.disk), tc.instance); attached != tc.expAttached {
+		if attached := diskIsAttached(tc.deviceName, tc.instance); attached != tc.expAttached {
 			t.Errorf("Expected disk attached to be %v, but got %v", tc.expAttached, attached)
 		}
 	}
@@ -893,17 +889,15 @@ func TestDiskIsAttached(t *testing.T) {
 func TestDiskIsAttachedAndCompatible(t *testing.T) {
 	testCases := []struct {
 		name        string
-		disk        *compute.Disk
+		deviceName  string
 		instance    *compute.Instance
 		mode        string
 		expAttached bool
 		expErr      bool
 	}{
 		{
-			name: "normal-attached",
-			disk: &compute.Disk{
-				Name: "test-disk",
-			},
+			name:       "normal-attached",
+			deviceName: "test-disk",
 			instance: &compute.Instance{
 				Disks: []*compute.AttachedDisk{
 					{
@@ -916,10 +910,8 @@ func TestDiskIsAttachedAndCompatible(t *testing.T) {
 			expAttached: true,
 		},
 		{
-			name: "normal-not-attached",
-			disk: &compute.Disk{
-				Name: "test-disk",
-			},
+			name:       "normal-not-attached",
+			deviceName: "test-disk",
 			instance: &compute.Instance{
 				Disks: []*compute.AttachedDisk{
 					{
@@ -932,10 +924,8 @@ func TestDiskIsAttachedAndCompatible(t *testing.T) {
 			expAttached: false,
 		},
 		{
-			name: "incompatible mode",
-			disk: &compute.Disk{
-				Name: "test-disk",
-			},
+			name:       "incompatible mode",
+			deviceName: "test-disk",
 			instance: &compute.Instance{
 				Disks: []*compute.AttachedDisk{
 					{
@@ -951,7 +941,7 @@ func TestDiskIsAttachedAndCompatible(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		attached, err := diskIsAttachedAndCompatible(gce.ZonalCloudDisk(tc.disk), tc.instance, nil, tc.mode)
+		attached, err := diskIsAttachedAndCompatible(tc.deviceName, tc.instance, nil, tc.mode)
 		if err != nil && !tc.expErr {
 			t.Errorf("Did not expect error but got: %v", err)
 		}

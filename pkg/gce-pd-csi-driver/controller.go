@@ -252,7 +252,12 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		readWrite = "READ_ONLY"
 	}
 
-	attached, err := diskIsAttachedAndCompatible(disk, instance, volumeCapability, readWrite)
+	deviceName, err := common.GetDeviceName(volKey)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
+	}
+
+	attached, err := diskIsAttachedAndCompatible(deviceName, instance, volumeCapability, readWrite)
 	if err != nil {
 		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Disk %v already published to node %v but incompatbile: %v", volKey.Name, nodeID, err))
 	}
@@ -299,10 +304,6 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, err
 	}
 
-	disk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
-	if err != nil {
-		return nil, err
-	}
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
@@ -312,7 +313,12 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, err
 	}
 
-	attached := diskIsAttached(disk, instance)
+	deviceName, err := common.GetDeviceName(volKey)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
+	}
+
+	attached := diskIsAttached(deviceName, instance)
 
 	if !attached {
 		// Volume is not attached to node. Success!
@@ -649,9 +655,9 @@ func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
 	return capBytes, nil
 }
 
-func diskIsAttached(volume *gce.CloudDisk, instance *compute.Instance) bool {
+func diskIsAttached(deviceName string, instance *compute.Instance) bool {
 	for _, disk := range instance.Disks {
-		if disk.DeviceName == volume.GetName() {
+		if disk.DeviceName == deviceName {
 			// Disk is attached to node
 			return true
 		}
@@ -659,9 +665,9 @@ func diskIsAttached(volume *gce.CloudDisk, instance *compute.Instance) bool {
 	return false
 }
 
-func diskIsAttachedAndCompatible(volume *gce.CloudDisk, instance *compute.Instance, volumeCapability *csi.VolumeCapability, readWrite string) (bool, error) {
+func diskIsAttachedAndCompatible(deviceName string, instance *compute.Instance, volumeCapability *csi.VolumeCapability, readWrite string) (bool, error) {
 	for _, disk := range instance.Disks {
-		if disk.DeviceName == volume.GetName() {
+		if disk.DeviceName == deviceName {
 			// Disk is attached to node
 			if disk.Mode != readWrite {
 				return true, fmt.Errorf("disk mode does not match. Got %v. Want %v", disk.Mode, readWrite)

@@ -318,8 +318,12 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, region, name
 func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
 	source := cloud.GetDiskSourceURI(volKey)
 
+	deviceName, err := common.GetDeviceName(volKey)
+	if err != nil {
+		return fmt.Errorf("failed to get device name: %v", err)
+	}
 	attachedDiskV1 := &compute.AttachedDisk{
-		DeviceName: disk.GetName(),
+		DeviceName: deviceName,
 		Kind:       disk.GetKind(),
 		Mode:       readWrite,
 		Source:     source,
@@ -338,7 +342,12 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, vol
 }
 
 func (cloud *CloudProvider) DetachDisk(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error {
-	op, err := cloud.service.Instances.DetachDisk(cloud.project, instanceZone, instanceName, volKey.Name).Context(ctx).Do()
+	deviceName, err := common.GetDeviceName(volKey)
+	if err != nil {
+		return err
+	}
+
+	op, err := cloud.service.Instances.DetachDisk(cloud.project, instanceZone, instanceName, deviceName).Context(ctx).Do()
 	if err != nil {
 		return err
 	}

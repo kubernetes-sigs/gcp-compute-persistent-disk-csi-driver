@@ -40,6 +40,8 @@ const (
 	nodeIDZoneValue     = 0
 	nodeIDNameValue     = 1
 	nodeIDTotalElements = 2
+
+	regionalDeviceNameSuffix = "_regional"
 )
 
 func BytesToGb(bytes int64) int64 {
@@ -103,4 +105,15 @@ func GetRegionFromZones(zones []string) (string, error) {
 		return "", fmt.Errorf("multiple or no regions gotten from zones, got: %v", regions)
 	}
 	return regions.UnsortedList()[0], nil
+}
+
+func GetDeviceName(volKey *meta.Key) (string, error) {
+	switch volKey.Type() {
+	case meta.Zonal:
+		return volKey.Name, nil
+	case meta.Regional:
+		return volKey.Name + regionalDeviceNameSuffix, nil
+	default:
+		return "", fmt.Errorf("volume key %v neither zonal nor regional", volKey.Name)
+	}
 }

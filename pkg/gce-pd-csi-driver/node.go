@@ -177,7 +177,12 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// TODO(#83): Get real partitions
 	partition := ""
 
-	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(volumeKey.Name, partition)
+	deviceName, err := common.GetDeviceName(volumeKey)
+	if err != nil {
+		status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
+	}
+
+	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
 	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
 
 	if err != nil {
