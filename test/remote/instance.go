@@ -237,7 +237,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 		}
 		_, err = i.computeService.Firewalls.Insert(i.project, f).Do()
 		if err != nil {
-			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
+			return fmt.Errorf("Failed to insert required default SSH firewall rule %v: %v", defaultFirewallRule, err)
 		}
 	} else {
 		glog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
