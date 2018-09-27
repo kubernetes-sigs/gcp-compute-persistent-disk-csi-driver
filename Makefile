@@ -28,9 +28,9 @@ gce-pd-driver:
 	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/
 
 build-container:
-	ifndef GCE_PD_CSI_STAGING_IMAGE
-		$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
-	endif
+ifndef GCE_PD_CSI_STAGING_IMAGE
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+endif
 	docker build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
 push-container: build-container

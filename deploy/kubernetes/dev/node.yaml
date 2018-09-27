@@ -16,22 +16,23 @@ spec:
       containers:
         - name: csi-driver-registrar
           imagePullPolicy: Always
-          image: quay.io/k8scsi/driver-registrar:v0.2.0
+          image: quay.io/k8scsi/driver-registrar:v0.3.0
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock"
           env:
             - name: ADDRESS
-              value: /csi/csi.sock
+              value: /var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
             - name: plugin-dir
-              mountPath: /csi
-          #  - name: registrar-socket-dir
-          #    mountPath: /var/lib/csi/sockets/
+              mountPath: /var/lib/kubelet/plugins/com.google.csi.gcepd/
+            - name: registration-dir
+              mountPath: /registration
         - name: gce-pd-driver
           securityContext:
             privileged: true
@@ -52,11 +53,10 @@ spec:
             - name: device-dir
               mountPath: /host/dev
       volumes:
-        # TODO(#92): this will work when kublet registrar functionality exists
-        #- name: registrar-socket-dir
-        #  hostPath:
-        #    path: /var/lib/kubelet/device-plugins/
-        #    type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/
+            type: Directory
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet
