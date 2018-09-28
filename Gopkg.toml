@@ -24,7 +24,6 @@
 #   go-tests = true
 #   unused-packages = true
 
-
 [[constraint]]
   name = "cloud.google.com/go"
   version = "0.19.0"
@@ -42,9 +41,9 @@
   branch = "master"
   name = "github.com/golang/glog"
 
-[[constraint]]
-  name = "github.com/stretchr/testify"
-  version = "1.2.1"
+#[[constraint]]
+#  name = "github.com/stretchr/testify"
+#  version = "1.2.1"
 
 [[constraint]]
   branch = "master"
@@ -63,7 +62,7 @@
   version = "1.10.0"
 
 [[constraint]]
-  branch = "master"
+  branch = "release-1.11"
   name = "k8s.io/apimachinery"
 
 [[constraint]]
@@ -78,7 +77,12 @@
 [[constraint]]
   branch = "master"
   name = "github.com/kubernetes-csi/csi-test"
-  
+
 [[constraint]]
   branch = "master"
   name = "k8s.io/test-infra"
+
+# Transitive dependency of k8s.io/kubernetes/pkg/util/parsers
+[[override]]
+  branch = "master"
+  name = "github.com/docker/distribution"
