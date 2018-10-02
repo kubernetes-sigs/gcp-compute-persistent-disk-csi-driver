@@ -46,8 +46,8 @@ var _ csi.ControllerServer = &GCEControllerServer{}
 const (
 	// MaxVolumeSizeInBytes is the maximum standard and ssd size of 64TB
 	MaxVolumeSizeInBytes     int64 = 64 * 1024 * 1024 * 1024 * 1024
-	MinimumVolumeSizeInBytes int64 = 5 * 1024 * 1024 * 1024
-	MinimumDiskSizeInGb            = 5
+	MinimumVolumeSizeInBytes int64 = 1 * 1024 * 1024 * 1024
+	MinimumDiskSizeInGb            = 1
 
 	DiskTypeSSD      = "pd-ssd"
 	DiskTypeStandard = "pd-standard"
