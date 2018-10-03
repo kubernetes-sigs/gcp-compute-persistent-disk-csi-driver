@@ -16,7 +16,7 @@
 # GCE_PD_CSI_STAGING_IMAGE: Staging image repository
 
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
-STAGINGVERSION=latest
+STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 
 PRODIMAGE=gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver
 PRODVERSION=v0.1.0.alpha
@@ -25,11 +25,17 @@ all: gce-pd-driver
 
 gce-pd-driver:
 	mkdir -p bin
+ifndef GCE_PD_CSI_STAGING_VERSION
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_VERSION to staging version")
+endif
 	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/
 
 build-container:
 ifndef GCE_PD_CSI_STAGING_IMAGE
 	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+endif
+ifndef GCE_PD_CSI_STAGING_VERSION
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_VERSION to staging version")
 endif
 	docker build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
@@ -44,3 +50,6 @@ prod-push-container: prod-build-container
 
 test-sanity: gce-pd-driver
 	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
+
+test-k8s-integration:
+	go build -o bin/k8s-integration-test ./test/k8s-integration

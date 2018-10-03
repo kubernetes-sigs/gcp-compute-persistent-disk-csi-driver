@@ -56,6 +56,11 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 		Port:         port,
 	}
 
+	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", "latest")
+	if err != nil {
+		return nil, err
+	}
+
 	return remote.SetupNewDriverAndClient(instance, config)
 }
 
@@ -104,7 +109,7 @@ func SetupProwConfig() (project, serviceAccount string) {
 	// Default Compute Engine service account
 	// [PROJECT_NUMBER]-compute@developer.gserviceaccount.com
 	serviceAccount = fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
-	glog.V(4).Infof("Using project %v", project)
+	glog.Infof("Using project %v and service account %v", project, serviceAccount)
 	return project, serviceAccount
 }
 
