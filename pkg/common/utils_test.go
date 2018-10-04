@@ -27,7 +27,6 @@ import (
 const (
 	volIDZoneFmt   = "projects/%s/zones/%s/disks/%s"
 	volIDRegionFmt = "projects/%s/regions/%s/disks/%s"
-	nodeIDFmt      = "%s/%s"
 )
 
 func TestBytesToGb(t *testing.T) {
@@ -154,6 +153,7 @@ func TestVolumeIDToKey(t *testing.T) {
 }
 
 func TestNodeIDToZoneAndName(t *testing.T) {
+	testProject := "test-project"
 	testName := "test-name"
 	testZone := "test-zone"
 
@@ -166,7 +166,7 @@ func TestNodeIDToZoneAndName(t *testing.T) {
 	}{
 		{
 			name:    "normal",
-			nodeID:  fmt.Sprintf(nodeIDFmt, testZone, testName),
+			nodeID:  CreateNodeID(testProject, testZone, testName),
 			expZone: testZone,
 			expName: testName,
 		},

@@ -32,6 +32,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 const (
@@ -62,7 +63,7 @@ func (i *InstanceInfo) GetName() string {
 }
 
 func (i *InstanceInfo) GetNodeID() string {
-	return strings.Join([]string{i.zone, i.name}, "/")
+	return common.CreateNodeID(i.project, i.zone, i.name)
 }
 
 func CreateInstanceInfo(project, instanceZone, name string, cs *compute.Service) (*InstanceInfo, error) {

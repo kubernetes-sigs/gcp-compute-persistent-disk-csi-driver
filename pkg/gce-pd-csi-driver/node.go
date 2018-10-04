@@ -17,7 +17,6 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -271,7 +270,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 func (ns *GCENodeServer) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
 	glog.V(4).Infof("NodeGetId called with req: %#v", req)
 
-	nodeID := strings.Join([]string{ns.MetadataService.GetZone(), ns.MetadataService.GetName()}, "/")
+	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
 	return &csi.NodeGetIdResponse{
 		NodeId: nodeID,
@@ -293,7 +292,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
-	nodeID := strings.Join([]string{ns.MetadataService.GetZone(), ns.MetadataService.GetName()}, "/")
+	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
 	resp := &csi.NodeGetInfoResponse{
 		NodeId: nodeID,

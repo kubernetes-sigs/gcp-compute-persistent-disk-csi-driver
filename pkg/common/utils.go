@@ -28,18 +28,21 @@ const (
 	// Volume ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
 	// "projects/{projectName}/regions/{regionName}/disks/{diskName}"
-	volIDToplogyKey       = 2
-	volIDToplogyValue     = 3
-	volIDDiskNameValue    = 5
-	volIDTotalElements    = 6
+	volIDToplogyKey    = 2
+	volIDToplogyValue  = 3
+	volIDDiskNameValue = 5
+	volIDTotalElements = 6
+
+	// Snapshot ID
 	snapshotTotalElements = 5
 	snapshotTopologyKey   = 2
 
 	// Node ID Expected Format
-	// "{zoneName}/{instanceName}"
-	nodeIDZoneValue     = 0
-	nodeIDNameValue     = 1
-	nodeIDTotalElements = 2
+	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
+	nodeIDFmt           = "projects/%s/zones/%s/instances/%s"
+	nodeIDZoneValue     = 3
+	nodeIDNameValue     = 5
+	nodeIDTotalElements = 6
 
 	regionalDeviceNameSuffix = "_regional"
 )
@@ -83,7 +86,7 @@ func SnapshotIDToKey(id string) (string, error) {
 func NodeIDToZoneAndName(id string) (string, string, error) {
 	splitId := strings.Split(id, "/")
 	if len(splitId) != nodeIDTotalElements {
-		return "", "", fmt.Errorf("failed to get id components. expected {zone}/{name}. Got: %s", id)
+		return "", "", fmt.Errorf("failed to get id components. expected projects/{project}/zones/{zone}/instances/{name}. Got: %s", id)
 	}
 	return splitId[nodeIDZoneValue], splitId[nodeIDNameValue], nil
 }
@@ -116,4 +119,8 @@ func GetDeviceName(volKey *meta.Key) (string, error) {
 	default:
 		return "", fmt.Errorf("volume key %v neither zonal nor regional", volKey.Name)
 	}
+}
+
+func CreateNodeID(project, zone, name string) string {
+	return fmt.Sprintf(nodeIDFmt, project, zone, name)
 }
