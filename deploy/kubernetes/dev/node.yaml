@@ -51,7 +51,16 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: device-dir
-              mountPath: /host/dev
+              mountPath: /dev
+            # The following mounts are required to trigger host udevadm from container
+            - name: udev-rules-etc
+              mountPath: /etc/udev
+            - name: udev-rules-lib
+              mountPath: /lib/udev
+            - name: udev-socket
+              mountPath: /run/udev
+            - name: sys
+              mountPath: /sys
       volumes:
         - name: registration-dir
           hostPath:
@@ -68,4 +77,21 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+            type: Directory
+        # The following mounts are required to trigger host udevadm from container
+        - name: udev-rules-etc
+          hostPath:
+            path: /etc/udev
+            type: Directory
+        - name: udev-rules-lib
+          hostPath:
+            path: /lib/udev
+            type: Directory
+        - name: udev-socket
+          hostPath:
+            path: /run/udev
+            type: Directory
+        - name: sys
+          hostPath:
+            path: /sys
             type: Directory
