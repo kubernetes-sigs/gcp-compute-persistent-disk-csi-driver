@@ -173,8 +173,11 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	// Part 1: Get device path of attached device
-	// TODO(#83): Get real partitions
 	partition := ""
+
+	if part, ok := req.GetVolumeAttributes()[common.VolumeAttributePartition]; ok {
+		partition = part
+	}
 
 	deviceName, err := common.GetDeviceName(volumeKey)
 	if err != nil {

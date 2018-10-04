@@ -23,4 +23,7 @@ const (
 
 	// Keys for Topology. This key will be shared amonst drivers from GCP
 	TopologyKeyZone = "com.google.topology/zone"
+
+	// VolumeAttributes for Partition
+	VolumeAttributePartition = "partition"
 )
