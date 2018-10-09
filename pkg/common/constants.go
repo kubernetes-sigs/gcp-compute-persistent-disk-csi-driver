@@ -26,4 +26,6 @@ const (
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"
+
+	UnspecifiedValue = "UNSPECIFIED"
 )

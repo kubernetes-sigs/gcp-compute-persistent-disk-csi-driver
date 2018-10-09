@@ -27,7 +27,9 @@ import (
 const (
 	// Volume ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
+	volIDZonalFmt = "projects/%s/zones/%s/disks/%s"
 	// "projects/{projectName}/regions/{regionName}/disks/{diskName}"
+	volIDRegionalFmt   = "projects/%s/regions/%s/disks/%s"
 	volIDToplogyKey    = 2
 	volIDToplogyValue  = 3
 	volIDDiskNameValue = 5
@@ -69,6 +71,13 @@ func VolumeIDToKey(id string) (*meta.Key, error) {
 	} else {
 		return nil, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitId[volIDToplogyKey])
 	}
+}
+
+func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
+	if isZonal {
+		return fmt.Sprintf(volIDZonalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
+	}
+	return fmt.Sprintf(volIDRegionalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
 }
 
 func SnapshotIDToKey(id string) (string, error) {
