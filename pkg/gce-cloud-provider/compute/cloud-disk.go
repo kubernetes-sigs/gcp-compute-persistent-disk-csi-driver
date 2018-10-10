@@ -123,3 +123,14 @@ func (d *CloudDisk) GetSizeGb() int64 {
 		return -1
 	}
 }
+
+func (d *CloudDisk) GetZone() string {
+	switch d.Type() {
+	case Zonal:
+		return d.ZonalDisk.Zone
+	case Regional:
+		return d.RegionalDisk.Zone
+	default:
+		return ""
+	}
+}

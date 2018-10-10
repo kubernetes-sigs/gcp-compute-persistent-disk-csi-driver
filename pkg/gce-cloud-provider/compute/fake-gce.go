@@ -49,19 +49,47 @@ type FakeCloudProvider struct {
 
 var _ GCECompute = &FakeCloudProvider{}
 
-func FakeCreateCloudProvider(project, zone string) (*FakeCloudProvider, error) {
-	return &FakeCloudProvider{
+func FakeCreateCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
+	fcp := &FakeCloudProvider{
 		project:   project,
 		zone:      zone,
 		disks:     map[string]*CloudDisk{},
 		instances: map[string]*compute.Instance{},
 		snapshots: map[string]*compute.Snapshot{},
-	}, nil
+	}
+	for _, d := range cloudDisks {
+		fcp.disks[d.GetName()] = d
+	}
+	return fcp, nil
 
 }
 
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
-	return volumeKey, nil
+	switch volumeKey.Type() {
+	case meta.Zonal:
+		if volumeKey.Zone != common.UnspecifiedValue {
+			return volumeKey, nil
+		}
+		for name, d := range cloud.disks {
+			if name == volumeKey.Name {
+				volumeKey.Zone = d.GetZone()
+				return volumeKey, nil
+			}
+		}
+		return nil, fmt.Errorf("Couldn't repair unspecified volume information")
+	case meta.Regional:
+		if volumeKey.Region != common.UnspecifiedValue {
+			return volumeKey, nil
+		}
+		r, err := common.GetRegionFromZones([]string{cloud.zone})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get region from zones: %v", err)
+		}
+		volumeKey.Region = r
+		return volumeKey, nil
+	default:
+		return nil, fmt.Errorf("Volume key %v not zonal nor regional", volumeKey.Name)
+	}
 }
 
 func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
@@ -199,6 +227,9 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 }
 
 func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, volKey *meta.Key) error {
+	if _, ok := cloud.disks[volKey.Name]; !ok {
+		return notFoundError()
+	}
 	delete(cloud.disks, volKey.Name)
 	return nil
 }

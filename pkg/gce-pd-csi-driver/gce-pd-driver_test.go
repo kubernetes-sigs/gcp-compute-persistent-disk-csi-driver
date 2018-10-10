@@ -21,10 +21,10 @@ import (
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
-func initGCEDriver(t *testing.T) *GCEDriver {
+func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
