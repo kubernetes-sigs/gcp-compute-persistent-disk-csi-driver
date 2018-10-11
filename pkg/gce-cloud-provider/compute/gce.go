@@ -51,6 +51,8 @@ type CloudProvider struct {
 	betaService *beta.Service
 	project     string
 	zone        string
+
+	zonesCache map[string]([]string)
 }
 
 var _ GCECompute = &CloudProvider{}
@@ -76,6 +78,7 @@ func CreateCloudProvider(vendorVersion string) (*CloudProvider, error) {
 		betaService: betasvc,
 		project:     project,
 		zone:        zone,
+		zonesCache:  make(map[string]([]string)),
 	}, nil
 
 }

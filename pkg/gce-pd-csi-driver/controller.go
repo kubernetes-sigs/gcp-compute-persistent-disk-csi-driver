@@ -191,6 +191,11 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
+	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+	}
+
 	err = gceCS.CloudProvider.DeleteDisk(ctx, volKey)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk error: %v", err))
@@ -222,13 +227,17 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
 
+	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+	}
 	// TODO(#94): Check volume capability matches
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
 		PublishInfo: nil,
 	}
 
-	disk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
 		if gce.IsGCEError(err, "notFound") {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
@@ -270,7 +279,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
 	}
-	err = gceCS.CloudProvider.AttachDisk(ctx, disk, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
+	err = gceCS.CloudProvider.AttachDisk(ctx, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
 	}
@@ -282,7 +291,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
 	}
 
-	glog.V(4).Infof("Disk %v attached to instance %v successfully", disk.GetName(), nodeID)
+	glog.V(4).Infof("Disk %v attached to instance %v successfully", volKey.Name, nodeID)
 	return pubVolResp, nil
 }
 
@@ -326,7 +335,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	err = gceCS.CloudProvider.DetachDisk(ctx, volKey, instanceZone, instanceName)
+	err = gceCS.CloudProvider.DetachDisk(ctx, deviceName, instanceZone, instanceName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
 	}

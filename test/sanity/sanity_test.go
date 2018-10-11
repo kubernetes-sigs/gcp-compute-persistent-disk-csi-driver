@@ -37,7 +37,7 @@ func TestSanity(t *testing.T) {
 	// Set up driver and env
 	gceDriver := driver.GetGCEDriver()
 
-	cloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
+	cloudProvider, err := gce.FakeCreateCloudProvider(project, zone, nil)
 	if err != nil {
 		t.Fatalf("Failed to get cloud provider: %v", err)
 	}

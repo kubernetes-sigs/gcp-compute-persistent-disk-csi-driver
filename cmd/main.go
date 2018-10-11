@@ -34,8 +34,11 @@ func init() {
 
 var (
 	endpoint      = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
-	driverName    = flag.String("drivername", "com.google.csi.gcepd", "name of the driver")
 	vendorVersion string
+)
+
+const (
+	driverName = "com.google.csi.gcepd"
 )
 
 func main() {
@@ -67,7 +70,7 @@ func handle() {
 		glog.Fatalf("Failed to set up metadata service: %v", err)
 	}
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, *driverName, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, driverName, vendorVersion)
 	if err != nil {
 		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

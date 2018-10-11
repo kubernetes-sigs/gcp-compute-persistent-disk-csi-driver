@@ -126,15 +126,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := GetGCEDriver()
-		fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
-		if err != nil {
-			t.Fatalf("Failed to create fake cloud provider: %v", err)
-		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
-		if err != nil {
-			t.Fatalf("Failed to setup GCE Driver: %v", err)
-		}
+		gceDriver := initGCEDriver(t, nil)
 
 		// Start Test
 		resp, err := gceDriver.cs.CreateSnapshot(context.Background(), tc.req)
@@ -195,7 +187,7 @@ func TestDeleteSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t)
+		gceDriver := initGCEDriver(t, nil)
 
 		_, err := gceDriver.cs.DeleteSnapshot(context.Background(), tc.req)
 		//check response
@@ -251,15 +243,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := GetGCEDriver()
-		fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
-		if err != nil {
-			t.Fatalf("Failed to create fake cloud provider: %v", err)
-		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
-		if err != nil {
-			t.Fatalf("Failed to setup GCE Driver: %v", err)
-		}
+		gceDriver := initGCEDriver(t, nil)
 
 		createReq := &csi.CreateSnapshotRequest{
 			Name:           name,
@@ -592,15 +576,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := GetGCEDriver()
-		fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
-		if err != nil {
-			t.Fatalf("Failed to create fake cloud provider: %v", err)
-		}
-		err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
-		if err != nil {
-			t.Fatalf("Failed to setup GCE Driver: %v", err)
-		}
+		gceDriver := initGCEDriver(t, nil)
 
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -661,15 +637,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		},
 	}
 
-	gceDriver := GetGCEDriver()
-	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone)
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
-	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, "vendor-version")
-	if err != nil {
-		t.Fatalf("Failed to setup GCE Driver: %v", err)
-	}
+	gceDriver := initGCEDriver(t, nil)
 
 	tZones := map[string]bool{}
 	// Start Test
@@ -690,14 +658,24 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 	}
 }
 
+func createZonalCloudDisk(name string) *gce.CloudDisk {
+	return gce.ZonalCloudDisk(&compute.Disk{
+		Name: name,
+	})
+}
+
 func TestDeleteVolume(t *testing.T) {
 	testCases := []struct {
-		name   string
-		req    *csi.DeleteVolumeRequest
-		expErr bool
+		name      string
+		seedDisks []*gce.CloudDisk
+		req       *csi.DeleteVolumeRequest
+		expErr    bool
 	}{
 		{
 			name: "valid",
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
 			req: &csi.DeleteVolumeRequest{
 				VolumeId: testVolumeId,
 			},
@@ -709,18 +687,38 @@ func TestDeleteVolume(t *testing.T) {
 			},
 			expErr: false,
 		},
+		{
+			name: "repairable ID",
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: common.GenerateUnderspecifiedVolumeID(name, true /* isZonal */),
+			},
+			expErr: false,
+		},
+		{
+			name: "non-repairable ID",
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk("nottherightname"),
+			},
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: common.GenerateUnderspecifiedVolumeID(name, true /* isZonal */),
+			},
+			expErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t)
+		gceDriver := initGCEDriver(t, tc.seedDisks)
 
 		_, err := gceDriver.cs.DeleteVolume(context.Background(), tc.req)
 		if err == nil && tc.expErr {
-			t.Fatalf("Expected error but got none")
+			t.Errorf("Expected error but got none")
 		}
 		if err != nil && !tc.expErr {
-			t.Fatalf("Did not expect error but got: %v", err)
+			t.Errorf("Did not expect error but got: %v", err)
 		}
 
 		if err != nil {

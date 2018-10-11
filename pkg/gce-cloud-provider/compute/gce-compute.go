@@ -34,16 +34,18 @@ import (
 const (
 	operationStatusDone            = "DONE"
 	waitForSnapshotCreationTimeOut = 2 * time.Minute
+	diskKind                       = "compute#disk"
 )
 
 type GCECompute interface {
 	// Disk Methods
 	GetDisk(ctx context.Context, volumeKey *meta.Key) (*CloudDisk, error)
+	RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, diskType string, reqBytes, limBytes int64) error
 	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string) error
 	DeleteDisk(ctx context.Context, volumeKey *meta.Key) error
-	AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
-	DetachDisk(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
+	AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
+	DetachDisk(ctx context.Context, deviceName string, instanceZone, instanceName string) error
 	GetDiskSourceURI(volKey *meta.Key) string
 	GetDiskTypeURI(volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
@@ -59,7 +61,46 @@ type GCECompute interface {
 	DeleteSnapshot(ctx context.Context, snapshotName string) error
 }
 
+// RepairUnderspecifiedVolumeKey will query the cloud provider and check each zone for the disk specified
+// by the volume key and return a volume key with a correct zone
+func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
+	region, err := common.GetRegionFromZones([]string{cloud.zone})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get region from zones: %v", err)
+	}
+	switch volumeKey.Type() {
+	case meta.Zonal:
+		if volumeKey.Zone == common.UnspecifiedValue {
+			// list all zones, try to get disk in each zone
+			zones, err := cloud.ListZones(ctx, region)
+			if err != nil {
+				return nil, err
+			}
+			for _, zone := range zones {
+				_, err := cloud.getZonalDiskOrError(ctx, zone, volumeKey.Name)
+				if err == nil {
+					// If there is no error we have found a disk
+					volumeKey.Zone = zone
+					return volumeKey, nil
+				}
+			}
+			return nil, fmt.Errorf("volume zone unspecified and unable to find in any of these zones %v", zones)
+		}
+		return volumeKey, nil
+	case meta.Regional:
+		if volumeKey.Region == common.UnspecifiedValue {
+			volumeKey.Region = region
+		}
+		return volumeKey, nil
+	default:
+		return nil, fmt.Errorf("key was neither zonal nor regional, got: %v", volumeKey.String())
+	}
+}
+
 func (cloud *CloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
+	if len(cloud.zonesCache[region]) > 0 {
+		return cloud.zonesCache[region], nil
+	}
 	zones := []string{}
 	zoneList, err := cloud.service.Zones.List(cloud.project).Filter(fmt.Sprintf("region eq .*%s$", region)).Do()
 	if err != nil {
@@ -68,6 +109,7 @@ func (cloud *CloudProvider) ListZones(ctx context.Context, region string) ([]str
 	for _, zone := range zoneList.Items {
 		zones = append(zones, zone.Name)
 	}
+	cloud.zonesCache[region] = zones
 	return zones, nil
 
 }
@@ -315,7 +357,7 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, region, name
 	return nil
 }
 
-func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+func (cloud *CloudProvider) AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
 	source := cloud.GetDiskSourceURI(volKey)
 
 	deviceName, err := common.GetDeviceName(volKey)
@@ -324,7 +366,7 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, vol
 	}
 	attachedDiskV1 := &compute.AttachedDisk{
 		DeviceName: deviceName,
-		Kind:       disk.GetKind(),
+		Kind:       diskKind,
 		Mode:       readWrite,
 		Source:     source,
 		Type:       diskType,
@@ -341,12 +383,7 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, vol
 	return nil
 }
 
-func (cloud *CloudProvider) DetachDisk(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error {
-	deviceName, err := common.GetDeviceName(volKey)
-	if err != nil {
-		return err
-	}
-
+func (cloud *CloudProvider) DetachDisk(ctx context.Context, deviceName, instanceZone, instanceName string) error {
 	op, err := cloud.service.Instances.DetachDisk(cloud.project, instanceZone, instanceName, deviceName).Context(ctx).Do()
 	if err != nil {
 		return err

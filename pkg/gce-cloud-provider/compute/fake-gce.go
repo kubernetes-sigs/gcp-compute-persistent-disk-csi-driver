@@ -49,15 +49,47 @@ type FakeCloudProvider struct {
 
 var _ GCECompute = &FakeCloudProvider{}
 
-func FakeCreateCloudProvider(project, zone string) (*FakeCloudProvider, error) {
-	return &FakeCloudProvider{
+func FakeCreateCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
+	fcp := &FakeCloudProvider{
 		project:   project,
 		zone:      zone,
 		disks:     map[string]*CloudDisk{},
 		instances: map[string]*compute.Instance{},
 		snapshots: map[string]*compute.Snapshot{},
-	}, nil
+	}
+	for _, d := range cloudDisks {
+		fcp.disks[d.GetName()] = d
+	}
+	return fcp, nil
 
+}
+
+func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
+	switch volumeKey.Type() {
+	case meta.Zonal:
+		if volumeKey.Zone != common.UnspecifiedValue {
+			return volumeKey, nil
+		}
+		for name, d := range cloud.disks {
+			if name == volumeKey.Name {
+				volumeKey.Zone = d.GetZone()
+				return volumeKey, nil
+			}
+		}
+		return nil, fmt.Errorf("Couldn't repair unspecified volume information")
+	case meta.Regional:
+		if volumeKey.Region != common.UnspecifiedValue {
+			return volumeKey, nil
+		}
+		r, err := common.GetRegionFromZones([]string{cloud.zone})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get region from zones: %v", err)
+		}
+		volumeKey.Region = r
+		return volumeKey, nil
+	default:
+		return nil, fmt.Errorf("Volume key %v not zonal nor regional", volumeKey.Name)
+	}
 }
 
 func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
@@ -195,16 +227,19 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 }
 
 func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, volKey *meta.Key) error {
+	if _, ok := cloud.disks[volKey.Name]; !ok {
+		return notFoundError()
+	}
 	delete(cloud.disks, volKey.Name)
 	return nil
 }
 
-func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
 	source := cloud.GetDiskSourceURI(volKey)
 
 	attachedDiskV1 := &compute.AttachedDisk{
-		DeviceName: disk.GetName(),
-		Kind:       disk.GetKind(),
+		DeviceName: volKey.Name,
+		Kind:       diskKind,
 		Mode:       readWrite,
 		Source:     source,
 		Type:       diskType,
@@ -217,14 +252,14 @@ func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, disk *CloudDisk,
 	return nil
 }
 
-func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, deviceName, instanceZone, instanceName string) error {
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
 		return fmt.Errorf("Failed to get instance %v", instanceName)
 	}
 	found := -1
 	for i, disk := range instance.Disks {
-		if disk.DeviceName == volKey.Name {
+		if disk.DeviceName == deviceName {
 			found = i
 			break
 		}

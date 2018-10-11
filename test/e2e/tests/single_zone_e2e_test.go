@@ -112,6 +112,50 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	})
 
+	It("Should complete entire disk lifecycle with underspecified volume ID", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		_, err := client.CreateVolume(volName, nil, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			})
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+		defer func() {
+			// Delete Disk
+			client.DeleteVolume(underSpecifiedID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+
+	})
+
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
