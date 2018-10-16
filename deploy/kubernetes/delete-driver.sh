@@ -4,19 +4,17 @@
 # currently available Kubernetes cluster
 #
 # Args:
-# GCE_PD_DRIVER_VERSION: The version of the GCE PD CSI Driver to deploy. Can be one of {v0.1.0, latest}
+# GCE_PD_DRIVER_VERSION: The kustomize overlay to deploy (located under
+#   deploy/kubernetes/overlays). Can be one of {stable, dev}
 
 set -o nounset
 set -o errexit
 
+readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
 source "${PKGDIR}/deploy/common.sh"
 
-ensure_var GCE_PD_DRIVER_VERSION
+ensure_kustomize
 
-readonly KUBEDEPLOY="${PKGDIR}/deploy/kubernetes/${GCE_PD_DRIVER_VERSION}"
-
-kubectl delete -f "${KUBEDEPLOY}/node.yaml" --ignore-not-found
-kubectl delete -f "${KUBEDEPLOY}/controller.yaml" --ignore-not-found
-kubectl delete -f "${KUBEDEPLOY}/setup-cluster.yaml" --ignore-not-found
+${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | kubectl delete --ignore-not-found -f -
 kubectl delete secret cloud-sa --ignore-not-found
