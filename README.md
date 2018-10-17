@@ -90,6 +90,39 @@ NAME                      READY     STATUS    RESTARTS   AGE
 web-server                1/1       Running   0          1m
 ```
 
+### Snapshot Example
+1. Create example Default Snapshot Class
+```
+$ kubectl create -f ./examples/kubernetes/demo-defaultsnapshotclass.yaml
+```
+2. Create a snapshot of the PVC created in above example
+```
+$ kubectl create -f ./examples/kubernetes/demo-snapshot.yaml
+```
+3. Verify Snapshot is created and is ready to use
+```
+$ k get volumesnapshots demo-snapshot-podpvc -o yaml
+apiVersion: snapshot.storage.k8s.io/v1alpha1
+kind: VolumeSnapshot
+metadata:
+  creationTimestamp: 2018-10-05T16:59:26Z
+  generation: 1
+  name: demo-snapshot-podpvc
+  namespace: default
+
+...
+
+status:
+  creationTime: 2018-10-05T16:59:27Z
+  ready: true
+  restoreSize: 6Gi
+
+```
+4. Create a new volume from the snapshot
+```
+$ kubectl create -f ./examples/kubernetes/demo-restore-snapshot.yaml
+```
+
 ## Kubernetes Development
 
 ### Manual

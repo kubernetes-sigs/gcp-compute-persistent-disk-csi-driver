@@ -37,7 +37,7 @@ spec:
           securityContext:
             privileged: true
           imagePullPolicy: Always
-          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest 
+          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"

@@ -15,9 +15,22 @@ spec:
     spec:
       serviceAccount: csi-controller-sa
       containers:
+        - name: csi-snapshotter
+          imagePullPolicy: Always
+          image: quay.io/k8scsi/csi-snapshotter:v0.4.0
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
         - name: csi-provisioner
           imagePullPolicy: Always
-          image: quay.io/k8scsi/csi-provisioner:v0.3.1
+          image: quay.io/k8scsi/csi-provisioner:v0.4.1
           args:
             - "--v=5"
             - "--provisioner=com.google.csi.gcepd"
