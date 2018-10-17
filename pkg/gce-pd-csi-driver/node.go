@@ -289,7 +289,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	glog.V(4).Infof("NodeGetInfo called with req: %#v", req)
 
 	top := &csi.Topology{
-		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
+		Segments: map[string]string{common.KubernetesTopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())

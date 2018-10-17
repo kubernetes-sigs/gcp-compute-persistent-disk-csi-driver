@@ -145,7 +145,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
 		}
 		// If there is no validation error, immediately return success
-		return generateCreateVolumeResponse(existingDisk.GetSelfLink(), capBytes, zones), nil
+		return generateCreateVolumeResponse(gceCS.Driver.topologyKey, existingDisk.GetSelfLink(), capBytes, zones), nil
 	}
 
 	// Create the disk
@@ -171,7 +171,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", replicationType))
 	}
 
-	return generateCreateVolumeResponse(disk.GetSelfLink(), capBytes, zones), nil
+	return generateCreateVolumeResponse(gceCS.Driver.topologyKey, disk.GetSelfLink(), capBytes, zones), nil
 
 }
 
@@ -385,7 +385,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	for _, top := range req.GetAccessibleTopology() {
 		for k, v := range top.GetSegments() {
 			switch k {
-			case common.TopologyKeyZone:
+			case gceCS.Driver.topologyKey:
 				switch volKey.Type() {
 				case meta.Zonal:
 					if v == volKey.Zone {
@@ -688,12 +688,12 @@ func diskIsAttachedAndCompatible(deviceName string, instance *compute.Instance, 
 	return false, nil
 }
 
-func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int) ([]string, error) {
-	reqZones, err := getZonesFromTopology(top.GetRequisite())
+func pickZonesFromTopology(topologyKey string, top *csi.TopologyRequirement, numZones int) ([]string, error) {
+	reqZones, err := getZonesFromTopology(topologyKey, top.GetRequisite())
 	if err != nil {
 		return nil, fmt.Errorf("could not get zones from requisite topology: %v", err)
 	}
-	prefZones, err := getZonesFromTopology(top.GetPreferred())
+	prefZones, err := getZonesFromTopology(topologyKey, top.GetPreferred())
 	if err != nil {
 		return nil, fmt.Errorf("could not get zones from preferred topology: %v", err)
 	}
@@ -723,7 +723,7 @@ func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int) ([]string
 	}
 }
 
-func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
+func getZonesFromTopology(topologyKey string, topList []*csi.Topology) ([]string, error) {
 	zones := []string{}
 	for _, top := range topList {
 		if top.GetSegments() == nil {
@@ -731,7 +731,7 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 		}
 
 		// GCE PD cloud provider Create has no restrictions so just create in top preferred zone
-		zone, err := getZoneFromSegment(top.GetSegments())
+		zone, err := getZoneFromSegment(topologyKey, top.GetSegments())
 		if err != nil {
 			return nil, fmt.Errorf("could not get zone from preferred topology: %v", err)
 		}
@@ -740,11 +740,11 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 	return zones, nil
 }
 
-func getZoneFromSegment(seg map[string]string) (string, error) {
+func getZoneFromSegment(topologyKey string, seg map[string]string) (string, error) {
 	var zone string
 	for k, v := range seg {
 		switch k {
-		case common.TopologyKeyZone:
+		case topologyKey:
 			zone = v
 		default:
 			return "", fmt.Errorf("topology segment has unknown key %v", k)
@@ -760,7 +760,7 @@ func pickZones(gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZone
 	var zones []string
 	var err error
 	if top != nil {
-		zones, err = pickZonesFromTopology(top, numZones)
+		zones, err = pickZonesFromTopology(gceCS.Driver.topologyKey, top, numZones)
 		if err != nil {
 			return nil, fmt.Errorf("failed to pick zones from topology: %v", err)
 		}
@@ -798,11 +798,11 @@ func getDefaultZonesInRegion(gceCS *GCEControllerServer, existingZones []string,
 	return ret, nil
 }
 
-func generateCreateVolumeResponse(selfLink string, capBytes int64, zones []string) *csi.CreateVolumeResponse {
+func generateCreateVolumeResponse(topologyKey, selfLink string, capBytes int64, zones []string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{topologyKey: zone},
 		})
 	}
 	createResp := &csi.CreateVolumeResponse{

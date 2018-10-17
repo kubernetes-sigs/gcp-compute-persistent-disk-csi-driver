@@ -30,6 +30,7 @@ import (
 type GCEDriver struct {
 	name          string
 	vendorVersion string
+	topologyKey   string
 
 	ids *GCEIdentityServer
 	ns  *GCENodeServer
@@ -45,13 +46,14 @@ func GetGCEDriver() *GCEDriver {
 }
 
 func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter *mount.SafeFormatAndMount,
-	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, vendorVersion string) error {
+	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, vendorVersion, topologyKey string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
 
 	gceDriver.name = name
 	gceDriver.vendorVersion = vendorVersion
+	gceDriver.topologyKey = topologyKey
 
 	// Adding Capabilities
 	vcam := []csi.VolumeCapability_AccessMode_Mode{

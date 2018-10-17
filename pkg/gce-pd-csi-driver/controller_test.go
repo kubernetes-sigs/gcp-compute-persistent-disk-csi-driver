@@ -62,7 +62,7 @@ var (
 	}
 	stdTopology = []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
+			Segments: map[string]string{common.KubernetesTopologyKeyZone: metadataservice.FakeZone},
 		},
 	}
 	testVolumeId         = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
@@ -396,7 +396,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone"},
 						},
 					},
 				},
@@ -407,7 +407,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone"},
 					},
 				},
 			},
@@ -422,24 +422,24 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 						},
 					},
 				},
@@ -450,7 +450,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},
@@ -465,7 +465,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{"ooblezoners": "topology-zone", common.TopologyKeyZone: "top-zone"},
+							Segments: map[string]string{"ooblezoners": "topology-zone", common.KubernetesTopologyKeyZone: "top-zone"},
 						},
 					},
 				},
@@ -500,10 +500,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-c"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-b"},
 						},
 					},
 				},
@@ -514,10 +514,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-b"},
 					},
 				},
 			},
@@ -534,12 +534,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{common.KubernetesTopologyKeyZone: region + "-c"},
 						},
 					},
 				},
@@ -562,10 +562,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Attributes:    nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: metadataservice.FakeZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "country-region-fakesecondzone"},
 					},
 				},
 			},
@@ -625,13 +625,13 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 				},
 			},
 		},
@@ -646,7 +646,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateVolume did not expect error, but got %v", err)
 		}
-		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[common.TopologyKeyZone]
+		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[common.KubernetesTopologyKeyZone]
 		if !ok {
 			t.Fatalf("Could not find topology zone in response")
 		}
@@ -963,7 +963,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "succes: normal",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -972,10 +972,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "succes: multiple topologies",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone2"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone", "test-zone2"}...),
@@ -984,10 +984,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone2"},
 				},
 				{
 					Segments: map[string]string{"fake-key": "fake-value"},
@@ -999,10 +999,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: duplicate",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -1016,10 +1016,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key inside",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone", "fake-key": "fake-value"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: "test-zone2"},
 				},
 			},
 			expErr: true,
@@ -1031,7 +1031,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotZones, err := getZonesFromTopology(tc.topology)
+		gotZones, err := getZonesFromTopology(common.KubernetesTopologyKeyZone, tc.topology)
 		if err != nil && !tc.expErr {
 			t.Errorf("Did not expect error but got: %v", err)
 		}
@@ -1059,24 +1059,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -1088,30 +1088,30 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone5"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone5"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone6"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone6"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -1123,24 +1123,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -1152,13 +1152,13 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},
@@ -1168,7 +1168,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotZones, err := pickZonesFromTopology(tc.top, tc.numZones)
+		gotZones, err := pickZonesFromTopology(common.KubernetesTopologyKeyZone, tc.top, tc.numZones)
 		if err != nil && !tc.expErr {
 			t.Errorf("Did not expect error but got: %v", err)
 		}

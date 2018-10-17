@@ -19,13 +19,14 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 func TestGetPluginInfo(t *testing.T) {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion, common.KubernetesTopologyKeyZone)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -47,7 +48,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 func TestGetPluginCapabilities(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor", common.KubernetesTopologyKeyZone)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 
 func TestProbe(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor", common.KubernetesTopologyKeyZone)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

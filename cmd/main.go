@@ -22,6 +22,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
@@ -34,6 +35,7 @@ func init() {
 
 var (
 	endpoint      = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
+	topologyKey   = flag.String("topology-key", common.KubernetesTopologyKeyZone, "Topology key to use for zone")
 	vendorVersion string
 )
 
@@ -70,7 +72,7 @@ func handle() {
 		glog.Fatalf("Failed to set up metadata service: %v", err)
 	}
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, driverName, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, driverName, vendorVersion, *topologyKey)
 	if err != nil {
 		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

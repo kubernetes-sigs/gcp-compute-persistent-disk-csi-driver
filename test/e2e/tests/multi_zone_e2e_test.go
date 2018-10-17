@@ -49,7 +49,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			segments := resp.GetAccessibleTopology().GetSegments()
 			Expect(segments).ToNot(BeNil())
 
-			Expect(segments[common.TopologyKeyZone]).To(Equal(z))
+			Expect(segments[common.KubernetesTopologyKeyZone]).To(Equal(z))
 			Expect(len(segments)).To(Equal(1))
 		}
 
@@ -93,10 +93,10 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}, defaultSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: zones[0]},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					Segments: map[string]string{common.KubernetesTopologyKeyZone: zones[1]},
 				},
 			},
 		})

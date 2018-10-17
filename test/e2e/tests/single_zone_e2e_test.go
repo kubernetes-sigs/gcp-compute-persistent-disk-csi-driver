@@ -53,7 +53,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: z},
 					},
 				},
 			})
@@ -95,7 +95,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			topReq := &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: zone},
 					},
 				},
 			}
@@ -125,7 +125,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{common.KubernetesTopologyKeyZone: z},
 					},
 				},
 			})
