@@ -6,11 +6,11 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: csi-gce-pd-driver
+      app: gcp-compute-persistent-disk-csi-driver
   template:
     metadata:
       labels:
-        app: csi-gce-pd-driver
+        app: gcp-compute-persistent-disk-csi-driver
     spec:
       serviceAccount: csi-node-sa
       containers:
