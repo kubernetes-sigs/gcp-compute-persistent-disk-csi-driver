@@ -1,4 +1,4 @@
-#TODO: Force DaemonSet to not run on master.
+#TODO(#40): Force DaemonSet to not run on master.
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -16,38 +16,34 @@ spec:
       containers:
         - name: csi-driver-registrar
           imagePullPolicy: Always
-          image: quay.io/k8scsi/driver-registrar:v0.2.0
+          image: quay.io/k8scsi/driver-registrar:v0.4.1
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock"
           env:
             - name: ADDRESS
-              value: /csi/csi.sock
+              value: /var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
             - name: plugin-dir
-              mountPath: /csi
-          #  - name: registrar-socket-dir
-          #    mountPath: /var/lib/csi/sockets/
+              mountPath: /var/lib/kubelet/plugins/com.google.csi.gcepd/
+            - name: registration-dir
+              mountPath: /registration
         - name: gce-pd-driver
           securityContext:
             privileged: true
           imagePullPolicy: Always
-          image: gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.1.0.alpha
+          image: gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.2.0.beta
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--nodeid=$(KUBE_NODE_NAME)"
           env:
             - name: CSI_ENDPOINT
               value: unix:/csi/csi.sock
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -55,13 +51,21 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: device-dir
-              mountPath: /host/dev
+              mountPath: /dev
+            # The following mounts are required to trigger host udevadm from container
+            - name: udev-rules-etc
+              mountPath: /etc/udev
+            - name: udev-rules-lib
+              mountPath: /lib/udev
+            - name: udev-socket
+              mountPath: /run/udev
+            - name: sys
+              mountPath: /sys
       volumes:
-        # TODO(dependency): this will work when kublet registrar functionality exists
-        #- name: registrar-socket-dir
-        #  hostPath:
-        #    path: /var/lib/kubelet/device-plugins/
-        #    type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/
+            type: Directory
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet
@@ -73,4 +77,21 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+            type: Directory
+        # The following mounts are required to trigger host udevadm from container
+        - name: udev-rules-etc
+          hostPath:
+            path: /etc/udev
+            type: Directory
+        - name: udev-rules-lib
+          hostPath:
+            path: /lib/udev
+            type: Directory
+        - name: udev-socket
+          hostPath:
+            path: /run/udev
+            type: Directory
+        - name: sys
+          hostPath:
+            path: /sys
             type: Directory

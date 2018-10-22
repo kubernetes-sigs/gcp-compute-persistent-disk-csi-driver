@@ -19,7 +19,7 @@ STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 
 PRODIMAGE=gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver
-PRODVERSION=v0.1.0.alpha
+PRODVERSION=v0.2.0.beta
 
 all: gce-pd-driver
 

@@ -27,7 +27,6 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-
         - name: csi-provisioner
           imagePullPolicy: Always
           image: quay.io/k8scsi/csi-provisioner:v0.4.1
@@ -43,7 +42,7 @@ spec:
               mountPath: /csi
         - name: csi-attacher
           imagePullPolicy: Always
-          image: quay.io/k8scsi/csi-attacher:v0.3.0
+          image: quay.io/k8scsi/csi-attacher:v0.4.1
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
