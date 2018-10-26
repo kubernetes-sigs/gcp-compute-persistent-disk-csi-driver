@@ -1,0 +1,14 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-provisioner
+          image: gcr.io/gke-release-staging/csi-provisioner:latest
+        - name: csi-attacher
+          image: gcr.io/gke-release-staging/csi-attacher:latest
+        - name: gce-pd-driver
+          image: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver:latest
