@@ -1,5 +1,5 @@
 kind: StatefulSet
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 metadata:
   name: csi-gce-pd-controller
 spec:
@@ -7,16 +7,15 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: csi-gce-pd-driver
+      app: gcp-compute-persistent-disk-csi-driver
   template:
     metadata:
       labels:
-        app: csi-gce-pd-driver
+        app: gcp-compute-persistent-disk-csi-driver
     spec:
       serviceAccount: csi-controller-sa
       containers:
         - name: csi-provisioner
-          imagePullPolicy: Always
           image: quay.io/k8scsi/csi-provisioner:v0.4.1
           args:
             - "--v=5"
@@ -29,7 +28,6 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-attacher
-          imagePullPolicy: Always
           image: quay.io/k8scsi/csi-attacher:v0.4.1
           args:
             - "--v=5"
@@ -41,7 +39,6 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: gce-pd-driver
-          imagePullPolicy: Always
           image: gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.2.0.beta
           args:
             - "--v=5"

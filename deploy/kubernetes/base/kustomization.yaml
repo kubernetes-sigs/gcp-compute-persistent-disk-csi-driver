@@ -1,0 +1,8 @@
+commonLabels:
+  app: gcp-compute-persistent-disk-csi-driver
+namespace:
+  default
+resources:
+- node.yaml
+- controller.yaml
+- setup-cluster.yaml

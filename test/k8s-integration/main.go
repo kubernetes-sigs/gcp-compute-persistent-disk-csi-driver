@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -31,10 +32,15 @@ import (
 )
 
 var (
-	teardownCluster = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	stagingImage    = flag.String("staging-image", "", "name of image to stage to")
-	kubeVersion     = flag.String("kube-version", "master", "version of Kubernetes to download and use")
-	inProw          = flag.Bool("run-in-prow", false, "is the test running in PROW")
+	teardownCluster   = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver    = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster    = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	stagingImage      = flag.String("staging-image", "", "name of image to stage to")
+	kubeVersion       = flag.String("kube-version", "master", "version of Kubernetes to download and use")
+	inProw            = flag.Bool("run-in-prow", false, "is the test running in PROW")
+	saFile            = flag.String("service-account-file", "", "path of service account file")
+	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	localK8sDir       = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
 )
 
 func init() {
@@ -45,6 +51,14 @@ func main() {
 
 	if len(*stagingImage) == 0 && !*inProw {
 		glog.Fatalf("staging-image is a required flag, please specify the name of image to stage to")
+	}
+
+	if len(*saFile) == 0 {
+		glog.Fatalf("service-account-file is a required flag")
+	}
+
+	if len(*deployOverlayName) == 0 {
+		glog.Fatalf("deploy-overlay-name is a required flag")
 	}
 
 	err := handle()
@@ -86,7 +100,15 @@ func handle() error {
 			}
 		}()
 
-		*stagingImage = fmt.Sprintf("gcr.io/%s/csi/gce-pd-driver", project)
+		*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", project)
+
+		// TODO: once https://github.com/kubernetes-sigs/kustomize/issues/402 is implemented,
+		// we no longer need to do this templating work and can just edit the image registry directly.
+		overlayDir := getOverlayDir(pkgDir, *deployOverlayName)
+		err = fillinOverlayTemplate(overlayDir, *stagingImage)
+		if err != nil {
+			return fmt.Errorf("tmpOverlayDir setup failed: %v", err)
+		}
 
 		if _, ok := os.LookupEnv("USER"); !ok {
 			err = os.Setenv("USER", "prow")
@@ -101,31 +123,31 @@ func handle() error {
 		return fmt.Errorf("failed pushing image: %v", err)
 	}
 	defer func() {
-		err = deleteImage(*stagingImage, stagingVersion)
-		if err != nil {
-			glog.Errorf("failed to delete image: %v", err)
+		if *teardownCluster {
+			err = deleteImage(*stagingImage, stagingVersion)
+			if err != nil {
+				glog.Errorf("failed to delete image: %v", err)
+			}
 		}
 	}()
 
-	err = downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
-	if err != nil {
-		return fmt.Errorf("failed to download Kubernetes source: %v", err)
+	if *bringupCluster {
+		err = downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
+		if err != nil {
+			return fmt.Errorf("failed to download Kubernetes source: %v", err)
+		}
+
+		err = buildKubernetes(k8sDir)
+		if err != nil {
+			return fmt.Errorf("failed to build Kubernetes: %v", err)
+		}
+
+		err = clusterUp(k8sDir)
+		if err != nil {
+			return fmt.Errorf("failed to cluster up: %v", err)
+		}
 	}
 
-	err = prepareManifests(pkgDir, k8sDir, *stagingImage, stagingVersion)
-	if err != nil {
-		return fmt.Errorf("failed to prepare manifests: %v", err)
-	}
-
-	err = buildKubernetes(k8sDir)
-	if err != nil {
-		return fmt.Errorf("failed to build Kubernetes: %v", err)
-	}
-
-	err = clusterUp(k8sDir)
-	if err != nil {
-		return fmt.Errorf("failed to cluster up: %v", err)
-	}
 	if *teardownCluster {
 		defer func() {
 			err = clusterDown(k8sDir)
@@ -135,6 +157,22 @@ func handle() error {
 		}()
 	}
 
+	err = installDriver(goPath, pkgDir, k8sDir, *stagingImage, stagingVersion, *deployOverlayName)
+	if *teardownDriver {
+		defer func() {
+			// TODO (#140): collect driver logs
+			if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
+				glog.Errorf("failed to delete driver: %v", teardownErr)
+			}
+		}()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to install CSI Driver: %v", err)
+	}
+
+	if len(*localK8sDir) != 0 {
+		k8sDir = *localK8sDir
+	}
 	err = runTests(k8sDir)
 	if err != nil {
 		return fmt.Errorf("failed to run tests: %v", err)
@@ -161,9 +199,9 @@ func runTests(k8sDir string) error {
 	if err != nil {
 		return err
 	}
-	testArgs := "--test_args=--ginkgo.focus=CSI\\sdriver:\\sgcePD"
+	testArgs := "--test_args=--ginkgo.focus=CSI\\sdriver:.*gcePD-external"
 	cmd := exec.Command("go", "run", "hack/e2e.go", "--", "--check-version-skew=false", "--test", testArgs)
-	err = runLongRunningCommand("Running Tests", cmd)
+	err = runCommand("Running Tests", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
 	}
@@ -171,10 +209,12 @@ func runTests(k8sDir string) error {
 	return nil
 }
 
-func runLongRunningCommand(action string, cmd *exec.Cmd) error {
+func runCommand(action string, cmd *exec.Cmd) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
+
+	fmt.Printf("%s\n", action)
 
 	err := cmd.Start()
 	if err != nil {
@@ -190,7 +230,7 @@ func runLongRunningCommand(action string, cmd *exec.Cmd) error {
 
 func clusterDown(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-down.sh"))
-	err := runLongRunningCommand("Bringing Down E2E Cluster", cmd)
+	err := runCommand("Bringing Down E2E Cluster", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring down kubernetes e2e cluster: %v", err)
 	}
@@ -199,7 +239,7 @@ func clusterDown(k8sDir string) error {
 
 func buildKubernetes(k8sDir string) error {
 	cmd := exec.Command("make", "-C", k8sDir, "quick-release")
-	err := runLongRunningCommand("Building Kubernetes", cmd)
+	err := runCommand("Building Kubernetes", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to build Kubernetes: %v", err)
 	}
@@ -208,7 +248,7 @@ func buildKubernetes(k8sDir string) error {
 
 func clusterUp(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
-	err := runLongRunningCommand("Starting E2E Cluster", cmd)
+	err := runCommand("Starting E2E Cluster", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster: %v", err)
 	}
@@ -216,55 +256,105 @@ func clusterUp(k8sDir string) error {
 	return nil
 }
 
-func prepareManifests(pkgDir, k8sDir, stagingImage, stagingVersion string) error {
-	// Copy manifests to manifest directory
-	controllerFile := filepath.Join(pkgDir, "deploy", "kubernetes", "dev", "controller.yaml")
-	nodeFile := filepath.Join(pkgDir, "deploy", "kubernetes", "dev", "node.yaml")
+func getOverlayDir(pkgDir, deployOverlayName string) string {
+	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
+}
 
-	kubeManifestDir := filepath.Join(k8sDir, "test", "e2e", "testing-manifests", "storage-csi", "gce-pd")
-
-	out, err := exec.Command("cp", controllerFile, filepath.Join(kubeManifestDir, "controller_ss.yaml")).CombinedOutput()
+func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployOverlayName string) error {
+	// Install kustomize
+	out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to copy controller manifest: %s, err: %v", out, err)
+		return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
 	}
 
-	out, err = exec.Command("cp", nodeFile, filepath.Join(kubeManifestDir, "node_ds.yaml")).CombinedOutput()
+	// Edit ci kustomization to use given image tag
+	overlayDir := getOverlayDir(pkgDir, deployOverlayName)
+	err = os.Chdir(overlayDir)
 	if err != nil {
-		return fmt.Errorf("failed to copy node manifest: %s, err: %v", out, err)
+		return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err)
 	}
 
-	// Change manifest container to staging image and version
-	err = mutateManifests(filepath.Join(kubeManifestDir, "node_ds.yaml"), filepath.Join(kubeManifestDir, "controller_ss.yaml"), stagingImage, stagingVersion)
+	// TODO (#138): in a local environment this is going to modify the actual kustomize files.
+	// maybe a copy should be made instead
+	out, err = exec.Command(
+		filepath.Join(pkgDir, "bin", "kustomize"),
+		"edit",
+		"set",
+		"imagetag",
+		fmt.Sprintf("%s:%s", stagingImage, stagingVersion)).CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+	}
+
+	// setup service account file for secret creation
+	tmpSaFile := fmt.Sprintf("/tmp/%s/cloud-sa.json", string(uuid.NewUUID()))
+
+	os.MkdirAll(filepath.Dir(tmpSaFile), 0750)
+	defer os.Remove(filepath.Dir(tmpSaFile))
+
+	// Need to copy it to name the file "cloud-sa.json"
+	out, err = exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error copying service account key: %s, err: %v", out, err)
+	}
+	defer shredFile(tmpSaFile)
+
+	// deploy driver
+	deployCmd := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "deploy-driver.sh"), "--skip-sa-check")
+	deployCmd.Env = append(os.Environ(),
+		fmt.Sprintf("GOPATH=%s", goPath),
+		fmt.Sprintf("GCE_PD_SA_DIR=%s", filepath.Dir(tmpSaFile)),
+		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName),
+	)
+	err = runCommand("Deploying driver", deployCmd)
+	if err != nil {
+		return fmt.Errorf("failed to deploy driver: %v", err)
+	}
+
+	// TODO (#139): wait for driver to be running
+	time.Sleep(10 * time.Second)
+	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "default")
+	err = runCommand("Checking driver pods", statusCmd)
+	if err != nil {
+		return fmt.Errorf("failed to check driver pods: %v", err)
+	}
+
+	return nil
+}
+
+func deleteDriver(goPath, pkgDir, deployOverlayName string) error {
+	deleteCmd := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "delete-driver.sh"))
+	deleteCmd.Env = append(os.Environ(),
+		fmt.Sprintf("GOPATH=%s", goPath),
+		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName),
+	)
+	err := runCommand("Deleting driver", deleteCmd)
+	if err != nil {
+		return fmt.Errorf("failed to delete driver: %v", err)
 	}
 	return nil
 }
 
-func mutateManifests(nodeFile, controllerFile, stagingImage, stagingVersion string) error {
-	// TODO: Make this existing image configurable, ideally we aren't actually reliant on
-	// a hardcoded image to replace.
-
-	// The actual solution we need to look into doing this is using Kustomize
-	// to mutate the YAML files
-	existingImage := "gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest"
-
-	escapedImage := strings.Replace(stagingImage, "/", "\\/", -1)
-	escapedVersion := strings.Replace(stagingVersion, "/", "\\/", -1)
-	escapedExistingImage := strings.Replace(existingImage, "/", "\\/", -1)
-
-	sedCommand := fmt.Sprintf("s/%s/%s:%s/g", escapedExistingImage, escapedImage, escapedVersion)
-
-	out, err := exec.Command("sed", "-i", "-e", sedCommand, nodeFile).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to sed node file %s: %s, err: %v", nodeFile, out, err)
+func shredFile(filePath string) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		glog.V(4).Infof("File %v was not found, skipping shredding", filePath)
+		return
 	}
-	out, err = exec.Command("sed", "-i", "-e", sedCommand, controllerFile).CombinedOutput()
+	glog.V(4).Infof("Shredding file %v", filePath)
+	out, err := exec.Command("shred", "--remove", filePath).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to sed controller file %s: %s, err: %v", controllerFile, out, err)
+		glog.V(4).Infof("Failed to shred file %v: %v\nOutput:%v", filePath, err, out)
+	}
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		glog.V(4).Infof("File %v successfully shredded", filePath)
+		return
 	}
 
-	return nil
+	// Shred failed Try to remove the file for good meausure
+	err = os.Remove(filePath)
+	if err != nil {
+		glog.V(4).Infof("Failed to remove service account file %s: %v", filePath, err)
+	}
 }
 
 func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
@@ -335,7 +425,7 @@ func pushImage(pkgDir, stagingImage, stagingVersion string) error {
 	cmd := exec.Command("make", "-C", pkgDir, "push-container",
 		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
 		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
-	err = runLongRunningCommand("Pushing GCP Container", cmd)
+	err = runCommand("Pushing GCP Container", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run make command: err: %v", err)
 	}
@@ -344,9 +434,24 @@ func pushImage(pkgDir, stagingImage, stagingVersion string) error {
 
 func deleteImage(stagingImage, stagingVersion string) error {
 	cmd := exec.Command("gcloud", "container", "images", "delete", fmt.Sprintf("%s:%s", stagingImage, stagingVersion), "--quiet")
-	err := runLongRunningCommand("Deleting GCR Container", cmd)
+	err := runCommand("Deleting GCR Container", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
+	}
+	return nil
+}
+
+func fillinOverlayTemplate(overlayDir, stagingImage string) error {
+	// Substitute the PROW_GCEPD_IMAGE env with stagingImage for every file in the directory
+	escapedStagingImage := strings.Replace(stagingImage, "/", "\\/", -1)
+	out, err := exec.Command(
+		"bash",
+		"-c",
+		fmt.Sprintf("find %s -name *.yaml | xargs %s",
+			overlayDir,
+			fmt.Sprintf("sed -i -e 's/PROW_GCEPD_IMAGE/%s/g'", escapedStagingImage))).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error substituting staging image env: %s, err: %v", out, err)
 	}
 	return nil
 }

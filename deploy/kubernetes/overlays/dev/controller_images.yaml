@@ -1,0 +1,23 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-snapshotter
+          imagePullPolicy: Always
+          image: quay.io/k8scsi/csi-snapshotter:v0.4.0
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: gce-pd-driver
+          imagePullPolicy: Always
+          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
