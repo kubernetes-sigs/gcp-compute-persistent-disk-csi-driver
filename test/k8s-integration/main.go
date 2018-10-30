@@ -41,6 +41,7 @@ var (
 	saFile            = flag.String("service-account-file", "", "path of service account file")
 	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
 	localK8sDir       = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
+	doDriverBuild     = flag.Bool("do-driver-build", true, "building the driver from source")
 )
 
 func init() {
@@ -100,14 +101,16 @@ func handle() error {
 			}
 		}()
 
-		*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", project)
+		if *doDriverBuild {
+			*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", project)
 
-		// TODO: once https://github.com/kubernetes-sigs/kustomize/issues/402 is implemented,
-		// we no longer need to do this templating work and can just edit the image registry directly.
-		overlayDir := getOverlayDir(pkgDir, *deployOverlayName)
-		err = fillinOverlayTemplate(overlayDir, *stagingImage)
-		if err != nil {
-			return fmt.Errorf("tmpOverlayDir setup failed: %v", err)
+			// TODO: once https://github.com/kubernetes-sigs/kustomize/issues/402 is implemented,
+			// we no longer need to do this templating work and can just edit the image registry directly.
+			overlayDir := getOverlayDir(pkgDir, *deployOverlayName)
+			err = fillinOverlayTemplate(overlayDir, *stagingImage)
+			if err != nil {
+				return fmt.Errorf("tmpOverlayDir setup failed: %v", err)
+			}
 		}
 
 		if _, ok := os.LookupEnv("USER"); !ok {
@@ -118,21 +121,23 @@ func handle() error {
 		}
 	}
 
-	err := pushImage(pkgDir, *stagingImage, stagingVersion)
-	if err != nil {
-		return fmt.Errorf("failed pushing image: %v", err)
-	}
-	defer func() {
-		if *teardownCluster {
-			err = deleteImage(*stagingImage, stagingVersion)
-			if err != nil {
-				glog.Errorf("failed to delete image: %v", err)
-			}
+	if *doDriverBuild {
+		err := pushImage(pkgDir, *stagingImage, stagingVersion)
+		if err != nil {
+			return fmt.Errorf("failed pushing image: %v", err)
 		}
-	}()
+		defer func() {
+			if *teardownCluster {
+				err = deleteImage(*stagingImage, stagingVersion)
+				if err != nil {
+					glog.Errorf("failed to delete image: %v", err)
+				}
+			}
+		}()
+	}
 
 	if *bringupCluster {
-		err = downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
+		err := downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
@@ -150,14 +155,14 @@ func handle() error {
 
 	if *teardownCluster {
 		defer func() {
-			err = clusterDown(k8sDir)
+			err := clusterDown(k8sDir)
 			if err != nil {
 				glog.Errorf("failed to cluster down: %v", err)
 			}
 		}()
 	}
 
-	err = installDriver(goPath, pkgDir, k8sDir, *stagingImage, stagingVersion, *deployOverlayName)
+	err := installDriver(goPath, pkgDir, k8sDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
 	if *teardownDriver {
 		defer func() {
 			// TODO (#140): collect driver logs
@@ -260,30 +265,32 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
 }
 
-func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployOverlayName string) error {
-	// Install kustomize
-	out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
-	}
+func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
+	if doDriverBuild {
+		// Install kustomize
+		out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
+		}
 
-	// Edit ci kustomization to use given image tag
-	overlayDir := getOverlayDir(pkgDir, deployOverlayName)
-	err = os.Chdir(overlayDir)
-	if err != nil {
-		return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err)
-	}
+		// Edit ci kustomization to use given image tag
+		overlayDir := getOverlayDir(pkgDir, deployOverlayName)
+		err = os.Chdir(overlayDir)
+		if err != nil {
+			return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err)
+		}
 
-	// TODO (#138): in a local environment this is going to modify the actual kustomize files.
-	// maybe a copy should be made instead
-	out, err = exec.Command(
-		filepath.Join(pkgDir, "bin", "kustomize"),
-		"edit",
-		"set",
-		"imagetag",
-		fmt.Sprintf("%s:%s", stagingImage, stagingVersion)).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+		// TODO (#138): in a local environment this is going to modify the actual kustomize files.
+		// maybe a copy should be made instead
+		out, err = exec.Command(
+			filepath.Join(pkgDir, "bin", "kustomize"),
+			"edit",
+			"set",
+			"imagetag",
+			fmt.Sprintf("%s:%s", stagingImage, stagingVersion)).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+		}
 	}
 
 	// setup service account file for secret creation
@@ -293,7 +300,7 @@ func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployO
 	defer os.Remove(filepath.Dir(tmpSaFile))
 
 	// Need to copy it to name the file "cloud-sa.json"
-	out, err = exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
+	out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error copying service account key: %s, err: %v", out, err)
 	}
