@@ -64,18 +64,18 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	return remote.SetupNewDriverAndClient(instance, config)
 }
 
-func SetupProwConfig() (project, serviceAccount string) {
+func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	// Try to get a Boskos project
 	glog.V(4).Infof("Running in PROW")
 	glog.V(4).Infof("Fetching a Boskos loaned project")
 
-	p, err := boskos.Acquire("gce-project", "free", "busy")
+	p, err := boskos.Acquire(resourceType, "free", "busy")
 	if err != nil {
 		glog.Fatalf("boskos failed to acquire project: %v", err)
 	}
 
 	if p == nil {
-		glog.Fatal("boskos does not have a free gce-project at the moment")
+		glog.Fatal("boskos does not have a free %s at the moment", resourceType)
 	}
 
 	project = p.GetName()

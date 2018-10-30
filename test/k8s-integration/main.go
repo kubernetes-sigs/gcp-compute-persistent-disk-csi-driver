@@ -32,16 +32,17 @@ import (
 )
 
 var (
-	teardownCluster   = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	teardownDriver    = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
-	bringupCluster    = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	stagingImage      = flag.String("staging-image", "", "name of image to stage to")
-	kubeVersion       = flag.String("kube-version", "master", "version of Kubernetes to download and use")
-	inProw            = flag.Bool("run-in-prow", false, "is the test running in PROW")
-	saFile            = flag.String("service-account-file", "", "path of service account file")
-	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
-	localK8sDir       = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
-	doDriverBuild     = flag.Bool("do-driver-build", true, "building the driver from source")
+	teardownCluster    = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver     = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster     = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	stagingImage       = flag.String("staging-image", "", "name of image to stage to")
+	kubeVersion        = flag.String("kube-version", "master", "version of Kubernetes to download and use")
+	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
+	saFile             = flag.String("service-account-file", "", "path of service account file")
+	deployOverlayName  = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	localK8sDir        = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
+	doDriverBuild      = flag.Bool("do-driver-build", true, "building the driver from source")
+	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 )
 
 func init() {
@@ -83,7 +84,7 @@ func handle() error {
 	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
 
 	if *inProw {
-		project, _ := testutils.SetupProwConfig()
+		project, _ := testutils.SetupProwConfig(*boskosResourceType)
 
 		oldProject, err := exec.Command("gcloud", "config", "get-value", "project").CombinedOutput()
 		if err != nil {

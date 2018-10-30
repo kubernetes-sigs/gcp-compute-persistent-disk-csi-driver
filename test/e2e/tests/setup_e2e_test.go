@@ -62,7 +62,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil())
 
 	if *runInProw {
-		*project, *serviceAccount = testutils.SetupProwConfig()
+		*project, *serviceAccount = testutils.SetupProwConfig("gce-project")
 	}
 
 	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
