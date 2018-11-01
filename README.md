@@ -1,4 +1,5 @@
-WARNING: The BETA driver is NOT compatible with Kubernetes versions <1.12.
+WARNING: This driver is alpha and may not be compatible between driver versions
+or Kubernetes versions
 
 DISCLAIMER: This is not an officially supported Google product
 
@@ -14,8 +15,8 @@ Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
-Status: Beta
-Latest image: `gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.2.0.beta`
+Status: Alpha
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0`
 
 ### CSI Compatibility
 This plugin is compatible with CSI versions [v0.2.0](https://github.com/container-storage-interface/spec/blob/v0.2.0/spec.md) and [v0.3.0](https://github.com/container-storage-interface/spec/blob/v0.3.0/spec.md)
@@ -24,7 +25,7 @@ This plugin is compatible with CSI versions [v0.2.0](https://github.com/containe
 | GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12+ |
 |--------------------------------------|---------------|------|
 | v0.1.0.alpha                         | yes           | no   |
-| v0.2.0.beta  (stable)                | no            | yes  |
+| v0.2.0 (alpha)                       | no            | yes  |
 | dev                                  | no            | yes  |
 
 ### Known Issues
