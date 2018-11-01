@@ -42,7 +42,7 @@ type GCECompute interface {
 	GetDisk(ctx context.Context, volumeKey *meta.Key) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, diskType string, reqBytes, limBytes int64) error
-	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string) error
+	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId string) error
 	DeleteDisk(ctx context.Context, volumeKey *meta.Key) error
 	AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
 	DetachDisk(ctx context.Context, deviceName string, instanceZone, instanceName string) error
@@ -202,23 +202,26 @@ func (cloud *CloudProvider) ValidateExistingDisk(ctx context.Context, resp *Clou
 	return nil
 }
 
-func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string) error {
+func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId string) error {
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.insertZonalDisk(ctx, volKey, diskType, capBytes, capacityRange)
+		return cloud.insertZonalDisk(ctx, volKey, diskType, capBytes, capacityRange, snapshotId)
 	case meta.Regional:
-		return cloud.insertRegionalDisk(ctx, volKey, diskType, capBytes, capacityRange, replicaZones)
+		return cloud.insertRegionalDisk(ctx, volKey, diskType, capBytes, capacityRange, replicaZones, snapshotId)
 	default:
 		return fmt.Errorf("could not insert disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
 }
 
-func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string) error {
+func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId string) error {
 	diskToCreateBeta := &computebeta.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGb(capBytes),
 		Description: "Regional disk created by GCE-PD CSI Driver",
 		Type:        cloud.GetDiskTypeURI(volKey, diskType),
+	}
+	if snapshotId != "" {
+		diskToCreateBeta.SourceSnapshot = snapshotId
 	}
 	if len(replicaZones) != 0 {
 		diskToCreateBeta.ReplicaZones = replicaZones
@@ -264,12 +267,15 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	return nil
 }
 
-func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange) error {
+func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, snapshotId string) error {
 	diskToCreate := &compute.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGb(capBytes),
 		Description: "Disk created by GCE-PD CSI Driver",
 		Type:        cloud.GetDiskTypeURI(volKey, diskType),
+	}
+	if snapshotId != "" {
+		diskToCreate.SourceSnapshot = snapshotId
 	}
 
 	op, err := cloud.service.Disks.Insert(cloud.project, volKey.Zone, diskToCreate).Context(ctx).Do()
