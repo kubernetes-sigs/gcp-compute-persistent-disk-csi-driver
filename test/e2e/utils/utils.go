@@ -26,6 +26,7 @@ import (
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	boskosclient "k8s.io/test-infra/boskos/client"
+	"k8s.io/test-infra/boskos/common"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
@@ -64,20 +65,34 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	return remote.SetupNewDriverAndClient(instance, config)
 }
 
+// getBoskosProject retries acquiring a boskos project until success or timeout
+func getBoskosProject(resourceType string) *common.Resource {
+	timeout := time.After(30 * time.Minute)
+	tick := time.After(1 * time.Minute)
+	for {
+		select {
+		case <-timeout:
+			glog.Fatalf("timed out trying to acquire boskos project")
+		case <-tick:
+			p, err := boskos.Acquire(resourceType, "free", "busy")
+			if err != nil {
+				glog.Warningf("boskos failed to acquire project: %v", err)
+			}
+			if p == nil {
+				glog.Warningf("boskos does not have a free %s at the moment", resourceType)
+			}
+			return p
+		}
+	}
+
+}
+
 func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	// Try to get a Boskos project
 	glog.V(4).Infof("Running in PROW")
 	glog.V(4).Infof("Fetching a Boskos loaned project")
 
-	p, err := boskos.Acquire(resourceType, "free", "busy")
-	if err != nil {
-		glog.Fatalf("boskos failed to acquire project: %v", err)
-	}
-
-	if p == nil {
-		glog.Fatal("boskos does not have a free %s at the moment", resourceType)
-	}
-
+	p := getBoskosProject(resourceType)
 	project = p.GetName()
 
 	go func(c *boskosclient.Client, proj string) {
