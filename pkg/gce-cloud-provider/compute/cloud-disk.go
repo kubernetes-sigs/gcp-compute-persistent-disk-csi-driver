@@ -134,3 +134,14 @@ func (d *CloudDisk) GetZone() string {
 		return ""
 	}
 }
+
+func (d *CloudDisk) GetSnapshotId() string {
+	switch d.Type() {
+	case Zonal:
+		return d.ZonalDisk.SourceSnapshotId
+	case Regional:
+		return d.RegionalDisk.SourceSnapshotId
+	default:
+		return ""
+	}
+}
