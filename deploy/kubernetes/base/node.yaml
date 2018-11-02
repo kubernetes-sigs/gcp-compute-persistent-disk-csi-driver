@@ -20,6 +20,10 @@ spec:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/com.google.csi.gcepd /registration/com.google.csi.gcepd-reg.sock"]
           env:
             - name: ADDRESS
               value: /var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock
