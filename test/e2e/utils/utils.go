@@ -67,21 +67,24 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 
 // getBoskosProject retries acquiring a boskos project until success or timeout
 func getBoskosProject(resourceType string) *common.Resource {
-	timeout := time.After(30 * time.Minute)
-	tick := time.After(1 * time.Minute)
+	timer := time.NewTimer(30 * time.Minute)
+	defer timer.Stop()
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-timeout:
+		case <-timer.C:
 			glog.Fatalf("timed out trying to acquire boskos project")
-		case <-tick:
+		case <-ticker.C:
 			p, err := boskos.Acquire(resourceType, "free", "busy")
 			if err != nil {
 				glog.Warningf("boskos failed to acquire project: %v", err)
-			}
-			if p == nil {
+			} else if p == nil {
 				glog.Warningf("boskos does not have a free %s at the moment", resourceType)
+			} else {
+				return p
 			}
-			return p
 		}
 	}
 
