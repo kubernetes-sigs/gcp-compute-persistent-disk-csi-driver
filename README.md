@@ -43,7 +43,7 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 
 ### Topology
 This driver supports only one topology key:
-`com.google.topology/zone`
+`topology.gke.io/zone`
 that represents availability by zone.
 
 ## Kubernetes User Guide
