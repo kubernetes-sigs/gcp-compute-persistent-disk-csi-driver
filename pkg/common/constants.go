@@ -22,7 +22,7 @@ const (
 	ParameterKeyReplicationType = "replication-type"
 
 	// Keys for Topology. This key will be shared amonst drivers from GCP
-	TopologyKeyZone = "com.google.topology/zone"
+	TopologyKeyZone = "topology.gke.io/zone"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"

@@ -38,7 +38,7 @@ var (
 )
 
 const (
-	driverName = "com.google.csi.gcepd"
+	driverName = "pd.csi.storage.gke.io"
 )
 
 func main() {

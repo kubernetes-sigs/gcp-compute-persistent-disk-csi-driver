@@ -18,12 +18,12 @@ spec:
           image: gcr.io/gke-release/csi-driver-registrar:v0.4.1-gke.0
           args:
             - "--v=5"
-            - "--csi-address=/var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock"
-            - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.google.csi.gcepd/csi.sock"
+            - "--csi-address=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/com.google.csi.gcepd /registration/com.google.csi.gcepd-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/pd.csi.storage.gke.io /registration/pd.csi.storage.gke.io-reg.sock"]
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -31,7 +31,7 @@ spec:
                   fieldPath: spec.nodeName
           volumeMounts:
             - name: plugin-dir
-              mountPath: /var/lib/kubelet/plugins/com.google.csi.gcepd/
+              mountPath: /var/lib/kubelet/plugins/pd.csi.storage.gke.io/
             - name: registration-dir
               mountPath: /registration
         - name: gce-pd-driver
@@ -69,7 +69,7 @@ spec:
             type: Directory
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/com.google.csi.gcepd/
+            path: /var/lib/kubelet/plugins/pd.csi.storage.gke.io/
             type: DirectoryOrCreate
         - name: device-dir
           hostPath:
