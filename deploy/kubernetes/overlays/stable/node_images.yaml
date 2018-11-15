@@ -1,0 +1,12 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-node
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver-registrar
+          image: gcr.io/gke-release/csi-driver-registrar:v0.4.1-gke.0
+        - name: gce-pd-driver
+          image: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0
