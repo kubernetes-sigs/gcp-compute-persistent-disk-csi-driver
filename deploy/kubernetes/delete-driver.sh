@@ -11,7 +11,7 @@ set -o nounset
 set -o errexit
 
 readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
-readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+readonly PKGDIR="${GOPATH}/src/github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver"
 source "${PKGDIR}/deploy/common.sh"
 
 ensure_kustomize
