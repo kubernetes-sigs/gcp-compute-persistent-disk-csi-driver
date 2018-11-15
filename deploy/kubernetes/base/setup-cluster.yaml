@@ -1,17 +1,4 @@
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: driver-registrar-role
-rules:
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "update"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["list", "watch", "create", "update", "patch"]
-
----
-
+##### Node Service Account, Roles, RoleBindings
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -19,10 +6,22 @@ metadata:
 
 ---
 
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: driver-registrar-role
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+
+---
+
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: driver-reigstrar-binding
+  name: driver-registrar-binding
 subjects:
   - kind: ServiceAccount
     name: csi-node-sa
@@ -33,26 +32,40 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 
 ---
-
+##### Controller Service Account, Roles, Rolebindings
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-controller-sa
 
 ---
-
-kind: ClusterRoleBinding
+# xref: https://github.com/kubernetes-csi/external-provisioner/blob/master/deploy/kubernetes/rbac.yaml
+kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-controller-attacher-binding
-subjects:
-  - kind: ServiceAccount
-    name: csi-controller-sa
-    namespace: default
-roleRef:
-  kind: ClusterRole
-  name: system:csi-external-attacher
-  apiGroup: rbac.authorization.k8s.io
+  name: external-provisioner-role
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["get", "list"]
 
 ---
 
@@ -66,15 +79,50 @@ subjects:
     namespace: default
 roleRef:
   kind: ClusterRole
-  name: system:csi-external-provisioner
+  name: external-provisioner-role
   apiGroup: rbac.authorization.k8s.io
+  
+---
+# xref: https://github.com/kubernetes-csi/external-attacher/blob/master/deploy/kubernetes/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: external-attacher-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["csi.storage.k8s.io"]
+    resources: ["csinodeinfos"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update"]
 
 ---
 
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-controller-attacher-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-controller-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: external-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# xref: https://github.com/kubernetes-csi/external-snapshotter/blob/master/deploy/kubernetes/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: system:csi-external-snapshotter
+  name: external-snapshotter-role
 rules:
 - apiGroups: ["snapshot.storage.k8s.io"]
   resources: ["volumesnapshotclasses"]
@@ -110,5 +158,5 @@ subjects:
     namespace: default
 roleRef:
   kind: ClusterRole
-  name: system:csi-external-snapshotter
+  name: external-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
