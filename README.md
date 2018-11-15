@@ -1,11 +1,6 @@
-WARNING: This driver is alpha and may not be compatible between driver versions
-or Kubernetes versions
+WARNING: This driver is beta and should not be used in performance critical applications
 
 DISCLAIMER: This is not an officially supported Google product
-
-Kubernetes Note: setup-cluster.yaml depends on the existence of cluster-roles
-system:csi-external-attacher and system:csi-external-provisioner which are in
-Kubernetes version 1.10.5+
 
 # GCP Compute Persistent Disk CSI Driver
 
@@ -15,18 +10,19 @@ Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
-Status: Alpha
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0`
+Status: Beta
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.3.0-gke.0`
 
 ### CSI Compatibility
-This plugin is compatible with CSI versions [v0.2.0](https://github.com/container-storage-interface/spec/blob/v0.2.0/spec.md) and [v0.3.0](https://github.com/container-storage-interface/spec/blob/v0.3.0/spec.md)
+This plugin is compatible with CSI versions [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
 
 ### Kubernetes Compatibility
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12+ |
-|--------------------------------------|---------------|------|
-| v0.1.0.alpha                         | yes           | no   |
-| v0.2.0 (alpha)                       | no            | yes  |
-| dev                                  | no            | yes  |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13+ | 
+|--------------------------------------|---------------|------|-------|
+| v0.1.0.alpha                         | yes           | no   | no    |
+| v0.2.0 (alpha)                       | no            | yes  | no    |
+| v0.3.0 (beta)                        | no            | no   | yes   |
+| dev                                  | no            | no   | yes   |
 
 ### Known Issues
 See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)

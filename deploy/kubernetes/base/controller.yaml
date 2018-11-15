@@ -19,7 +19,6 @@ spec:
           image: MUSTPATCHWITHKUSTOMIZE
           args:
             - "--v=5"
-            - "--provisioner=pd.csi.storage.gke.io"
             - "--csi-address=/csi/csi.sock"
           volumeMounts:
             - name: socket-dir
