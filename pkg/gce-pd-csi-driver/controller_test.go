@@ -22,13 +22,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/ptypes"
+
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -73,7 +75,11 @@ var (
 )
 
 func TestCreateSnapshotArguments(t *testing.T) {
-	timestamp, _ := time.Parse(time.RFC3339, gce.Timestamp)
+	thetime, _ := time.Parse(time.RFC3339, gce.Timestamp)
+	tp, err := ptypes.TimestampProto(thetime)
+	if err != nil {
+		t.Fatalf("Unable to conver time to timestamp: %v", err)
+	}
 	// Define test cases
 	testCases := []struct {
 		name        string
@@ -88,13 +94,11 @@ func TestCreateSnapshotArguments(t *testing.T) {
 				SourceVolumeId: testVolumeId,
 			},
 			expSnapshot: &csi.Snapshot{
-				Id:             testSnapshotId,
+				SnapshotId:     testSnapshotId,
 				SourceVolumeId: testVolumeId,
-				CreatedAt:      timestamp.UnixNano(),
+				CreationTime:   tp,
 				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
-				Status: &csi.SnapshotStatus{
-					Type: csi.SnapshotStatus_UPLOADING,
-				},
+				ReadyToUse:     false,
 			},
 		},
 		{
@@ -318,8 +322,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				Id:                 testVolumeId,
-				Attributes:         nil,
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
 		},
@@ -342,8 +346,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      MinimumVolumeSizeInBytes,
-				Id:                 testVolumeId,
-				Attributes:         nil,
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
 		},
@@ -365,24 +369,24 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				Id:                 testVolumeId,
-				Attributes:         nil,
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
 		},
 		{
 			name: "success with random secrets",
 			req: &csi.CreateVolumeRequest{
-				Name:                    "test-name",
-				CapacityRange:           stdCapRange,
-				VolumeCapabilities:      stdVolCap,
-				Parameters:              stdParams,
-				ControllerCreateSecrets: map[string]string{"key1": "this is a random", "crypto": "secret"},
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters:         stdParams,
+				Secrets:            map[string]string{"key1": "this is a random", "crypto": "secret"},
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				Id:                 testVolumeId,
-				Attributes:         nil,
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
 		},
@@ -403,8 +407,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            fmt.Sprintf("projects/%s/zones/topology-zone/disks/%s", metadataservice.FakeProject, name),
-				Attributes:    nil,
+				VolumeId:      fmt.Sprintf("projects/%s/zones/topology-zone/disks/%s", metadataservice.FakeProject, name),
+				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
@@ -446,8 +450,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            fmt.Sprintf("projects/%s/zones/topology-zone2/disks/%s", metadataservice.FakeProject, name),
-				Attributes:    nil,
+				VolumeId:      fmt.Sprintf("projects/%s/zones/topology-zone2/disks/%s", metadataservice.FakeProject, name),
+				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
@@ -510,8 +514,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            testRegionalId,
-				Attributes:    nil,
+				VolumeId:      testRegionalId,
+				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
@@ -558,8 +562,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				Id:            testRegionalId,
-				Attributes:    nil,
+				VolumeId:      testRegionalId,
+				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
@@ -579,20 +583,20 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
 						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							Id: "snapshot-source",
+							SnapshotId: "snapshot-source",
 						},
 					},
 				},
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				Id:                 testVolumeId,
-				Attributes:         nil,
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 				ContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
 						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							Id: "snapshot-source",
+							SnapshotId: "snapshot-source",
 						},
 					},
 				},

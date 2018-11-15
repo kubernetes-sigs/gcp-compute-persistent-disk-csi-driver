@@ -18,12 +18,12 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
-  digest = "1:a54dc69ec3668e0e57ad159a0a8c0ce1ec571174bb4eb6b3915833a8c21d40f3"
+  digest = "1:26ee2356254e58b9872ba736f66aff1c54a26f08c7d16afbf49695131a87d454"
   name = "github.com/container-storage-interface/spec"
-  packages = ["lib/go/csi/v0"]
+  packages = ["lib/go/csi"]
   pruneopts = "NUT"
-  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
-  version = "v0.3.0"
+  revision = "8efcc85c45550571fba8134182013ed7dc34038a"
+  version = "v1.0.0-rc2"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -80,10 +80,11 @@
   revision = "6f2cf27854a4a29e3811b0371547be335d411b8b"
 
 [[projects]]
-  digest = "1:782d86fa8e552302d3f9c3f2a5ef6482d1f28ac52a69b5e1e14d9b71c8c9dda3"
+  digest = "1:cd69ce40dbd74897e2b3e691ca2185d0dab70eb2591b477bd290ee961d040e90"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
+    "protoc-gen-go/descriptor",
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
@@ -169,15 +170,15 @@
   version = "v1.1.5"
 
 [[projects]]
-  branch = "master"
-  digest = "1:b942ed51f93e68edab3265aa6c0dad3aba543c2d8196e9f4104b340a9fae89c8"
+  digest = "1:009cfbba4123d60ecb41433258ab87dcb8511a1f6c8000222c16cee223f7620a"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "pkg/sanity",
     "utils",
   ]
   pruneopts = "NUT"
-  revision = "b36d955d7be3e91bab6aa63d5253e2b8381ca4be"
+  revision = "619da6853e10bef67ddcc8f1c2b68b73154bf11d"
+  version = "v1.0.0-rc2"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -874,8 +875,9 @@
   analyzer-version = 1
   input-imports = [
     "cloud.google.com/go/compute/metadata",
-    "github.com/container-storage-interface/spec/lib/go/csi/v0",
+    "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/glog",
+    "github.com/golang/protobuf/ptypes",
     "github.com/kubernetes-csi/csi-test/pkg/sanity",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
@@ -896,6 +898,7 @@
     "k8s.io/kubernetes/pkg/util/mount",
     "k8s.io/kubernetes/pkg/volume/util",
     "k8s.io/test-infra/boskos/client",
+    "k8s.io/test-infra/boskos/common",
     "k8s.io/utils/exec",
   ]
   solver-name = "gps-cdcl"

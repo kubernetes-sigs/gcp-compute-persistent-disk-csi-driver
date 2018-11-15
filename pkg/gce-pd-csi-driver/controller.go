@@ -21,7 +21,9 @@ import (
 	"strings"
 	"time"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/golang/protobuf/ptypes"
+
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
@@ -152,7 +154,8 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	content := req.GetVolumeContentSource()
 	if content != nil {
 		if content.GetSnapshot() != nil {
-			snapshotId = content.GetSnapshot().GetId()
+			// TODO(#161): Add support for Volume Source (cloning) introduced in CSI v1.0.0
+			snapshotId = content.GetSnapshot().GetSnapshotId()
 		}
 	}
 
@@ -241,7 +244,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	// TODO(#94): Check volume capability matches
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
-		PublishInfo: nil,
+		PublishContext: nil,
 	}
 
 	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
@@ -352,6 +355,8 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// TODO(#94): Factor out the volume capability functionality and use as validation in all other functions as well
+	// TODO(#162): Implement ValidateVolumeCapabilities
+
 	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
 	// Validate Arguments
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
@@ -373,63 +378,68 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
 	}
 
-	for _, c := range req.GetVolumeCapabilities() {
-		found := false
-		for _, c1 := range gceCS.Driver.vcap {
-			if c1.Mode == c.GetAccessMode().Mode {
-				found = true
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Message: "ValidateVolumeCapabilities is currently unimplemented for CSI v1.0.0",
+	}, nil
+	/*
+		for _, c := range req.GetVolumeCapabilities() {
+			found := false
+			for _, c1 := range gceCS.Driver.vcap {
+				if c1.Mode == c.GetAccessMode().Mode {
+					found = true
+				}
 			}
+			if !found {
+				return &csi.ValidateVolumeCapabilitiesResponse{
+					Supported: false,
+					Message:   "Driver does not support mode:" + c.GetAccessMode().Mode.String(),
+				}, status.Error(codes.InvalidArgument, "Driver does not support mode:"+c.GetAccessMode().Mode.String())
+			}
+			// TODO: Ignoring mount & block types for now.
 		}
-		if !found {
-			return &csi.ValidateVolumeCapabilitiesResponse{
-				Supported: false,
-				Message:   "Driver does not support mode:" + c.GetAccessMode().Mode.String(),
-			}, status.Error(codes.InvalidArgument, "Driver does not support mode:"+c.GetAccessMode().Mode.String())
-		}
-		// TODO: Ignoring mount & block types for now.
-	}
 
-	for _, top := range req.GetAccessibleTopology() {
-		for k, v := range top.GetSegments() {
-			switch k {
-			case common.TopologyKeyZone:
-				switch volKey.Type() {
-				case meta.Zonal:
-					if v == volKey.Zone {
-						// Accessible zone matches with storage zone
+		for _, top := range req.GetAccessibleTopology() {
+			for k, v := range top.GetSegments() {
+				switch k {
+				case common.TopologyKeyZone:
+					switch volKey.Type() {
+					case meta.Zonal:
+						if v == volKey.Zone {
+							// Accessible zone matches with storage zone
+							return &csi.ValidateVolumeCapabilitiesResponse{
+								Supported: true,
+							}, nil
+						}
+					case meta.Regional:
+						// TODO: This should more accurately check the disks replica Zones but that involves
+						// GET-ing the disk
+						region, err := common.GetRegionFromZones([]string{v})
+						if err != nil {
+							return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ValidateVolumeCapabilities could not extract topology region from zone %v: %v", v, err))
+						}
+						if region == volKey.Region {
+							// Accessible region matches with storage region
+							return &csi.ValidateVolumeCapabilitiesResponse{
+								Supported: true,
+							}, nil
+						}
+					default:
+						// Accessible zone does not match
 						return &csi.ValidateVolumeCapabilitiesResponse{
-							Supported: true,
-						}, nil
-					}
-				case meta.Regional:
-					// TODO: This should more accurately check the disks replica Zones but that involves
-					// GET-ing the disk
-					region, err := common.GetRegionFromZones([]string{v})
-					if err != nil {
-						return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ValidateVolumeCapabilities could not extract topology region from zone %v: %v", v, err))
-					}
-					if region == volKey.Region {
-						// Accessible region matches with storage region
-						return &csi.ValidateVolumeCapabilitiesResponse{
-							Supported: true,
+							Supported: false,
+							Message:   fmt.Sprintf("Volume %s is not accesible from topology %s:%s", volumeID, k, v),
 						}, nil
 					}
 				default:
-					// Accessible zone does not match
-					return &csi.ValidateVolumeCapabilitiesResponse{
-						Supported: false,
-						Message:   fmt.Sprintf("Volume %s is not accesible from topology %s:%s", volumeID, k, v),
-					}, nil
+					return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities unknown topology segment key")
 				}
-			default:
-				return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities unknown topology segment key")
 			}
 		}
-	}
 
-	return &csi.ValidateVolumeCapabilitiesResponse{
-		Supported: true,
-	}, nil
+		return &csi.ValidateVolumeCapabilitiesResponse{
+			Supported: true,
+		}, nil
+	*/
 }
 
 func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
@@ -467,13 +477,23 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
 
-	snapshot, err := gceCS.CloudProvider.CreateSnapshot(ctx, volKey, req.Name)
+	// Check if snapshot already exists
+	var snapshot *compute.Snapshot
+	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, req.Name)
 	if err != nil {
-		if gce.IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
+		if !gce.IsGCEError(err, "notFound") {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get snapshot error: %v", err))
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown create snapshot error: %v", err))
+		// If we could not find the snapshot, we create a new one
+		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, volKey, req.Name)
+		if err != nil {
+			if gce.IsGCEError(err, "notFound") {
+				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown create snapshot error: %v", err))
+		}
 	}
+
 	err = gceCS.validateExistingSnapshot(snapshot, volKey)
 	if err != nil {
 		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Error in creating snapshot: %v", err))
@@ -482,15 +502,24 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
 	}
+
+	tp, err := ptypes.TimestampProto(t)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
+	}
+
+	ready, err := isCSISnapshotReady(snapshot.Status)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Snapshot had error checking ready status: %v", err))
+	}
+
 	createResp := &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
-			Id:             cleanSelfLink(snapshot.SelfLink),
+			SnapshotId:     cleanSelfLink(snapshot.SelfLink),
 			SourceVolumeId: volumeID,
-			CreatedAt:      t.UnixNano(),
-			Status: &csi.SnapshotStatus{
-				Type: convertCSISnapshotStatus(snapshot.Status),
-			},
+			CreationTime:   tp,
+			ReadyToUse:     ready,
 		},
 	}
 	return createResp, nil
@@ -514,22 +543,18 @@ func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Sna
 	return nil
 }
 
-func convertCSISnapshotStatus(status string) csi.SnapshotStatus_Type {
-	var csiStatus csi.SnapshotStatus_Type
+func isCSISnapshotReady(status string) (bool, error) {
 	switch status {
 	case "READY":
-		csiStatus = csi.SnapshotStatus_READY
-	case "UPLOADING":
-		csiStatus = csi.SnapshotStatus_UPLOADING
+		return true, nil
 	case "FAILED":
-		csiStatus = csi.SnapshotStatus_ERROR_UPLOADING
+		return false, fmt.Errorf("snapshot status is FAILED")
 	case "DELETING":
-		csiStatus = csi.SnapshotStatus_UNKNOWN
 		glog.V(4).Infof("snapshot is in DELETING")
+		fallthrough
 	default:
-		csiStatus = csi.SnapshotStatus_UNKNOWN
+		return false, nil
 	}
-	return csiStatus
 }
 
 func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
@@ -587,7 +612,10 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 
 	for _, snapshot := range snapshots {
-		entry := generateSnapshotEntry(snapshot)
+		entry, err := generateSnapshotEntry(snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+		}
 		entries = append(entries, entry)
 	}
 	listSnapshotResp := &csi.ListSnapshotsResponse{
@@ -614,7 +642,12 @@ func (gceCS *GCEControllerServer) getSnapshotById(ctx context.Context, snapshotI
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 	}
-	entries := []*csi.ListSnapshotsResponse_Entry{generateSnapshotEntry(snapshot)}
+	e, err := generateSnapshotEntry(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+	}
+
+	entries := []*csi.ListSnapshotsResponse_Entry{e}
 	//entries[0] = entry
 	listSnapshotResp := &csi.ListSnapshotsResponse{
 		Entries: entries,
@@ -622,20 +655,29 @@ func (gceCS *GCEControllerServer) getSnapshotById(ctx context.Context, snapshotI
 	return listSnapshotResp, nil
 }
 
-func generateSnapshotEntry(snapshot *compute.Snapshot) *csi.ListSnapshotsResponse_Entry {
+func generateSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
+
+	tp, err := ptypes.TimestampProto(t)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+
+	// We ignore the error intentionally here since we are just listing snapshots
+	// TODO: If the snapshot is in "FAILED" state we need to think through what this
+	// should actually look like.
+	ready, _ := isCSISnapshotReady(snapshot.Status)
+
 	entry := &csi.ListSnapshotsResponse_Entry{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
-			Id:             cleanSelfLink(snapshot.SelfLink),
+			SnapshotId:     cleanSelfLink(snapshot.SelfLink),
 			SourceVolumeId: cleanSelfLink(snapshot.SourceDisk),
-			CreatedAt:      t.UnixNano(),
-			Status: &csi.SnapshotStatus{
-				Type: convertCSISnapshotStatus(snapshot.Status),
-			},
+			CreationTime:   tp,
+			ReadyToUse:     ready,
 		},
 	}
-	return entry
+	return entry, nil
 }
 
 func getRequestCapacity(capRange *csi.CapacityRange) (int64, error) {
@@ -815,8 +857,8 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []s
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes:      capBytes,
-			Id:                 cleanSelfLink(disk.GetSelfLink()),
-			Attributes:         nil,
+			VolumeId:           cleanSelfLink(disk.GetSelfLink()),
+			VolumeContext:      nil,
 			AccessibleTopology: tops,
 		},
 	}
@@ -825,7 +867,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []s
 		source := &csi.VolumeContentSource{
 			Type: &csi.VolumeContentSource_Snapshot{
 				Snapshot: &csi.VolumeContentSource_SnapshotSource{
-					Id: snapshotId,
+					SnapshotId: snapshotId,
 				},
 			},
 		}

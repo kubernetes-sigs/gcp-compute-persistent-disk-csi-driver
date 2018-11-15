@@ -47,11 +47,14 @@ type CSISecrets struct {
 // Config provides the configuration for the sanity tests. It
 // needs to be initialized by the user of the sanity package.
 type Config struct {
-	TargetPath     string
-	StagingPath    string
-	Address        string
-	SecretsFile    string
-	TestVolumeSize int64
+	TargetPath  string
+	StagingPath string
+	Address     string
+	SecretsFile string
+
+	TestVolumeSize           int64
+	TestVolumeParametersFile string
+	TestVolumeParameters     map[string]string
 }
 
 // SanityContext holds the variables that each test can depend on. It
@@ -67,6 +70,18 @@ type SanityContext struct {
 // Test will test the CSI driver at the specified address by
 // setting up a Ginkgo suite and running it.
 func Test(t *testing.T, reqConfig *Config) {
+	path := reqConfig.TestVolumeParametersFile
+	if len(path) != 0 {
+		yamlFile, err := ioutil.ReadFile(path)
+		if err != nil {
+			panic(fmt.Sprintf("failed to read file %q: %v", path, err))
+		}
+		err = yaml.Unmarshal(yamlFile, &reqConfig.TestVolumeParameters)
+		if err != nil {
+			panic(fmt.Sprintf("error unmarshaling yaml: %v", err))
+		}
+	}
+
 	sc := &SanityContext{
 		Config: reqConfig,
 	}
