@@ -11,4 +11,4 @@ spec:
         - name: csi-attacher
           image: gcr.io/gke-release/csi-attacher:v0.4.1-gke.0
         - name: gce-pd-driver
-          image: PROW_GCEPD_IMAGE:latest
+          image: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0

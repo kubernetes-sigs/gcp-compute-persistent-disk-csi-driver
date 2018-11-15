@@ -15,7 +15,7 @@ spec:
       serviceAccountName: csi-node-sa
       containers:
         - name: csi-driver-registrar
-          image: gcr.io/gke-release/csi-driver-registrar:v0.4.1-gke.0
+          image: MUSTPATCHWITHKUSTOMIZE
           args:
             - "--v=5"
             - "--csi-address=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
@@ -37,7 +37,7 @@ spec:
         - name: gce-pd-driver
           securityContext:
             privileged: true
-          image: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0
+          image: MUSTPATCHWITHKUSTOMIZE
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"

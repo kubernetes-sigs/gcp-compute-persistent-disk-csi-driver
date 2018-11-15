@@ -6,6 +6,10 @@ spec:
   template:
     spec:
       containers:
+        - name: csi-provisioner
+          image: gcr.io/gke-release/csi-provisioner:v0.4.1-gke.0
+        - name: csi-attacher
+          image: gcr.io/gke-release/csi-attacher:v0.4.1-gke.0
         - name: csi-snapshotter
           imagePullPolicy: Always
           image: quay.io/k8scsi/csi-snapshotter:v0.4.0
@@ -21,3 +25,4 @@ spec:
         - name: gce-pd-driver
           imagePullPolicy: Always
           image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
+
