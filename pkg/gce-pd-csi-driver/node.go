@@ -19,7 +19,7 @@ import (
 	"os"
 	"sync"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -174,7 +174,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// Part 1: Get device path of attached device
 	partition := ""
 
-	if part, ok := req.GetVolumeAttributes()[common.VolumeAttributePartition]; ok {
+	if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
 		partition = part
 	}
 
@@ -267,16 +267,6 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *GCENodeServer) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	glog.V(4).Infof("NodeGetId called with req: %#v", req)
-
-	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
-
-	return &csi.NodeGetIdResponse{
-		NodeId: nodeID,
-	}, nil
-}
-
 func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	glog.V(4).Infof("NodeGetCapabilities called with req: %#v", req)
 
@@ -303,4 +293,8 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		AccessibleTopology: top,
 	}
 	return resp, nil
+}
+
+func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeGetVolumeStats is not yet implemented"))
 }

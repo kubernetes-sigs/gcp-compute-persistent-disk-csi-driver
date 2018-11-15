@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	csipb "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -108,7 +108,7 @@ func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeI
 	if err != nil {
 		return "", err
 	}
-	return cresp.GetVolume().GetId(), nil
+	return cresp.GetVolume().GetVolumeId(), nil
 }
 
 func (c *CsiClient) DeleteVolume(volId string) error {
@@ -195,7 +195,7 @@ func (c *CsiClient) CreateSnapshot(snapshotName, sourceVolumeId string, params m
 	if err != nil {
 		return "", err
 	}
-	return cresp.GetSnapshot().GetId(), nil
+	return cresp.GetSnapshot().GetSnapshotId(), nil
 }
 
 func (c *CsiClient) DeleteSnapshot(snapshotId string) error {

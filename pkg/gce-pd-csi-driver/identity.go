@@ -15,7 +15,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -54,7 +54,7 @@ func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context,
 			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
+						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},

@@ -68,5 +68,4 @@ func TestSanity(t *testing.T) {
 		Address:     endpoint,
 	}
 	sanity.Test(t, config)
-
 }
