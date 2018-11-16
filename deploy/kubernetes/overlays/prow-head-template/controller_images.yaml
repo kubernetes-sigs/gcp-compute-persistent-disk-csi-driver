@@ -7,8 +7,8 @@ spec:
     spec:
       containers:
         - name: csi-provisioner
-          image: gcr.io/gke-release/csi-provisioner:v0.4.1-gke.0
+          image: gcr.io/gke-release/csi-provisioner:v1.0.0-gke.0
         - name: csi-attacher
-          image: gcr.io/gke-release/csi-attacher:v0.4.1-gke.0
+          image: gcr.io/gke-release/csi-attacher:v1.0.0-gke.0
         - name: gce-pd-driver
           image: PROW_GCEPD_IMAGE:latest
