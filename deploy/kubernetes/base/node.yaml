@@ -18,7 +18,7 @@ spec:
           image: MUSTPATCHWITHKUSTOMIZE
           args:
             - "--v=5"
-            - "--csi-address=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
+            - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
           lifecycle:
             preStop:
@@ -31,7 +31,7 @@ spec:
                   fieldPath: spec.nodeName
           volumeMounts:
             - name: plugin-dir
-              mountPath: /var/lib/kubelet/plugins/pd.csi.storage.gke.io/
+              mountPath: /csi
             - name: registration-dir
               mountPath: /registration
         - name: gce-pd-driver
