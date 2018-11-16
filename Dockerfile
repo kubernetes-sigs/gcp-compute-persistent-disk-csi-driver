@@ -14,14 +14,14 @@
 
 
 
-FROM golang:1.10.1-alpine3.7 as builder
+FROM golang:1.11.2-alpine3.8 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
 ARG TAG
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.vendorVersion='"${TAG:-latest}"' -extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
 
 # Start from Google Debian base
-FROM gcr.io/google-containers/debian-base-amd64:0.3
+FROM gcr.io/google-containers/debian-base-amd64:0.4.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 
 # Install necessary dependencies
