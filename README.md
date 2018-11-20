@@ -13,10 +13,18 @@ lifecycle of Google Compute Engine Persistent Disks.
 Status: Beta
 Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.3.0-gke.0`
 
+### Test Status
+
+#### Kubernetes Integration
+
+[<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Stable)
+
 ### CSI Compatibility
+
 This plugin is compatible with CSI versions [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
 
 ### Kubernetes Compatibility
+
 | GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13+ | 
 |--------------------------------------|---------------|------|-------|
 | v0.1.0.alpha                         | yes           | no   | no    |
@@ -25,25 +33,32 @@ This plugin is compatible with CSI versions [v1.0.0](https://github.com/containe
 | dev                                  | no            | no   | yes   |
 
 ### Known Issues
+
 See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
 
 ## Plugin Features
+
 ### CreateVolume Parameters
+
 | Parameter          | Values               | Default     | Description                                                                                                                 |
 |--------------------|----------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------|
 | "type"             | pd-ssd OR pd-standard | pd-standard | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks                          |
 | "replication-type" | none OR regional-pd   | none        | Replication type allows you to choose between standard zonal Persistent Disks or highly available Regional Persistent Disks |
 
 ### Future Features
+
 See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
 
 ### Topology
+
 This driver supports only one topology key:
 `topology.gke.io/zone`
 that represents availability by zone.
 
 ## Kubernetes User Guide
+
 ### Install Driver
+
 1. [One-time per project] Create GCP service account for the CSI driver and set required roles
 ```
 $ PROJECT=your-project-here                       # GCP project
@@ -60,6 +75,7 @@ $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
 ### Zonal Example
+
 1. Create example Zonal Storage Class
 ```
 $ kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
@@ -85,6 +101,7 @@ web-server                1/1       Running   0          1m
 ```
 
 ### Snapshot Example
+
 1. Create example Default Snapshot Class
 ```
 $ kubectl create -f ./examples/kubernetes/demo-defaultsnapshotclass.yaml
@@ -120,6 +137,7 @@ $ kubectl create -f ./examples/kubernetes/demo-restore-snapshot.yaml
 ## Kubernetes Development
 
 ### Manual
+
 To build and install a development version of the driver:
 ```
 $ GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
@@ -136,6 +154,7 @@ $ ./deploy/kubernetes/delete-driver.sh
 ```
 
 ## Testing
+
 Running E2E Tests:
 ```
 $ PROJECT=my-project                               # GCP Project to run tests in
@@ -154,6 +173,7 @@ $ ./test/run-unit.sh
 ```
 
 ## Dependency Management
+
 Use [dep](https://github.com/golang/dep)
 ```
 $ dep ensure
