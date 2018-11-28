@@ -18,10 +18,13 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"os"
+	"path"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -34,6 +37,7 @@ var (
 	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
+	reportDir       = flag.String("report-dir", "", "Location to dump JUnit XML test reports")
 
 	testContexts       = []*remote.TestContext{}
 	computeService     *compute.Service
@@ -43,7 +47,17 @@ var (
 func TestE2E(t *testing.T) {
 	flag.Parse()
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Google Compute Engine Persistent Disk Container Storage Interface Driver Tests")
+
+	var r []Reporter
+	if *reportDir != "" {
+		if err := os.MkdirAll(*reportDir, 0777); err != nil {
+			Logf("Failed creating report directory: %v", err)
+		} else {
+			r = append(r, reporters.NewJUnitReporter(path.Join(*reportDir, "junit.xml")))
+		}
+	}
+
+	RunSpecsWithDefaultAndCustomReporters(t, "Google Compute Engine Persistent Disk Container Storage Interface Driver Tests", r)
 }
 
 var _ = BeforeSuite(func() {
