@@ -188,7 +188,7 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	return nil
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId string) error {
 	if disk, ok := cloud.disks[volKey.Name]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, diskType,
 			int64(capacityRange.GetRequiredBytes()),
@@ -202,20 +202,22 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 	switch volKey.Type() {
 	case meta.Zonal:
 		diskToCreateGA := &compute.Disk{
-			Name:        volKey.Name,
-			SizeGb:      common.BytesToGb(capBytes),
-			Description: "Disk created by GCE-PD CSI Driver",
-			Type:        cloud.GetDiskTypeURI(volKey, diskType),
-			SelfLink:    fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
+			Name:             volKey.Name,
+			SizeGb:           common.BytesToGb(capBytes),
+			Description:      "Disk created by GCE-PD CSI Driver",
+			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
+			SourceSnapshotId: snapshotId,
 		}
 		diskToCreate = ZonalCloudDisk(diskToCreateGA)
 	case meta.Regional:
 		diskToCreateBeta := &computebeta.Disk{
-			Name:        volKey.Name,
-			SizeGb:      common.BytesToGb(capBytes),
-			Description: "Regional disk created by GCE-PD CSI Driver",
-			Type:        cloud.GetDiskTypeURI(volKey, diskType),
-			SelfLink:    fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
+			Name:             volKey.Name,
+			SizeGb:           common.BytesToGb(capBytes),
+			Description:      "Regional disk created by GCE-PD CSI Driver",
+			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
+			SourceSnapshotId: snapshotId,
 		}
 		diskToCreate = RegionalCloudDisk(diskToCreateBeta)
 	default:

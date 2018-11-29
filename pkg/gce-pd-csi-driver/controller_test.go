@@ -570,6 +570,34 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "success with data source of snapshot type",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							Id: "snapshot-source",
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				Id:                 testVolumeId,
+				Attributes:         nil,
+				AccessibleTopology: stdTopology,
+				ContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							Id: "snapshot-source",
+						},
+					},
+				},
+			},
+		},
 	}
 
 	// Run test cases
