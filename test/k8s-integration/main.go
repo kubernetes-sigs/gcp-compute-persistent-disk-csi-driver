@@ -205,8 +205,15 @@ func runTests(k8sDir string) error {
 	if err != nil {
 		return err
 	}
-	testArgs := "--test_args=--ginkgo.focus=CSI\\sdriver:.*gcePD-external"
-	cmd := exec.Command("go", "run", "hack/e2e.go", "--", "--check-version-skew=false", "--test", testArgs)
+	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
+	reportArg := fmt.Sprintf("--report-dir=%s", artifactsDir)
+	testArgs := fmt.Sprintf("--test_args=--ginkgo.focus=CSI.*gcePD-external --ginkgo.skip=\\[Serial\\]|kubelet.*down %s", reportArg)
+	cmd := exec.Command("go", "run", "hack/e2e.go",
+		"--",
+		"--check-version-skew=false",
+		"--test",
+		"--ginkgo-parallel",
+		testArgs)
 	err = runCommand("Running Tests", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
