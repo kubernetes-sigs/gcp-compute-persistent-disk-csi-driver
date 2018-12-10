@@ -602,6 +602,50 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fail with block volume capability",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+			},
+			expErrCode: codes.Unimplemented,
+		},
+		{
+			name: "fail with both mount and block volume capability",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+			},
+			expErrCode: codes.Unimplemented, // once block support is implemented, this error should be InvalidArgument
+		},
 	}
 
 	// Run test cases
