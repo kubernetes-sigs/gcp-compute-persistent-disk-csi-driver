@@ -81,7 +81,13 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume Request Capacity is invalid: %v", err))
 	}
 
-	// TODO(#94): Validate volume capabilities
+	// TODO(#94): Validate AccessModes in VolumeCapabilities
+	for _, capability := range volumeCapabilities {
+		if blk := capability.GetBlock(); blk != nil {
+			// TODO(#64): Block volume support
+			return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Block volume support is not yet implemented"))
+		}
+	}
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
