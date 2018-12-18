@@ -7,6 +7,6 @@ spec:
     spec:
       containers:
         - name: csi-driver-registrar
-          image: gcr.io/gke-release-staging/csi-driver-registrar:latest
+          image: gcr.io/gke-release-staging/csi-node-driver-registrar:latest
         - name: gce-pd-driver
           image: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver:latest
