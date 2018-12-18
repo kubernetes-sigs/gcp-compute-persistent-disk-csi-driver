@@ -9,4 +9,4 @@ spec:
         - name: gce-pd-driver
           image: PROW_GCEPD_IMAGE:latest
         - name: csi-driver-registrar
-          image: gcr.io/gke-release/csi-driver-registrar:v1.0.1-gke.0
+          image: gcr.io/gke-release/csi-node-driver-registrar:v1.0.1-gke.0
