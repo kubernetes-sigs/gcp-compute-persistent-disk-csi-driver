@@ -646,6 +646,23 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.Unimplemented, // once block support is implemented, this error should be InvalidArgument
 		},
+		{
+			name: "success with disk encryption kms key",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCap,
+				Parameters: map[string]string{
+					common.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
 	}
 
 	// Run test cases
