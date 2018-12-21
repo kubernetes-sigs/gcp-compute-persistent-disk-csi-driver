@@ -89,7 +89,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		return fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
-	imageURL := "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-1804-lts"
+	imageURL := "projects/debian-cloud/global/images/family/debian-9"
 	inst := &compute.Instance{
 		Name:        i.name,
 		MachineType: machineType(i.zone, ""),
@@ -132,7 +132,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 
 	if _, err := i.computeService.Instances.Get(i.project, i.zone, inst.Name).Do(); err != nil {
 		op, err := i.computeService.Instances.Insert(i.project, i.zone, inst).Do()
-		glog.V(4).Infof("Inserted instance %v in project %v, i.zone %v", inst.Name, i.project, i.zone)
+		glog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", inst.Name, i.project, i.zone)
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
 			if op != nil {
