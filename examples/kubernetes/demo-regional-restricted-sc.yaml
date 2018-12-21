@@ -7,3 +7,9 @@ parameters:
   type: pd-standard
   replication-type: regional-pd
 volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.gke.io/zone
+    values:
+    - us-central1-a
+    - us-central1-b
