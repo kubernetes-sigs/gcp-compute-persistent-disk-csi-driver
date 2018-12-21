@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	computebeta "google.golang.org/api/compute/v0.beta"
@@ -68,27 +69,32 @@ var _ = BeforeSuite(func() {
 	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
 	Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
-	Logf("Running in project %v with service account %v\n\n", *project, *serviceAccount)
+	glog.Infof("Running in project %v with service account %v\n\n", *project, *serviceAccount)
 
 	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
 			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
-			Logf("Setting up node %s\n", nodeID)
+			glog.Infof("Setting up node %s\n", nodeID)
 
 			i, err := remote.SetupInstance(*project, curZone, nodeID, *serviceAccount, computeService)
-			Expect(err).To(BeNil())
+			if err != nil {
+				glog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
+			}
 
+			glog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
 			testContext, err := testutils.GCEClientAndDriverSetup(i)
-			Expect(err).To(BeNil(), "Set up new Driver and Client failed with error")
+			if err != nil {
+				glog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+			}
 			tcc <- testContext
 		}(zone)
 	}
 
 	for i := 0; i < len(zones); i++ {
 		tc := <-tcc
-		Logf("Test Context for node %s set up\n", tc.Instance.GetName())
+		glog.Infof("Test Context for node %s set up\n", tc.Instance.GetName())
 		testContexts = append(testContexts, tc)
 	}
 })

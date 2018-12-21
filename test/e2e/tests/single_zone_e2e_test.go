@@ -15,7 +15,6 @@ limitations under the License.
 package tests
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -369,7 +368,3 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 })
-
-func Logf(format string, args ...interface{}) {
-	fmt.Fprintf(GinkgoWriter, format, args...)
-}

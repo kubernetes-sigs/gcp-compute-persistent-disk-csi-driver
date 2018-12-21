@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -145,7 +146,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) {
 	var err error
 
-	Logf("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
+	glog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
 	// Attach Disk
 	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
 	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v", volID, instance.GetNodeID())
@@ -205,5 +206,5 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 	err = client.NodeUnpublishVolume(volID, secondPublishDir)
 	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
 
-	Logf("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
+	glog.Infof("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
 }
