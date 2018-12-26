@@ -188,7 +188,7 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	return nil
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId string) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotId, diskEncryptionKmsKey string) error {
 	if disk, ok := cloud.disks[volKey.Name]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, diskType,
 			int64(capacityRange.GetRequiredBytes()),
@@ -209,6 +209,11 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
 			SourceSnapshotId: snapshotId,
 		}
+		if diskEncryptionKmsKey != "" {
+			diskToCreateGA.DiskEncryptionKey = &compute.CustomerEncryptionKey{
+				KmsKeyName: diskEncryptionKmsKey,
+			}
+		}
 		diskToCreate = ZonalCloudDisk(diskToCreateGA)
 	case meta.Regional:
 		diskToCreateBeta := &computebeta.Disk{
@@ -218,6 +223,11 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Type:             cloud.GetDiskTypeURI(volKey, diskType),
 			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
 			SourceSnapshotId: snapshotId,
+		}
+		if diskEncryptionKmsKey != "" {
+			diskToCreateBeta.DiskEncryptionKey = &computebeta.CustomerEncryptionKey{
+				KmsKeyName: diskEncryptionKmsKey,
+			}
 		}
 		diskToCreate = RegionalCloudDisk(diskToCreateBeta)
 	default:
