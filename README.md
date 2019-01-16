@@ -102,6 +102,8 @@ web-server                1/1       Running   0          1m
 
 ### Snapshot Example
 
+Please note that VolumeSnapshot is currently alpha feature. In order to enable this feature, please install CSI driver with
+dev version by setting the environment variable "GCE_PD_DRIVER_VERSION=dev"
 1. Create example Default Snapshot Class
 ```
 $ kubectl create -f ./examples/kubernetes/demo-defaultsnapshotclass.yaml
