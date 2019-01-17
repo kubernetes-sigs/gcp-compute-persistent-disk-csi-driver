@@ -15,6 +15,8 @@ limitations under the License.
 package tests
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,6 +28,10 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"google.golang.org/api/iterator"
+	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
+	fieldmask "google.golang.org/genproto/protobuf/field_mask"
 )
 
 const (
@@ -78,7 +84,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
+		err = testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 	})
 
@@ -152,7 +159,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+		err = testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 	})
 
@@ -293,6 +301,160 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
 		}()
+	})
+
+	It("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore", func() {
+		ctx := context.Background()
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+		locationID := "global"
+
+		// The resource name of the key rings.
+		parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
+		keyRingId := "gce-pd-csi-test-ring"
+
+		// Create KeyRing
+		ringReq := &kmspb.CreateKeyRingRequest{
+			Parent:    parentName,
+			KeyRingId: keyRingId,
+		}
+		keyRing, err := kmsClient.CreateKeyRing(ctx, ringReq)
+		if !gce.IsGCEError(err, "alreadyExists") {
+			getKeyRingReq := &kmspb.GetKeyRingRequest{
+				Name: fmt.Sprintf("%s/keyRings/%s", parentName, keyRingId),
+			}
+			keyRing, err = kmsClient.GetKeyRing(ctx, getKeyRingReq)
+
+		}
+		Expect(err).To(BeNil(), "Failed to create or get key ring %v", keyRingId)
+
+		// Create CryptoKey in KeyRing
+		keyId := "test-key-" + string(uuid.NewUUID())
+		keyReq := &kmspb.CreateCryptoKeyRequest{
+			Parent:      keyRing.Name,
+			CryptoKeyId: keyId,
+			CryptoKey: &kmspb.CryptoKey{
+				Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
+				VersionTemplate: &kmspb.CryptoKeyVersionTemplate{
+					Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
+				},
+			},
+		}
+		key, err := kmsClient.CreateCryptoKey(ctx, keyReq)
+		Expect(err).To(BeNil(), "Failed to create crypto key %v in key ring %v", keyId, keyRing.Name)
+
+		keyVersions := []string{}
+		keyVersionReq := &kmspb.ListCryptoKeyVersionsRequest{
+			Parent: key.Name,
+		}
+
+		it := kmsClient.ListCryptoKeyVersions(ctx, keyVersionReq)
+
+		for {
+			keyVersion, err := it.Next()
+			if err == iterator.Done {
+				break
+			}
+			Expect(err).To(BeNil(), "Failed to list crypto key versions")
+
+			keyVersions = append(keyVersions, keyVersion.Name)
+		}
+
+		// Defer deletion of all key versions
+		// https://cloud.google.com/kms/docs/destroy-restore
+		defer func() {
+
+			for _, keyVersion := range keyVersions {
+				destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
+					Name: keyVersion,
+				}
+				_, err = kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
+				Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
+			}
+
+		}()
+
+		// Go through volume lifecycle using CMEK-ed PD
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyDiskEncryptionKmsKey: key.Name,
+		}, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			})
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		defer func() {
+			// Delete Disk
+			err = controllerClient.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Test disk works
+		err = testAttachWriteReadDetach(volID, volName, controllerInstance, controllerClient, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
+
+		// Revoke CMEK key
+		// https://cloud.google.com/kms/docs/enable-disable
+
+		for _, keyVersion := range keyVersions {
+			disableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+					Name:  keyVersion,
+					State: kmspb.CryptoKeyVersion_DISABLED,
+				},
+				UpdateMask: &fieldmask.FieldMask{
+					Paths: []string{"state"},
+				},
+			}
+			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, disableReq)
+			Expect(err).To(BeNil(), "Failed to disable crypto key")
+		}
+
+		// Make sure attach of PD fails
+		err = testAttachWriteReadDetach(volID, volName, controllerInstance, controllerClient, false /* readOnly */)
+		Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
+
+		// Restore CMEK key
+		for _, keyVersion := range keyVersions {
+			enableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+					Name:  keyVersion,
+					State: kmspb.CryptoKeyVersion_ENABLED,
+				},
+				UpdateMask: &fieldmask.FieldMask{
+					Paths: []string{"state"},
+				},
+			}
+			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, enableReq)
+			Expect(err).To(BeNil(), "Failed to enable crypto key")
+		}
+
+		// Make sure attach of PD succeeds
+		err = testAttachWriteReadDetach(volID, volName, controllerInstance, controllerClient, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 	})
 
 	It("Should create and delete snapshot for RePD in two zones ", func() {

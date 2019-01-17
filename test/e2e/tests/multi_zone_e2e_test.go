@@ -15,6 +15,7 @@ limitations under the License.
 package tests
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -143,68 +144,96 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 })
 
-func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) {
+func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
 	var err error
 
 	glog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
 	// Attach Disk
 	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
-	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v", volID, instance.GetNodeID())
+	if err != nil {
+		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+	}
 
 	defer func() {
-
 		// Detach Disk
 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-		Expect(err).To(BeNil(), "ControllerUnpublishVolume failed with error")
+		if err != nil {
+			glog.Errorf("Failed to detach disk: %v", err)
+		}
+
 	}()
 
 	// Stage Disk
 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	client.NodeStageVolume(volID, stageDir)
-	Expect(err).To(BeNil(), "NodeStageVolume failed with error")
+	err = client.NodeStageVolume(volID, stageDir)
+	if err != nil {
+		return fmt.Errorf("NodeStageVolume failed with error: %v", err)
+	}
 
 	defer func() {
 		// Unstage Disk
 		err = client.NodeUnstageVolume(volID, stageDir)
-		Expect(err).To(BeNil(), "NodeUnstageVolume failed with error")
-		err = testutils.RmAll(instance, filepath.Join("/tmp/", volName))
-		Expect(err).To(BeNil(), "Failed to remove temp directory")
+		if err != nil {
+			glog.Errorf("Failed to unstage volume: %v", err)
+		}
+		fp := filepath.Join("/tmp/", volName)
+		err = testutils.RmAll(instance, fp)
+		if err != nil {
+			glog.Errorf("Failed to rm file path %s: %v", fp, err)
+		}
 	}()
 
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
 	err = client.NodePublishVolume(volID, stageDir, publishDir)
-	Expect(err).To(BeNil(), "NodePublishVolume failed with error")
+	if err != nil {
+		return fmt.Errorf("NodePublishVolume failed with error: %v", err)
+	}
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-	Expect(err).To(BeNil(), "Chmod failed with error")
+	if err != nil {
+		return fmt.Errorf("Chmod failed with error: %v", err)
+	}
 	testFileContents := "test"
 	if !readOnly {
 		// Write a file
 		testFile := filepath.Join(publishDir, "testfile")
 		err = testutils.WriteFile(instance, testFile, testFileContents)
-		Expect(err).To(BeNil(), "Failed to write file")
+		if err != nil {
+			return fmt.Errorf("Failed to write file: %v", err)
+		}
 	}
 
 	// Unmount Disk
 	err = client.NodeUnpublishVolume(volID, publishDir)
-	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
+	if err != nil {
+		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+	}
 
 	// Mount disk somewhere else
 	secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
 	err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
-	Expect(err).To(BeNil(), "NodePublishVolume failed with error")
+	if err != nil {
+		return fmt.Errorf("NodePublishVolume failed with error: %v", err)
+	}
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-	Expect(err).To(BeNil(), "Chmod failed with error")
+	if err != nil {
+		return fmt.Errorf("Chmod failed with error: %v", err)
+	}
 
 	// Read File
 	secondTestFile := filepath.Join(secondPublishDir, "testfile")
 	readContents, err := testutils.ReadFile(instance, secondTestFile)
-	Expect(err).To(BeNil(), "ReadFile failed with error")
+	if err != nil {
+		return fmt.Errorf("ReadFile failed with error: %v", err)
+	}
 	Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
 
 	// Unmount Disk
 	err = client.NodeUnpublishVolume(volID, secondPublishDir)
-	Expect(err).To(BeNil(), "NodeUnpublishVolume failed with error")
+	if err != nil {
+		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+	}
 
 	glog.Infof("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
+	return nil
 }
