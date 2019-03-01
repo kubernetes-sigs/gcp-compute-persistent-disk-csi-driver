@@ -15,12 +15,14 @@ limitations under the License.
 package tests
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 
+	cloudkms "cloud.google.com/go/kms/apiv1"
 	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -39,6 +41,7 @@ var (
 	testContexts       = []*remote.TestContext{}
 	computeService     *compute.Service
 	betaComputeService *computebeta.Service
+	kmsClient          *cloudkms.KeyManagementClient
 )
 
 func TestE2E(t *testing.T) {
@@ -60,6 +63,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil())
 
 	betaComputeService, err = remote.GetBetaComputeClient()
+	Expect(err).To(BeNil())
+
+	// Create the KMS client.
+	kmsClient, err = cloudkms.NewKeyManagementClient(context.Background())
 	Expect(err).To(BeNil())
 
 	if *runInProw {
