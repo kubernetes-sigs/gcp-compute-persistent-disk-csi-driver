@@ -11,7 +11,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
 Status: Beta
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.3.0-gke.0`
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.4.0-gke.0`
 
 ### Test Status
 
@@ -30,6 +30,7 @@ This plugin is compatible with CSI versions [v1.0.0](https://github.com/containe
 | v0.1.0.alpha                         | yes           | no   | no    |
 | v0.2.0 (alpha)                       | no            | yes  | no    |
 | v0.3.0 (beta)                        | no            | no   | yes   |
+| v0.4.0 (beta)                        | no            | no   | yes   |
 | dev                                  | no            | no   | yes   |
 
 ### Known Issues
@@ -44,6 +45,7 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 |--------------------|----------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------|
 | "type"             | pd-ssd OR pd-standard | pd-standard | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks                          |
 | "replication-type" | none OR regional-pd   | none        | Replication type allows you to choose between standard zonal Persistent Disks or highly available Regional Persistent Disks |
+| "disk-encryption-kms-key" | projects/`[KMS_PROJECT_ID]`/locations/`[REGION]`/keyRings/`[KEY_RING]`/cryptoKeys/`[KEY]`  | none        | Disk encryption KMS key allows you to supply a pre-existing Customer Managed Encryption Key that is used to encrypt the data encryption key for your volume |
 
 ### Future Features
 
