@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 const (
@@ -238,6 +239,10 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 		}
 		_, err = i.computeService.Firewalls.Insert(i.project, f).Do()
 		if err != nil {
+			if gce.IsGCEError(err, "alreadyExists") {
+				glog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+				return nil
+			}
 			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
 		}
 	} else {
