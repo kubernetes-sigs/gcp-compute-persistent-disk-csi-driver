@@ -87,6 +87,9 @@ then
   kubectl create clusterrolebinding cluster-admin-binding --clusterrole cluster-admin --user $(gcloud config get-value account)
 fi
 
+# Debug log: print kubectl version
+kubectl version
+
 readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.yaml
 ${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
-kubectl apply -f $tmp_spec
+kubectl apply -v=9 -f $tmp_spec
