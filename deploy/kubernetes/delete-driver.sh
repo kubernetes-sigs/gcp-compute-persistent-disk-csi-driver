@@ -16,5 +16,5 @@ source "${PKGDIR}/deploy/common.sh"
 
 ensure_kustomize
 
-${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | kubectl delete --ignore-not-found -f -
-kubectl delete secret cloud-sa --ignore-not-found
+${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | ${KUBECTL} delete -v="${VERBOSITY}" --ignore-not-found -f -
+${KUBECTL} delete secret cloud-sa -v="${VERBOSITY}" --ignore-not-found

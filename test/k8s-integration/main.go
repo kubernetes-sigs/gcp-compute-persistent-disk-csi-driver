@@ -148,6 +148,18 @@ func handle() error {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
 
+		kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
+		_, err = os.Stat(kshPath)
+		if err == nil {
+			// Set kubectl to the one bundled in the k8s tar for versioning
+			err = os.Setenv("GCE_PD_KUBECTL", kshPath)
+			if err != nil {
+				return fmt.Errorf("failed to set cluster specific kubectl: %v", err)
+			}
+		} else {
+			glog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
+		}
+
 		err = clusterUp(k8sDir)
 		if err != nil {
 			return fmt.Errorf("failed to cluster up: %v", err)

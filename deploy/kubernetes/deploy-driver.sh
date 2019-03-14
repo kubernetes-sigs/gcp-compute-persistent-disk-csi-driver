@@ -76,20 +76,21 @@ if [ "$skip_sa_check" != true ]; then
   check_service_account
 fi
 
-if ! kubectl get secret cloud-sa -n ${NAMESPACE};
+if ! ${KUBECTL} get secret cloud-sa -v="${VERBOSITY}" -n ${NAMESPACE};
 then
-  kubectl create secret generic cloud-sa --from-file="${GCE_PD_SA_DIR}/cloud-sa.json" -n ${NAMESPACE}
+  ${KUBECTL} create secret generic cloud-sa -v="${VERBOSITY}" --from-file="${GCE_PD_SA_DIR}/cloud-sa.json" -n ${NAMESPACE}
 fi
 
 # GKE Required Setup
-if ! kubectl get clusterrolebinding cluster-admin-binding;
+if ! ${KUBECTL} get clusterrolebinding -v="${VERBOSITY}" cluster-admin-binding;
 then
-  kubectl create clusterrolebinding cluster-admin-binding --clusterrole cluster-admin --user $(gcloud config get-value account)
+  ${KUBECTL} create clusterrolebinding cluster-admin-binding -v="${VERBOSITY}" --clusterrole cluster-admin --user $(gcloud config get-value account)
 fi
 
-# Debug log: print kubectl version
-kubectl version
+# Debug log: print ${KUBECTL} version
+${KUBECTL} version
 
 readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.yaml
 ${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
-kubectl apply -v=9 -f $tmp_spec
+${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec
+
