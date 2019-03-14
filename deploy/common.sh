@@ -2,6 +2,8 @@
 
 # Common variables
 readonly KUSTOMIZE_PATH="${PKGDIR}/bin/kustomize"
+readonly VERBOSITY="${GCE_PD_VERBOSITY:-2}"
+readonly KUBECTL="${GCE_PD_KUBECTL:-kubectl}"
 
 # Common functions
 
