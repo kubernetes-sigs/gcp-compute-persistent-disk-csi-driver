@@ -57,9 +57,48 @@ This driver supports only one topology key:
 that represents availability by zone.
 
 ## Kubernetes User Guide
-
 ### Install Driver
 
+#### Preflight (Ubuntu like)
+1. You need to install golang
+```
+sudo apt update && sudo apt install golang
+```
+2. Set path for go
+You can read [here](https://github.com/golang/go/wiki/SettingGOPATH) more or quick run this steps
+Set path to /home/$USER/go (my user is de1m)
+```
+export GOPATH=$HOME/go
+```
+3. Clone the repo to path below
+```
+mkdir -p $GOPATH/src/sigs.k8s.io
+cd $GOPATH/src/sigs.k8s.io
+git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver.git
+```
+4. Now you need to set the project variables
+-   **PROJECT** - is the id of your project in gcp. Show below, you need the PROJECT_ID
+```
+de1m@comp0:~$ gcloud projects list
+PROJECT_ID            NAME              PROJECT_NUMBER
+organic-byway-124310  My First Project  881998438125
+```
+**de1m@comp0:~$ export PROJECT=organic-byway-124310**
+
+-   **GCE_PD_SA_NAME** - name of service account. This can be created in google console under "IAM & Admin"/"service account". **My account have the project owner permissions, but it is to much!**
+```
+de1m@comp0:~$ gcloud iam service-accounts list
+NAME                                    EMAIL
+gcp-csi-driver                          gcp-csi-driver@organic-byway-124310.iam.gserviceaccount.com
+...
+```
+**de1m@comp0:~$ export GCE_PD_SA_NAME=gcp-csi-driver**
+- **GCE_PD_SA_DIR** - save the json file of service account to directory (for example $ACCDIR).
+```
+de1m@comp0:~$ export GCE_PD_SA_DIR=$ACCDIR
+```
+5. Now you are ready to run setup-project.sh and deploy-driver.sh
+#### Installation
 1. [One-time per project] Create GCP service account for the CSI driver and set required roles
 ```
 $ PROJECT=your-project-here                       # GCP project
