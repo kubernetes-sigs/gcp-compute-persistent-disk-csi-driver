@@ -58,9 +58,19 @@ that represents availability by zone.
 
 ## Kubernetes User Guide
 
-### Install Driver
+### Install Driver from Release
 
-1. [One-time per project] Create GCP service account for the CSI driver and set required roles
+1. [One-time per environment] Download release and extract release to your GOPATH
+```
+$ mkdir -p ~/go/src/sigs.k8s.io                   # Directory where the driver directory must reside
+$ cd ~/go/src/sigs.k8s.io
+$ curl -L https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/archive/v0.4.0.tar.gz -o ./gcp-compute-persistent-disk-csi-driver.tar.gz
+$ tar -xvf ./gcp-compute-persistent-disk-csi-driver.tar.gz
+$ mv gcp-compute-persistent-disk-csi-driver-0.4.0 gcp-compute-persistent-disk-csi-driver
+$ cd gcp-compute-persistent-disk-csi-driver
+```
+
+2. [One-time per project] Create GCP service account for the CSI driver and set required roles
 ```
 $ PROJECT=your-project-here                       # GCP project
 $ GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
@@ -68,7 +78,7 @@ $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the servic
 $ ./deploy/setup-project.sh
 ```
 
-2. Deploy driver to Kubernetes Cluster
+3. Deploy driver to Kubernetes Cluster
 ```
 $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
 $ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
