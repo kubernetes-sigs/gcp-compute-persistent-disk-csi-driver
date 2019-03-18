@@ -66,7 +66,7 @@ sudo apt update && sudo apt install golang
 ```
 2. Set path for go
 You can read [here](https://github.com/golang/go/wiki/SettingGOPATH) more or quick run this steps
-Set path to /home/$USER/go (my user is de1m)
+Set path to /home/$USER/go
 ```
 export GOPATH=$HOME/go
 ```
@@ -79,23 +79,23 @@ git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-dri
 4. Now you need to set the project variables
 -   **PROJECT** - is the id of your project in gcp. Show below, you need the PROJECT_ID
 ```
-de1m@comp0:~$ gcloud projects list
+gcloud projects list
 PROJECT_ID            NAME              PROJECT_NUMBER
-organic-byway-124310  My First Project  881998438125
+my-project-id         My First Project  123456789
 ```
-**de1m@comp0:~$ export PROJECT=organic-byway-124310**
+**export PROJECT=my-project-id**
 
 -   **GCE_PD_SA_NAME** - name of service account. This can be created in google console under "IAM & Admin"/"service account". **My account have the project owner permissions, but it is to much!**
 ```
-de1m@comp0:~$ gcloud iam service-accounts list
+gcloud iam service-accounts list
 NAME                                    EMAIL
-gcp-csi-driver                          gcp-csi-driver@organic-byway-124310.iam.gserviceaccount.com
+gcp-csi-driver                          gcp-csi-driver@my-project-id.iam.gserviceaccount.com
 ...
 ```
-**de1m@comp0:~$ export GCE_PD_SA_NAME=gcp-csi-driver**
-- **GCE_PD_SA_DIR** - save the json file of service account to directory (for example $ACCDIR).
+**export GCE_PD_SA_NAME=gcp-csi-driver**
+- **GCE_PD_SA_DIR** - save the json file of service account to directory (for example /data/folder-with-service-json).
 ```
-de1m@comp0:~$ export GCE_PD_SA_DIR=$ACCDIR
+export GCE_PD_SA_DIR=/data/folder-with-service-json
 ```
 5. Now you are ready to run setup-project.sh and deploy-driver.sh
 #### Installation
