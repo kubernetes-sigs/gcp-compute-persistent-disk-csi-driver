@@ -60,22 +60,18 @@ that represents availability by zone.
 ### Install Driver
 
 #### Preflight (Ubuntu like)
-1. You need to install golang
-```
-sudo apt update && sudo apt install golang
-```
-2. Set path for go
+
+1. You need to install golang and set the paths
+[Official installation guide](https://golang.org/doc/install)
 You can read [here](https://github.com/golang/go/wiki/SettingGOPATH) more or quick run this steps
-Set path to /home/$USER/go
-```
-export GOPATH=$HOME/go
-```
+
 3. Clone the repo to path below
 ```
 mkdir -p $GOPATH/src/sigs.k8s.io
 cd $GOPATH/src/sigs.k8s.io
-git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver.git
 ```
+So the clonend project need to be place in $GOPATH/src/sigs.k8s.io
+
 4. Now you need to set the project variables
 -   **PROJECT** - is the id of your project in gcp. Show below, you need the PROJECT_ID
 ```
