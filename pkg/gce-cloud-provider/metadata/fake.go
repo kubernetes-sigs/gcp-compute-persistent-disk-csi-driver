@@ -26,6 +26,8 @@ const (
 	FakeProject    = "test-project"
 )
 
+var FakeMachineType = "n1-standard-1"
+
 func NewFakeService() MetadataService {
 	return &fakeServiceManager{}
 }
@@ -40,4 +42,12 @@ func (manager *fakeServiceManager) GetProject() string {
 
 func (manager *fakeServiceManager) GetName() string {
 	return "test-name"
+}
+
+func (manager *fakeServiceManager) GetMachineType() string {
+	return FakeMachineType
+}
+
+func SetMachineType(s string) {
+	FakeMachineType = s
 }

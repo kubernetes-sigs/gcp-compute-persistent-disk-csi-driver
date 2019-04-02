@@ -18,6 +18,7 @@ package metadata
 
 import (
 	"fmt"
+	"strings"
 
 	"cloud.google.com/go/compute/metadata"
 )
@@ -28,13 +29,15 @@ type MetadataService interface {
 	GetZone() string
 	GetProject() string
 	GetName() string
+	GetMachineType() string
 }
 
 type metadataServiceManager struct {
 	// Current zone the driver is running in
-	zone    string
-	project string
-	name    string
+	zone        string
+	project     string
+	name        string
+	machineType string
 }
 
 var _ MetadataService = &metadataServiceManager{}
@@ -52,11 +55,19 @@ func NewMetadataService() (MetadataService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance name: %v", err)
 	}
+	fullMachineType, err := metadata.Get("instance/machine-type")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get machine-type: %v", err)
+	}
+	// Response format: "projects/[NUMERIC_PROJECT_ID]/machineTypes/[MACHINE_TYPE]"
+	splits := strings.Split(fullMachineType, "/")
+	machineType := splits[len(splits)-1]
 
 	return &metadataServiceManager{
-		project: projectID,
-		zone:    zone,
-		name:    name,
+		project:     projectID,
+		zone:        zone,
+		name:        name,
+		machineType: machineType,
 	}, nil
 }
 
@@ -70,4 +81,8 @@ func (manager *metadataServiceManager) GetProject() string {
 
 func (manager *metadataServiceManager) GetName() string {
 	return manager.name
+}
+
+func (manager *metadataServiceManager) GetMachineType() string {
+	return manager.machineType
 }

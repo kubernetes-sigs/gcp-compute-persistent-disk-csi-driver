@@ -17,6 +17,7 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -41,6 +42,14 @@ type GCENodeServer struct {
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
+
+// The constants are used to map from the machine type to the limit of
+// persistent disks that can be attached to an instance. Please refer to gcloud doc
+// https://cloud.google.com/compute/docs/disks/#pdnumberlimits
+const (
+	volumeLimit16  int64 = 16
+	volumeLimit128 int64 = 128
+)
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	ns.mux.Lock()
@@ -284,15 +293,17 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
+	volumeLimits, err := ns.GetVolumeLimits()
+
 	resp := &csi.NodeGetInfoResponse{
 		NodeId: nodeID,
 		// TODO(#19): Set MaxVolumesPerNode based on Node Type
 		// Default of 0 means that CO Decides how many nodes can be published
 		// Can get from metadata server "machine-type"
-		MaxVolumesPerNode:  0,
+		MaxVolumesPerNode:  volumeLimits,
 		AccessibleTopology: top,
 	}
-	return resp, nil
+	return resp, err
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
@@ -301,4 +312,17 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 
 func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeExpandVolume is not yet implemented"))
+}
+
+func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
+	var volumeLimits int64
+
+	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
+	machineType := ns.MetadataService.GetMachineType()
+	if strings.HasPrefix(machineType, "n1-") || strings.HasPrefix(machineType, "custom-") {
+		volumeLimits = volumeLimit128
+	} else {
+		volumeLimits = volumeLimit16
+	}
+	return volumeLimits, nil
 }

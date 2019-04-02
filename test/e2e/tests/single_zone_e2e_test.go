@@ -37,14 +37,23 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb     int64 = 5
-	defaultRepdSizeGb int64 = 200
-	readyState              = "READY"
-	standardDiskType        = "pd-standard"
-	ssdDiskType             = "pd-ssd"
+	defaultSizeGb      int64 = 5
+	defaultRepdSizeGb  int64 = 200
+	readyState               = "READY"
+	standardDiskType         = "pd-standard"
+	ssdDiskType              = "pd-ssd"
+	defaultVolumeLimit int64 = 128
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
+
+	It("Should get reasonable volume limits from nodes with NodeGetInfo", func() {
+		testContext := getRandomTestContext()
+		resp, err := testContext.Client.NodeGetInfo()
+		Expect(err).To(BeNil())
+		volumeLimit := resp.GetMaxVolumesPerNode()
+		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
+	})
 
 	It("Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 		testContext := getRandomTestContext()
