@@ -17,7 +17,7 @@ if [ ! -f "${KUSTOMIZE_PATH}" ]; then
 
   echo "Installing kustomize in ${KUSTOMIZE_PATH}"
   opsys=linux  # or darwin, or windows
-  curl -s https://api.github.com/repos/kubernetes-sigs/kustomize/releases/tags/v1.0.8 |\
+  curl -s https://api.github.com/repos/kubernetes-sigs/kustomize/releases/tags/v2.0.3 |\
     grep browser_download |\
     grep $opsys |\
     cut -d '"' -f 4 |\

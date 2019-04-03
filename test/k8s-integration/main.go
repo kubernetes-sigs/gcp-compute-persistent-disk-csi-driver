@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +42,10 @@ var (
 	localK8sDir        = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
 	doDriverBuild      = flag.Bool("do-driver-build", true, "building the driver from source")
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
+)
+
+const (
+	pdImagePlaceholder = "REPLACEME/gcp-compute-persistent-disk-csi-driver"
 )
 
 func init() {
@@ -104,14 +107,6 @@ func handle() error {
 
 		if *doDriverBuild {
 			*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", project)
-
-			// TODO: once https://github.com/kubernetes-sigs/kustomize/issues/402 is implemented,
-			// we no longer need to do this templating work and can just edit the image registry directly.
-			overlayDir := getOverlayDir(pkgDir, *deployOverlayName)
-			err = fillinOverlayTemplate(overlayDir, *stagingImage)
-			if err != nil {
-				return fmt.Errorf("tmpOverlayDir setup failed: %v", err)
-			}
 		}
 
 		if _, ok := os.LookupEnv("USER"); !ok {
@@ -306,8 +301,8 @@ func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployO
 			filepath.Join(pkgDir, "bin", "kustomize"),
 			"edit",
 			"set",
-			"imagetag",
-			fmt.Sprintf("%s:%s", stagingImage, stagingVersion)).CombinedOutput()
+			"image",
+			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, stagingVersion)).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
 		}
@@ -464,21 +459,6 @@ func deleteImage(stagingImage, stagingVersion string) error {
 	err := runCommand("Deleting GCR Container", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
-	}
-	return nil
-}
-
-func fillinOverlayTemplate(overlayDir, stagingImage string) error {
-	// Substitute the PROW_GCEPD_IMAGE env with stagingImage for every file in the directory
-	escapedStagingImage := strings.Replace(stagingImage, "/", "\\/", -1)
-	out, err := exec.Command(
-		"bash",
-		"-c",
-		fmt.Sprintf("find %s -name *.yaml | xargs %s",
-			overlayDir,
-			fmt.Sprintf("sed -i -e 's/PROW_GCEPD_IMAGE/%s/g'", escapedStagingImage))).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error substituting staging image env: %s, err: %v", out, err)
 	}
 	return nil
 }

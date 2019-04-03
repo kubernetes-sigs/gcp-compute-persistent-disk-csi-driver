@@ -8,6 +8,4 @@ spec:
       containers:
         - name: gce-pd-driver
           imagePullPolicy: Always
-          image: gcr.io/dyzz-csi-staging/csi/gce-pd-driver:latest
-        - name: csi-driver-registrar
-          image: gcr.io/gke-release/csi-node-driver-registrar:v1.0.1-gke.0
+
