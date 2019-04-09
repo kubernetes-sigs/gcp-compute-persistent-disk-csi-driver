@@ -51,4 +51,5 @@ spec:
         - name: cloud-sa-volume
           secret:
             secretName: cloud-sa
+  # This is needed due to https://github.com/kubernetes-sigs/kustomize/issues/504
   volumeClaimTemplates: []

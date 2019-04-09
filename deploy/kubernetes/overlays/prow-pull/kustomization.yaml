@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+- ../../base
+images:
+- name: REPLACEME/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver
+  newTag: "v0.4.0-gke.0"
+- name: REPLACEME/csi-provisioner
+  newName: quay.io/k8scsi/csi-provisioner
+  newTag: "v1.0.1"
+- name: REPLACEME/csi-attacher
+  newName: quay.io/k8scsi/csi-attacher
+  newTag: "v1.0.1"
+- name: REPLACEME/csi-node-driver-registrar
+  newName: quay.io/k8scsi/csi-node-driver-registrar
+  newTag: "v1.0.1"
