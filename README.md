@@ -15,7 +15,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
 Status: Beta
-Latest image: `gcr.io/google-containers/volume-csi/gcp-compute-persistent-disk-csi-driver:v0.2.0.beta`
+Latest image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.2.0-gke.0`
 
 ### CSI Compatibility
 This plugin is compatible with CSI versions [v0.2.0](https://github.com/container-storage-interface/spec/blob/v0.2.0/spec.md) and [v0.3.0](https://github.com/container-storage-interface/spec/blob/v0.3.0/spec.md)

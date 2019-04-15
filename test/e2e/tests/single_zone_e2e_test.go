@@ -32,10 +32,11 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb    int64 = 5
-	readyState             = "READY"
-	standardDiskType       = "pd-standard"
-	ssdDiskType            = "pd-ssd"
+	defaultSizeGb     int64 = 5
+	defaultRepdSizeGb int64 = 200
+	readyState              = "READY"
+	standardDiskType        = "pd-standard"
+	ssdDiskType             = "pd-ssd"
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
@@ -172,7 +173,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volID, err := controllerClient.CreateVolume(volName, map[string]string{
 			common.ParameterKeyReplicationType: "regional-pd",
-		}, defaultSizeGb, nil)
+		}, defaultRepdSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -180,7 +181,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {
@@ -311,7 +312,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volId, err := controllerClient.CreateVolume(volName, map[string]string{
 			common.ParameterKeyReplicationType: "regional-pd",
-		}, defaultSizeGb, nil)
+		}, defaultRepdSizeGb, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -319,7 +320,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {

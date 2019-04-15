@@ -17,7 +17,7 @@ spec:
       containers:
         - name: csi-snapshotter
           imagePullPolicy: Always
-          image: quay.io/k8scsi/csi-snapshotter:v0.4.0
+          image: quay.io/k8scsi/csi-snapshotter:v0.4.1
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
