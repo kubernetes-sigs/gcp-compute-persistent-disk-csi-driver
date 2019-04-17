@@ -1,5 +1,0 @@
-bases:
-- ../../base
-patches:
-- controller_images.yaml
-- node_images.yaml

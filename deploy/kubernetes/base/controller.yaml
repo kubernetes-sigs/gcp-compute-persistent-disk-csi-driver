@@ -16,7 +16,7 @@ spec:
       serviceAccountName: csi-controller-sa
       containers:
         - name: csi-provisioner
-          image: MUSTPATCHWITHKUSTOMIZE
+          image: REPLACEME/csi-provisioner
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
@@ -24,7 +24,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-attacher
-          image: MUSTPATCHWITHKUSTOMIZE
+          image: REPLACEME/csi-attacher
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
@@ -32,7 +32,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: gce-pd-driver
-          image: MUSTPATCHWITHKUSTOMIZE
+          image: REPLACEME/gcp-compute-persistent-disk-csi-driver
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
@@ -51,3 +51,5 @@ spec:
         - name: cloud-sa-volume
           secret:
             secretName: cloud-sa
+  # This is needed due to https://github.com/kubernetes-sigs/kustomize/issues/504
+  volumeClaimTemplates: []

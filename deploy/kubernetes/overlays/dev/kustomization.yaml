@@ -1,5 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 bases:
-- ../../base
+- ../alpha
 patches:
-- controller_images.yaml
-- node_images.yaml
+- controller_always_pull.yaml
+- node_always_pull.yaml
+images:
+# Replace this with your private image names and tags
+- name: REPLACEME/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/REPLACEME/gcp-compute-persistent-disk-csi-driver
+  newTag: "latest"
+- name: REPLACEME/csi-provisioner
+  newName: gcr.io/gke-release/csi-provisioner
+  newTag: "v1.0.1-gke.0"
+- name: REPLACEME/csi-attacher
+  newName: gcr.io/gke-release/csi-attacher
+  newTag: "v1.0.1-gke.0"
+- name: REPLACEME/csi-node-driver-registrar
+  newName: gcr.io/gke-release/csi-node-driver-registrar
+  newTag: "v1.0.1-gke.0"
