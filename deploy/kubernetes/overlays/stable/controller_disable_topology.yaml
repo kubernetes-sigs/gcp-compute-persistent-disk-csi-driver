@@ -1,0 +1,12 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-provisioner
+          args:
+            - "--v=5"
+            - "--csi-address=/csi/csi.sock"
