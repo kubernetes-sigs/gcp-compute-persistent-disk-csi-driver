@@ -19,6 +19,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -84,5 +86,272 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			}
 			t.Logf("Get node info: %v", res)
 		}
+	}
+}
+
+func TestNodePublishVolume(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+	testCases := []struct {
+		name       string
+		req        *csi.NodePublishVolumeRequest
+		expErrCode codes.Code
+	}{
+		{
+			name: "Valid request",
+			req: &csi.NodePublishVolumeRequest{
+				VolumeId:          "1",
+				TargetPath:        "/mnt/test",
+				StagingTargetPath: "/staging",
+				Readonly:          false,
+				VolumeCapability:  &csi.VolumeCapability{},
+			},
+		},
+		{
+			name: "Invalid request (No VolumeId)",
+			req: &csi.NodePublishVolumeRequest{
+				TargetPath:        "/mnt/test",
+				StagingTargetPath: "/staging",
+				Readonly:          false,
+				VolumeCapability:  &csi.VolumeCapability{},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No TargetPath)",
+			req: &csi.NodePublishVolumeRequest{
+				VolumeId:          "1",
+				StagingTargetPath: "/staging",
+				Readonly:          false,
+				VolumeCapability:  &csi.VolumeCapability{},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No StagingTargetPath)",
+			req: &csi.NodePublishVolumeRequest{
+				VolumeId:         "1",
+				TargetPath:       "/mnt/test",
+				Readonly:         false,
+				VolumeCapability: &csi.VolumeCapability{},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (Nil VolumeCapability)",
+			req: &csi.NodePublishVolumeRequest{
+				VolumeId:          "1",
+				TargetPath:        "/mnt/test",
+				StagingTargetPath: "/staging",
+				Readonly:          false,
+				VolumeCapability:  nil,
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("Test case: %s", tc.name)
+		_, err := ns.NodePublishVolume(context.Background(), tc.req)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", err)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+	}
+}
+
+func TestNodeUnpublishVolume(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+	testCases := []struct {
+		name       string
+		req        *csi.NodeUnpublishVolumeRequest
+		expErrCode codes.Code
+	}{
+		{
+			name: "Valid request",
+			req: &csi.NodeUnpublishVolumeRequest{
+				VolumeId:   "1",
+				TargetPath: "/mnt/test",
+			},
+		},
+		{
+			name: "Invalid request (No VolumeId)",
+			req: &csi.NodeUnpublishVolumeRequest{
+				TargetPath: "/mnt/test",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No TargetPath)",
+			req: &csi.NodeUnpublishVolumeRequest{
+				VolumeId: "1",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("Test case: %s", tc.name)
+		_, err := ns.NodeUnpublishVolume(context.Background(), tc.req)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", err)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+	}
+}
+
+func TestNodeStageVolume(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+	volumeID := "project/test001/zones/c1/disks/testDisk"
+	blockCap := &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}
+	cap := &csi.VolumeCapability{
+		AccessType: blockCap,
+	}
+
+	testCases := []struct {
+		name       string
+		req        *csi.NodeStageVolumeRequest
+		expErrCode codes.Code
+	}{
+		{
+			name: "Valid request",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: "/staging",
+				VolumeCapability:  &csi.VolumeCapability{},
+			},
+		},
+		{
+			name: "Invalid request (No VolumeId)",
+			req: &csi.NodeStageVolumeRequest{
+				StagingTargetPath: "/staging",
+				VolumeCapability:  &csi.VolumeCapability{},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No StagingTargetPath)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:         volumeID,
+				VolumeCapability: &csi.VolumeCapability{},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (Nil VolumeCapability)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: "/staging",
+				VolumeCapability:  nil,
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No Mount in capability)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: "/staging",
+				VolumeCapability:  cap,
+			},
+			expErrCode: codes.Unimplemented,
+		},
+		// Capability Mount. codes.Unimplemented
+	}
+	for _, tc := range testCases {
+		t.Logf("Test case: %s", tc.name)
+		_, err := ns.NodeStageVolume(context.Background(), tc.req)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", err)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+	}
+}
+
+func TestNodeUnstageVolume(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+	testCases := []struct {
+		name       string
+		req        *csi.NodeUnstageVolumeRequest
+		expErrCode codes.Code
+	}{
+		{
+			name: "Valid request",
+			req: &csi.NodeUnstageVolumeRequest{
+				VolumeId:          "1",
+				StagingTargetPath: "/staging",
+			},
+		},
+		{
+			name: "Invalid request (No VolumeId)",
+			req: &csi.NodeUnstageVolumeRequest{
+				StagingTargetPath: "/staging",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (No StagingTargetPath)",
+			req: &csi.NodeUnstageVolumeRequest{
+				VolumeId: "1",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("Test case: %s", tc.name)
+		_, err := ns.NodeUnstageVolume(context.Background(), tc.req)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", err)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+	}
+}
+
+func TestNodeGetCapabilities(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+	req := &csi.NodeGetCapabilitiesRequest{}
+
+	_, err := ns.NodeGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Unexpedted error: %v", err)
 	}
 }

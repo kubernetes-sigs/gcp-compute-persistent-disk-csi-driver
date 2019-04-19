@@ -296,10 +296,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	volumeLimits, err := ns.GetVolumeLimits()
 
 	resp := &csi.NodeGetInfoResponse{
-		NodeId: nodeID,
-		// TODO(#19): Set MaxVolumesPerNode based on Node Type
-		// Default of 0 means that CO Decides how many nodes can be published
-		// Can get from metadata server "machine-type"
+		NodeId:             nodeID,
 		MaxVolumesPerNode:  volumeLimits,
 		AccessibleTopology: top,
 	}
