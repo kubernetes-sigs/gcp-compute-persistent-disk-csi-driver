@@ -4,7 +4,7 @@ bases:
 - ../../base
 images:
 - name: REPLACEME/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/gke-release/csi/gce-pd-driver
+  newName: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver
   newTag: "v0.4.0-gke.0"
 - name: REPLACEME/csi-provisioner
   newName: gcr.io/gke-release/csi-provisioner
