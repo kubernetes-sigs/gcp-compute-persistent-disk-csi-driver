@@ -25,6 +25,10 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
+const defaultVolumeID = "project/test001/zones/c1/disks/testDisk"
+const defaultTargetPath = "/mnt/test"
+const defaultStagingPath = "/staging"
+
 func getTestGCEDriver(t *testing.T) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeMounter(), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
@@ -100,9 +104,9 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Valid request",
 			req: &csi.NodePublishVolumeRequest{
-				VolumeId:          "1",
-				TargetPath:        "/mnt/test",
-				StagingTargetPath: "/staging",
+				VolumeId:          defaultVolumeID,
+				TargetPath:        defaultTargetPath,
+				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
 				VolumeCapability:  &csi.VolumeCapability{},
 			},
@@ -110,8 +114,8 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodePublishVolumeRequest{
-				TargetPath:        "/mnt/test",
-				StagingTargetPath: "/staging",
+				TargetPath:        defaultTargetPath,
+				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
 				VolumeCapability:  &csi.VolumeCapability{},
 			},
@@ -120,8 +124,8 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Invalid request (No TargetPath)",
 			req: &csi.NodePublishVolumeRequest{
-				VolumeId:          "1",
-				StagingTargetPath: "/staging",
+				VolumeId:          defaultVolumeID,
+				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
 				VolumeCapability:  &csi.VolumeCapability{},
 			},
@@ -130,8 +134,8 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Invalid request (No StagingTargetPath)",
 			req: &csi.NodePublishVolumeRequest{
-				VolumeId:         "1",
-				TargetPath:       "/mnt/test",
+				VolumeId:         defaultVolumeID,
+				TargetPath:       defaultTargetPath,
 				Readonly:         false,
 				VolumeCapability: &csi.VolumeCapability{},
 			},
@@ -140,9 +144,9 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Invalid request (Nil VolumeCapability)",
 			req: &csi.NodePublishVolumeRequest{
-				VolumeId:          "1",
-				TargetPath:        "/mnt/test",
-				StagingTargetPath: "/staging",
+				VolumeId:          defaultVolumeID,
+				TargetPath:        defaultTargetPath,
+				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
 				VolumeCapability:  nil,
 			},
@@ -179,21 +183,21 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		{
 			name: "Valid request",
 			req: &csi.NodeUnpublishVolumeRequest{
-				VolumeId:   "1",
-				TargetPath: "/mnt/test",
+				VolumeId:   defaultVolumeID,
+				TargetPath: defaultTargetPath,
 			},
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeUnpublishVolumeRequest{
-				TargetPath: "/mnt/test",
+				TargetPath: defaultTargetPath,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "Invalid request (No TargetPath)",
 			req: &csi.NodeUnpublishVolumeRequest{
-				VolumeId: "1",
+				VolumeId: defaultVolumeID,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -237,14 +241,14 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Valid request",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: "/staging",
+				StagingTargetPath: defaultStagingPath,
 				VolumeCapability:  &csi.VolumeCapability{},
 			},
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeStageVolumeRequest{
-				StagingTargetPath: "/staging",
+				StagingTargetPath: defaultStagingPath,
 				VolumeCapability:  &csi.VolumeCapability{},
 			},
 			expErrCode: codes.InvalidArgument,
@@ -261,7 +265,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (Nil VolumeCapability)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: "/staging",
+				StagingTargetPath: defaultStagingPath,
 				VolumeCapability:  nil,
 			},
 			expErrCode: codes.InvalidArgument,
@@ -270,7 +274,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (No Mount in capability)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: "/staging",
+				StagingTargetPath: defaultStagingPath,
 				VolumeCapability:  cap,
 			},
 			expErrCode: codes.Unimplemented,
@@ -307,21 +311,21 @@ func TestNodeUnstageVolume(t *testing.T) {
 		{
 			name: "Valid request",
 			req: &csi.NodeUnstageVolumeRequest{
-				VolumeId:          "1",
-				StagingTargetPath: "/staging",
+				VolumeId:          defaultVolumeID,
+				StagingTargetPath: defaultStagingPath,
 			},
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeUnstageVolumeRequest{
-				StagingTargetPath: "/staging",
+				StagingTargetPath: defaultStagingPath,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "Invalid request (No StagingTargetPath)",
 			req: &csi.NodeUnstageVolumeRequest{
-				VolumeId: "1",
+				VolumeId: defaultVolumeID,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
