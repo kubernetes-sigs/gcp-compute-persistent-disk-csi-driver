@@ -10,3 +10,4 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
+            - "--feature-gates=Topology=true"
