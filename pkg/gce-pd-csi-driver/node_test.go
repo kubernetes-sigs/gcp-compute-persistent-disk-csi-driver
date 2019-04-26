@@ -108,8 +108,19 @@ func TestNodePublishVolume(t *testing.T) {
 				TargetPath:        defaultTargetPath,
 				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
-				VolumeCapability:  &csi.VolumeCapability{},
+				VolumeCapability:  stdVolCap,
 			},
+		},
+		{
+			name: "Invalid request (invalid access mode)",
+			req: &csi.NodePublishVolumeRequest{
+				VolumeId:          defaultVolumeID,
+				TargetPath:        defaultTargetPath,
+				StagingTargetPath: defaultStagingPath,
+				Readonly:          false,
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+			},
+			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "Invalid request (No VolumeId)",
@@ -117,7 +128,7 @@ func TestNodePublishVolume(t *testing.T) {
 				TargetPath:        defaultTargetPath,
 				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
-				VolumeCapability:  &csi.VolumeCapability{},
+				VolumeCapability:  stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -127,7 +138,7 @@ func TestNodePublishVolume(t *testing.T) {
 				VolumeId:          defaultVolumeID,
 				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
-				VolumeCapability:  &csi.VolumeCapability{},
+				VolumeCapability:  stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -137,7 +148,7 @@ func TestNodePublishVolume(t *testing.T) {
 				VolumeId:         defaultVolumeID,
 				TargetPath:       defaultTargetPath,
 				Readonly:         false,
-				VolumeCapability: &csi.VolumeCapability{},
+				VolumeCapability: stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -242,14 +253,23 @@ func TestNodeStageVolume(t *testing.T) {
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: defaultStagingPath,
-				VolumeCapability:  &csi.VolumeCapability{},
+				VolumeCapability:  stdVolCap,
 			},
+		},
+		{
+			name: "Invalid request (Bad Access Mode)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: defaultStagingPath,
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+			},
+			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeStageVolumeRequest{
 				StagingTargetPath: defaultStagingPath,
-				VolumeCapability:  &csi.VolumeCapability{},
+				VolumeCapability:  stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -257,7 +277,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (No StagingTargetPath)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:         volumeID,
-				VolumeCapability: &csi.VolumeCapability{},
+				VolumeCapability: stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -277,9 +297,8 @@ func TestNodeStageVolume(t *testing.T) {
 				StagingTargetPath: defaultStagingPath,
 				VolumeCapability:  cap,
 			},
-			expErrCode: codes.Unimplemented,
+			expErrCode: codes.InvalidArgument,
 		},
-		// Capability Mount. codes.Unimplemented
 	}
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)

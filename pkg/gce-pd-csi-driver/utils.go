@@ -17,6 +17,9 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"errors"
+	"fmt"
+
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
@@ -58,4 +61,48 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 		glog.V(5).Infof("GRPC response: %+v", protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
+}
+
+func validateVolumeCapabilities(vcs []*csi.VolumeCapability) error {
+	if vcs == nil {
+		return errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		if err := validateVolumeCapability(vc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateVolumeCapability(vc *csi.VolumeCapability) error {
+	if err := validateAccessModes(vc.GetAccessMode()); err != nil {
+		return err
+	}
+	if blk := vc.GetBlock(); blk != nil {
+		// TODO(#64): Block volume support
+		return errors.New("Block volume support is not yet implemented")
+	}
+	if mnt := vc.GetMount(); mnt == nil {
+		// TODO(#64): Change error message after block volume support
+		return errors.New("Must specify an access type of Mount")
+	}
+	return nil
+}
+
+func validateAccessModes(am *csi.VolumeCapability_AccessMode) error {
+	if am == nil {
+		return errors.New("access mode is nil")
+	}
+
+	switch am.GetMode() {
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+		return errors.New("MULTI_NODE_MULTI_WRITER access mode is not yet supported for PD")
+	default:
+		return fmt.Errorf("%v access mode is not supported for for PD", am.GetMode())
+	}
+	return nil
 }
