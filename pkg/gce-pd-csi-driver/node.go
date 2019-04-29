@@ -75,6 +75,10 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
+	if err := validateVolumeCapability(volumeCapability); err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
+	}
+
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 	if err != nil && !os.IsNotExist(err) {
 		glog.Errorf("cannot validate mount point: %s %v", targetPath, err)
@@ -84,7 +88,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
 		/*
 			1) Target Path MUST be the vol referenced by vol ID
-			2) VolumeCapability MUST match
+			2) TODO(#253): Check volume capability matches for ALREADY_EXISTS
 			3) Readonly MUST match
 
 		*/
@@ -174,6 +178,12 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
+
+	if err := validateVolumeCapability(volumeCapability); err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
+	}
+
+	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 
 	volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {

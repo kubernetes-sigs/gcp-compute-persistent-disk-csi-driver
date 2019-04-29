@@ -46,16 +46,6 @@ const (
 
 var (
 	// Define "normal" parameters
-	stdVolCap = []*csi.VolumeCapability{
-		{
-			AccessType: &csi.VolumeCapability_Mount{
-				Mount: &csi.VolumeCapability_MountVolume{},
-			},
-			AccessMode: &csi.VolumeCapability_AccessMode{
-				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-			},
-		},
-	}
 	stdCapRange = &csi.CapacityRange{
 		RequiredBytes: common.GbToBytes(20),
 	}
@@ -304,7 +294,6 @@ func TestListSnapshotsArguments(t *testing.T) {
 }
 
 func TestCreateVolumeArguments(t *testing.T) {
-
 	// Define test cases
 	testCases := []struct {
 		name       string
@@ -317,7 +306,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
@@ -328,11 +317,36 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
+			name: "success with MULTI_NODE_READER_ONLY",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+		{
+			name: "fail with MULTI_NODE_MULTI_WRITER capability",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
 			name: "fail no name",
 			req: &csi.CreateVolumeRequest{
 				Name:               "",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 			},
 			expErrCode: codes.InvalidArgument,
@@ -341,7 +355,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			name: "success no capacity range",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 			},
 			expVol: &csi.Volume{
@@ -365,7 +379,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
@@ -379,7 +393,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 				Secrets:            map[string]string{"key1": "this is a random", "crypto": "secret"},
 			},
@@ -395,7 +409,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         map[string]string{"type": "test-type"},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -421,7 +435,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         map[string]string{"type": "test-type"},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -464,7 +478,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -481,7 +495,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         stdParams,
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -499,7 +513,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               name,
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters:         map[string]string{common.ParameterKeyReplicationType: replicationTypeRegionalPD},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
@@ -531,7 +545,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               name,
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
 					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
@@ -555,7 +569,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               name,
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
 					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
@@ -579,7 +593,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
 						Snapshot: &csi.VolumeContentSource_SnapshotSource{
@@ -618,7 +632,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			expErrCode: codes.Unimplemented,
+			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "fail with both mount and block volume capability",
@@ -644,14 +658,14 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			expErrCode: codes.Unimplemented, // once block support is implemented, this error should be InvalidArgument
+			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "success with disk encryption kms key",
 			req: &csi.CreateVolumeRequest{
 				Name:               name,
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCap,
+				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
 					common.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
 				},
@@ -713,7 +727,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 	req := &csi.CreateVolumeRequest{
 		Name:               "test-name",
 		CapacityRange:      stdCapRange,
-		VolumeCapabilities: stdVolCap,
+		VolumeCapabilities: stdVolCaps,
 		Parameters:         map[string]string{"type": "test-type"},
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{

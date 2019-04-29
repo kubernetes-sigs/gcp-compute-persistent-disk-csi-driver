@@ -81,12 +81,9 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume Request Capacity is invalid: %v", err))
 	}
 
-	// TODO(#94): Validate AccessModes in VolumeCapabilities
-	for _, capability := range volumeCapabilities {
-		if blk := capability.GetBlock(); blk != nil {
-			// TODO(#64): Block volume support
-			return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Block volume support is not yet implemented"))
-		}
+	err = validateVolumeCapabilities(volumeCapabilities)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapabilities is invalid: %v", err))
 	}
 
 	// Apply Parameters (case-insensitive). We leave validation of
@@ -251,7 +248,11 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
-	// TODO(#94): Check volume capability matches
+
+	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
+	if err = validateVolumeCapability(volumeCapability); err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapabilities is invalid: %v", err))
+	}
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
 		PublishContext: nil,
@@ -364,7 +365,6 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 }
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	// TODO(#94): Factor out the volume capability functionality and use as validation in all other functions as well
 	// TODO(#162): Implement ValidateVolumeCapabilities
 
 	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
@@ -744,7 +744,7 @@ func diskIsAttachedAndCompatible(deviceName string, instance *compute.Instance, 
 			if disk.Mode != readWrite {
 				return true, fmt.Errorf("disk mode does not match. Got %v. Want %v", disk.Mode, readWrite)
 			}
-			// TODO(#94): Check volume_capability.
+			// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 			return true, nil
 		}
 	}
