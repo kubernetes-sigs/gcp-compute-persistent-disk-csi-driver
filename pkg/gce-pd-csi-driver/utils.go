@@ -72,11 +72,36 @@ func validateVolumeCapabilities(vcs []*csi.VolumeCapability) error {
 			return err
 		}
 	}
+	if err := crossValidateAccessModes(vcs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func crossValidateAccessModes(vcs []*csi.VolumeCapability) error {
+	m := map[csi.VolumeCapability_AccessMode_Mode]bool{}
+
+	for _, vc := range vcs {
+		m[vc.GetAccessMode().GetMode()] = true
+	}
+
+	hasWriter := m[csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER]
+	hasSingleReader := m[csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY]
+	hasMultiReader := m[csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY]
+
+	if hasWriter && (hasSingleReader || hasMultiReader) {
+		return fmt.Errorf("both SINGLE_NODE_WRITER and READER_ONLY access mode specified")
+	}
+
+	if hasSingleReader && hasMultiReader {
+		return fmt.Errorf("both SINGLE_NODE_READER_ONLY and MULTI_NODE_READY_ONLY specified")
+	}
+
 	return nil
 }
 
 func validateVolumeCapability(vc *csi.VolumeCapability) error {
-	if err := validateAccessModes(vc.GetAccessMode()); err != nil {
+	if err := validateAccessMode(vc.GetAccessMode()); err != nil {
 		return err
 	}
 	if blk := vc.GetBlock(); blk != nil {
@@ -90,7 +115,7 @@ func validateVolumeCapability(vc *csi.VolumeCapability) error {
 	return nil
 }
 
-func validateAccessModes(am *csi.VolumeCapability_AccessMode) error {
+func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	if am == nil {
 		return errors.New("access mode is nil")
 	}

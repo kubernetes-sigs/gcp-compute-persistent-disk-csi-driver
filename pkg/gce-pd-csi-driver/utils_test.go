@@ -139,6 +139,22 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 			},
 			expErr: true,
 		},
+		{
+			name: "fail with reader + writer capabilities",
+			vc: []*csi.VolumeCapability{
+				createVolumeCapability(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY),
+				createVolumeCapability(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			},
+			expErr: true,
+		},
+		{
+			name: "fail with different reader capabilities",
+			vc: []*csi.VolumeCapability{
+				createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+				createVolumeCapability(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY),
+			},
+			expErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
