@@ -42,10 +42,12 @@ var (
 	localK8sDir        = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
 	doDriverBuild      = flag.Bool("do-driver-build", true, "building the driver from source")
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
+	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
 )
 
 const (
 	pdImagePlaceholder = "REPLACEME/gcp-compute-persistent-disk-csi-driver"
+	k8sBuildBinDir     = "_output/dockerized/bin/linux/amd64"
 )
 
 func init() {
@@ -64,6 +66,10 @@ func main() {
 
 	if len(*deployOverlayName) == 0 {
 		glog.Fatalf("deploy-overlay-name is a required flag")
+	}
+
+	if len(*storageClassFile) == 0 {
+		glog.Fatalf("storageclass-file is a required flag")
 	}
 
 	err := handle()
@@ -186,7 +192,7 @@ func handle() error {
 	if len(*localK8sDir) != 0 {
 		k8sDir = *localK8sDir
 	}
-	err = runTests(k8sDir)
+	err = runTests(pkgDir, k8sDir, *storageClassFile)
 	if err != nil {
 		return fmt.Errorf("failed to run tests: %v", err)
 	}
@@ -207,20 +213,34 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runTests(k8sDir string) error {
-	err := os.Chdir(k8sDir)
+func runTests(pkgDir, k8sDir, storageClassFile string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
+
+	err = os.Chdir(k8sDir)
+	if err != nil {
+		return err
+	}
+
+	homeDir, _ := os.LookupEnv("HOME")
+	os.Setenv("KUBECONFIG", filepath.Join(homeDir, ".kube/config"))
+
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
-	reportArg := fmt.Sprintf("--report-dir=%s", artifactsDir)
-	testArgs := fmt.Sprintf("--test_args=--ginkgo.focus=CSI.*gcePD-external --ginkgo.skip=\\[Disruptive\\]|\\[Serial\\]|kubelet.*down %s", reportArg)
-	cmd := exec.Command("go", "run", "hack/e2e.go",
+	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
+
+	driverConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
+
+	cmd := exec.Command(filepath.Join(k8sBuildBinDir, "ginkgo"),
+		"-p",
+		"-focus=External.Storage",
+		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
+		filepath.Join(k8sBuildBinDir, "e2e.test"),
 		"--",
-		"--check-version-skew=false",
-		"--test",
-		"--ginkgo-parallel",
-		testArgs)
+		reportArg,
+		driverConfigArg)
+
 	err = runCommand("Running Tests", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
@@ -235,6 +255,7 @@ func runCommand(action string, cmd *exec.Cmd) error {
 	cmd.Stderr = os.Stderr
 
 	fmt.Printf("%s\n", action)
+	fmt.Printf("%s\n", cmd.Args)
 
 	err := cmd.Start()
 	if err != nil {

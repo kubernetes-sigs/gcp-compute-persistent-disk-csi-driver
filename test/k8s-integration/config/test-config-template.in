@@ -1,0 +1,13 @@
+ShortName: pdtest
+StorageClass:
+  FromFile: {{.StorageClassFile}}
+DriverInfo:
+  Name: csi-gcepd
+  Capabilities:
+    persistence: true
+    multipods: true
+    fsGroup: true
+    exec: true
+    # block: true
+    # dataSource: true
+    # RWX: true
