@@ -25,13 +25,13 @@ This plugin is compatible with CSI versions [v1.0.0](https://github.com/containe
 
 ### Kubernetes Compatibility
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13+ | 
-|--------------------------------------|---------------|------|-------|
-| v0.1.0.alpha                         | yes           | no   | no    |
-| v0.2.0 (alpha)                       | no            | yes  | no    |
-| v0.3.0 (beta)                        | no            | no   | yes   |
-| v0.4.0 (beta)                        | no            | no   | yes   |
-| dev                                  | no            | no   | yes   |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14+
+|--------------------------------------|---------------|------|------|------|
+| v0.1.0.alpha                         | yes           | no   | no   | no   |
+| v0.2.0 (alpha)                       | no            | yes  | no   | no   |
+| v0.3.0 (beta)                        | no            | no   | yes  | yes  |
+| v0.4.0 (beta)                        | no            | no   | yes  | yes  |
+| dev                                  | no            | no   | no   | yes  |
 
 ### Known Issues
 
