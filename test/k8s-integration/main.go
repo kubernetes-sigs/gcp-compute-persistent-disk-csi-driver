@@ -43,6 +43,8 @@ var (
 	doDriverBuild      = flag.Bool("do-driver-build", true, "building the driver from source")
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
+	kubeFeatureGates   = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	testFocus          = flag.String("test-focus", "", "test focus for Kubernetes e2e")
 )
 
 const (
@@ -70,6 +72,14 @@ func main() {
 
 	if len(*storageClassFile) == 0 {
 		glog.Fatalf("storageclass-file is a required flag")
+	}
+
+	if !*bringupCluster && len(*kubeFeatureGates) > 0 {
+		glog.Fatalf("kube-feature-gates set but not bringing up new cluster")
+	}
+
+	if len(*testFocus) == 0 {
+		glog.Fatalf("test-focus is a required flag")
 	}
 
 	err := handle()
@@ -161,6 +171,14 @@ func handle() error {
 			glog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
 		}
 
+		if len(*kubeFeatureGates) != 0 {
+			err = os.Setenv("KUBE_FEATURE_GATES", *kubeFeatureGates)
+			if err != nil {
+				return fmt.Errorf("failed to set kubernetes feature gates: %v", err)
+			}
+			glog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
+		}
+
 		err = clusterUp(k8sDir)
 		if err != nil {
 			return fmt.Errorf("failed to cluster up: %v", err)
@@ -192,7 +210,7 @@ func handle() error {
 	if len(*localK8sDir) != 0 {
 		k8sDir = *localK8sDir
 	}
-	err = runTests(pkgDir, k8sDir, *storageClassFile)
+	err = runTests(pkgDir, k8sDir, *storageClassFile, *testFocus)
 	if err != nil {
 		return fmt.Errorf("failed to run tests: %v", err)
 	}
@@ -213,7 +231,7 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runTests(pkgDir, k8sDir, storageClassFile string) error {
+func runTests(pkgDir, k8sDir, storageClassFile, testFocus string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
@@ -231,10 +249,11 @@ func runTests(pkgDir, k8sDir, storageClassFile string) error {
 	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
 
 	driverConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
+	testFocusArg := fmt.Sprintf("-focus=%s", testFocus)
 
 	cmd := exec.Command(filepath.Join(k8sBuildBinDir, "ginkgo"),
 		"-p",
-		"-focus=External.Storage",
+		testFocusArg,
 		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
 		filepath.Join(k8sBuildBinDir, "e2e.test"),
 		"--",
