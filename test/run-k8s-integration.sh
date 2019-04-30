@@ -16,4 +16,4 @@ readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 export GCE_PD_VERBOSITY=9
 
 make -C ${PKGDIR} test-k8s-integration
-${PKGDIR}/bin/k8s-integration-test --kube-version=master --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} --storageclass-file=sc-standard.yaml
+${PKGDIR}/bin/k8s-integration-test --kube-version=master --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} --storageclass-file=sc-standard.yaml --test-focus="External.Storage"
