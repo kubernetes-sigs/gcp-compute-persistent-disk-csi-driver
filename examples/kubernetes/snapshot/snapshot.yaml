@@ -1,9 +1,8 @@
 apiVersion: snapshot.storage.k8s.io/v1alpha1
 kind: VolumeSnapshot
 metadata:
-  name: demo-snapshot-podpvc
+  name: snapshot-source-pvc
 spec:
   source:
     kind: PersistentVolumeClaim
-    name: podpvc
-
+    name: source-pvc
