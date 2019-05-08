@@ -31,20 +31,29 @@ import (
 )
 
 var (
-	teardownCluster    = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	teardownDriver     = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
-	bringupCluster     = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	stagingImage       = flag.String("staging-image", "", "name of image to stage to")
-	kubeVersion        = flag.String("kube-version", "master", "version of Kubernetes to download and use")
-	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
-	saFile             = flag.String("service-account-file", "", "path of service account file")
-	deployOverlayName  = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
-	localK8sDir        = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
-	doDriverBuild      = flag.Bool("do-driver-build", true, "building the driver from source")
+	// Kubernetes cluster flags
+	teardownCluster  = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver   = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster   = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	gceZone          = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
+	kubeVersion      = flag.String("kube-version", "master", "version of Kubernetes to download and use")
+	kubeFeatureGates = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	localK8sDir      = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
+
+	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
-	kubeFeatureGates   = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
-	testFocus          = flag.String("test-focus", "", "test focus for Kubernetes e2e")
+	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
+
+	// Driver flags
+	stagingImage      = flag.String("staging-image", "", "name of image to stage to")
+	saFile            = flag.String("service-account-file", "", "path of service account file")
+	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	doDriverBuild     = flag.Bool("do-driver-build", true, "building the driver from source")
+
+	// Test flags
+	migrationTest = flag.Bool("migration-test", false, "sets the flag on the e2e binary signalling migration")
+	testFocus     = flag.String("test-focus", "", "test focus for Kubernetes e2e")
 )
 
 const (
@@ -70,8 +79,12 @@ func main() {
 		glog.Fatalf("deploy-overlay-name is a required flag")
 	}
 
-	if len(*storageClassFile) == 0 {
-		glog.Fatalf("storageclass-file is a required flag")
+	if len(*storageClassFile) == 0 && !*migrationTest {
+		glog.Fatalf("One of storageclass-file and migration-test must be set")
+	}
+
+	if len(*storageClassFile) != 0 && *migrationTest {
+		glog.Fatalf("storage-class-file and migration-test cannot both be set")
 	}
 
 	if !*bringupCluster && len(*kubeFeatureGates) > 0 {
@@ -80,6 +93,10 @@ func main() {
 
 	if len(*testFocus) == 0 {
 		glog.Fatalf("test-focus is a required flag")
+	}
+
+	if len(*gceZone) == 0 {
+		glog.Fatalf("gce-zone is a required flag")
 	}
 
 	err := handle()
@@ -179,7 +196,7 @@ func handle() error {
 			glog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 		}
 
-		err = clusterUp(k8sDir)
+		err = clusterUp(k8sDir, *gceZone)
 		if err != nil {
 			return fmt.Errorf("failed to cluster up: %v", err)
 		}
@@ -210,7 +227,15 @@ func handle() error {
 	if len(*localK8sDir) != 0 {
 		k8sDir = *localK8sDir
 	}
-	err = runTests(pkgDir, k8sDir, *storageClassFile, *testFocus)
+
+	if len(*storageClassFile) != 0 {
+		err = runCSITests(pkgDir, k8sDir, *testFocus, *storageClassFile, *gceZone)
+	} else if *migrationTest {
+		err = runMigrationTests(pkgDir, k8sDir, *testFocus, *gceZone)
+	} else {
+		return fmt.Errorf("Did not run either CSI or Migration test")
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to run tests: %v", err)
 	}
@@ -231,13 +256,21 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runTests(pkgDir, k8sDir, storageClassFile, testFocus string) error {
+func runMigrationTests(pkgDir, k8sDir, testFocus, gceZone string) error {
+	return runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
+}
+
+func runCSITests(pkgDir, k8sDir, testFocus, storageClassFile, gceZone string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
+	testConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
+	return runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg)
+}
 
-	err = os.Chdir(k8sDir)
+func runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg string) error {
+	err := os.Chdir(k8sDir)
 	if err != nil {
 		return err
 	}
@@ -248,7 +281,6 @@ func runTests(pkgDir, k8sDir, storageClassFile, testFocus string) error {
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
 	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
 
-	driverConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
 	testFocusArg := fmt.Sprintf("-focus=%s", testFocus)
 
 	cmd := exec.Command(filepath.Join(k8sBuildBinDir, "ginkgo"),
@@ -258,7 +290,9 @@ func runTests(pkgDir, k8sDir, storageClassFile, testFocus string) error {
 		filepath.Join(k8sBuildBinDir, "e2e.test"),
 		"--",
 		reportArg,
-		driverConfigArg)
+		"-provider=gce",
+		fmt.Sprintf("-gce-zone=%s", gceZone),
+		testConfigArg)
 
 	err = runCommand("Running Tests", cmd)
 	if err != nil {
@@ -306,9 +340,13 @@ func buildKubernetes(k8sDir string) error {
 	return nil
 }
 
-func clusterUp(k8sDir string) error {
+func clusterUp(k8sDir, gceZone string) error {
+	err := os.Setenv("KUBE_GCE_ZONE", gceZone)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
-	err := runCommand("Starting E2E Cluster", cmd)
+	err = runCommand("Starting E2E Cluster", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster: %v", err)
 	}
