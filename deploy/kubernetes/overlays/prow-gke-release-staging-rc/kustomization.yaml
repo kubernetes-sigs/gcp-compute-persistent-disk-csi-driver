@@ -3,15 +3,15 @@ kind: Kustomization
 bases:
 - ../../base
 images:
-- name: REPLACEME/gcp-compute-persistent-disk-csi-driver
+- name: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
   newTag: "v0.4.0-gke.0"
-- name: REPLACEME/csi-provisioner
+- name: gcr.io/gke-release/csi-provisioner
   newName: gcr.io/gke-release-staging/csi-provisioner
   newTag: "v1.1.0-gke.0"
-- name: REPLACEME/csi-attacher
+- name: gcr.io/gke-release/csi-attacher
   newName: gcr.io/gke-release-staging/csi-attacher
   newTag: "v1.1.0-gke.0"
-- name: REPLACEME/csi-node-driver-registrar
+- name: gcr.io/gke-release/csi-node-driver-registrar
   newName: gcr.io/gke-release-staging/csi-node-driver-registrar
   newTag: "v1.1.0-gke.0"
