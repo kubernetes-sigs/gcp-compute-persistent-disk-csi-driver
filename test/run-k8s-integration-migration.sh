@@ -20,5 +20,5 @@ ${PKGDIR}/bin/k8s-integration-test --kube-version=${GCE_PD_KUBE_VERSION:-master}
 --kube-feature-gates="CSIMigration=true,CSIMigrationGCE=true" --run-in-prow=true \
 --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
 --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
---migration-test=true --test-focus="\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\].*" \
+--migration-test=true --test-focus="\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:\sDynamic\sPV.*" \
 --gce-zone="us-central1-b"
