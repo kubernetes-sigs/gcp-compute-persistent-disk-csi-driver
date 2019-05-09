@@ -57,7 +57,7 @@ var (
 )
 
 const (
-	pdImagePlaceholder = "REPLACEME/gcp-compute-persistent-disk-csi-driver"
+	pdImagePlaceholder = "gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver"
 	k8sBuildBinDir     = "_output/dockerized/bin/linux/amd64"
 )
 
