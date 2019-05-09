@@ -5,6 +5,7 @@
 ### Install Driver with alpha snapshot feature
 
 1. [One-time per project] Create GCP service account for the CSI driver and set required roles
+
 ```
 $ PROJECT=your-project-here                       # GCP project
 $ GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
@@ -13,6 +14,7 @@ $ ./deploy/setup-project.sh
 ```
 
 2. Deploy driver to Kubernetes Cluster
+
 ```
 $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
 $ GCE_PD_DRIVER_VERSION=alpha                     # Driver version to deploy
@@ -26,10 +28,8 @@ $ ./deploy/kubernetes/deploy-driver.sh
 If you haven't created a `StorageClass` yet, create one first:
 
 ```console
-kubectl apply -f ./examples/kubernetes/snapshot/storageclass.yaml
+kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
 ```
-
-For more advance `StorageClass` configuration, please see [Kubernetes Basic User Guide](/docs/kubernetes/user-guides/basic.md).
 
 **Create  Default VolumeSnapshotClass:**
 
@@ -45,16 +45,10 @@ kubectl create -f ./examples/kubernetes/snapshot/source_pvc.yaml
 
 **Generate sample data:**
 
-Create a sample pod with the source PVC. The source PVC is mounted into `/demo/data` directory of this pod.
+Create a sample pod with the source PVC. The source PVC is mounted into `/demo/data` directory of this pod. This pod will create a file `sample-file.txt` in `/demo/data` directory.
 
 ```console
 kubectl create -f ./examples/kubernetes/snapshot/source_pod.yaml
-```
-
-Now, let's create a file inside `/demo/data` directory:
-
-```console
-kubectl exec source-pod -- touch /demo/data/sample-file.txt
 ```
 
 Check if the file has been created successfully:
@@ -81,20 +75,15 @@ metadata:
   ...
   name: snapshot-source-pvc
   namespace: default
-  resourceVersion: "15485"
-  selfLink: /apis/snapshot.storage.k8s.io/v1alpha1/namespaces/default/volumesnapshots/snapshot-source-pvc
-  uid: f1b8855d-7007-11e9-8f36-42010a800014
+  ...
 spec:
   snapshotClassName: default-snapshot-class
-  snapshotContentName: snapcontent-f1b8855d-7007-11e9-8f36-42010a800014
-  source:
-    apiGroup: null
-    kind: PersistentVolumeClaim
-    name: source-pvc
+  snapshotContentName: snapcontent-b408076b-720b-11e9-b9e3-42010a800014
+  ...
 status:
-  creationTime: "2019-05-06T14:05:04Z"
+  creationTime: "2019-05-09T03:37:01Z"
   readyToUse: true
-  restoreSize: 1Gi
+  restoreSize: 6Gi
 ```
 
 **Restore the Snapshot into a new PVC:**

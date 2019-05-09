@@ -8,7 +8,7 @@ spec:
   storageClassName: csi-gce-pd
   resources:
     requests:
-      storage: 1Gi
+      storage: 6Gi
   dataSource:
     kind: VolumeSnapshot
     name: snapshot-source-pvc

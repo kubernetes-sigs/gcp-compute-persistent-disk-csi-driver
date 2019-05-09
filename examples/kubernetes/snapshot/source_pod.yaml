@@ -6,9 +6,8 @@ spec:
   containers:
   - name: busybox
     image: busybox
-    args:
-    - sleep
-    - "3600"
+    command: ["/bin/sh", "-c"]
+    args: ["touch /demo/data/sample-file.txt && sleep 3000"]
     volumeMounts:
     - name: source-data
       mountPath: /demo/data
