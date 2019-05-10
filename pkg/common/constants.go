@@ -22,6 +22,9 @@ const (
 	ParameterKeyReplicationType      = "replication-type"
 	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
 
+	// Ignored legacy Storage Class Parameters
+	ParameterKeyFsType = "fstype"
+
 	// Keys for Topology. This key will be shared amongst drivers from GCP
 	TopologyKeyZone = "topology.gke.io/zone"
 

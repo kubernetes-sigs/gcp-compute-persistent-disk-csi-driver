@@ -106,6 +106,14 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		case common.ParameterKeyDiskEncryptionKmsKey:
 			// Resource names (e.g. "keyRings", "cryptoKeys", etc.) are case sensitive, so do not change case
 			diskEncryptionKmsKey = v
+		case common.ParameterKeyFsType:
+			// We have to support seeing the "fstype" parameter to support
+			// migrated volumes with legacy storage classes that contain
+			// "fstype". "fstype" through volume parameters will not be
+			// supported.The actual fstype should have been translated by the
+			// external provisioner into the volume capabilities and this driver
+			// will interact with fstype through volume capabilities.
+			continue
 		default:
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume invalid option %q", k))
 		}
