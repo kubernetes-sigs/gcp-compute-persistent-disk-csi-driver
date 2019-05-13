@@ -14,11 +14,21 @@ readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 export GCE_PD_VERBOSITY=9
+readonly GCE_PD_TEST_FOCUS="\s[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:\sDynamic\sPV|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
+
+# TODO(#167): Enable reconstructions tests
+# TODO: Enabled inline volume tests
+# TODO: Fix and enable the following tests. They all exhibit the same testing infra error:
+# PersistentVolumes\sGCEPD|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:.*
+
+# The Error: "PV Create API error: persistentvolumes "gce-" is forbidden: error
+# querying GCE PD volume : can not fetch disk, zone is specified
+# ("us-central1-b"), but disk name is empty"
 
 make -C ${PKGDIR} test-k8s-integration
 ${PKGDIR}/bin/k8s-integration-test --kube-version=${GCE_PD_KUBE_VERSION:-master} \
 --kube-feature-gates="CSIMigration=true,CSIMigrationGCE=true" --run-in-prow=true \
 --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
 --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
---migration-test=true --test-focus="\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:\sDynamic\sPV.*" \
+--migration-test=true --test-focus=${GCE_PD_TEST_FOCUS} \
 --gce-zone="us-central1-b"
