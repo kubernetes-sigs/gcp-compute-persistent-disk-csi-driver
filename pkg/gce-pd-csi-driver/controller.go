@@ -809,6 +809,8 @@ func getZoneFromSegment(seg map[string]string) (string, error) {
 		switch k {
 		case common.TopologyKeyZone:
 			zone = v
+		case common.KubernetesTopologyKeyZone:
+			zone = v
 		default:
 			return "", fmt.Errorf("topology segment has unknown key %v", k)
 		}

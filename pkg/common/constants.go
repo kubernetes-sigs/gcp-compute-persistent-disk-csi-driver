@@ -23,7 +23,8 @@ const (
 	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
 
 	// Keys for Topology. This key will be shared amongst drivers from GCP
-	TopologyKeyZone = "topology.gke.io/zone"
+	TopologyKeyZone           = "topology.gke.io/zone"
+	KubernetesTopologyKeyZone = "failure-domain.beta.kubernetes.io/zone"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"
