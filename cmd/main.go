@@ -33,8 +33,9 @@ func init() {
 }
 
 var (
-	endpoint      = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
-	vendorVersion string
+	endpoint          = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
+	gceConfigFilePath = flag.String("cloud-config", "", "Path to GCE cloud provider config")
+	vendorVersion     string
 )
 
 const (
@@ -57,7 +58,7 @@ func handle() {
 	gceDriver := driver.GetGCEDriver()
 
 	//Initialize GCE Driver (Move setup to main?)
-	cloudProvider, err := gce.CreateCloudProvider(vendorVersion)
+	cloudProvider, err := gce.CreateCloudProvider(vendorVersion, *gceConfigFilePath)
 	if err != nil {
 		glog.Fatalf("Failed to get cloud provider: %v", err)
 	}
