@@ -18,9 +18,6 @@
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 
-PRODIMAGE=gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver
-PRODVERSION=v0.4.0
-
 all: gce-pd-driver
 
 gce-pd-driver:
@@ -41,12 +38,6 @@ endif
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
-
-prod-build-container:
-	docker build --build-arg TAG=$(PRODVERSION) -t $(PRODIMAGE):$(PRODVERSION) .
-
-prod-push-container: prod-build-container
-	gcloud docker -- push $(PRODIMAGE):$(PRODVERSION)
 
 test-sanity: gce-pd-driver
 	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
