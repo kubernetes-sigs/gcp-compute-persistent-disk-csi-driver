@@ -64,14 +64,29 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 }
 
 func validateVolumeCapabilities(vcs []*csi.VolumeCapability) error {
+	isMnt := false
+	isBlk := false
+
 	if vcs == nil {
 		return errors.New("volume capabilities is nil")
 	}
+
 	for _, vc := range vcs {
 		if err := validateVolumeCapability(vc); err != nil {
 			return err
 		}
+		if blk := vc.GetBlock(); blk != nil {
+			isBlk = true
+		}
+		if mnt := vc.GetMount(); mnt != nil {
+			isMnt = true
+		}
 	}
+
+	if isBlk && isMnt {
+		return errors.New("both mount and block volume capabilities specified")
+	}
+
 	return nil
 }
 
@@ -79,13 +94,13 @@ func validateVolumeCapability(vc *csi.VolumeCapability) error {
 	if err := validateAccessMode(vc.GetAccessMode()); err != nil {
 		return err
 	}
-	if blk := vc.GetBlock(); blk != nil {
-		// TODO(#64): Block volume support
-		return errors.New("Block volume support is not yet implemented")
+	blk := vc.GetBlock()
+	mnt := vc.GetMount()
+	if mnt == nil && blk == nil {
+		return errors.New("must specify an access type")
 	}
-	if mnt := vc.GetMount(); mnt == nil {
-		// TODO(#64): Change error message after block volume support
-		return errors.New("Must specify an access type of Mount")
+	if mnt != nil && blk != nil {
+		return errors.New("specified both mount and block access types")
 	}
 	return nil
 }

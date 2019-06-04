@@ -95,18 +95,60 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
-		glog.Errorf("mkdir failed on disk %s (%v)", targetPath, err)
-		return nil, err
-	}
-
 	// Perform a bind mount to the full path to allow duplicate mounts of the same PD.
+	fstype := ""
+	sourcePath := ""
 	options := []string{"bind"}
 	if readOnly {
 		options = append(options, "ro")
 	}
 
-	err = ns.Mounter.Interface.Mount(stagingTargetPath, targetPath, "ext4", options)
+	if mnt := volumeCapability.GetMount(); mnt != nil {
+		if mnt.FsType != "" {
+			fstype = mnt.FsType
+		} else {
+			// Default fstype is ext4
+			fstype = "ext4"
+		}
+
+		glog.V(4).Infof("NodePublishVolume with filesystem %s", fstype)
+
+		for _, flag := range mnt.MountFlags {
+			options = append(options, flag)
+		}
+
+		sourcePath = stagingTargetPath
+
+		if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
+			glog.Errorf("mkdir failed on disk %s (%v)", targetPath, err)
+			return nil, err
+		}
+	} else if blk := volumeCapability.GetBlock(); blk != nil {
+		glog.V(4).Infof("NodePublishVolume with block volume mode")
+
+		partition := ""
+		if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
+			partition = part
+		}
+
+		sourcePath, err = ns.getDevicePath(volumeID, partition)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
+		}
+
+		// Expose block volume as file at target path
+		err = ns.Mounter.MakeFile(targetPath)
+		if err != nil {
+			if removeErr := os.Remove(targetPath); removeErr != nil {
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error removing block file at target path %v: %v, mounti error: %v", targetPath, removeErr, err))
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create block file at target path %v: %v", targetPath, err))
+		}
+	} else {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodePublishVolume volume capability must specify either mount or block mode"))
+	}
+
+	err = ns.Mounter.Interface.Mount(sourcePath, targetPath, fstype, options)
 	if err != nil {
 		notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 		if mntErr != nil {
@@ -197,19 +239,9 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		partition = part
 	}
 
-	deviceName, err := common.GetDeviceName(volumeKey)
+	devicePath, err := ns.getDevicePath(volumeID, partition)
 	if err != nil {
-		status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
-	}
-
-	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
-	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
-
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err))
-	}
-	if devicePath == "" {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to find device path out of attempted paths: %v", devicePaths))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
 	}
 
 	glog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
@@ -251,8 +283,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			options = append(options, flag)
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
-		// TODO(#64): Block volume support
-		return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Block volume support is not yet implemented"))
+		// Noop for Block NodeStageVolume
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	err = ns.Mounter.FormatAndMount(devicePath, stagingTargetPath, fstype, options)
@@ -332,4 +364,26 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 		volumeLimits = volumeLimit16
 	}
 	return volumeLimits, nil
+}
+
+func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (string, error) {
+	volumeKey, err := common.VolumeIDToKey(volumeID)
+	if err != nil {
+		return "", err
+	}
+	deviceName, err := common.GetDeviceName(volumeKey)
+	if err != nil {
+		return "", fmt.Errorf("error getting device name: %v", err)
+	}
+
+	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
+	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
+
+	if err != nil {
+		return "", fmt.Errorf("error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err)
+	}
+	if devicePath == "" {
+		return "", fmt.Errorf("unable to find device path out of attempted paths: %v", devicePaths)
+	}
+	return devicePath, nil
 }

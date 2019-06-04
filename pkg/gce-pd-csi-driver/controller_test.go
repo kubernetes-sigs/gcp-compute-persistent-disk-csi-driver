@@ -617,7 +617,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "fail with block volume capability",
+			name: "success with block volume capability",
 			req: &csi.CreateVolumeRequest{
 				Name:          name,
 				CapacityRange: stdCapRange,
@@ -632,7 +632,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			expErrCode: codes.InvalidArgument,
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeId,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
 		},
 		{
 			name: "fail with both mount and block volume capability",

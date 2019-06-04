@@ -126,7 +126,7 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 			expErr: true,
 		},
 		{
-			name: "fail with block capabilities",
+			name: "success with block capabilities",
 			vc: []*csi.VolumeCapability{
 				{
 					AccessType: &csi.VolumeCapability_Block{
@@ -137,7 +137,6 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 					},
 				},
 			},
-			expErr: true,
 		},
 		{
 			name: "success with reader + writer capabilities",
