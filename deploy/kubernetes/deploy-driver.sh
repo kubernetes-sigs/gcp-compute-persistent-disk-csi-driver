@@ -50,8 +50,7 @@ function check_service_account()
 	# Using bash magic to parse JSON for IAM
 	# Grepping for a line with client email returning anything quoted after the colon
 	readonly IAM_NAME=$(grep -Po '"client_email": *\K"[^"]*"' ${GCE_PD_SA_DIR}/cloud-sa.json | tr -d '"')
-	# Grepping anything after the @ tell the first . as the project name
-	readonly PROJECT=$(grep -Po '.*@\K[^.]+'<<<${IAM_NAME})
+	readonly PROJECT=$(grep -Po '"project_id": *\K"[^"]*"' ${GCE_PD_SA_DIR}/cloud-sa.json | tr -d '"')
 	readonly GOTTEN_BIND_ROLES=$(gcloud projects get-iam-policy ${PROJECT} --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:${IAM_NAME}")
 	readonly BIND_ROLES=$(get_needed_roles)
 	MISSING_ROLES=false
