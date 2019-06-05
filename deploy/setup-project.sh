@@ -25,9 +25,19 @@ ensure_var PROJECT
 ensure_var GCE_PD_SA_NAME
 ensure_var GCE_PD_SA_DIR
 
+# If the project id includes the org name in the format "org-name:project", the
+# gCloud api will format the project part of the iam email domain as
+# "project.org-name"
+if [[ $PROJECT == *":"* ]]; then
+  IFS=':' read -ra SPLIT <<< "$PROJECT"
+  readonly IAM_PROJECT="${SPLIT[1]}.${SPLIT[0]}"
+else
+  readonly IAM_PROJECT="${PROJECT}"
+fi
+
 readonly KUBEDEPLOY="${PKGDIR}/deploy/kubernetes"
 readonly BIND_ROLES=$(get_needed_roles)
-readonly IAM_NAME="${GCE_PD_SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
+readonly IAM_NAME="${GCE_PD_SA_NAME}@${IAM_PROJECT}.iam.gserviceaccount.com"
 
 # Check if SA exists
 CREATE_SA=true
