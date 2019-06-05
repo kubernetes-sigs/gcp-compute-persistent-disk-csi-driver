@@ -39,6 +39,8 @@ var (
 	kubeVersion      = flag.String("kube-version", "master", "version of Kubernetes to download and use")
 	kubeFeatureGates = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
 	localK8sDir      = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
+	deploymentStrat  = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
+	gkeClusterVer    = flag.String("gke-cluster-version", "latest", "version of Kubernetes master and node for gke")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -59,6 +61,7 @@ var (
 const (
 	pdImagePlaceholder = "gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver"
 	k8sBuildBinDir     = "_output/dockerized/bin/linux/amd64"
+	gkeTestClusterName = "gcp-pd-csi-driver-test-cluster"
 )
 
 func init() {
@@ -97,6 +100,10 @@ func main() {
 
 	if len(*gceZone) == 0 {
 		glog.Fatalf("gce-zone is a required flag")
+	}
+
+	if *deploymentStrat == "gke" && *migrationTest {
+		glog.Fatalf("Cannot set deployment strategy to 'gke' for migration tests.")
 	}
 
 	err := handle()
@@ -196,17 +203,38 @@ func handle() error {
 			glog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 		}
 
-		err = clusterUp(k8sDir, *gceZone)
-		if err != nil {
-			return fmt.Errorf("failed to cluster up: %v", err)
+		switch *deploymentStrat {
+		case "gce":
+			err = clusterUpGCE(k8sDir, *gceZone)
+			if err != nil {
+				return fmt.Errorf("failed to cluster up: %v", err)
+			}
+		case "gke":
+			err = clusterUpGKE(*gceZone)
+			if err != nil {
+				return fmt.Errorf("failed to cluster up: %v", err)
+			}
+		default:
+			return fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
+
 	}
 
 	if *teardownCluster {
 		defer func() {
-			err := clusterDown(k8sDir)
-			if err != nil {
-				glog.Errorf("failed to cluster down: %v", err)
+			switch *deploymentStrat {
+			case "gce":
+				err := clusterDownGCE(k8sDir)
+				if err != nil {
+					glog.Errorf("failed to cluster down: %v", err)
+				}
+			case "gke":
+				err := clusterDownGKE(*gceZone)
+				if err != nil {
+					glog.Errorf("failed to cluster down: %v", err)
+				}
+			default:
+				glog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 			}
 		}()
 	}
@@ -322,11 +350,21 @@ func runCommand(action string, cmd *exec.Cmd) error {
 	return nil
 }
 
-func clusterDown(k8sDir string) error {
+func clusterDownGCE(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-down.sh"))
-	err := runCommand("Bringing Down E2E Cluster", cmd)
+	err := runCommand("Bringing Down E2E Cluster on GCE", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to bring down kubernetes e2e cluster: %v", err)
+		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gce: %v", err)
+	}
+	return nil
+}
+
+func clusterDownGKE(gceZone string) error {
+	cmd := exec.Command("gcloud", "container", "clusters", "delete", gkeTestClusterName,
+		"--zone", gceZone, "--quiet")
+	err := runCommand("Bringing Down E2E Cluster on GKE", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err)
 	}
 	return nil
 }
@@ -340,15 +378,38 @@ func buildKubernetes(k8sDir string) error {
 	return nil
 }
 
-func clusterUp(k8sDir, gceZone string) error {
+func clusterUpGCE(k8sDir, gceZone string) error {
 	err := os.Setenv("KUBE_GCE_ZONE", gceZone)
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
-	err = runCommand("Starting E2E Cluster", cmd)
+	err = runCommand("Starting E2E Cluster on GCE", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to bring up kubernetes e2e cluster: %v", err)
+		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err)
+	}
+
+	return nil
+}
+
+func clusterUpGKE(gceZone string) error {
+	out, err := exec.Command("gcloud", "container", "clusters", "list", "--zone", gceZone,
+		"--filter", fmt.Sprintf("name=%s", gkeTestClusterName)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
+	}
+	if len(out) > 0 {
+		glog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", gkeTestClusterName)
+		err = clusterDownGKE(gceZone)
+		if err != nil {
+			return err
+		}
+	}
+	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
+		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--quiet")
+	err = runCommand("Staring E2E Cluster on GKE", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
 	}
 
 	return nil
