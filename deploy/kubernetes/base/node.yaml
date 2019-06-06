@@ -15,7 +15,7 @@ spec:
       serviceAccountName: csi-node-sa
       containers:
         - name: csi-driver-registrar
-          image: gcr.io/gke-release/csi-node-driver-registrar
+          image: gke.gcr.io/csi-node-driver-registrar
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
@@ -37,7 +37,9 @@ spec:
         - name: gce-pd-driver
           securityContext:
             privileged: true
-          image: gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver
+          # Don't change base image without changing pdImagePlaceholder in
+          # test/k8s-integration/main.go
+          image: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"

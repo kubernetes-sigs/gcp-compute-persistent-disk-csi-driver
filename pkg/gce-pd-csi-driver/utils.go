@@ -72,31 +72,6 @@ func validateVolumeCapabilities(vcs []*csi.VolumeCapability) error {
 			return err
 		}
 	}
-	if err := crossValidateAccessModes(vcs); err != nil {
-		return err
-	}
-	return nil
-}
-
-func crossValidateAccessModes(vcs []*csi.VolumeCapability) error {
-	m := map[csi.VolumeCapability_AccessMode_Mode]bool{}
-
-	for _, vc := range vcs {
-		m[vc.GetAccessMode().GetMode()] = true
-	}
-
-	hasWriter := m[csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER]
-	hasSingleReader := m[csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY]
-	hasMultiReader := m[csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY]
-
-	if hasWriter && (hasSingleReader || hasMultiReader) {
-		return fmt.Errorf("both SINGLE_NODE_WRITER and READER_ONLY access mode specified")
-	}
-
-	if hasSingleReader && hasMultiReader {
-		return fmt.Errorf("both SINGLE_NODE_READER_ONLY and MULTI_NODE_READY_ONLY specified")
-	}
-
 	return nil
 }
 
