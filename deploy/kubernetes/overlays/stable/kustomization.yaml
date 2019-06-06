@@ -4,6 +4,8 @@ bases:
 - ../../base
 images:
 - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  # Don't change stable image without changing pdImagePlaceholder in
+  # test/k8s-integration/main.go
   newName: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newTag: "v0.5.0-gke.0"
 - name: gke.gcr.io/csi-provisioner

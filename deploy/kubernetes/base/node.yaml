@@ -37,6 +37,8 @@ spec:
         - name: gce-pd-driver
           securityContext:
             privileged: true
+          # Don't change base image without changing pdImagePlaceholder in
+          # test/k8s-integration/main.go
           image: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
           args:
             - "--v=5"
