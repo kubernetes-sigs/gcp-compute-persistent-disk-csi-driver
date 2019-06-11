@@ -16,6 +16,6 @@ DriverInfo:
     multipods: true
     fsGroup: true
     exec: true
-    # block: true
+    block: true
     # dataSource: true
     # RWX: true
