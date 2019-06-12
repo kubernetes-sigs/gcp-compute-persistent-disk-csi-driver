@@ -17,7 +17,16 @@ Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:
 
 #### Kubernetes Integration
 
-[<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Stable)
+| Driver Version | Kubernetes Version | Test Status |
+|----------------|--------------------|-------------|
+| HEAD Latest | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Latest) |
+| 0.5.x Stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.5/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.5) |
+| 0.4.x Stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.4/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.4) |
+| 0.4.x Stable | 1.13.5 | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20v1.13.5%20Driver%20Release%200.4/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20v1.13.5%20Driver%20Release%200.4) |
+| 0.3.x Stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.3/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.3) |
+| HEAD Latest | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Latest) |
+| HEAD Stable | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Stable) |
+
 
 ### CSI Compatibility
 
