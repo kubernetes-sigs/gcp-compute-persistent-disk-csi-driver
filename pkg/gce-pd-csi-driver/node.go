@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
@@ -37,11 +36,12 @@ type GCENodeServer struct {
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
 	MetadataService metadataservice.MetadataService
-	// TODO: Only lock mutually exclusive calls and make locking more fine grained
-	mux sync.Mutex
+	lockManager 		*LockManager
 }
 
-var _ csi.NodeServer = &GCENodeServer{}
+var _ csi.NodeServer = &GCENodeServer{
+	lockManager: NewLockManager(NewSyncMutex),
+}
 
 // The constants are used to map from the machine type to the limit of
 // persistent disks that can be attached to an instance. Please refer to gcloud doc
@@ -52,8 +52,6 @@ const (
 )
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	glog.V(4).Infof("NodePublishVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -74,6 +72,8 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
+	ns.lockManager.Acquire(string(volumeID))
+	defer ns.lockManager.Release(string(volumeID))
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -181,8 +181,6 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 }
 
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	glog.V(4).Infof("NodeUnpublishVolume called with args: %v", req)
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
@@ -194,6 +192,9 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
+	ns.lockManager.Acquire(string(volID))
+	defer ns.lockManager.Release(string(volID))
+
 	err := volumeutils.UnmountMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
@@ -203,8 +204,6 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 }
 
 func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	glog.V(4).Infof("NodeStageVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -220,6 +219,9 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
+
+	ns.lockManager.Acquire(string(volumeID))
+	defer ns.lockManager.Release(string(volumeID))
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -298,8 +300,6 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 }
 
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	glog.V(4).Infof("NodeUnstageVolume called with req: %#v", req)
 	// Validate arguments
 	volumeID := req.GetVolumeId()
@@ -310,6 +310,8 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	if len(stagingTargetPath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Staging Target Path must be provided")
 	}
+	ns.lockManager.Acquire(string(volumeID))
+	defer ns.lockManager.Release(string(volumeID))
 
 	err := volumeutils.UnmountMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
