@@ -319,6 +319,7 @@ func runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg string
 		"--",
 		reportArg,
 		"-provider=gce",
+		"-node-os-distro=cos",
 		fmt.Sprintf("-gce-zone=%s", gceZone),
 		testConfigArg)
 
