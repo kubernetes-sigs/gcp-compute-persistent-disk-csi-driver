@@ -36,8 +36,10 @@ type GCENodeServer struct {
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
 	MetadataService metadataservice.MetadataService
-	// TODO: Only lock mutually exclusive calls and make locking more fine grained
-	mux sync.Mutex
+
+	// A map storing all volumes with ongoing operations so that additional operations
+	// for that same volume (as defined by VolumeID) return an Aborted error
+	volumes sync.Map
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -51,8 +53,6 @@ const (
 )
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	klog.V(4).Infof("NodePublishVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -73,6 +73,11 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
+
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
+	}
+	defer ns.volumes.Delete(volumeID)
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -180,9 +185,8 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 }
 
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	klog.V(4).Infof("NodeUnpublishVolume called with args: %v", req)
+
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
 	volID := req.GetVolumeId()
@@ -193,6 +197,11 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
+	if _, alreadyExists := ns.volumes.LoadOrStore(volID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volID))
+	}
+	defer ns.volumes.Delete(volID)
+
 	err := mount.CleanupMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
@@ -202,8 +211,6 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 }
 
 func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	klog.V(4).Infof("NodeStageVolume called with req: %#v", req)
 
 	// Validate Arguments
@@ -219,6 +226,11 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
+
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
+	}
+	defer ns.volumes.Delete(volumeID)
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -297,9 +309,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 }
 
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	ns.mux.Lock()
-	defer ns.mux.Unlock()
 	klog.V(4).Infof("NodeUnstageVolume called with req: %#v", req)
+
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
@@ -309,6 +320,11 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	if len(stagingTargetPath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Staging Target Path must be provided")
 	}
+
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
+	}
+	defer ns.volumes.Delete(volumeID)
 
 	err := mount.CleanupMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
