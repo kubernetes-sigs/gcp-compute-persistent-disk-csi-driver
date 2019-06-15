@@ -36,7 +36,7 @@ type GCENodeServer struct {
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
 	MetadataService metadataservice.MetadataService
-	LockManager 		*LockManager
+	LockManager     *LockManager
 }
 
 var _ csi.NodeServer = &GCENodeServer{}

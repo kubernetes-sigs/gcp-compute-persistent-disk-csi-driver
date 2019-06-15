@@ -136,7 +136,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		Mounter:         mounter,
 		DeviceUtils:     deviceUtils,
 		MetadataService: meta,
-		LockManager: NewLockManager(NewSyncMutex),
+		LockManager:     NewLockManager(NewSyncMutex),
 	}
 }
 

@@ -21,11 +21,11 @@ func checkAllocation(lm *LockManager, expectedNumAllocated int, t *testing.T) {
 // it sleeps until there is both a coin and the lock is free. This is used
 // so a parent thread can control the execution of children's lock.
 type coinOperatedMutex struct {
-	mux				*sync.Mutex
-	cond			*sync.Cond
-	held			bool
-	coin			chan coin
-	t					*testing.T
+	mux  *sync.Mutex
+	cond *sync.Cond
+	held bool
+	coin chan coin
+	t    *testing.T
 }
 
 type coin struct{}
@@ -37,7 +37,7 @@ func (m *coinOperatedMutex) Lock() {
 	for m.held || len(m.coin) == 0 {
 		m.cond.Wait()
 	}
-	<- m.coin
+	<-m.coin
 	m.held = true
 }
 
@@ -61,7 +61,6 @@ func passCoinOperatedMutex(lockerParams ...interface{}) sync.Locker {
 	return lockerParams[0].(*coinOperatedMutex)
 }
 
-
 func TestLockManagerSingle(t *testing.T) {
 	lm := NewLockManager(NewSyncMutex)
 	lm.Acquire("A")
@@ -74,16 +73,15 @@ func TestLockManagerSingle(t *testing.T) {
 	checkAllocation(lm, 0, t)
 }
 
-
 func TestLockManagerMultiple(t *testing.T) {
 	lm := NewLockManager(passCoinOperatedMutex)
 	m := &sync.Mutex{}
 	com := &coinOperatedMutex{
-		mux: m,
+		mux:  m,
 		cond: sync.NewCond(m),
 		coin: make(chan coin, 1),
 		held: false,
-		t: t,
+		t:    t,
 	}
 
 	// start thread 1
@@ -92,14 +90,14 @@ func TestLockManagerMultiple(t *testing.T) {
 	go func() {
 		lm.Acquire("A", com)
 		t1OperationFinished <- coin{}
-		<- t1OkToRelease
+		<-t1OkToRelease
 		lm.Release("A")
 		t1OperationFinished <- coin{}
 	}()
 
 	// this allows the acquire by thread 1 to acquire
 	com.Deposit()
-	<- t1OperationFinished
+	<-t1OperationFinished
 
 	// thread 1 should have acquired the lock, putting allocation at 1
 	checkAllocation(lm, 1, t)
@@ -112,7 +110,7 @@ func TestLockManagerMultiple(t *testing.T) {
 	go func() {
 		lm.Acquire("A")
 		t2OperationFinished <- coin{}
-		<- t2OkToRelease
+		<-t2OkToRelease
 		lm.Release("A")
 		t2OperationFinished <- coin{}
 	}()
@@ -120,27 +118,27 @@ func TestLockManagerMultiple(t *testing.T) {
 	// because now thread 2 is the only thread that can run, we must wait
 	// until it runs until it is blocked on acquire. for simplicity just wait
 	// 5 seconds.
-	time.Sleep(time.Second*3)
+	time.Sleep(time.Second * 3)
 
 	// this allows the release by thread 1 to complete
 	// only the release can run because the acquire by thread 1 can only run if
 	// there is both a coin and the lock is free
 	t1OkToRelease <- coin{}
-	<- t1OperationFinished
+	<-t1OperationFinished
 
 	// check that the lock has not been deallocated, since thread 2 is still waiting to acquire it
 	checkAllocation(lm, 1, t)
 
 	// this allows t2 to finish its acquire
 	com.Deposit()
-	<- t2OperationFinished
+	<-t2OperationFinished
 
 	// check that the lock has been deallocated, since thread 2 still holds it
 	checkAllocation(lm, 1, t)
 
 	// this allows the release by thread 2 to release
 	t2OkToRelease <- coin{}
-	<- t2OperationFinished
+	<-t2OperationFinished
 
 	// check that the lock has been deallocated
 	checkAllocation(lm, 0, t)

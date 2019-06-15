@@ -5,23 +5,21 @@ import (
 	"sync"
 )
 
-
 type lockWithWaiters struct {
-	mux				sync.Locker
-	waiters		uint32
+	mux     sync.Locker
+	waiters uint32
 }
 
 type LockManager struct {
-	mux					sync.Mutex
-	newLocker		func(...interface{}) sync.Locker
-	locks				map[string]*lockWithWaiters
-
+	mux       sync.Mutex
+	newLocker func(...interface{}) sync.Locker
+	locks     map[string]*lockWithWaiters
 }
 
 func NewLockManager(f func(...interface{}) sync.Locker) *LockManager {
 	return &LockManager{
 		newLocker: f,
-		locks: make(map[string]*lockWithWaiters),
+		locks:     make(map[string]*lockWithWaiters),
 	}
 }
 
@@ -35,7 +33,7 @@ func (lm *LockManager) Acquire(key string, lockerParams ...interface{}) {
 	lockForKey, ok := lm.locks[key]
 	if !ok {
 		lockForKey = &lockWithWaiters{
-			mux: lm.newLocker(lockerParams...),
+			mux:     lm.newLocker(lockerParams...),
 			waiters: 0,
 		}
 		lm.locks[key] = lockForKey
