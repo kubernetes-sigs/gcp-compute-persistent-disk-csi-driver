@@ -36,12 +36,10 @@ type GCENodeServer struct {
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
 	MetadataService metadataservice.MetadataService
-	lockManager 		*LockManager
+	LockManager 		*LockManager
 }
 
-var _ csi.NodeServer = &GCENodeServer{
-	lockManager: NewLockManager(NewSyncMutex),
-}
+var _ csi.NodeServer = &GCENodeServer{}
 
 // The constants are used to map from the machine type to the limit of
 // persistent disks that can be attached to an instance. Please refer to gcloud doc
@@ -72,8 +70,8 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
-	ns.lockManager.Acquire(string(volumeID))
-	defer ns.lockManager.Release(string(volumeID))
+	ns.LockManager.Acquire(string(volumeID))
+	defer ns.LockManager.Release(string(volumeID))
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -192,8 +190,8 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	ns.lockManager.Acquire(string(volID))
-	defer ns.lockManager.Release(string(volID))
+	ns.LockManager.Acquire(string(volID))
+	defer ns.LockManager.Release(string(volID))
 
 	err := volumeutils.UnmountMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
@@ -220,8 +218,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
 
-	ns.lockManager.Acquire(string(volumeID))
-	defer ns.lockManager.Release(string(volumeID))
+	ns.LockManager.Acquire(string(volumeID))
+	defer ns.LockManager.Release(string(volumeID))
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -310,8 +308,8 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	if len(stagingTargetPath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Staging Target Path must be provided")
 	}
-	ns.lockManager.Acquire(string(volumeID))
-	defer ns.lockManager.Release(string(volumeID))
+	ns.LockManager.Acquire(string(volumeID))
+	defer ns.LockManager.Release(string(volumeID))
 
 	err := volumeutils.UnmountMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
