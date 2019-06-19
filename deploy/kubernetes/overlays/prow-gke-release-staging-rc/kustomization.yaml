@@ -8,7 +8,7 @@ images:
   newTag: "v0.6.0-rc1"
 - name: gke.gcr.io/csi-provisioner
   newName: gcr.io/gke-release-staging/csi-provisioner
-  newTag: "v1.2.0-gke.0"
+  newTag: "v1.2.1-gke.0"
 - name: gke.gcr.io/csi-attacher
   newName: gcr.io/gke-release-staging/csi-attacher
   newTag: "v1.1.0-gke.0"
