@@ -23,11 +23,11 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
-	glog.V(2).Infof("Building archive...")
+	klog.V(2).Infof("Building archive...")
 	tarDir, err := ioutil.TempDir("", "driver-temp-archive")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory %v", err)
@@ -54,7 +54,7 @@ func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
 }
 
 func setupBinaries(tarDir, pkgPath, binPath string) error {
-	glog.V(4).Infof("Making binaries and copying to temp dir...")
+	klog.V(4).Infof("Making binaries and copying to temp dir...")
 	out, err := exec.Command("make", "-C", pkgPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err)

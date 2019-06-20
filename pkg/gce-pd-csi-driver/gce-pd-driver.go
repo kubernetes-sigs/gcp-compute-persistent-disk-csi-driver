@@ -18,9 +18,9 @@ import (
 	"fmt"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -83,7 +83,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 func (gceDriver *GCEDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) error {
 	var vca []*csi.VolumeCapability_AccessMode
 	for _, c := range vc {
-		glog.V(4).Infof("Enabling volume access mode: %v", c.String())
+		klog.V(4).Infof("Enabling volume access mode: %v", c.String())
 		vca = append(vca, NewVolumeCapabilityAccessMode(c))
 	}
 	gceDriver.vcap = vca
@@ -93,7 +93,7 @@ func (gceDriver *GCEDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapabi
 func (gceDriver *GCEDriver) AddControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_Type) error {
 	var csc []*csi.ControllerServiceCapability
 	for _, c := range cl {
-		glog.V(4).Infof("Enabling controller service capability: %v", c.String())
+		klog.V(4).Infof("Enabling controller service capability: %v", c.String())
 		csc = append(csc, NewControllerServiceCapability(c))
 	}
 	gceDriver.cscap = csc
@@ -103,7 +103,7 @@ func (gceDriver *GCEDriver) AddControllerServiceCapabilities(cl []csi.Controller
 func (gceDriver *GCEDriver) AddNodeServiceCapabilities(nl []csi.NodeServiceCapability_RPC_Type) error {
 	var nsc []*csi.NodeServiceCapability
 	for _, n := range nl {
-		glog.V(4).Infof("Enabling node service capability: %v", n.String())
+		klog.V(4).Infof("Enabling node service capability: %v", n.String())
 		nsc = append(nsc, NewNodeServiceCapability(n))
 	}
 	gceDriver.nscap = nsc
@@ -148,7 +148,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, met
 }
 
 func (gceDriver *GCEDriver) Run(endpoint string) {
-	glog.V(4).Infof("Driver: %v", gceDriver.name)
+	klog.V(4).Infof("Driver: %v", gceDriver.name)
 
 	//Start the nonblocking GRPC
 	s := NewNonBlockingGRPCServer()

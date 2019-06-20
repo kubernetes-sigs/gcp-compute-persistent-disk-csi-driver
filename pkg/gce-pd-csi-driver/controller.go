@@ -23,14 +23,14 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 
+	"context"
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
-	"golang.org/x/net/context"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta"
+	"k8s.io/klog"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -63,7 +63,7 @@ const (
 
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	var err error
-	glog.V(4).Infof("CreateVolume called with request %v", *req)
+	klog.V(4).Infof("CreateVolume called with request %v", *req)
 
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
@@ -99,7 +99,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 		switch strings.ToLower(k) {
 		case common.ParameterKeyType:
-			glog.V(4).Infof("Setting type: %v", v)
+			klog.V(4).Infof("Setting type: %v", v)
 			diskType = v
 		case common.ParameterKeyReplicationType:
 			replicationType = strings.ToLower(v)
@@ -193,7 +193,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	glog.V(4).Infof("DeleteVolume called with request %v", *req)
+	klog.V(4).Infof("DeleteVolume called with request %v", *req)
 
 	// Validate arguments
 	volumeID := req.GetVolumeId()
@@ -222,7 +222,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 }
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
-	glog.V(4).Infof("ControllerPublishVolume called with request %v", *req)
+	klog.V(4).Infof("ControllerPublishVolume called with request %v", *req)
 
 	// Validate arguments
 	volumeID := req.GetVolumeId()
@@ -293,7 +293,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 	if attached {
 		// Volume is attached to node. Success!
-		glog.V(4).Infof("Attach operation is successful. PD %q was already attached to node %q.", volKey.Name, nodeID)
+		klog.V(4).Infof("Attach operation is successful. PD %q was already attached to node %q.", volKey.Name, nodeID)
 		return pubVolResp, nil
 	}
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
@@ -305,19 +305,19 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
 	}
 
-	glog.V(4).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, nodeID)
+	klog.V(4).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, nodeID)
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, volKey, instanceZone, instanceName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
 	}
 
-	glog.V(4).Infof("Disk %v attached to instance %v successfully", volKey.Name, nodeID)
+	klog.V(4).Infof("Disk %v attached to instance %v successfully", volKey.Name, nodeID)
 	return pubVolResp, nil
 }
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
-	glog.V(4).Infof("ControllerUnpublishVolume called with request %v", *req)
+	klog.V(4).Infof("ControllerUnpublishVolume called with request %v", *req)
 
 	// Validate arguments
 	volumeID := req.GetVolumeId()
@@ -352,7 +352,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 
 	if !attached {
 		// Volume is not attached to node. Success!
-		glog.V(4).Infof("Detach operation is successful. PD %q was not attached to node %q.", volKey.Name, nodeID)
+		klog.V(4).Infof("Detach operation is successful. PD %q was not attached to node %q.", volKey.Name, nodeID)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
@@ -367,7 +367,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// TODO(#162): Implement ValidateVolumeCapabilities
 
-	glog.V(5).Infof("Using default ValidateVolumeCapabilities")
+	klog.V(5).Infof("Using default ValidateVolumeCapabilities")
 	// Validate Arguments
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume Capabilities must be provided")
@@ -472,7 +472,7 @@ func (gceCS *GCEControllerServer) ControllerGetCapabilities(ctx context.Context,
 }
 
 func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	glog.V(4).Infof("CreateSnapshot called with request %v", *req)
+	klog.V(4).Infof("CreateSnapshot called with request %v", *req)
 
 	// Validate arguments
 	volumeID := req.GetSourceVolumeId()
@@ -549,7 +549,7 @@ func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Sna
 		return fmt.Errorf("snapshot already exists with same name but with a different disk source %s, expected disk source %s", sourceKey.String(), volKey.String())
 	}
 	// Snapshot exists with matching source disk.
-	glog.V(5).Infof("Compatible snapshot %s exists with source disk %s.", snapshot.Name, snapshot.SourceDisk)
+	klog.V(5).Infof("Compatible snapshot %s exists with source disk %s.", snapshot.Name, snapshot.SourceDisk)
 	return nil
 }
 
@@ -560,7 +560,7 @@ func isCSISnapshotReady(status string) (bool, error) {
 	case "FAILED":
 		return false, fmt.Errorf("snapshot status is FAILED")
 	case "DELETING":
-		glog.V(4).Infof("snapshot is in DELETING")
+		klog.V(4).Infof("snapshot is in DELETING")
 		fallthrough
 	default:
 		return false, nil
@@ -568,7 +568,7 @@ func isCSISnapshotReady(status string) (bool, error) {
 }
 
 func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	glog.V(4).Infof("DeleteSnapshot called with request %v", *req)
+	klog.V(4).Infof("DeleteSnapshot called with request %v", *req)
 
 	// Validate arguments
 	snapshotID := req.GetSnapshotId()
@@ -580,7 +580,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		// This is a success according to the spec
-		glog.Warningf("Snapshot id does not have the correct format %s", snapshotID)
+		klog.Warningf("Snapshot id does not have the correct format %s", snapshotID)
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
@@ -593,7 +593,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 }
 
 func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	glog.V(4).Infof("ListSnapshots called with request %v", *req)
+	klog.V(4).Infof("ListSnapshots called with request %v", *req)
 
 	// case 1: SnapshotId is not empty, return snapshots that match the snapshot id.
 	if len(req.GetSnapshotId()) != 0 {
@@ -644,7 +644,7 @@ func (gceCS *GCEControllerServer) getSnapshotById(ctx context.Context, snapshotI
 	key, err := common.SnapshotIDToKey(snapshotId)
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
-		glog.Warningf("invalid snapshot id format %s", snapshotId)
+		klog.Warningf("invalid snapshot id format %s", snapshotId)
 		return &csi.ListSnapshotsResponse{}, nil
 	}
 
@@ -832,7 +832,7 @@ func pickZones(gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZone
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default %v zones in region: %v", numZones, err)
 		}
-		glog.Warningf("No zones have been specified in either topology or params, picking default zone: %v", zones)
+		klog.Warningf("No zones have been specified in either topology or params, picking default zone: %v", zones)
 
 	}
 	return zones, nil
@@ -913,12 +913,12 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
 
-	glog.V(4).Infof("Completed creation of disk %v", name)
+	klog.V(4).Infof("Completed creation of disk %v", name)
 	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disk after creating regional disk: %v", err)
 	}
-	glog.Warningf("GCE PD %s already exists after wait, reusing", name)
+	klog.Warningf("GCE PD %s already exists after wait, reusing", name)
 	return disk, nil
 }
 
@@ -932,12 +932,12 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}
 
-	glog.V(4).Infof("Completed creation of disk %v", name)
+	klog.V(4).Infof("Completed creation of disk %v", name)
 	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone))
 	if err != nil {
 		return nil, err
 	}
-	glog.Warningf("GCE PD %s already exists after wait, reusing", name)
+	klog.Warningf("GCE PD %s already exists after wait, reusing", name)
 	return disk, nil
 }
 

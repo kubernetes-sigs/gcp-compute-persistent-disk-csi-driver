@@ -17,13 +17,13 @@ package mountmanager
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/exec"
+	"k8s.io/klog"
 )
 
 const (
@@ -90,13 +90,13 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string) (string, error) {
 	sdBefore, err := filepath.Glob(diskSDPattern)
 	if err != nil {
 		// Seeing this error means that the diskSDPattern is malformed.
-		glog.Errorf("Error filepath.Glob(\"%s\"): %v\r\n", diskSDPattern, err)
+		klog.Errorf("Error filepath.Glob(\"%s\"): %v\r\n", diskSDPattern, err)
 	}
 	sdBeforeSet := sets.NewString(sdBefore...)
 	// TODO(#69): Verify udevadm works as intended in driver
 	if err := udevadmChangeToNewDrives(sdBeforeSet); err != nil {
 		// udevadm errors should not block disk detachment, log and continue
-		glog.Errorf("udevadmChangeToNewDrives failed with: %v", err)
+		klog.Errorf("udevadmChangeToNewDrives failed with: %v", err)
 	}
 
 	for _, path := range devicePaths {
@@ -133,14 +133,14 @@ func udevadmChangeToNewDrives(sdBeforeSet sets.String) error {
 // drivePath must be the block device path to trigger on, in the format "/dev/sd*", or a symlink to it.
 // This is workaround for Issue #7972. Once the underlying issue has been resolved, this may be removed.
 func udevadmChangeToDrive(drivePath string) error {
-	glog.V(5).Infof("udevadmChangeToDrive: drive=%q", drivePath)
+	klog.V(5).Infof("udevadmChangeToDrive: drive=%q", drivePath)
 
 	// Evaluate symlink, if any
 	drive, err := filepath.EvalSymlinks(drivePath)
 	if err != nil {
 		return fmt.Errorf("udevadmChangeToDrive: filepath.EvalSymlinks(%q) failed with %v.", drivePath, err)
 	}
-	glog.V(5).Infof("udevadmChangeToDrive: symlink path is %q", drive)
+	klog.V(5).Infof("udevadmChangeToDrive: symlink path is %q", drive)
 
 	// Check to make sure input is "/dev/sd*"
 	if !strings.Contains(drive, diskSDPath) {
@@ -148,7 +148,7 @@ func udevadmChangeToDrive(drivePath string) error {
 	}
 
 	// Call "udevadm trigger --action=change --property-match=DEVNAME=/dev/sd..."
-	_, err = exec.New().Command(
+	_, err = exec.Command(
 		"udevadm",
 		"trigger",
 		"--action=change",

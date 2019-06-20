@@ -17,8 +17,8 @@ package gceGCEDriver
 import (
 	"testing"
 
+	"context"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/net/context"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 

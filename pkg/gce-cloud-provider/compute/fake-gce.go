@@ -15,19 +15,19 @@ limitations under the License.
 package gcecloudprovider
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
-	"golang.org/x/net/context"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta"
+	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -184,7 +184,7 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 		return fmt.Errorf("disk already exists with incompatible type. Need %v. Got %v",
 			diskType, respType[len(respType)-1])
 	}
-	glog.V(4).Infof("Compatible disk already exists")
+	klog.V(4).Infof("Compatible disk already exists")
 	return nil
 }
 
@@ -384,7 +384,7 @@ func (cloud *FakeCloudProvider) ValidateExistingSnapshot(resp *compute.Snapshot,
 		return status.Error(codes.AlreadyExists, fmt.Sprintf("snapshot already exists with same name but with a different disk source %s, expected disk source %s", diskSource, resp.SourceDisk))
 	}
 	// Snapshot exists with matching source disk.
-	glog.V(4).Infof("Compatible snapshot already exists. Reusing existing.")
+	klog.V(4).Infof("Compatible snapshot already exists. Reusing existing.")
 	return nil
 }
 

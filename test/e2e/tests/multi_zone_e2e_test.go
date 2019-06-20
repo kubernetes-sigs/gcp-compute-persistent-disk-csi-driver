@@ -20,11 +20,11 @@ import (
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
@@ -147,7 +147,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
 	var err error
 
-	glog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
+	klog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
 	// Attach Disk
 	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
 	if err != nil {
@@ -158,7 +158,7 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		// Detach Disk
 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 		if err != nil {
-			glog.Errorf("Failed to detach disk: %v", err)
+			klog.Errorf("Failed to detach disk: %v", err)
 		}
 
 	}()
@@ -174,12 +174,12 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		// Unstage Disk
 		err = client.NodeUnstageVolume(volID, stageDir)
 		if err != nil {
-			glog.Errorf("Failed to unstage volume: %v", err)
+			klog.Errorf("Failed to unstage volume: %v", err)
 		}
 		fp := filepath.Join("/tmp/", volName)
 		err = testutils.RmAll(instance, fp)
 		if err != nil {
-			glog.Errorf("Failed to rm file path %s: %v", fp, err)
+			klog.Errorf("Failed to rm file path %s: %v", fp, err)
 		}
 	}()
 
@@ -234,6 +234,6 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
 	}
 
-	glog.Infof("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
+	klog.Infof("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())
 	return nil
 }
