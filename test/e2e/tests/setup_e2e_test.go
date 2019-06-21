@@ -23,11 +23,11 @@ import (
 	"time"
 
 	cloudkms "cloud.google.com/go/kms/apiv1"
-	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/klog"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -44,7 +44,12 @@ var (
 	kmsClient          *cloudkms.KeyManagementClient
 )
 
+func init() {
+	klog.InitFlags(flag.CommandLine)
+}
+
 func TestE2E(t *testing.T) {
+
 	flag.Parse()
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Google Compute Engine Persistent Disk Container Storage Interface Driver Tests")
@@ -76,24 +81,24 @@ var _ = BeforeSuite(func() {
 	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
 	Expect(*serviceAccount).ToNot(BeEmpty(), "Service account should not be empty")
 
-	glog.Infof("Running in project %v with service account %v\n\n", *project, *serviceAccount)
+	klog.Infof("Running in project %v with service account %v\n\n", *project, *serviceAccount)
 
 	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
 			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
-			glog.Infof("Setting up node %s\n", nodeID)
+			klog.Infof("Setting up node %s\n", nodeID)
 
 			i, err := remote.SetupInstance(*project, curZone, nodeID, *serviceAccount, computeService)
 			if err != nil {
-				glog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
+				klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 			}
 
-			glog.Infof("Creating new driver and client for node %s\n", i.GetName())
+			klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
 			testContext, err := testutils.GCEClientAndDriverSetup(i)
 			if err != nil {
-				glog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+				klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 			}
 			tcc <- testContext
 		}(zone)
@@ -101,7 +106,7 @@ var _ = BeforeSuite(func() {
 
 	for i := 0; i < len(zones); i++ {
 		tc := <-tcc
-		glog.Infof("Test Context for node %s set up\n", tc.Instance.GetName())
+		klog.Infof("Test Context for node %s set up\n", tc.Instance.GetName())
 		testContexts = append(testContexts, tc)
 	}
 })

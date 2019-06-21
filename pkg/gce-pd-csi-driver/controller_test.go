@@ -24,7 +24,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 
-	"golang.org/x/net/context"
+	"context"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

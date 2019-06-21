@@ -24,30 +24,18 @@
 #   go-tests = true
 #   unused-packages = true
 
+# WARNING: IF YOU ARE GETTING WEIRD DEP ERRORS MAKE SURE TO
+# rm -rf test/k8s-integration/src
+# AS IT MAY CONTAIN A PULLED IN KUBERNETES
+
+[prune]
+  go-tests = true
+  unused-packages = true
+  non-go = true
+
 [[constraint]]
   name = "cloud.google.com/go"
-  version = "0.34.0"
-
-[[constraint]]
-  name = "github.com/container-storage-interface/spec"
-  version = "1.1.0"
-
-# Transitive dependency of CSI Spec
-[[override]]
-  name = "github.com/golang/protobuf"
-  version = "1.1.0"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/golang/glog"
-
-#[[constraint]]
-#  name = "github.com/stretchr/testify"
-#  version = "1.2.1"
-
-[[constraint]]
-  branch = "master"
-  name = "golang.org/x/net"
+  version = "0.40.0"
 
 [[constraint]]
   branch = "master"
@@ -58,31 +46,45 @@
   name = "google.golang.org/api"
 
 [[constraint]]
-  name = "google.golang.org/grpc"
-  version = "1.10.0"
-
-[[constraint]]
-  branch = "release-1.11"
-  name = "k8s.io/apimachinery"
-
-[[constraint]]
-  branch = "master"
-  name = "k8s.io/utils"
-
-[prune]
-  go-tests = true
-  unused-packages = true
-  non-go = true
-
-[[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
-  version = "v1.0.0-rc2"
+  version = "v1.0.0"
 
 [[constraint]]
   branch = "master"
   name = "k8s.io/test-infra"
 
-# Transitive dependency of k8s.io/kubernetes/pkg/util/parsers
+###
+### Kubernetes Dependencies
+###
+
+[[constraint]]
+  version = "v1.15.0"
+  name = "k8s.io/kubernetes"
+
+[[constraint]]
+  version = "kubernetes-1.15.0"
+  name = "k8s.io/apimachinery"
+
+###
+### CSI Spec Dependencies
+###
+
+[[constraint]]
+  name = "github.com/container-storage-interface/spec"
+  version = "1.1.0"
+
 [[override]]
-  branch = "master"
-  name = "github.com/docker/distribution"
+  name = "google.golang.org/grpc"
+  version = "1.10.0"
+
+[[override]]
+  name = "github.com/golang/protobuf"
+  version = "1.1.0"
+
+###
+### Crazy Stuff
+###
+
+[[override]]
+  name = "gopkg.in/fsnotify.v1"
+  source = "https://github.com/fsnotify/fsnotify.git"

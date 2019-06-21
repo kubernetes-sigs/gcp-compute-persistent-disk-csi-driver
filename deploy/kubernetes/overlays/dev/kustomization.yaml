@@ -8,5 +8,5 @@ patches:
 images:
 # Replace this with your private image names and tags
 - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/REPLACEME/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/dyzz-csi-staging/csi/gce-pd-driver
   newTag: "latest"

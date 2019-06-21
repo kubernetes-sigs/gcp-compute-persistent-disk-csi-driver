@@ -15,11 +15,11 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog"
 )
 
 type GCEIdentityServer struct {
@@ -28,7 +28,7 @@ type GCEIdentityServer struct {
 
 // GetPluginInfo(context.Context, *GetPluginInfoRequest) (*GetPluginInfoResponse, error)
 func (gceIdentity *GCEIdentityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	glog.V(5).Infof("Using default GetPluginInfo")
+	klog.V(5).Infof("Using default GetPluginInfo")
 
 	if gceIdentity.Driver.name == "" {
 		return nil, status.Error(codes.Unavailable, "Driver name not configured")
@@ -41,7 +41,7 @@ func (gceIdentity *GCEIdentityServer) GetPluginInfo(ctx context.Context, req *cs
 }
 
 func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	glog.V(5).Infof("Using default GetPluginCapabilities")
+	klog.V(5).Infof("Using default GetPluginCapabilities")
 	return &csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
 			{
@@ -63,6 +63,6 @@ func (gceIdentity *GCEIdentityServer) GetPluginCapabilities(ctx context.Context,
 }
 
 func (gceIdentity *GCEIdentityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	glog.V(4).Infof("Probe called with args: %#v", req)
+	klog.V(4).Infof("Probe called with args: %#v", req)
 	return &csi.ProbeResponse{}, nil
 }

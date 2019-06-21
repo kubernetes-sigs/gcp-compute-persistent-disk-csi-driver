@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -42,6 +42,10 @@ const (
 	driverName = "pd.csi.storage.gke.io"
 )
 
+func init() {
+	klog.InitFlags(flag.CommandLine)
+}
+
 func main() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
@@ -51,16 +55,16 @@ func main() {
 
 func handle() {
 	if vendorVersion == "" {
-		glog.Fatalf("vendorVersion must be set at compile time")
+		klog.Fatalf("vendorVersion must be set at compile time")
 	}
-	glog.V(4).Infof("Driver vendor version %v", vendorVersion)
+	klog.V(4).Infof("Driver vendor version %v", vendorVersion)
 
 	gceDriver := driver.GetGCEDriver()
 
 	//Initialize GCE Driver (Move setup to main?)
 	cloudProvider, err := gce.CreateCloudProvider(vendorVersion, *gceConfigFilePath)
 	if err != nil {
-		glog.Fatalf("Failed to get cloud provider: %v", err)
+		klog.Fatalf("Failed to get cloud provider: %v", err)
 	}
 
 	mounter := mountmanager.NewSafeMounter()
@@ -68,12 +72,12 @@ func handle() {
 
 	ms, err := metadataservice.NewMetadataService()
 	if err != nil {
-		glog.Fatalf("Failed to set up metadata service: %v", err)
+		klog.Fatalf("Failed to set up metadata service: %v", err)
 	}
 
 	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, driverName, vendorVersion)
 	if err != nil {
-		glog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
+		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
 
 	gceDriver.Run(*endpoint)

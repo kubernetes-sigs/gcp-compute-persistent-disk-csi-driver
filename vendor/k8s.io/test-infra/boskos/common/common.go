@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ghodss/yaml"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -160,6 +160,10 @@ func (r *CommaSeparatedStrings) Set(value string) error {
 	return nil
 }
 
+func (r *CommaSeparatedStrings) Type() string {
+	return "commaSeparatedStrings"
+}
+
 // GetName implements the Item interface used for storage
 func (res Resource) GetName() string { return res.Name }
 
@@ -173,7 +177,7 @@ func (ud *UserData) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implents JSON Marshaler interface
+// MarshalJSON implements JSON Marshaler interface
 func (ud *UserData) MarshalJSON() ([]byte, error) {
 	return json.Marshal(ud.ToMap())
 }

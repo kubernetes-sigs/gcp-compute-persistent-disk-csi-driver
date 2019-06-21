@@ -25,13 +25,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
@@ -81,7 +81,7 @@ func CreateInstanceInfo(project, instanceZone, name string, cs *compute.Service)
 func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 	var err error
 	var instance *compute.Instance
-	glog.V(4).Infof("Creating instance: %v", i.name)
+	klog.V(4).Infof("Creating instance: %v", i.name)
 
 	myuuid := string(uuid.NewUUID())
 
@@ -123,7 +123,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 	inst.ServiceAccounts = []*compute.ServiceAccount{saObj}
 
 	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
-		glog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
+		klog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
 		meta, err := generateMetadataWithPublicKey(pubkey)
 		if err != nil {
 			return err
@@ -133,7 +133,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 
 	if _, err := i.computeService.Instances.Get(i.project, i.zone, inst.Name).Do(); err != nil {
 		op, err := i.computeService.Instances.Insert(i.project, i.zone, inst).Do()
-		glog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", inst.Name, i.project, i.zone)
+		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", inst.Name, i.project, i.zone)
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
 			if op != nil {
@@ -144,21 +144,21 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 			return fmt.Errorf("could not create instance %s: %+v", i.name, op.Error)
 		}
 	} else {
-		glog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", inst.Name)
+		klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", inst.Name)
 	}
 
 	then := time.Now()
 	err = wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		glog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.name, time.Since(then))
+		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.name, time.Since(then))
 
 		instance, err = i.computeService.Instances.Get(i.project, i.zone, i.name).Do()
 		if err != nil {
-			glog.Errorf("Failed to get instance %v: %v", i.name, err)
+			klog.Errorf("Failed to get instance %v: %v", i.name, err)
 			return false, nil
 		}
 
 		if strings.ToUpper(instance.Status) != "RUNNING" {
-			glog.Warningf("instance %s not in state RUNNING, was %s", i.name, instance.Status)
+			klog.Warningf("instance %s not in state RUNNING, was %s", i.name, instance.Status)
 			return false, nil
 		}
 
@@ -169,10 +169,10 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 
 		if sshOut, err := i.SSHCheckAlive(); err != nil {
 			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.name, err)
-			glog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
+			klog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
-		glog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.name)
+		klog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.name)
 		return true, nil
 	})
 
@@ -182,18 +182,18 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 	}
 
 	// Instance reached running state in time, make sure that cloud-init is complete
-	glog.V(2).Infof("Instance %v has been created successfully", i.name)
+	klog.V(2).Infof("Instance %v has been created successfully", i.name)
 	return nil
 }
 
 func (i *InstanceInfo) DeleteInstance() {
-	glog.V(4).Infof("Deleting instance %q", i.name)
+	klog.V(4).Infof("Deleting instance %q", i.name)
 	_, err := i.computeService.Instances.Delete(i.project, i.zone, i.name).Do()
 	if err != nil {
 		if isGCEError(err, "notFound") {
 			return
 		}
-		glog.Errorf("Error deleting instance %q: %v", i.name, err)
+		klog.Errorf("Error deleting instance %q: %v", i.name, err)
 	}
 }
 
@@ -224,10 +224,10 @@ func machineType(zone, machine string) string {
 // Create default SSH filewall rule if it does not exist
 func (i *InstanceInfo) createDefaultFirewallRule() error {
 	var err error
-	glog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
+	klog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
 
 	if _, err = i.computeService.Firewalls.Get(i.project, defaultFirewallRule).Do(); err != nil {
-		glog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
+		klog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
 		f := &compute.Firewall{
 			Name: defaultFirewallRule,
 			Allowed: []*compute.FirewallAllowed{
@@ -240,13 +240,13 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 		_, err = i.computeService.Firewalls.Insert(i.project, f).Do()
 		if err != nil {
 			if gce.IsGCEError(err, "alreadyExists") {
-				glog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+				klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
 				return nil
 			}
 			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
 		}
 	} else {
-		glog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+		klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
 	}
 	return nil
 }
@@ -255,7 +255,7 @@ func GetComputeClient() (*compute.Service, error) {
 	const retries = 10
 	const backoff = time.Second * 6
 
-	glog.V(4).Infof("Getting compute client...")
+	klog.V(4).Infof("Getting compute client...")
 
 	// Setup the gce client for provisioning instances
 	// Getting credentials on gce jenkins is flaky, so try a couple times
@@ -285,7 +285,7 @@ func GetBetaComputeClient() (*computebeta.Service, error) {
 	const retries = 10
 	const backoff = time.Second * 6
 
-	glog.V(4).Infof("Getting compute client...")
+	klog.V(4).Infof("Getting compute client...")
 
 	// Setup the gce client for provisioning instances
 	// Getting credentials on gce jenkins is flaky, so try a couple times

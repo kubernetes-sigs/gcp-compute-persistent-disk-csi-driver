@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 
@@ -71,44 +71,44 @@ func main() {
 	flag.Parse()
 
 	if len(*stagingImage) == 0 && !*inProw {
-		glog.Fatalf("staging-image is a required flag, please specify the name of image to stage to")
+		klog.Fatalf("staging-image is a required flag, please specify the name of image to stage to")
 	}
 
 	if len(*saFile) == 0 {
-		glog.Fatalf("service-account-file is a required flag")
+		klog.Fatalf("service-account-file is a required flag")
 	}
 
 	if len(*deployOverlayName) == 0 {
-		glog.Fatalf("deploy-overlay-name is a required flag")
+		klog.Fatalf("deploy-overlay-name is a required flag")
 	}
 
 	if len(*storageClassFile) == 0 && !*migrationTest {
-		glog.Fatalf("One of storageclass-file and migration-test must be set")
+		klog.Fatalf("One of storageclass-file and migration-test must be set")
 	}
 
 	if len(*storageClassFile) != 0 && *migrationTest {
-		glog.Fatalf("storage-class-file and migration-test cannot both be set")
+		klog.Fatalf("storage-class-file and migration-test cannot both be set")
 	}
 
 	if !*bringupCluster && len(*kubeFeatureGates) > 0 {
-		glog.Fatalf("kube-feature-gates set but not bringing up new cluster")
+		klog.Fatalf("kube-feature-gates set but not bringing up new cluster")
 	}
 
 	if len(*testFocus) == 0 {
-		glog.Fatalf("test-focus is a required flag")
+		klog.Fatalf("test-focus is a required flag")
 	}
 
 	if len(*gceZone) == 0 {
-		glog.Fatalf("gce-zone is a required flag")
+		klog.Fatalf("gce-zone is a required flag")
 	}
 
 	if *deploymentStrat == "gke" && *migrationTest {
-		glog.Fatalf("Cannot set deployment strategy to 'gke' for migration tests.")
+		klog.Fatalf("Cannot set deployment strategy to 'gke' for migration tests.")
 	}
 
 	err := handle()
 	if err != nil {
-		glog.Fatalf("Failed to run integration test: %v", err)
+		klog.Fatalf("Failed to run integration test: %v", err)
 	}
 }
 
@@ -141,7 +141,7 @@ func handle() error {
 		defer func() {
 			err = setEnvProject(string(oldProject))
 			if err != nil {
-				glog.Errorf("failed to set project environment to %s: %v", oldProject, err)
+				klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
 			}
 		}()
 
@@ -166,7 +166,7 @@ func handle() error {
 			if *teardownCluster {
 				err = deleteImage(*stagingImage, stagingVersion)
 				if err != nil {
-					glog.Errorf("failed to delete image: %v", err)
+					klog.Errorf("failed to delete image: %v", err)
 				}
 			}
 		}()
@@ -192,7 +192,7 @@ func handle() error {
 				return fmt.Errorf("failed to set cluster specific kubectl: %v", err)
 			}
 		} else {
-			glog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
+			klog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
 		}
 
 		if len(*kubeFeatureGates) != 0 {
@@ -200,7 +200,7 @@ func handle() error {
 			if err != nil {
 				return fmt.Errorf("failed to set kubernetes feature gates: %v", err)
 			}
-			glog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
+			klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 		}
 
 		switch *deploymentStrat {
@@ -226,15 +226,15 @@ func handle() error {
 			case "gce":
 				err := clusterDownGCE(k8sDir)
 				if err != nil {
-					glog.Errorf("failed to cluster down: %v", err)
+					klog.Errorf("failed to cluster down: %v", err)
 				}
 			case "gke":
 				err := clusterDownGKE(*gceZone)
 				if err != nil {
-					glog.Errorf("failed to cluster down: %v", err)
+					klog.Errorf("failed to cluster down: %v", err)
 				}
 			default:
-				glog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
+				klog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 			}
 		}()
 	}
@@ -244,7 +244,7 @@ func handle() error {
 		defer func() {
 			// TODO (#140): collect driver logs
 			if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
-				glog.Errorf("failed to delete driver: %v", teardownErr)
+				klog.Errorf("failed to delete driver: %v", teardownErr)
 			}
 		}()
 	}
@@ -400,7 +400,7 @@ func clusterUpGKE(gceZone string) error {
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
 	}
 	if len(out) > 0 {
-		glog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", gkeTestClusterName)
+		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", gkeTestClusterName)
 		err = clusterDownGKE(gceZone)
 		if err != nil {
 			return err
@@ -499,23 +499,23 @@ func deleteDriver(goPath, pkgDir, deployOverlayName string) error {
 
 func shredFile(filePath string) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		glog.V(4).Infof("File %v was not found, skipping shredding", filePath)
+		klog.V(4).Infof("File %v was not found, skipping shredding", filePath)
 		return
 	}
-	glog.V(4).Infof("Shredding file %v", filePath)
+	klog.V(4).Infof("Shredding file %v", filePath)
 	out, err := exec.Command("shred", "--remove", filePath).CombinedOutput()
 	if err != nil {
-		glog.V(4).Infof("Failed to shred file %v: %v\nOutput:%v", filePath, err, out)
+		klog.V(4).Infof("Failed to shred file %v: %v\nOutput:%v", filePath, err, out)
 	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		glog.V(4).Infof("File %v successfully shredded", filePath)
+		klog.V(4).Infof("File %v successfully shredded", filePath)
 		return
 	}
 
 	// Shred failed Try to remove the file for good meausure
 	err = os.Remove(filePath)
 	if err != nil {
-		glog.V(4).Infof("Failed to remove service account file %s: %v", filePath, err)
+		klog.V(4).Infof("Failed to remove service account file %s: %v", filePath, err)
 	}
 }
 
@@ -524,12 +524,12 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	/*
 		// TODO: Download a fresh copy every time until mutate manifests hardcoding existing image is solved.
 		if _, err := os.Stat(k8sDir); !os.IsNotExist(err) {
-			glog.Infof("Staging Kubernetes already found at %s, skipping download", k8sDir)
+			klog.Infof("Staging Kubernetes already found at %s, skipping download", k8sDir)
 			return nil
 		}
 	*/
 
-	glog.V(4).Infof("Staging Kubernetes folder not found, downloading now")
+	klog.V(4).Infof("Staging Kubernetes folder not found, downloading now")
 
 	err := os.MkdirAll(k8sIoDir, 0777)
 	if err != nil {
@@ -570,7 +570,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		return err
 	}
 
-	glog.V(4).Infof("Successfully downloaded Kubernetes v%s to %s", kubeVersion, k8sDir)
+	klog.V(4).Infof("Successfully downloaded Kubernetes v%s to %s", kubeVersion, k8sDir)
 
 	return nil
 }

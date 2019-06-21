@@ -22,9 +22,9 @@ import (
 	"path"
 	"time"
 
-	"github.com/golang/glog"
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	"k8s.io/klog"
 	boskosclient "k8s.io/test-infra/boskos/client"
 	"k8s.io/test-infra/boskos/common"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
@@ -75,13 +75,13 @@ func getBoskosProject(resourceType string) *common.Resource {
 	for {
 		select {
 		case <-timer.C:
-			glog.Fatalf("timed out trying to acquire boskos project")
+			klog.Fatalf("timed out trying to acquire boskos project")
 		case <-ticker.C:
 			p, err := boskos.Acquire(resourceType, "free", "busy")
 			if err != nil {
-				glog.Warningf("boskos failed to acquire project: %v", err)
+				klog.Warningf("boskos failed to acquire project: %v", err)
 			} else if p == nil {
-				glog.Warningf("boskos does not have a free %s at the moment", resourceType)
+				klog.Warningf("boskos does not have a free %s at the moment", resourceType)
 			} else {
 				return p
 			}
@@ -92,8 +92,8 @@ func getBoskosProject(resourceType string) *common.Resource {
 
 func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	// Try to get a Boskos project
-	glog.V(4).Infof("Running in PROW")
-	glog.V(4).Infof("Fetching a Boskos loaned project")
+	klog.V(4).Infof("Running in PROW")
+	klog.V(4).Infof("Fetching a Boskos loaned project")
 
 	p := getBoskosProject(resourceType)
 	project = p.GetName()
@@ -101,33 +101,33 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	go func(c *boskosclient.Client, proj string) {
 		for range time.Tick(time.Minute * 5) {
 			if err := c.UpdateOne(p.Name, "busy", nil); err != nil {
-				glog.Warningf("[Boskos] Update %s failed with %v", p.Name, err)
+				klog.Warningf("[Boskos] Update %s failed with %v", p.Name, err)
 			}
 		}
 	}(boskos, p.Name)
 
 	// If we're on CI overwrite the service account
-	glog.V(4).Infof("Fetching the default compute service account")
+	klog.V(4).Infof("Fetching the default compute service account")
 
 	c, err := google.DefaultClient(context.Background(), cloudresourcemanager.CloudPlatformScope)
 	if err != nil {
-		glog.Fatalf("Failed to get Google Default Client: %v", err)
+		klog.Fatalf("Failed to get Google Default Client: %v", err)
 	}
 
 	cloudresourcemanagerService, err := cloudresourcemanager.New(c)
 	if err != nil {
-		glog.Fatalf("Failed to create new cloudresourcemanager: %v", err)
+		klog.Fatalf("Failed to create new cloudresourcemanager: %v", err)
 	}
 
 	resp, err := cloudresourcemanagerService.Projects.Get(project).Do()
 	if err != nil {
-		glog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", project, err)
+		klog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", project, err)
 	}
 
 	// Default Compute Engine service account
 	// [PROJECT_NUMBER]-compute@developer.gserviceaccount.com
 	serviceAccount = fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
-	glog.Infof("Using project %v and service account %v", project, serviceAccount)
+	klog.Infof("Using project %v and service account %v", project, serviceAccount)
 	return project, serviceAccount
 }
 

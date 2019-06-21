@@ -23,7 +23,7 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 var (
@@ -34,7 +34,7 @@ var (
 func init() {
 	usr, err := user.Current()
 	if err != nil {
-		glog.Fatal(err)
+		klog.Fatal(err)
 	}
 	sshDefaultKey = fmt.Sprintf("%s/.ssh/google_compute_engine", usr.HomeDir)
 
@@ -66,7 +66,7 @@ func (i *InstanceInfo) SSH(cmd ...string) (string, error) {
 func (i *InstanceInfo) CreateSSHTunnel(localPort, serverPort string) (int, error) {
 	args := []string{"-nNT", "-L", fmt.Sprintf("%s:localhost:%s", localPort, serverPort), i.GetSSHTarget()}
 	if pk, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
-		glog.V(4).Infof("Running on Jenkins, using special private key file at %v", pk)
+		klog.V(4).Infof("Running on Jenkins, using special private key file at %v", pk)
 		args = append([]string{"-i", pk}, args...)
 	} else {
 		args = append([]string{"-i", sshDefaultKey}, args...)
@@ -95,14 +95,14 @@ func (i *InstanceInfo) SSHCheckAlive() (string, error) {
 // runSSHCommand executes the ssh or scp command, adding the flag provided --ssh-options
 func runSSHCommand(cmd string, args ...string) (string, error) {
 	if pk, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
-		glog.V(4).Infof("Running on Jenkins, using special private key file at %v", pk)
+		klog.V(4).Infof("Running on Jenkins, using special private key file at %v", pk)
 		args = append([]string{"-i", pk}, args...)
 	} else {
 		args = append([]string{"-i", sshDefaultKey}, args...)
 	}
 	args = append(strings.Split(sshOption, " "), args...)
 
-	glog.V(4).Infof("Executing SSH command: %v %v", cmd, args)
+	klog.V(4).Infof("Executing SSH command: %v %v", cmd, args)
 
 	output, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {

@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/golang/glog"
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/klog"
 )
 
 // TestContext holds the CSI Client handle to a remotely connected Driver
@@ -80,7 +80,7 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 	defer func() {
 		err = os.Remove(archivePath)
 		if err != nil {
-			glog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
+			klog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
 		}
 	}()
 

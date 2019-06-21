@@ -19,15 +19,16 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
-	"golang.org/x/net/context"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta"
+	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -143,23 +144,23 @@ func (cloud *CloudProvider) GetDisk(ctx context.Context, key *meta.Key) (*CloudD
 func (cloud *CloudProvider) getZonalDiskOrError(ctx context.Context, volumeZone, volumeName string) (*compute.Disk, error) {
 	svc := cloud.service
 	project := cloud.project
-	glog.V(4).Infof("Getting disk %v from zone %v", volumeName, volumeZone)
+	klog.V(4).Infof("Getting disk %v from zone %v", volumeName, volumeZone)
 	disk, err := svc.Disks.Get(project, volumeZone, volumeName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
-	glog.V(4).Infof("Got disk %v from zone %v", volumeName, volumeZone)
+	klog.V(4).Infof("Got disk %v from zone %v", volumeName, volumeZone)
 	return disk, nil
 }
 
 func (cloud *CloudProvider) getRegionalDiskOrError(ctx context.Context, volumeRegion, volumeName string) (*computebeta.Disk, error) {
 	project := cloud.project
-	glog.V(4).Infof("Getting disk %v from region %v", volumeName, volumeRegion)
+	klog.V(4).Infof("Getting disk %v from region %v", volumeName, volumeRegion)
 	disk, err := cloud.betaService.RegionDisks.Get(project, volumeRegion, volumeName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
-	glog.V(4).Infof("Got disk %v from region %v", volumeName, volumeRegion)
+	klog.V(4).Infof("Got disk %v from region %v", volumeName, volumeRegion)
 	return disk, nil
 }
 
@@ -198,7 +199,7 @@ func (cloud *CloudProvider) ValidateExistingDisk(ctx context.Context, resp *Clou
 	}
 
 	// Volume exists with matching name, capacity, type.
-	glog.V(4).Infof("Compatible disk already exists. Reusing existing.")
+	klog.V(4).Infof("Compatible disk already exists. Reusing existing.")
 	return nil
 }
 
@@ -245,7 +246,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 			if err != nil {
 				return err
 			}
-			glog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
+			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
 		return status.Error(codes.Internal, fmt.Sprintf("unkown Insert disk error: %v", err))
@@ -264,7 +265,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 			if err != nil {
 				return err
 			}
-			glog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
+			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
 		return fmt.Errorf("unkown Insert disk operation error: %v", err)
@@ -304,7 +305,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 			if err != nil {
 				return err
 			}
-			glog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
+			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
 		return fmt.Errorf("unkown Insert disk error: %v", err)
@@ -324,7 +325,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 			if err != nil {
 				return err
 			}
-			glog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
+			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
 		return fmt.Errorf("unkown Insert disk operation error: %v", err)
@@ -465,7 +466,7 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, op *compute.Oper
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := svc.ZoneOperations.Get(project, zone, op.Name).Context(ctx).Do()
 		if err != nil {
-			glog.Errorf("WaitForOp(op: %#v, zone: %#v) failed to poll the operation", op, zone)
+			klog.Errorf("WaitForOp(op: %#v, zone: %#v) failed to poll the operation", op, zone)
 			return false, err
 		}
 		done, err := opIsDone(pollOp)
@@ -477,7 +478,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, op *computebe
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := cloud.betaService.RegionOperations.Get(cloud.project, region, op.Name).Context(ctx).Do()
 		if err != nil {
-			glog.Errorf("WaitForOp(op: %#v, region: %#v) failed to poll the operation", op, region)
+			klog.Errorf("WaitForOp(op: %#v, region: %#v) failed to poll the operation", op, region)
 			return false, err
 		}
 		done, err := regionalOpIsDone(pollOp)
@@ -491,7 +492,7 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, op *compute.Ope
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := svc.GlobalOperations.Get(project, op.Name).Context(ctx).Do()
 		if err != nil {
-			glog.Errorf("waitForGlobalOp(op: %#v) failed to poll the operation", op)
+			klog.Errorf("waitForGlobalOp(op: %#v) failed to poll the operation", op)
 			return false, err
 		}
 		done, err := opIsDone(pollOp)
@@ -503,7 +504,7 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, volKey *meta.Key,
 	return wait.Poll(5*time.Second, 2*time.Minute, func() (bool, error) {
 		disk, err := cloud.GetDisk(ctx, volKey)
 		if err != nil {
-			glog.Errorf("GetDisk failed to get disk: %v", err)
+			klog.Errorf("GetDisk failed to get disk: %v", err)
 			return false, err
 		}
 
@@ -543,25 +544,25 @@ func regionalOpIsDone(op *computebeta.Operation) (bool, error) {
 func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*compute.Instance, error) {
 	svc := cloud.service
 	project := cloud.project
-	glog.V(4).Infof("Getting instance %v from zone %v", instanceName, instanceZone)
+	klog.V(4).Infof("Getting instance %v from zone %v", instanceName, instanceZone)
 
 	instance, err := svc.Instances.Get(project, instanceZone, instanceName).Do()
 	if err != nil {
 		return nil, err
 	}
-	glog.V(4).Infof("Got instance %v from zone %v", instanceName, instanceZone)
+	klog.V(4).Infof("Got instance %v from zone %v", instanceName, instanceZone)
 	return instance, nil
 }
 
 func (cloud *CloudProvider) GetSnapshot(ctx context.Context, snapshotName string) (*compute.Snapshot, error) {
 	svc := cloud.service
 	project := cloud.project
-	glog.V(4).Infof("Getting snapshot %v", snapshotName)
+	klog.V(4).Infof("Getting snapshot %v", snapshotName)
 	snapshot, err := svc.Snapshots.Get(project, snapshotName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
-	glog.V(4).Infof("Got snapshot %v", snapshotName)
+	klog.V(4).Infof("Got snapshot %v", snapshotName)
 	return snapshot, nil
 }
 
@@ -629,16 +630,16 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, snapsho
 	for {
 		select {
 		case <-ticker.C:
-			glog.V(5).Infof("Checking GCE Snapshot %s.", snapshotName)
+			klog.V(5).Infof("Checking GCE Snapshot %s.", snapshotName)
 			snapshot, err := cloud.GetSnapshot(ctx, snapshotName)
 			if err != nil {
-				glog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
+				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
 			} else if snapshot != nil {
 				if snapshot.Status != "CREATING" {
-					glog.V(5).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
+					klog.V(5).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
 					return snapshot, nil
 				} else {
-					glog.V(5).Infof("Snapshot %s is still creating ...", snapshotName)
+					klog.V(5).Infof("Snapshot %s is still creating ...", snapshotName)
 				}
 			}
 		case <-timer.C:
