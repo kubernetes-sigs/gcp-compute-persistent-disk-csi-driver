@@ -24,6 +24,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 
 	"context"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	compute "google.golang.org/api/compute/v1"
@@ -163,6 +164,14 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if content.GetSnapshot() != nil {
 			// TODO(#161): Add support for Volume Source (cloning) introduced in CSI v1.0.0
 			snapshotId = content.GetSnapshot().GetSnapshotId()
+
+			// Verify that snapshot exists
+			sl, err := gceCS.getSnapshotById(ctx, snapshotId)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "CreateVolume failed to get snapshot %s: %v", snapshotId, err)
+			} else if len(sl.Entries) == 0 {
+				return nil, status.Errorf(codes.NotFound, "CreateVolume source snapshot %s does not exist", snapshotId)
+			}
 		}
 	}
 
@@ -171,7 +180,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	switch replicationType {
 	case replicationTypeNone:
 		if len(zones) != 1 {
-			return nil, status.Errorf(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
 		}
 		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotId, diskEncryptionKmsKey)
 		if err != nil {
