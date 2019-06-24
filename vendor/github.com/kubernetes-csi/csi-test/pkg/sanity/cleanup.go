@@ -88,7 +88,7 @@ func (cl *Cleanup) DeleteVolumes() {
 			ctx,
 			&csi.NodeUnpublishVolumeRequest{
 				VolumeId:   info.VolumeID,
-				TargetPath: cl.Context.Config.TargetPath,
+				TargetPath: cl.Context.TargetPath,
 			},
 		); err != nil {
 			logger.Printf("warning: NodeUnpublishVolume: %s", err)
@@ -99,7 +99,7 @@ func (cl *Cleanup) DeleteVolumes() {
 				ctx,
 				&csi.NodeUnstageVolumeRequest{
 					VolumeId:          info.VolumeID,
-					StagingTargetPath: cl.Context.Config.StagingPath,
+					StagingTargetPath: cl.Context.StagingPath,
 				},
 			); err != nil {
 				logger.Printf("warning: NodeUnstageVolume: %s", err)
