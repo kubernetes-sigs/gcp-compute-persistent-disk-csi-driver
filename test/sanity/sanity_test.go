@@ -15,6 +15,9 @@ limitations under the License.
 package sanitytest
 
 import (
+	"fmt"
+	"os"
+	"path"
 	"testing"
 
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
@@ -31,9 +34,10 @@ func TestSanity(t *testing.T) {
 	project := "test-project"
 	zone := "test-zone"
 	vendorVersion := "test-version"
-	endpoint := "unix:/tmp/csi.sock"
-	mountPath := "/tmp/csi/mount"
-	stagePath := "/tmp/csi/stage"
+	tmpDir := "/tmp/csi"
+	endpoint := fmt.Sprintf("unix:%s/csi.sock", tmpDir)
+	mountPath := path.Join(tmpDir, "mount")
+	stagePath := path.Join(tmpDir, "stage")
 	// Set up driver and env
 	gceDriver := driver.GetGCEDriver()
 
@@ -56,6 +60,18 @@ func TestSanity(t *testing.T) {
 		Disks: []*compute.AttachedDisk{},
 	}
 	cloudProvider.InsertInstance(instance, "test-location", "test-name")
+
+	err = os.MkdirAll(tmpDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create sanity temp working dir %s: %v", tmpDir, err)
+	}
+
+	defer func() {
+		// Clean up tmp dir
+		if err = os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("Failed to clean up sanity temp working dir %s: %v", tmpDir, err)
+		}
+	}()
 
 	go func() {
 		gceDriver.Run(endpoint)

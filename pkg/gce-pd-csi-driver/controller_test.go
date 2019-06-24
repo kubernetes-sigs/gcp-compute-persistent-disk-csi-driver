@@ -22,9 +22,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/golang/protobuf/ptypes"
 
 	"context"
+
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -589,34 +591,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "success with data source of snapshot type",
-			req: &csi.CreateVolumeRequest{
-				Name:               "test-name",
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				VolumeContentSource: &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Snapshot{
-						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							SnapshotId: "snapshot-source",
-						},
-					},
-				},
-			},
-			expVol: &csi.Volume{
-				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
-				VolumeContext:      nil,
-				AccessibleTopology: stdTopology,
-				ContentSource: &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Snapshot{
-						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							SnapshotId: "snapshot-source",
-						},
-					},
-				},
-			},
-		},
-		{
 			name: "success with block volume capability",
 			req: &csi.CreateVolumeRequest{
 				Name:          name,
@@ -690,6 +664,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
 
+		//gceDriver.cs.CloudProvider.CreateSnapshot(context.Background, )
+
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		//check response
@@ -725,6 +701,77 @@ func TestCreateVolumeArguments(t *testing.T) {
 			}
 			t.Errorf(errStr)
 		}
+	}
+}
+
+func TestCreateVolumeWithVolumeSource(t *testing.T) {
+	// Define test cases
+	testCases := []struct {
+		name            string
+		volKey          *meta.Key
+		snapshotOnCloud bool
+		expErrCode      codes.Code
+	}{
+		{
+			name:            "success with data source of snapshot type",
+			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotOnCloud: true,
+		},
+		{
+			name:            "fail with data source of snapshot type that doesn't exist",
+			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotOnCloud: false,
+			expErrCode:      codes.NotFound,
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriver(t, nil)
+
+		//gceDriver.cs.CloudProvider.CreateSnapshot(context.Background, )
+
+		// Start Test
+		req := &csi.CreateVolumeRequest{
+			Name:               "test-name",
+			CapacityRange:      stdCapRange,
+			VolumeCapabilities: stdVolCaps,
+			VolumeContentSource: &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: testSnapshotId,
+					},
+				},
+			},
+		}
+
+		if tc.snapshotOnCloud {
+			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.volKey, name)
+		}
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
+		//check response
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		// Make sure response has snapshot
+		vol := resp.GetVolume()
+		if vol.ContentSource == nil || vol.ContentSource.Type == nil || vol.ContentSource.GetSnapshot() == nil || vol.ContentSource.GetSnapshot().SnapshotId == "" {
+			t.Fatalf("Expected volume content source to have snapshot ID, got none")
+		}
+
 	}
 }
 
