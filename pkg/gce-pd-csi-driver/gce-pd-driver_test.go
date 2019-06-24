@@ -22,13 +22,29 @@ import (
 )
 
 func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
-	vendorVersion := "test-vendor"
-	gceDriver := GetGCEDriver()
-	fakeCloudProvider, err := gce.FakeCreateCloudProvider(project, zone, cloudDisks)
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	err = gceDriver.SetupGCEDriver(fakeCloudProvider, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
+	return initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+}
+
+func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan struct{}) *GCEDriver {
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	fakeBlockingBlockProvider := &gce.FakeBlockingCloudProvider{
+		FakeCloudProvider: fakeCloudProvider,
+		ReadyToExecute:    readyToExecute,
+	}
+	return initGCEDriverWithCloudProvider(t, fakeBlockingBlockProvider)
+}
+
+func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
+	vendorVersion := "test-vendor"
+	gceDriver := GetGCEDriver()
+	err := gceDriver.SetupGCEDriver(cloudProvider, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

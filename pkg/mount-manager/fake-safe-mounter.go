@@ -52,35 +52,24 @@ func NewFakeSafeMounter() *mount.SafeFormatAndMount {
 
 type FakeBlockingMounter struct {
 	*mount.FakeMounter
-	mountToRun   chan MountSourceAndTarget
-	readyToMount chan struct{}
+	ReadyToExecute chan chan struct{}
 }
 
-type MountSourceAndTarget struct {
-	Source string
-	Target string
-}
-
-// FakeBlockingMounter's method adds two channels to the Mount process in order to provide functionality to finely
-// control the order of execution of Mount calls. readToMount signals that a Mount operation has been called.
-// Then it cycles through the mountToRun channel, waiting for permission to actually make the mount operation.
+// Mount is ovverridden and adds functionality to finely control the order of execution of FakeMounter's Mount calls.
+// Upon starting a Mount, it passes a chan 'executeMount' into readyToExecute, then blocks on executeMount.
+// The test calling this function can block on readyToExecute to ensure that the operation has started and
+// allowed the Mount to continue by passing a struct into executeMount.
 func (mounter *FakeBlockingMounter) Mount(source string, target string, fstype string, options []string) error {
-	mounter.readyToMount <- struct{}{}
-	for mountToRun := range mounter.mountToRun {
-		if mountToRun.Source == source && mountToRun.Target == target {
-			break
-		} else {
-			mounter.mountToRun <- mountToRun
-		}
-	}
+	executeMount := make(chan struct{})
+	mounter.ReadyToExecute <- executeMount
+	<-executeMount
 	return mounter.FakeMounter.Mount(source, target, fstype, options)
 }
 
-func NewFakeSafeBlockingMounter(mountToRun chan MountSourceAndTarget, readyToMount chan struct{}) *mount.SafeFormatAndMount {
+func NewFakeSafeBlockingMounter(readyToExecute chan chan struct{}) *mount.SafeFormatAndMount {
 	fakeBlockingMounter := &FakeBlockingMounter{
-		FakeMounter:  fakeMounter,
-		mountToRun:   mountToRun,
-		readyToMount: readyToMount,
+		FakeMounter:    fakeMounter,
+		ReadyToExecute: readyToExecute,
 	}
 	return &mount.SafeFormatAndMount{
 		Interface: fakeBlockingMounter,

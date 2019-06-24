@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
+	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -136,6 +137,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		Mounter:         mounter,
 		DeviceUtils:     deviceUtils,
 		MetadataService: meta,
+		volumeLocks:     common.NewVolumeLocks(),
 	}
 }
 
@@ -144,6 +146,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, met
 		Driver:          gceDriver,
 		CloudProvider:   cloudProvider,
 		MetadataService: meta,
+		volumeLocks:     common.NewVolumeLocks(),
 	}
 }
 
