@@ -14,6 +14,9 @@ readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
+readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
+readonly kube_version=${KUBE_VERSION:-master}
+
 export GCE_PD_VERBOSITY=9
 
 make -C ${PKGDIR} test-k8s-integration
@@ -21,4 +24,5 @@ ${PKGDIR}/bin/k8s-integration-test --kube-version=${GCE_PD_KUBE_VERSION:-master}
 --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
 --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
 --storageclass-file=sc-standard.yaml --test-focus="External.Storage" --gce-zone="us-central1-b" \
---deployment-strategy=${deployment_strategy}
+--deployment-strategy=${deployment_strategy} --gke-cluster-version=${gke_cluster_version} \
+--kube-version=${kube_version}
