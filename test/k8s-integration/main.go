@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,11 +37,12 @@ var (
 	teardownDriver   = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster   = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
 	gceZone          = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
-	kubeVersion      = flag.String("kube-version", "master", "version of Kubernetes to download and use")
+	kubeVersion      = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
+	testVersion      = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
 	kubeFeatureGates = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
 	localK8sDir      = flag.String("local-k8s-dir", "", "local kubernetes/kubernetes directory to run e2e tests from")
-	deploymentStrat  = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
-	gkeClusterVer    = flag.String("gke-cluster-version", "latest", "version of Kubernetes master and node for gke")
+	deploymentStrat  = flag.String("deployment-strategy", "", "choose between deploying on gce or gke")
+	gkeClusterVer    = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -67,43 +69,57 @@ const (
 func init() {
 	flag.Set("logtostderr", "true")
 }
+
+func ensureVariable(v *string, set bool, msgOnError string) {
+	if set && len(*v) == 0 {
+		klog.Fatal(msgOnError)
+	} else if !set && len(*v) != 0 {
+		klog.Fatal(msgOnError)
+	}
+}
+
+func ensureFlag(v *bool, setTo bool, msgOnError string) {
+	if *v != setTo {
+		klog.Fatal(msgOnError)
+	}
+}
+
+
 func main() {
 	flag.Parse()
 
-	if len(*stagingImage) == 0 && !*inProw {
-		klog.Fatalf("staging-image is a required flag, please specify the name of image to stage to")
+	if !*inProw {
+		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
 
-	if len(*saFile) == 0 {
-		klog.Fatalf("service-account-file is a required flag")
+	ensureVariable(saFile, true, "service-account-file is a required flag")
+	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	ensureVariable(testFocus, true, "test-focus is a required flag")
+	ensureVariable(gceZone, true, "gce-zone is a required flag")
+
+	if *migrationTest{
+		ensureVariable(storageClassFile, false, "storage-class-file and migration-test cannot both be set")
+	} else {
+		ensureVariable(storageClassFile, true, "One of storageclass-file and migration-test must be set")
 	}
 
-	if len(*deployOverlayName) == 0 {
-		klog.Fatalf("deploy-overlay-name is a required flag")
+	if !*bringupCluster {
+		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	}
 
-	if len(*storageClassFile) == 0 && !*migrationTest {
-		klog.Fatalf("One of storageclass-file and migration-test must be set")
+	if *deploymentStrat == "gke" {
+		ensureFlag(migrationTest, false, "Cannot set deployment strategy to 'gke' for migration tests.")
+		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
+		ensureVariable(gkeClusterVer, true, "Must set gke-cluster-version when using deployment strategy 'gke'.")
+		ensureVariable(kubeFeatureGates, false, "Cannot set feature gates when using deployment strategy 'gke'.")
+		if len(*localK8sDir) == 0 {
+			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
+		}
 	}
 
-	if len(*storageClassFile) != 0 && *migrationTest {
-		klog.Fatalf("storage-class-file and migration-test cannot both be set")
-	}
-
-	if !*bringupCluster && len(*kubeFeatureGates) > 0 {
-		klog.Fatalf("kube-feature-gates set but not bringing up new cluster")
-	}
-
-	if len(*testFocus) == 0 {
-		klog.Fatalf("test-focus is a required flag")
-	}
-
-	if len(*gceZone) == 0 {
-		klog.Fatalf("gce-zone is a required flag")
-	}
-
-	if *deploymentStrat == "gke" && *migrationTest {
-		klog.Fatalf("Cannot set deployment strategy to 'gke' for migration tests.")
+	if len(*localK8sDir) != 0 {
+		ensureVariable(kubeVersion, false, "Cannot set a kube version when using a local k8s dir.")
+		ensureVariable(testVersion, false, "Cannot set a test version when using a local k8s dir.")
 	}
 
 	err := handle()
@@ -122,10 +138,10 @@ func handle() error {
 	if !ok {
 		return fmt.Errorf("Could not find env variable GOPATH")
 	}
-	pkgDir := filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
-	k8sIoDir := filepath.Join(pkgDir, "test", "k8s-integration", "src", "k8s.io")
-	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
 
+	pkgDir := filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
+
+	// If running in Prow, then acquire and set up a project through Boskos
 	if *inProw {
 		project, _ := testutils.SetupProwConfig(*boskosResourceType)
 
@@ -157,69 +173,134 @@ func handle() error {
 		}
 	}
 
+	// Create temporary directories for kubernetes builds
+	k8sParentDir := getTempDir()
+	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
+	testParentDir := getTempDir()
+	testDir := filepath.Join(testParentDir, "kubernetes")
+	defer removeTempDir(k8sParentDir)
+	defer removeTempDir(testParentDir)
+
+	numTasks := 4
+	errChan := make(chan error, numTasks)
+	k8sDependencyChan := make(chan bool, 1)
+
+	// If kube version is set, then download and build Kubernetes for cluster creation
+	// Otherwise, either GKE or a prebuild local K8s dir is being used
+	if len(*kubeVersion) != 0 {
+		go func() {
+			err := downloadKubernetesSource(pkgDir, k8sParentDir, *kubeVersion)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to download Kubernetes source: %v", err)
+				k8sDependencyChan <- false
+				return
+			}
+			err = buildKubernetes(k8sDir)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to build Kubernetes: %v", err)
+				k8sDependencyChan <- false
+				return
+			}
+			k8sDependencyChan <- true
+			errChan <- nil
+		}()
+	} else {
+		errChan <- nil
+		k8sDir = *localK8sDir
+		k8sDependencyChan <- true
+	}
+
+	// If test version is set, then download and build Kubernetes to run K8s tests
+	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used
+	if len(*testVersion) != 0 && *testVersion != *kubeVersion {
+		go func() {
+			// TODO: Build only the tests
+			err := downloadKubernetesSource(pkgDir, testParentDir, *testVersion)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to download Kubernetes source: %v", err)
+				return
+			}
+			err = buildKubernetes(testDir)
+			if err != nil {
+				errChan <- fmt.Errorf("failed to build Kubernetes: %v", err)
+				return
+			}
+			errChan <- nil
+		}()
+	} else {
+		testDir = k8sDir
+		errChan <- nil
+	}
+
+	// Build and push the driver, if required. Defer the driver image deletion.
 	if *doDriverBuild {
-		err := pushImage(pkgDir, *stagingImage, stagingVersion)
-		if err != nil {
-			return fmt.Errorf("failed pushing image: %v", err)
-		}
-		defer func() {
+		go func() {
+			errChan <- pushImage(pkgDir, *stagingImage, stagingVersion)
+		}()
+		defer func(){
 			if *teardownCluster {
-				err = deleteImage(*stagingImage, stagingVersion)
+				err := deleteImage(*stagingImage, stagingVersion)
 				if err != nil {
 					klog.Errorf("failed to delete image: %v", err)
 				}
 			}
 		}()
+	} else {
+		errChan <- nil
 	}
 
 	if *bringupCluster {
-		err := downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
-		if err != nil {
-			return fmt.Errorf("failed to download Kubernetes source: %v", err)
-		}
-
-		err = buildKubernetes(k8sDir)
-		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes: %v", err)
-		}
-
-		kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
-		_, err = os.Stat(kshPath)
-		if err == nil {
-			// Set kubectl to the one bundled in the k8s tar for versioning
-			err = os.Setenv("GCE_PD_KUBECTL", kshPath)
-			if err != nil {
-				return fmt.Errorf("failed to set cluster specific kubectl: %v", err)
+		go func(){
+			if !(<- k8sDependencyChan){
+				errChan <- nil
+				return
 			}
-		} else {
-			klog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
-		}
 
-		if len(*kubeFeatureGates) != 0 {
-			err = os.Setenv("KUBE_FEATURE_GATES", *kubeFeatureGates)
-			if err != nil {
-				return fmt.Errorf("failed to set kubernetes feature gates: %v", err)
-			}
-			klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
-		}
+			switch *deploymentStrat {
+			case "gce":
+				kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
+				_, err := os.Stat(kshPath)
+				if err == nil {
+					// Set kubectl to the one bundled in the k8s tar for versioning
+					err = os.Setenv("GCE_PD_KUBECTL", kshPath)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to set cluster specific kubectl: %v", err)
+						return
+					}
+				} else {
+					klog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
+				}
 
-		switch *deploymentStrat {
-		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone)
-			if err != nil {
-				return fmt.Errorf("failed to cluster up: %v", err)
-			}
-		case "gke":
-			err = clusterUpGKE(*gceZone)
-			if err != nil {
-				return fmt.Errorf("failed to cluster up: %v", err)
-			}
-		default:
-			return fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
-		}
+				if len(*kubeFeatureGates) != 0 {
+					err = os.Setenv("KUBE_FEATURE_GATES", *kubeFeatureGates)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to set kubernetes feature gates: %v", err)
+						return
+					}
+					klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
+				}
 
+				err = clusterUpGCE(k8sDir, *gceZone)
+				if err != nil {
+					errChan <- fmt.Errorf("failed to cluster up: %v", err)
+					return
+				}
+			case "gke":
+				err := clusterUpGKE(*gceZone)
+				if err != nil {
+					errChan <- fmt.Errorf("failed to cluster up: %v", err)
+					return
+				}
+			default:
+				errChan <- fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
+			}
+			errChan <- nil
+		}()
+	} else {
+		errChan <- nil
 	}
 
+	// Defer the tear down of the cluster through GKE or GCE
 	if *teardownCluster {
 		defer func() {
 			switch *deploymentStrat {
@@ -239,7 +320,21 @@ func handle() error {
 		}()
 	}
 
-	err := installDriver(goPath, pkgDir, k8sDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+	// Block until all background operations are complete
+	var firstErr error = nil
+	for i := 0; i < 4; i ++ {
+		if err := <- errChan; err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+
+	// Install the driver and defer its teardown
+	err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
 	if *teardownDriver {
 		defer func() {
 			// TODO (#140): collect driver logs
@@ -252,14 +347,11 @@ func handle() error {
 		return fmt.Errorf("failed to install CSI Driver: %v", err)
 	}
 
-	if len(*localK8sDir) != 0 {
-		k8sDir = *localK8sDir
-	}
-
+	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, k8sDir, *testFocus, *storageClassFile, *gceZone)
+		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, *gceZone)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, k8sDir, *testFocus, *gceZone)
+		err = runMigrationTests(pkgDir, testDir, *testFocus, *gceZone)
 	} else {
 		return fmt.Errorf("Did not run either CSI or Migration test")
 	}
@@ -330,6 +422,7 @@ func runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg string
 
 	return nil
 }
+
 
 func runCommand(action string, cmd *exec.Cmd) error {
 	cmd.Stdout = os.Stdout
@@ -420,7 +513,7 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
 }
 
-func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
+func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
 	if doDriverBuild {
 		// Install kustomize
 		out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
@@ -449,10 +542,8 @@ func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployO
 	}
 
 	// setup service account file for secret creation
-	tmpSaFile := fmt.Sprintf("/tmp/%s/cloud-sa.json", string(uuid.NewUUID()))
-
-	os.MkdirAll(filepath.Dir(tmpSaFile), 0750)
-	defer os.Remove(filepath.Dir(tmpSaFile))
+	tmpSaFile := filepath.Join(getTempDir(), "cloud-sa.json")
+	defer removeTempDir(filepath.Dir(tmpSaFile))
 
 	// Need to copy it to name the file "cloud-sa.json"
 	out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
@@ -601,4 +692,19 @@ func deleteImage(stagingImage, stagingVersion string) error {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
 	}
 	return nil
+}
+
+func getTempDir() string {
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		klog.Fatalf("Error creating temp dir: %v", err)
+	}
+	return dir
+}
+
+func removeTempDir(dir string) {
+	err := os.RemoveAll(dir)
+	if err != nil {
+		klog.Fatalf("Error removing temp dir: %v", err)
+	}
 }
