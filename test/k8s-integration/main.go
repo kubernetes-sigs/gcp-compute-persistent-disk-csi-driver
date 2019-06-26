@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,45 +71,40 @@ func init() {
 func main() {
 	flag.Parse()
 
-	if len(*stagingImage) == 0 && !*inProw {
-		klog.Fatalf("staging-image is a required flag, please specify the name of image to stage to")
+	if !*inProw {
+		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
 
-	if len(*saFile) == 0 {
-		klog.Fatalf("service-account-file is a required flag")
+	ensureVariable(saFile, true, "service-account-file is a required flag")
+	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	ensureVariable(testFocus, true, "test-focus is a required flag")
+	ensureVariable(gceZone, true, "gce-zone is a required flag")
+
+	if *migrationTest {
+		ensureVariable(storageClassFile, false, "storage-class-file and migration-test cannot both be set")
+	} else {
+		ensureVariable(storageClassFile, true, "One of storageclass-file and migration-test must be set")
 	}
 
-	if len(*deployOverlayName) == 0 {
-		klog.Fatalf("deploy-overlay-name is a required flag")
+	if !*bringupCluster {
+		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	}
 
-	if len(*storageClassFile) == 0 && !*migrationTest {
-		klog.Fatalf("One of storageclass-file and migration-test must be set")
+	if *bringupCluster || *teardownCluster {
+		ensureVariable(deploymentStrat, true, "Must set the deployment strategy if bringing up or down cluster.")
+	} else {
+		ensureVariable(deploymentStrat, false, "Cannot set the deployment strategy if not bringing up or down cluster.")
 	}
 
-	if len(*storageClassFile) != 0 && *migrationTest {
-		klog.Fatalf("storage-class-file and migration-test cannot both be set")
+	if *deploymentStrat == "gke" {
+		ensureFlag(migrationTest, false, "Cannot set deployment strategy to 'gke' for migration tests.")
+		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
+		ensureVariable(gkeClusterVer, true, "Must set gke-cluster-version when using deployment strategy 'gke'.")
+		ensureVariable(kubeFeatureGates, false, "Cannot set feature gates when using deployment strategy 'gke'.")
 	}
 
-	if !*bringupCluster && len(*kubeFeatureGates) > 0 {
-		klog.Fatalf("kube-feature-gates set but not bringing up new cluster")
-	}
-
-	if len(*testFocus) == 0 {
-		klog.Fatalf("test-focus is a required flag")
-	}
-
-	if len(*gceZone) == 0 {
-		klog.Fatalf("gce-zone is a required flag")
-	}
-
-	if *deploymentStrat == "gke" && *migrationTest {
-		klog.Fatalf("Cannot set deployment strategy to 'gke' for migration tests.")
-	}
-
-	err := handle()
-	if err != nil {
-		klog.Fatalf("Failed to run integration test: %v", err)
+	if len(*localK8sDir) != 0 {
+		ensureVariable(kubeVersion, false, "Cannot set a kube version when using a local k8s dir.")
 	}
 }
 
@@ -123,8 +119,9 @@ func handle() error {
 		return fmt.Errorf("Could not find env variable GOPATH")
 	}
 	pkgDir := filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
-	k8sIoDir := filepath.Join(pkgDir, "test", "k8s-integration", "src", "k8s.io")
-	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
+	k8sParentDir := generateUniqueTmpDir()
+	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
+	defer removeDir(k8sParentDir)
 
 	if *inProw {
 		project, _ := testutils.SetupProwConfig(*boskosResourceType)
@@ -173,7 +170,7 @@ func handle() error {
 	}
 
 	if *bringupCluster {
-		err := downloadKubernetesSource(pkgDir, k8sIoDir, *kubeVersion)
+		err := downloadKubernetesSource(pkgDir, k8sParentDir, *kubeVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
@@ -239,7 +236,7 @@ func handle() error {
 		}()
 	}
 
-	err := installDriver(goPath, pkgDir, k8sDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+	err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
 	if *teardownDriver {
 		defer func() {
 			// TODO (#140): collect driver logs
@@ -420,7 +417,7 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
 }
 
-func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
+func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
 	if doDriverBuild {
 		// Install kustomize
 		out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
@@ -449,10 +446,8 @@ func installDriver(goPath, pkgDir, k8sDir, stagingImage, stagingVersion, deployO
 	}
 
 	// setup service account file for secret creation
-	tmpSaFile := fmt.Sprintf("/tmp/%s/cloud-sa.json", string(uuid.NewUUID()))
-
-	os.MkdirAll(filepath.Dir(tmpSaFile), 0750)
-	defer os.Remove(filepath.Dir(tmpSaFile))
+	tmpSaFile := filepath.Join(generateUniqueTmpDir(), "cloud-sa.json")
+	defer removeDir(filepath.Dir(tmpSaFile))
 
 	// Need to copy it to name the file "cloud-sa.json"
 	out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
@@ -601,4 +596,33 @@ func deleteImage(stagingImage, stagingVersion string) error {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
 	}
 	return nil
+}
+
+func generateUniqueTmpDir() string {
+	dir, err := ioutil.TempDir("", "gcp-pd-driver-tmp")
+	if err != nil {
+		klog.Fatalf("Error creating temp dir: %v", err)
+	}
+	return dir
+}
+
+func removeDir(dir string) {
+	err := os.RemoveAll(dir)
+	if err != nil {
+		klog.Fatalf("Error removing temp dir: %v", err)
+	}
+}
+
+func ensureVariable(v *string, set bool, msgOnError string) {
+	if set && len(*v) == 0 {
+		klog.Fatal(msgOnError)
+	} else if !set && len(*v) != 0 {
+		klog.Fatal(msgOnError)
+	}
+}
+
+func ensureFlag(v *bool, setTo bool, msgOnError string) {
+	if *v != setTo {
+		klog.Fatal(msgOnError)
+	}
 }
