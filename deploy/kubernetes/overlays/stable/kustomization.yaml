@@ -10,10 +10,10 @@ images:
   newTag: "v0.5.1-gke.0"
 - name: gke.gcr.io/csi-provisioner
   newName: gke.gcr.io/csi-provisioner
-  newTag: "v1.2.0-gke.0"
+  newTag: "v1.2.1-gke.0"
 - name: gke.gcr.io/csi-attacher
   newName: gke.gcr.io/csi-attacher
-  newTag: "v1.1.0-gke.0"
+  newTag: "v1.2.0-gke.0"
 - name: gke.gcr.io/csi-node-driver-registrar
   newName: gke.gcr.io/csi-node-driver-registrar
   newTag: "v1.1.0-gke.0"
