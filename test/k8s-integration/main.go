@@ -111,6 +111,11 @@ func main() {
 		ensureVariable(kubeVersion, false, "Cannot set a kube version when using a local k8s dir.")
 		ensureVariable(testVersion, false, "Cannot set a test version when using a local k8s dir.")
 	}
+
+	err := handle()
+	if err != nil {
+		klog.Fatalf("Failed to run integration test: %v", err)
+	}
 }
 
 func handle() error {
