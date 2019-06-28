@@ -659,7 +659,30 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 }
 
 func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ControllerExpandVolume is not yet implemented")
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID must be provided")
+	}
+	capacityRange := req.GetCapacityRange()
+	reqBytes, err := getRequestCapacity(capacityRange)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume capacity range is invalid: %v", err))
+	}
+
+	volKey, err := common.VolumeIDToKey(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume volume ID is invalid: %v", err))
+	}
+
+	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, volKey, reqBytes)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume failed to resize disk: %v", err))
+	}
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         common.GbToBytes(resizedGb),
+		NodeExpansionRequired: true,
+	}, nil
 }
 
 func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {

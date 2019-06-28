@@ -367,6 +367,18 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta
 	return snapshotToCreate, nil
 }
 
+func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error) {
+	disk, ok := cloud.disks[volKey.Name]
+	if !ok {
+		return -1, notFoundError()
+	}
+
+	disk.setSizeGb(common.BytesToGb(requestBytes))
+
+	return requestBytes, nil
+
+}
+
 // Snapshot Methods
 func (cloud *FakeCloudProvider) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 	delete(cloud.snapshots, snapshotName)

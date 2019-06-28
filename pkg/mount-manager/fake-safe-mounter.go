@@ -44,9 +44,18 @@ func execCallback(cmd string, args ...string) ([]byte, error) {
 }
 
 func NewFakeSafeMounter() *mount.SafeFormatAndMount {
+	return NewCustomFakeSafeMounter(fakeMounter, fakeExec)
+}
+
+func NewFakeSafeMounterWithCustomExec(exec mount.Exec) *mount.SafeFormatAndMount {
+	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
+	return NewCustomFakeSafeMounter(fakeMounter, exec)
+}
+
+func NewCustomFakeSafeMounter(mounter mount.Interface, exec mount.Exec) *mount.SafeFormatAndMount {
 	return &mount.SafeFormatAndMount{
-		Interface: fakeMounter,
-		Exec:      fakeExec,
+		Interface: mounter,
+		Exec:      exec,
 	}
 }
 
@@ -73,6 +82,5 @@ func NewFakeSafeBlockingMounter(readyToExecute chan chan struct{}) *mount.SafeFo
 	}
 	return &mount.SafeFormatAndMount{
 		Interface: fakeBlockingMounter,
-		Exec:      fakeExec,
 	}
 }
