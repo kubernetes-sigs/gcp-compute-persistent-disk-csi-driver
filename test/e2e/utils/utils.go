@@ -20,6 +20,8 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/klog"
 	boskosclient "k8s.io/test-infra/boskos/client"
 	"k8s.io/test-infra/boskos/common"
+	utilcommon "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
@@ -165,6 +168,31 @@ func ReadFile(instance *remote.InstanceInfo, filePath string) (string, error) {
 		return "", fmt.Errorf("failed to read test file %s. Output: %v, errror: %v", filePath, output, err)
 	}
 	return output, nil
+}
+
+func GetFSSizeInGb(instance *remote.InstanceInfo, mountPath string) (int64, error) {
+	output, err := instance.SSHNoSudo("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
+	if err != nil {
+		return -1, fmt.Errorf("failed to get size of path %s. Output: %v, error: %v", mountPath, output, err)
+	}
+	output = strings.TrimSuffix(strings.TrimSpace(output), "G")
+	n, err := strconv.ParseInt(output, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s into int", output)
+	}
+	return n, nil
+}
+
+func GetBlockSizeInGb(instance *remote.InstanceInfo, devicePath string) (int64, error) {
+	output, err := instance.SSH("blockdev", "--getsize64", devicePath)
+	if err != nil {
+		return -1, fmt.Errorf("failed to get size of path %s. Output: %v, error: %v", devicePath, output, err)
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(output), 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s into int", output)
+	}
+	return utilcommon.BytesToGb(n), nil
 }
 
 func RmAll(instance *remote.InstanceInfo, filePath string) error {

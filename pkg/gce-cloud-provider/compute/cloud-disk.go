@@ -124,6 +124,17 @@ func (d *CloudDisk) GetSizeGb() int64 {
 	}
 }
 
+// setSizeGb sets the size of the disk used ONLY
+// for testing purposes.
+func (d *CloudDisk) setSizeGb(size int64) {
+	switch d.Type() {
+	case Zonal:
+		d.ZonalDisk.SizeGb = size
+	case Regional:
+		d.RegionalDisk.SizeGb = size
+	}
+}
+
 func (d *CloudDisk) GetZone() string {
 	switch d.Type() {
 	case Zonal:

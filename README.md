@@ -34,14 +34,14 @@ This plugin is compatible with CSI versions [v1.0.0](https://github.com/containe
 
 ### Kubernetes Compatibility
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14+
-|--------------------------------------|---------------|------|------|------|
-| v0.1.x.alpha                         | yes           | no   | no   | no   |
-| v0.2.x (alpha)                       | no            | yes  | no   | no   |
-| v0.3.x (beta)                        | no            | no   | yes  | yes  |
-| v0.4.x (beta)                        | no            | no   | yes  | yes  |
-| v0.5.x (beta)                        | no            | no   | no   | yes  |
-| dev                                  | no            | no   | no   | yes  |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15+|
+|--------------------------------------|---------------|------|------|------|------|
+| v0.1.x.alpha                         | yes           | no   | no   | no   | no   |
+| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   |
+| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  |
+| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  |
+| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  |
+| dev                                  | no            | no   | no   | no   | yes  |
 
 ### Known Issues
 
@@ -62,14 +62,13 @@ This driver supports only one topology key:
 `topology.gke.io/zone`
 that represents availability by zone.
 
-### Kubernetes Beta Features
+### Features in Development
 
-* Topology: Requires K8s 1.14+ on Master and Nodes and PD driver v0.5.0+
-
-### Kubernetes Alpha Features
-
-* Snapshots: Requires K8s 1.13+ on Master and PD driver v0.3.0+ with the alpha
-  overlay
+| Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
+|-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
+| Topology        | Beta  | 1.14                          | 1.14                         | v0.5.0             | Stable             |
+| Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
+| Resize (Expand) | Alpha | 1.14                          | 1.14                         | dev                | Alpha              |
 
 ### Future Features
 

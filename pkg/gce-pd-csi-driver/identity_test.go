@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"context"
+
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
@@ -58,11 +59,21 @@ func TestGetPluginCapabilities(t *testing.T) {
 	}
 
 	for _, capability := range resp.GetCapabilities() {
-		switch capability.GetService().GetType() {
-		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
-		case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
-		default:
-			t.Fatalf("Unknown capability: %v", capability.GetService().GetType())
+		if capability.GetVolumeExpansion() != nil {
+			switch capability.GetVolumeExpansion().GetType() {
+			case csi.PluginCapability_VolumeExpansion_ONLINE:
+			case csi.PluginCapability_VolumeExpansion_OFFLINE:
+			default:
+				t.Fatalf("Unknown capability: %v", capability.GetVolumeExpansion().GetType())
+			}
+		}
+		if capability.GetService() != nil {
+			switch capability.GetService().GetType() {
+			case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+			case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
+			default:
+				t.Fatalf("Unknown capability: %v", capability.GetService().GetType())
+			}
 		}
 	}
 }
