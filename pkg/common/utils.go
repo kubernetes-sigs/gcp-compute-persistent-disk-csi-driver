@@ -73,6 +73,17 @@ func VolumeIDToKey(id string) (*meta.Key, error) {
 	}
 }
 
+func KeyToVolumeID(volKey *meta.Key, project string) (string, error) {
+	switch volKey.Type() {
+	case meta.Zonal:
+		return fmt.Sprintf(volIDZonalFmt, project, volKey.Zone, volKey.Zone), nil
+	case meta.Regional:
+		return fmt.Sprintf(volIDZonalFmt, project, volKey.Region, volKey.Zone), nil
+	default:
+		return "", fmt.Errorf("volume key %v neither zonal nor regional", volKey.Name)
+	}
+}
+
 func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
 	if isZonal {
 		return fmt.Sprintf(volIDZonalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
