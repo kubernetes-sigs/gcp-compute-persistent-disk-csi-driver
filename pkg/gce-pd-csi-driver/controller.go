@@ -58,7 +58,6 @@ const (
 
 	DiskTypeSSD      = "pd-ssd"
 	DiskTypeStandard = "pd-standard"
-	diskTypeDefault  = DiskTypeStandard
 
 	attachableDiskTypePersistent = "PERSISTENT"
 
@@ -171,19 +170,19 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return generateCreateVolumeResponse(existingDisk, capBytes, zones), nil
 	}
 
-	snapshotId := ""
+	snapshotID := ""
 	content := req.GetVolumeContentSource()
 	if content != nil {
 		if content.GetSnapshot() != nil {
 			// TODO(#161): Add support for Volume Source (cloning) introduced in CSI v1.0.0
-			snapshotId = content.GetSnapshot().GetSnapshotId()
+			snapshotID = content.GetSnapshot().GetSnapshotId()
 
 			// Verify that snapshot exists
-			sl, err := gceCS.getSnapshotById(ctx, snapshotId)
+			sl, err := gceCS.getSnapshotByID(ctx, snapshotID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "CreateVolume failed to get snapshot %s: %v", snapshotId, err)
+				return nil, status.Errorf(codes.Internal, "CreateVolume failed to get snapshot %s: %v", snapshotID, err)
 			} else if len(sl.Entries) == 0 {
-				return nil, status.Errorf(codes.NotFound, "CreateVolume source snapshot %s does not exist", snapshotId)
+				return nil, status.Errorf(codes.NotFound, "CreateVolume source snapshot %s does not exist", snapshotID)
 			}
 		}
 	}
@@ -195,7 +194,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if len(zones) != 1 {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
 		}
-		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotId, diskEncryptionKmsKey)
+		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotID, diskEncryptionKmsKey)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create single zonal disk %#v: %v", name, err))
 		}
@@ -203,7 +202,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if len(zones) != 2 {
 			return nil, status.Errorf(codes.Internal, fmt.Sprintf("CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones))
 		}
-		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotId, diskEncryptionKmsKey)
+		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotID, diskEncryptionKmsKey)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create regional disk %#v: %v", name, err))
 		}
@@ -651,7 +650,7 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 
 	// case 1: SnapshotId is not empty, return snapshots that match the snapshot id.
 	if len(req.GetSnapshotId()) != 0 {
-		return gceCS.getSnapshotById(ctx, req.GetSnapshotId())
+		return gceCS.getSnapshotByID(ctx, req.GetSnapshotId())
 	}
 
 	// case 2: no SnapshotId is set, so we return all the snapshots that satify the reqeust.
@@ -686,7 +685,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 }
 
 func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	snapshots := []*compute.Snapshot{}
+	var snapshots []*compute.Snapshot
 	var nextToken string
 	var err error
 	if len(req.GetSourceVolumeId()) != 0 {
@@ -717,11 +716,11 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 
 }
 
-func (gceCS *GCEControllerServer) getSnapshotById(ctx context.Context, snapshotId string) (*csi.ListSnapshotsResponse, error) {
-	key, err := common.SnapshotIDToKey(snapshotId)
+func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotID string) (*csi.ListSnapshotsResponse, error) {
+	key, err := common.SnapshotIDToKey(snapshotID)
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
-		klog.Warningf("invalid snapshot id format %s", snapshotId)
+		klog.Warningf("invalid snapshot id format %s", snapshotID)
 		return &csi.ListSnapshotsResponse{}, nil
 	}
 
@@ -953,12 +952,12 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []s
 			AccessibleTopology: tops,
 		},
 	}
-	snapshotId := disk.GetSnapshotId()
-	if snapshotId != "" {
+	snapshotID := disk.GetSnapshotId()
+	if snapshotID != "" {
 		source := &csi.VolumeContentSource{
 			Type: &csi.VolumeContentSource_Snapshot{
 				Snapshot: &csi.VolumeContentSource_SnapshotSource{
-					SnapshotId: snapshotId,
+					SnapshotId: snapshotID,
 				},
 			},
 		}
@@ -973,7 +972,7 @@ func cleanSelfLink(selfLink string) string {
 	return strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
 }
 
-func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotId, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
+func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotID, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
 	region, err := common.GetRegionFromZones(zones)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get region from zones: %v", err)
@@ -985,7 +984,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 			fullyQualifiedReplicaZones, cloudProvider.GetReplicaZoneURI(replicaZone))
 	}
 
-	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), diskType, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotId, diskEncryptionKmsKey)
+	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), diskType, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, diskEncryptionKmsKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
@@ -999,12 +998,12 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	return disk, nil
 }
 
-func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotId, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
+func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotID, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
 	if len(zones) != 1 {
 		return nil, fmt.Errorf("got wrong number of zones for zonal create volume: %v", len(zones))
 	}
 	diskZone := zones[0]
-	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), diskType, capBytes, capacityRange, nil, snapshotId, diskEncryptionKmsKey)
+	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), diskType, capBytes, capacityRange, nil, snapshotID, diskEncryptionKmsKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}

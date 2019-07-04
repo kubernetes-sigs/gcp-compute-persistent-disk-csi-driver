@@ -1,8 +1,8 @@
+# GCP Compute Persistent Disk CSI Driver
+
 WARNING: This driver is beta and should not be used in performance critical applications
 
 DISCLAIMER: This is not an officially supported Google product
-
-# GCP Compute Persistent Disk CSI Driver
 
 The GCP Compute Persistent Disk CSI Driver is a
 [CSI](https://github.com/container-storage-interface/spec/blob/master/spec.md)
@@ -10,6 +10,7 @@ Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
+
 Status: Beta
 Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.5.1-gke.0`
 
@@ -26,7 +27,6 @@ Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:
 | 0.3.x Stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.3/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.3) |
 | HEAD Latest | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Latest) |
 | HEAD Stable | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/sig-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/sig-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Stable) |
-
 
 ### CSI Compatibility
 

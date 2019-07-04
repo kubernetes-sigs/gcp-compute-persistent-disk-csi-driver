@@ -174,18 +174,18 @@ func (c *CsiClient) NodeUnstageVolume(volId, stageDir string) error {
 	return err
 }
 
-func (c *CsiClient) NodeUnpublishVolume(volumeId, publishDir string) error {
+func (c *CsiClient) NodeUnpublishVolume(volumeID, publishDir string) error {
 	nodeUnpublishReq := &csipb.NodeUnpublishVolumeRequest{
-		VolumeId:   volumeId,
+		VolumeId:   volumeID,
 		TargetPath: publishDir,
 	}
 	_, err := c.nodeClient.NodeUnpublishVolume(context.Background(), nodeUnpublishReq)
 	return err
 }
 
-func (c *CsiClient) NodePublishVolume(volumeId, stageDir, publishDir string) error {
+func (c *CsiClient) NodePublishVolume(volumeID, stageDir, publishDir string) error {
 	nodePublishReq := &csipb.NodePublishVolumeRequest{
-		VolumeId:          volumeId,
+		VolumeId:          volumeID,
 		StagingTargetPath: stageDir,
 		TargetPath:        publishDir,
 		VolumeCapability:  stdVolCap,
@@ -195,9 +195,9 @@ func (c *CsiClient) NodePublishVolume(volumeId, stageDir, publishDir string) err
 	return err
 }
 
-func (c *CsiClient) NodePublishBlockVolume(volumeId, stageDir, publishDir string) error {
+func (c *CsiClient) NodePublishBlockVolume(volumeID, stageDir, publishDir string) error {
 	nodePublishReq := &csipb.NodePublishVolumeRequest{
-		VolumeId:          volumeId,
+		VolumeId:          volumeID,
 		StagingTargetPath: stageDir,
 		TargetPath:        publishDir,
 		VolumeCapability:  blockVolCap,
@@ -207,9 +207,9 @@ func (c *CsiClient) NodePublishBlockVolume(volumeId, stageDir, publishDir string
 	return err
 }
 
-func (c *CsiClient) ControllerExpandVolume(volumeId string, sizeGb int64) error {
+func (c *CsiClient) ControllerExpandVolume(volumeID string, sizeGb int64) error {
 	controllerExpandReq := &csipb.ControllerExpandVolumeRequest{
-		VolumeId: volumeId,
+		VolumeId: volumeID,
 		CapacityRange: &csipb.CapacityRange{
 			RequiredBytes: common.GbToBytes(sizeGb),
 		},
@@ -218,9 +218,9 @@ func (c *CsiClient) ControllerExpandVolume(volumeId string, sizeGb int64) error 
 	return err
 }
 
-func (c *CsiClient) NodeExpandVolume(volumeId, volumePath string, sizeGb int64) (*csipb.NodeExpandVolumeResponse, error) {
+func (c *CsiClient) NodeExpandVolume(volumeID, volumePath string, sizeGb int64) (*csipb.NodeExpandVolumeResponse, error) {
 	nodeExpandReq := &csipb.NodeExpandVolumeRequest{
-		VolumeId:   volumeId,
+		VolumeId:   volumeID,
 		VolumePath: volumePath,
 		CapacityRange: &csipb.CapacityRange{
 			RequiredBytes: common.GbToBytes(sizeGb),
@@ -248,9 +248,9 @@ func (c *CsiClient) CreateSnapshot(snapshotName, sourceVolumeId string, params m
 	return cresp.GetSnapshot().GetSnapshotId(), nil
 }
 
-func (c *CsiClient) DeleteSnapshot(snapshotId string) error {
+func (c *CsiClient) DeleteSnapshot(snapshotID string) error {
 	dsr := &csipb.DeleteSnapshotRequest{
-		SnapshotId: snapshotId,
+		SnapshotId: snapshotID,
 	}
 	_, err := c.ctrlClient.DeleteSnapshot(context.Background(), dsr)
 	return err
