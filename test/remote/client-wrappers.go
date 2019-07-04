@@ -36,14 +36,6 @@ var (
 			Mode: csipb.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 		},
 	}
-	blockVolCap = &csipb.VolumeCapability{
-		AccessType: &csipb.VolumeCapability_Block{
-			Block: &csipb.VolumeCapability_BlockVolume{},
-		},
-		AccessMode: &csipb.VolumeCapability_AccessMode{
-			Mode: csipb.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-	}
 	stdVolCaps = []*csipb.VolumeCapability{
 		stdVolCap,
 	}
@@ -147,19 +139,11 @@ func (c *CsiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	return err
 }
 
-func (c *CsiClient) NodeStageExt4Volume(volId, stageDir string) error {
-	return c.NodeStageVolume(volId, stageDir, stdVolCap)
-}
-
-func (c *CsiClient) NodeStageBlockVolume(volId, stageDir string) error {
-	return c.NodeStageVolume(volId, stageDir, blockVolCap)
-}
-
-func (c *CsiClient) NodeStageVolume(volId, stageDir string, volumeCap *csipb.VolumeCapability) error {
+func (c *CsiClient) NodeStageVolume(volId, stageDir string) error {
 	nodeStageReq := &csipb.NodeStageVolumeRequest{
 		VolumeId:          volId,
 		StagingTargetPath: stageDir,
-		VolumeCapability:  volumeCap,
+		VolumeCapability:  stdVolCap,
 	}
 	_, err := c.nodeClient.NodeStageVolume(context.Background(), nodeStageReq)
 	return err
@@ -193,40 +177,6 @@ func (c *CsiClient) NodePublishVolume(volumeId, stageDir, publishDir string) err
 	}
 	_, err := c.nodeClient.NodePublishVolume(context.Background(), nodePublishReq)
 	return err
-}
-
-func (c *CsiClient) NodePublishBlockVolume(volumeId, stageDir, publishDir string) error {
-	nodePublishReq := &csipb.NodePublishVolumeRequest{
-		VolumeId:          volumeId,
-		StagingTargetPath: stageDir,
-		TargetPath:        publishDir,
-		VolumeCapability:  blockVolCap,
-		Readonly:          false,
-	}
-	_, err := c.nodeClient.NodePublishVolume(context.Background(), nodePublishReq)
-	return err
-}
-
-func (c *CsiClient) ControllerExpandVolume(volumeId string, sizeGb int64) error {
-	controllerExpandReq := &csipb.ControllerExpandVolumeRequest{
-		VolumeId: volumeId,
-		CapacityRange: &csipb.CapacityRange{
-			RequiredBytes: common.GbToBytes(sizeGb),
-		},
-	}
-	_, err := c.ctrlClient.ControllerExpandVolume(context.Background(), controllerExpandReq)
-	return err
-}
-
-func (c *CsiClient) NodeExpandVolume(volumeId, volumePath string, sizeGb int64) (*csipb.NodeExpandVolumeResponse, error) {
-	nodeExpandReq := &csipb.NodeExpandVolumeRequest{
-		VolumeId:   volumeId,
-		VolumePath: volumePath,
-		CapacityRange: &csipb.CapacityRange{
-			RequiredBytes: common.GbToBytes(sizeGb),
-		},
-	}
-	return c.nodeClient.NodeExpandVolume(context.Background(), nodeExpandReq)
 }
 
 func (c *CsiClient) NodeGetInfo() (*csipb.NodeGetInfoResponse, error) {

@@ -50,7 +50,6 @@ type GCECompute interface {
 	GetDiskSourceURI(volKey *meta.Key) string
 	GetDiskTypeURI(volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
-	ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error)
 	// Regional Disk Methods
 	GetReplicaZoneURI(zone string) string
 	// Instance Methods
@@ -592,65 +591,6 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key
 	default:
 		return nil, fmt.Errorf("could not create snapshot, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
-}
-
-func (cloud *CloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error) {
-	cloudDisk, err := cloud.GetDisk(ctx, volKey)
-	if err != nil {
-		return -1, fmt.Errorf("failed to get disk: %v", err)
-	}
-
-	sizeGb := cloudDisk.GetSizeGb()
-	requestGb := common.BytesToGb(requestBytes)
-
-	// If disk is already of size equal or greater than requested size, we simply return
-	if sizeGb >= requestGb {
-		return requestBytes, nil
-	}
-
-	switch volKey.Type() {
-	case meta.Zonal:
-		return cloud.resizeZonalDisk(ctx, volKey, requestGb)
-	case meta.Regional:
-		return cloud.resizeRegionalDisk(ctx, volKey, requestGb)
-	default:
-		return -1, fmt.Errorf("could not resize disk, key was neither zonal nor regional, instead got: %v", volKey.String())
-	}
-}
-
-func (cloud *CloudProvider) resizeZonalDisk(ctx context.Context, volKey *meta.Key, requestGb int64) (int64, error) {
-	resizeReq := &compute.DisksResizeRequest{
-		SizeGb: requestGb,
-	}
-	op, err := cloud.service.Disks.Resize(cloud.project, volKey.Zone, volKey.Name, resizeReq).Context(ctx).Do()
-	if err != nil {
-		return -1, fmt.Errorf("failed to resize zonal volume %v: %v", volKey.String(), err)
-	}
-
-	err = cloud.waitForZonalOp(ctx, op, volKey.Zone)
-	if err != nil {
-		return -1, fmt.Errorf("failed waiting for op for zonal resize for %s: %v", volKey.String(), err)
-	}
-
-	return requestGb, nil
-}
-
-func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, volKey *meta.Key, requestGb int64) (int64, error) {
-	resizeReq := &computebeta.RegionDisksResizeRequest{
-		SizeGb: requestGb,
-	}
-
-	op, err := cloud.betaService.RegionDisks.Resize(cloud.project, volKey.Region, volKey.Name, resizeReq).Context(ctx).Do()
-	if err != nil {
-		return -1, fmt.Errorf("failed to resize regional volume %v: %v", volKey.String(), err)
-	}
-
-	err = cloud.waitForRegionalOp(ctx, op, volKey.Region)
-	if err != nil {
-		return -1, fmt.Errorf("failed waiting for op for regional resize for %s: %v", volKey.String(), err)
-	}
-
-	return requestGb, nil
 }
 
 func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error) {

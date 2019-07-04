@@ -165,9 +165,9 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 
 	// Stage Disk
 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	err = client.NodeStageExt4Volume(volID, stageDir)
+	err = client.NodeStageVolume(volID, stageDir)
 	if err != nil {
-		return fmt.Errorf("NodeStageExt4Volume failed with error: %v", err)
+		return fmt.Errorf("NodeStageVolume failed with error: %v", err)
 	}
 
 	defer func() {

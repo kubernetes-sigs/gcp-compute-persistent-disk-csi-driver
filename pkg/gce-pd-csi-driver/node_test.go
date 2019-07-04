@@ -16,16 +16,11 @@ package gceGCEDriver
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strconv"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
-	utilexec "k8s.io/utils/exec"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -35,16 +30,8 @@ const defaultTargetPath = "/mnt/test"
 const defaultStagingPath = "/staging"
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
-	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService())
-}
-
-func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount) *GCEDriver {
-	return getCustomTestGCEDriver(t, mounter, mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService())
-}
-
-func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mounter, deviceUtils, metaService, driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeMounter(), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -337,113 +324,6 @@ func TestNodeStageVolume(t *testing.T) {
 		}
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
-		}
-	}
-}
-
-func TestNodeExpandVolume(t *testing.T) {
-	// TODO: Add tests/functionality for non-existant volume
-	var resizedBytes int64 = 2000000000
-	volumeID := "project/test001/zones/c1/disks/testDisk"
-	testCases := []struct {
-		name         string
-		req          *csi.NodeExpandVolumeRequest
-		fsOrBlock    string
-		expRespBytes int64
-		expErrCode   codes.Code
-	}{
-		{
-			name: "ext4 fs expand",
-			req: &csi.NodeExpandVolumeRequest{
-				VolumeId:   volumeID,
-				VolumePath: "some-path",
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: resizedBytes,
-				},
-			},
-			fsOrBlock:    "ext4",
-			expRespBytes: resizedBytes,
-		},
-		{
-			name: "block device expand",
-			req: &csi.NodeExpandVolumeRequest{
-				VolumeId:   volumeID,
-				VolumePath: "some-path",
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: resizedBytes,
-				},
-			},
-			fsOrBlock:    "block",
-			expRespBytes: resizedBytes,
-		},
-		{
-			name: "xfs fs expand",
-			req: &csi.NodeExpandVolumeRequest{
-				VolumeId:   volumeID,
-				VolumePath: "some-path",
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: resizedBytes,
-				},
-			},
-			fsOrBlock:    "xfs",
-			expRespBytes: resizedBytes,
-		},
-	}
-	for _, tc := range testCases {
-		t.Logf("Test case: %s", tc.name)
-
-		execCallback := func(cmd string, args ...string) ([]byte, error) {
-			switch cmd {
-			case "blkid":
-				if tc.fsOrBlock == "block" {
-					// blkid returns exit code 2 when run on unformatted device
-					return nil, utilexec.CodeExitError{
-						Err:  errors.New("this is an exit error"),
-						Code: 2,
-					}
-				}
-				return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=%s", tc.fsOrBlock)), nil
-			case "resize2fs":
-				if tc.fsOrBlock == "ext4" {
-					return nil, nil
-				}
-				t.Fatalf("resize fs called on device with %s", tc.fsOrBlock)
-			case "xfs_growfs":
-				if tc.fsOrBlock != "xfs" {
-					t.Fatalf("xfs_growfs called on device with %s", tc.fsOrBlock)
-				}
-				for _, arg := range args {
-					if arg == tc.req.VolumePath {
-						return nil, nil
-					}
-				}
-				t.Errorf("xfs_growfs args did not contain volume path %s", tc.req.VolumePath)
-			case "blockdev":
-				return []byte(strconv.Itoa(int(resizedBytes))), nil
-			}
-
-			return nil, fmt.Errorf("fake exec got unknown call to %v %v", cmd, args)
-		}
-		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(mount.NewFakeExec(execCallback))
-		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
-
-		resp, err := gceDriver.ns.NodeExpandVolume(context.Background(), tc.req)
-		if err != nil {
-			serverError, ok := status.FromError(err)
-			if !ok {
-				t.Fatalf("Could not get error status code from err: %v", err)
-			}
-			if serverError.Code() != tc.expErrCode {
-				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
-			}
-			continue
-		}
-		if tc.expErrCode != codes.OK {
-			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
-		}
-
-		if resp.CapacityBytes != tc.expRespBytes {
-			t.Fatalf("Expected bytes: %v, got: %v", tc.expRespBytes, resp.CapacityBytes)
 		}
 	}
 }

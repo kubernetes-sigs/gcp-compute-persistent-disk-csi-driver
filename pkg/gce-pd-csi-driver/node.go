@@ -17,17 +17,14 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"context"
-
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/util/resizefs"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -367,73 +364,7 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 }
 
 func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	volumeID := req.GetVolumeId()
-	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID must be provided")
-	}
-	capacityRange := req.GetCapacityRange()
-	reqBytes, err := getRequestCapacity(capacityRange)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume capacity range is invalid: %v", err))
-	}
-
-	volumePath := req.GetVolumePath()
-	if len(volumePath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume path must be provided")
-	}
-
-	volKey, err := common.VolumeIDToKey(volumeID)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume volume ID is invalid: %v", err))
-	}
-
-	devicePath, err := ns.getDevicePath(volumeID, "")
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting device path for %s: %v", volumeID, err))
-	}
-
-	// TODO(#328): Use requested size in resize if provided
-	resizer := resizefs.NewResizeFs(ns.Mounter)
-	_, err = resizer.Resize(devicePath, volumePath)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when resizing volume %s: %v", volKey.String(), err))
-
-	}
-
-	// Check the block size
-	gotBlockSizeBytes, err := ns.getBlockSizeBytes(devicePath)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting size of block volume at path %s: %v", devicePath, err))
-	}
-	if gotBlockSizeBytes < reqBytes {
-		// It's possible that the somewhere the volume size was rounded up, getting more size than requested is a success :)
-		return nil, status.Errorf(codes.Internal, "ControllerExpandVolume resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
-	}
-
-	// TODO(dyzz) Some sort of formatted volume could also check the fs size.
-	// Issue is that we don't know how to account for filesystem overhead, it
-	// could be proportional to fs size and different for xfs, ext4 and we don't
-	// know the proportions
-
-	/*
-		format, err := ns.Mounter.GetDiskFormat(devicePath)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error checking format for device %s: %v", devicePath, err))
-		}
-		gotSizeBytes, err = ns.getFSSizeBytes(devicePath)
-
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "ControllerExpandVolume resize could not get fs size of %s: %v", volumePath, err)
-		}
-		if gotSizeBytes != reqBytes {
-			return nil, status.Errorf(codes.Internal, "ControllerExpandVolume resize requested for size %v but after resize volume was size %v", reqBytes, gotSizeBytes)
-		}
-	*/
-
-	// Respond
-	return &csi.NodeExpandVolumeResponse{
-		CapacityBytes: reqBytes,
-	}, nil
+	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeExpandVolume is not yet implemented"))
 }
 
 func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
@@ -469,17 +400,4 @@ func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (strin
 		return "", fmt.Errorf("unable to find device path out of attempted paths: %v", devicePaths)
 	}
 	return devicePath, nil
-}
-
-func (ns *GCENodeServer) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := ns.Mounter.Exec.Run("blockdev", "--getsize64", devicePath)
-	if err != nil {
-		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
-	}
-	strOut := strings.TrimSpace(string(output))
-	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
-	if err != nil {
-		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
-	}
-	return gotSizeBytes, nil
 }

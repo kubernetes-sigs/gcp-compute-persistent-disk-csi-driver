@@ -487,12 +487,9 @@
   version = "v0.3.3"
 
 [[projects]]
-  digest = "1:9e805f5365b94782315c8904fd99545b0c751b9afd70da64c4abb72574898341"
+  digest = "1:8097e2ccae8b2f6fe627c94831a08e2e11ac4ddddf6994139076bac826b39464"
   name = "k8s.io/kubernetes"
-  packages = [
-    "pkg/util/mount",
-    "pkg/util/resizefs",
-  ]
+  packages = ["pkg/util/mount"]
   pruneopts = "NUT"
   revision = "e8462b5b5dc2584fdcd18e6bcfe9f1e4d970a529"
   version = "v1.15.0"
@@ -563,7 +560,6 @@
     "k8s.io/client-go/util/flowcontrol",
     "k8s.io/klog",
     "k8s.io/kubernetes/pkg/util/mount",
-    "k8s.io/kubernetes/pkg/util/resizefs",
     "k8s.io/test-infra/boskos/client",
     "k8s.io/test-infra/boskos/common",
   ]
