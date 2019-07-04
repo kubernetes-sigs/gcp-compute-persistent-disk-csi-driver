@@ -19,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"context"
 
@@ -41,7 +42,7 @@ type GCENodeServer struct {
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
-	volumeLocks *common.VolumeLocks
+	volumes sync.Map
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -76,10 +77,10 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
 	}
-	defer ns.volumeLocks.Release(volumeID)
+	defer ns.volumes.Delete(volumeID)
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -191,18 +192,18 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
-	volumeID := req.GetVolumeId()
-	if len(volumeID) == 0 {
+	volID := req.GetVolumeId()
+	if len(volID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Volume ID must be provided")
 	}
 	if len(targetPath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+	if _, alreadyExists := ns.volumes.LoadOrStore(volID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volID))
 	}
-	defer ns.volumeLocks.Release(volumeID)
+	defer ns.volumes.Delete(volID)
 
 	err := mount.CleanupMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {
@@ -229,10 +230,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
 
-	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
 	}
-	defer ns.volumeLocks.Release(volumeID)
+	defer ns.volumes.Delete(volumeID)
 
 	if err := validateVolumeCapability(volumeCapability); err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
@@ -323,10 +324,10 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Staging Target Path must be provided")
 	}
 
-	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
+	if _, alreadyExists := ns.volumes.LoadOrStore(volumeID, true); alreadyExists {
 		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
 	}
-	defer ns.volumeLocks.Release(volumeID)
+	defer ns.volumes.Delete(volumeID)
 
 	err := mount.CleanupMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
 	if err != nil {

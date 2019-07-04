@@ -15,12 +15,9 @@ limitations under the License.
 package gceGCEDriver
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"strconv"
 	"testing"
 
+	"context"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,9 +48,9 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 	return gceDriver
 }
 
-func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
+func getTestBlockingGCEDriver(t *testing.T, mountToRun chan mountmanager.MountSourceAndTarget, readyToMount chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeBlockingMounter(readyToExecute), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeBlockingMounter(mountToRun, readyToMount), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -509,10 +506,12 @@ func TestNodeGetCapabilities(t *testing.T) {
 }
 
 func TestConcurrentNodeOperations(t *testing.T) {
-	readyToExecute := make(chan chan struct{}, 1)
-	gceDriver := getTestBlockingGCEDriver(t, readyToExecute)
-	ns := gceDriver.ns
+	mountToRun := make(chan mountmanager.MountSourceAndTarget, 3)
+	readyToMount := make(chan struct{}, 2)
+	reqFinished := make(chan error, 2)
 
+	gceDriver := getTestBlockingGCEDriver(t, mountToRun, readyToMount)
+	ns := gceDriver.ns
 	vol1PublishTargetAReq := &csi.NodePublishVolumeRequest{
 		VolumeId:          defaultVolumeID + "1",
 		TargetPath:        defaultTargetPath + "a",
@@ -535,51 +534,52 @@ func TestConcurrentNodeOperations(t *testing.T) {
 		VolumeCapability:  stdVolCap,
 	}
 
-	runRequest := func(req *csi.NodePublishVolumeRequest) chan error {
-		response := make(chan error)
-		go func() {
-			_, err := ns.NodePublishVolume(context.Background(), req)
-			response <- err
-		}()
-		return response
+	runRequestInBackground := func(req *csi.NodePublishVolumeRequest) {
+		_, err := ns.NodePublishVolume(context.Background(), req)
+		reqFinished <- err
 	}
 
-	// Start first valid request vol1PublishTargetA and block until it reaches the Mount
-	vol1PublishTargetAResp := runRequest(vol1PublishTargetAReq)
-	execVol1PublishTargetA := <-readyToExecute
+	// Start first valid request vol1PublishTargetAReq and block until it reaches the Mount
+	go runRequestInBackground(vol1PublishTargetAReq)
+	<-readyToMount
 
-	// Start vol1PublishTargetB and allow it to execute to completion. Then check for Aborted error.
-	// If a non Abort error is received or if the operation was started, then there is a problem
-	// with volume locking.
-	vol1PublishTargetBResp := runRequest(vol1PublishTargetBReq)
-	select {
-	case err := <-vol1PublishTargetBResp:
-		if err != nil {
-			serverError, ok := status.FromError(err)
-			if !ok {
-				t.Fatalf("Could not get error status code from err: %v", err)
-			}
-			if serverError.Code() != codes.Aborted {
-				t.Errorf("Expected error code: %v, got: %v. err : %v", codes.Aborted, serverError.Code(), err)
-			}
-		} else {
-			t.Errorf("Expected error: %v, got no error", codes.Aborted)
+	// Check that vol1PublishTargetBReq is rejected, due to same volume ID
+	// Also allow vol1PublishTargetBReq to complete, in case it is allowed to Mount
+	mountToRun <- mountmanager.MountSourceAndTarget{
+		Source: vol1PublishTargetBReq.StagingTargetPath,
+		Target: vol1PublishTargetBReq.TargetPath,
+	}
+	_, err := ns.NodePublishVolume(context.Background(), vol1PublishTargetBReq)
+	if err != nil {
+		serverError, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("Could not get error status code from err: %v", err)
 		}
-	case <-readyToExecute:
-		t.Errorf("The operation for vol1PublishTargetB should have been aborted, but was started")
+		if serverError.Code() != codes.Aborted {
+			t.Fatalf("Expected error code: %v, got: %v. err : %v", codes.Aborted, serverError.Code(), err)
+		}
+	} else {
+		t.Fatalf("Expected error: %v, got no error", codes.Aborted)
 	}
 
-	// Start vol2PublishTargetC and allow it to execute to completion. Then check for success.
-	vol2PublishTargetCResp := runRequest(vol2PublishTargetCReq)
-	execVol2PublishTargetC := <-readyToExecute
-	execVol2PublishTargetC <- struct{}{}
-	if err := <-vol2PublishTargetCResp; err != nil {
-		t.Errorf("Unexpected error: %v", err)
+	// Start second valid request vol2PublishTargetCReq
+	go runRequestInBackground(vol2PublishTargetCReq)
+
+	// Allow the vol2PublishTargetCReq to complete, which it can concurrently with vol1PublishTargetAReq
+	mountToRun <- mountmanager.MountSourceAndTarget{
+		Source: vol2PublishTargetCReq.StagingTargetPath,
+		Target: vol2PublishTargetCReq.TargetPath,
+	}
+	if err = <-reqFinished; err != nil {
+		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	// To clean up, allow the vol1PublishTargetA to complete
-	execVol1PublishTargetA <- struct{}{}
-	if err := <-vol1PublishTargetAResp; err != nil {
-		t.Errorf("Unexpected error: %v", err)
+	// To clean up, allow the vol1PublishTargetAReq to complete
+	mountToRun <- mountmanager.MountSourceAndTarget{
+		Source: vol1PublishTargetAReq.StagingTargetPath,
+		Target: vol1PublishTargetAReq.TargetPath,
+	}
+	if err = <-reqFinished; err != nil {
+		t.Fatalf("Unexpected error: %v", err)
 	}
 }

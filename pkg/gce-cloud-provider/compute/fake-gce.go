@@ -49,7 +49,7 @@ type FakeCloudProvider struct {
 
 var _ GCECompute = &FakeCloudProvider{}
 
-func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
+func FakeCreateCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
 	fcp := &FakeCloudProvider{
 		project:   project,
 		zone:      zone,
@@ -61,6 +61,7 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		fcp.disks[d.GetName()] = d
 	}
 	return fcp, nil
+
 }
 
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
@@ -431,22 +432,6 @@ func (cloud *FakeCloudProvider) getGlobalSnapshotURI(snapshotName string) string
 		snapshotURITemplateGlobal,
 		cloud.project,
 		snapshotName)
-}
-
-type FakeBlockingCloudProvider struct {
-	*FakeCloudProvider
-	ReadyToExecute chan chan struct{}
-}
-
-// FakeBlockingCloudProvider's method adds functionality to finely control the order of execution of CreateSnapshot calls.
-// Upon starting a CreateSnapshot, it passes a chan 'executeCreateSnapshot' into readyToExecute, then blocks on executeCreateSnapshot.
-// The test calling this function can block on readyToExecute to ensure that the operation has started and
-// allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
-func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*compute.Snapshot, error) {
-	executeCreateSnapshot := make(chan struct{})
-	cloud.ReadyToExecute <- executeCreateSnapshot
-	<-executeCreateSnapshot
-	return cloud.FakeCloudProvider.CreateSnapshot(ctx, volKey, snapshotName)
 }
 
 func notFoundError() *googleapi.Error {

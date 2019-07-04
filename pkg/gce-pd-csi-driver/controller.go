@@ -42,10 +42,6 @@ type GCEControllerServer struct {
 	Driver          *GCEDriver
 	CloudProvider   gce.GCECompute
 	MetadataService metadataservice.MetadataService
-
-	// A map storing all volumes with ongoing operations so that additional operations
-	// for that same volume (as defined by Volume Key) return an Aborted error
-	volumeLocks *common.VolumeLocks
 }
 
 var _ csi.ControllerServer = &GCEControllerServer{}
@@ -143,15 +139,6 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", replicationType))
 	}
 
-	volumeID, err := common.KeyToVolumeID(volKey, gceCS.MetadataService.GetProject())
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to convert volume key to volume ID: %v", err)
-	}
-	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer gceCS.volumeLocks.Release(volumeID)
-
 	// Validate if disk already exists
 	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
@@ -235,11 +222,6 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
 
-	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer gceCS.volumeLocks.Release(volumeID)
-
 	err = gceCS.CloudProvider.DeleteDisk(ctx, volKey)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk error: %v", err))
@@ -275,14 +257,6 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
-
-	// Acquires the lock for the volume on that node only, because we need to support the ability
-	// to publish the same volume onto different nodes concurrently
-	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
-	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID)
-	}
-	defer gceCS.volumeLocks.Release(lockingVolumeID)
 
 	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 	if err = validateVolumeCapability(volumeCapability); err != nil {
@@ -369,14 +343,6 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, err
 	}
 
-	// Acquires the lock for the volume on that node only, because we need to support the ability
-	// to unpublish the same volume from different nodes concurrently
-	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
-	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID)
-	}
-	defer gceCS.volumeLocks.Release(lockingVolumeID)
-
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
@@ -423,12 +389,6 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume ID is of improper format, got %v", volumeID))
 	}
-
-	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer gceCS.volumeLocks.Release(volumeID)
-
 	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
 		if gce.IsGCEError(err, "notFound") {
@@ -535,11 +495,6 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
 	}
-
-	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer gceCS.volumeLocks.Release(volumeID)
 
 	// Check if snapshot already exists
 	var snapshot *compute.Snapshot
