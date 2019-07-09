@@ -34,7 +34,7 @@ readonly GCE_PD_TEST_FOCUS="\s[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolum
 
 make -C ${PKGDIR} test-k8s-integration
 ${PKGDIR}/bin/k8s-integration-test --kube-version=${kube_version} \
---kube-feature-gates="CSIMigration=true,CSIMigrationGCE=true" --run-in-prow=true \
+--kube-feature-gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true" --run-in-prow=true \
 --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
 --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
 --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS} \
