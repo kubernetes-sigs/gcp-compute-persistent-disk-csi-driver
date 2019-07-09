@@ -275,7 +275,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
-		snapshotId, err := client.CreateSnapshot(snapshotName, volId, nil)
+		snapshotID, err := client.CreateSnapshot(snapshotName, volId, nil)
 		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
 
 		// Validate Snapshot Created
@@ -303,7 +303,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 
 			// Delete Snapshot
-			err = client.DeleteSnapshot(snapshotId)
+			err = client.DeleteSnapshot(snapshotID)
 			Expect(err).To(BeNil(), "DeleteSnapshot failed")
 
 			// Validate Snapshot Deleted
@@ -503,7 +503,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
-		snapshotId, err := controllerClient.CreateSnapshot(snapshotName, volId, nil)
+		snapshotID, err := controllerClient.CreateSnapshot(snapshotName, volId, nil)
 		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
 
 		// Validate Snapshot Created
@@ -531,7 +531,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 
 			// Delete Snapshot
-			err = controllerClient.DeleteSnapshot(snapshotId)
+			err = controllerClient.DeleteSnapshot(snapshotID)
 			Expect(err).To(BeNil(), "DeleteSnapshot failed")
 
 			// Validate Snapshot Deleted

@@ -59,10 +59,10 @@ var (
 			Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
 		},
 	}
-	testVolumeId         = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
+	testVolumeID         = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
 	region, _            = common.GetRegionFromZones([]string{zone})
-	testRegionalId       = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
-	testSnapshotId       = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
+	testRegionalID       = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
+	testSnapshotID       = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
 	totalSnapshotsNumber = 5
 )
 
@@ -83,11 +83,11 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			name: "success default snapshot of zonal disk",
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
-				SourceVolumeId: testVolumeId,
+				SourceVolumeId: testVolumeID,
 			},
 			expSnapshot: &csi.Snapshot{
-				SnapshotId:     testSnapshotId,
-				SourceVolumeId: testVolumeId,
+				SnapshotId:     testSnapshotID,
+				SourceVolumeId: testVolumeID,
 				CreationTime:   tp,
 				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
 				ReadyToUse:     false,
@@ -97,7 +97,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			name: "fail no name",
 			req: &csi.CreateSnapshotRequest{
 				Name:           "",
-				SourceVolumeId: testVolumeId,
+				SourceVolumeId: testVolumeID,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -163,13 +163,13 @@ func TestDeleteSnapshot(t *testing.T) {
 		{
 			name: "valid",
 			req: &csi.DeleteSnapshotRequest{
-				SnapshotId: testSnapshotId,
+				SnapshotId: testSnapshotID,
 			},
 		},
 		{
 			name: "invalid id",
 			req: &csi.DeleteSnapshotRequest{
-				SnapshotId: testSnapshotId + "/foo",
+				SnapshotId: testSnapshotID + "/foo",
 			},
 		},
 		{
@@ -216,14 +216,14 @@ func TestListSnapshotsArguments(t *testing.T) {
 		{
 			name: "valid",
 			req: &csi.ListSnapshotsRequest{
-				SnapshotId: testSnapshotId,
+				SnapshotId: testSnapshotID,
 			},
 			expSnapshots: 1,
 		},
 		{
 			name: "invalid id",
 			req: &csi.ListSnapshotsRequest{
-				SnapshotId: testSnapshotId + "/foo",
+				SnapshotId: testSnapshotID + "/foo",
 			},
 			expSnapshots: 0,
 		},
@@ -243,16 +243,16 @@ func TestListSnapshotsArguments(t *testing.T) {
 
 		createReq := &csi.CreateSnapshotRequest{
 			Name:           name,
-			SourceVolumeId: testVolumeId,
+			SourceVolumeId: testVolumeID,
 		}
 		gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 
 		for i := 0; i < totalSnapshotsNumber; i++ {
-			volumeId := fmt.Sprintf("%s%d", testVolumeId, i)
-			nameId := fmt.Sprintf("%s%d", name, i)
+			volumeID := fmt.Sprintf("%s%d", testVolumeID, i)
+			nameID := fmt.Sprintf("%s%d", name, i)
 			createReq := &csi.CreateSnapshotRequest{
-				Name:           nameId,
-				SourceVolumeId: volumeId,
+				Name:           nameID,
+				SourceVolumeId: volumeID,
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -313,7 +313,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -328,7 +328,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -362,7 +362,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      MinimumVolumeSizeInBytes,
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -385,7 +385,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -401,7 +401,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -530,7 +530,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				VolumeId:      testRegionalId,
+				VolumeId:      testRegionalID,
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
@@ -578,7 +578,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
-				VolumeId:      testRegionalId,
+				VolumeId:      testRegionalID,
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
@@ -608,7 +608,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -651,7 +651,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeId,
+				VolumeId:           testVolumeID,
 				VolumeContext:      nil,
 				AccessibleTopology: stdTopology,
 			},
@@ -741,7 +741,7 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 			VolumeContentSource: &csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Snapshot{
 					Snapshot: &csi.VolumeContentSource_SnapshotSource{
-						SnapshotId: testSnapshotId,
+						SnapshotId: testSnapshotID,
 					},
 				},
 			},
@@ -836,13 +836,13 @@ func TestDeleteVolume(t *testing.T) {
 				createZonalCloudDisk(name),
 			},
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: testVolumeId,
+				VolumeId: testVolumeID,
 			},
 		},
 		{
 			name: "invalid id",
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: testVolumeId + "/foo",
+				VolumeId: testVolumeID + "/foo",
 			},
 			expErr: false,
 		},
@@ -1421,15 +1421,15 @@ func TestVolumeOperationConcurrency(t *testing.T) {
 
 	vol1CreateSnapshotAReq := &csi.CreateSnapshotRequest{
 		Name:           name + "1A",
-		SourceVolumeId: testVolumeId + "1",
+		SourceVolumeId: testVolumeID + "1",
 	}
 	vol1CreateSnapshotBReq := &csi.CreateSnapshotRequest{
 		Name:           name + "1B",
-		SourceVolumeId: testVolumeId + "1",
+		SourceVolumeId: testVolumeID + "1",
 	}
 	vol2CreateSnapshotReq := &csi.CreateSnapshotRequest{
 		Name:           name + "2",
-		SourceVolumeId: testVolumeId + "2",
+		SourceVolumeId: testVolumeID + "2",
 	}
 
 	runRequest := func(req *csi.CreateSnapshotRequest) <-chan error {
