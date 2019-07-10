@@ -64,7 +64,7 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 	}
 
 	// TODO (#139): wait for driver to be running
-	time.Sleep(10 * time.Second)
+	time.Sleep(time.Minute)
 	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "default")
 	err = runCommand("Checking driver pods", statusCmd)
 	if err != nil {
