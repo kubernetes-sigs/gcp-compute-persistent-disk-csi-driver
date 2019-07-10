@@ -210,6 +210,10 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
+		err = buildKubernetes(testDir, "ginkgo")
+		if err != nil {
+			return fmt.Errorf("failed to build Gingko: %v", err)
+		}
 	} else {
 		testDir = k8sDir
 	}
