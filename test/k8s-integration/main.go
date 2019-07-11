@@ -58,9 +58,10 @@ var (
 )
 
 const (
-	pdImagePlaceholder = "gke.gcr.io/gcp-compute-persistent-disk-csi-driver"
-	k8sBuildBinDir     = "_output/dockerized/bin/linux/amd64"
-	gkeTestClusterName = "gcp-pd-csi-driver-test-cluster"
+	pdImagePlaceholder        = "gke.gcr.io/gcp-compute-persistent-disk-csi-driver"
+	k8sInDockerBuildBinDir    = "_output/dockerized/bin/linux/amd64"
+	k8sOutOfDockerBuildBinDir = "_output/bin"
+	gkeTestClusterName        = "gcp-pd-csi-driver-test-cluster"
 )
 
 func init() {
@@ -182,6 +183,7 @@ func handle() error {
 	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
 	testParentDir := generateUniqueTmpDir()
 	testDir := filepath.Join(testParentDir, "kubernetes")
+	k8sBuildBinDir := k8sInDockerBuildBinDir
 	defer removeDir(k8sParentDir)
 	defer removeDir(testParentDir)
 
@@ -215,6 +217,7 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to build Gingko: %v", err)
 		}
+		k8sBuildBinDir = k8sOutOfDockerBuildBinDir
 	} else {
 		testDir = k8sDir
 	}
@@ -270,12 +273,13 @@ func handle() error {
 	}
 
 	// Run the tests using the testDir kubernetes
+	fullK8sBuildBinPath := filepath.Join(testDir, k8sBuildBinDir)
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, *gceZone)
+		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, *storageClassFile, *gceZone)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, testDir, *testFocus, *gceZone)
+		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, *gceZone)
 	} else {
-		return fmt.Errorf("Did not run either CSI or Migration test")
+		return fmt.Errorf("did not run either CSI or Migration test")
 	}
 
 	if err != nil {
@@ -298,21 +302,21 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, k8sDir, testFocus, gceZone string) error {
-	return runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, k8sBinDir, testFocus, gceZone string) error {
+	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
 }
 
-func runCSITests(pkgDir, k8sDir, testFocus, storageClassFile, gceZone string) error {
+func runCSITests(pkgDir, k8sBinDir, testFocus, storageClassFile, gceZone string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg)
+	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg)
 }
 
-func runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg string) error {
-	err := os.Chdir(k8sDir)
+func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) error {
+	err := os.Chdir(k8sBinDir)
 	if err != nil {
 		return err
 	}
@@ -325,11 +329,11 @@ func runTestsWithConfig(pkgDir, k8sDir, gceZone, testFocus, testConfigArg string
 
 	testFocusArg := fmt.Sprintf("-focus=%s", testFocus)
 
-	cmd := exec.Command(filepath.Join(k8sBuildBinDir, "ginkgo"),
+	cmd := exec.Command("./ginkgo",
 		"-p",
 		testFocusArg,
 		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
-		filepath.Join(k8sBuildBinDir, "e2e.test"),
+		"e2e.test",
 		"--",
 		reportArg,
 		"-provider=gce",
