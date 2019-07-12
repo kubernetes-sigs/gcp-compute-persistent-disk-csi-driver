@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -90,6 +91,13 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		addr = u.Host
 	} else {
 		klog.Fatalf("%v endpoint scheme not supported", u.Scheme)
+	}
+
+	if u.Scheme == "unix" {
+		listenDir, _ := filepath.Split(addr)
+		if _, err := os.Stat(listenDir); err != nil {
+			klog.Fatalf("Failed to stat %s, error: %s", listenDir, err.Error())
+		}
 	}
 
 	klog.V(4).Infof("Start listening with scheme %v, addr %v", u.Scheme, addr)
