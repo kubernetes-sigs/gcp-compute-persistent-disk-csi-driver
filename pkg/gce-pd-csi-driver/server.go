@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -86,6 +87,16 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
 			klog.Fatalf("Failed to remove %s, error: %s", addr, err.Error())
 		}
+
+		listenDir := filepath.Dir(addr)
+		if _, err := os.Stat(listenDir); err != nil {
+			if os.IsNotExist(err) {
+				klog.Fatalf("Expected Kubelet plugin watcher to create parent dir %s but did not find such a dir", listenDir)
+			} else {
+				klog.Fatalf("Failed to stat %s, error: %s", listenDir, err.Error())
+			}
+		}
+
 	} else if u.Scheme == "tcp" {
 		addr = u.Host
 	} else {
