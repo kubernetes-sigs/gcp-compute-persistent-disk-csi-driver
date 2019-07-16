@@ -247,3 +247,51 @@ func TestGetRegionFromZones(t *testing.T) {
 
 	}
 }
+
+func TestKeyToVolumeID(t *testing.T) {
+	testName := "test-name"
+	testZone := "test-zone"
+	testProject := "test-project"
+	testRegion := "test-region"
+
+	testCases := []struct {
+		name   string
+		key    *meta.Key
+		expID  string
+		expErr bool
+	}{
+		{
+			name:  "normal zonal",
+			key:   meta.ZonalKey(testName, testZone),
+			expID: fmt.Sprintf(volIDZoneFmt, testProject, testZone, testName),
+		},
+		{
+			name:  "normal regional",
+			key:   meta.RegionalKey(testName, testRegion),
+			expID: fmt.Sprintf(volIDRegionFmt, testProject, testRegion, testName),
+		},
+		{
+			name:   "malformed / unsupported global",
+			key:    meta.GlobalKey(testName),
+			expErr: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotID, err := KeyToVolumeID(tc.key, testProject)
+		if err == nil && tc.expErr {
+			t.Errorf("Expected error but got none")
+		}
+		if err != nil {
+			if !tc.expErr {
+				t.Errorf("Did not expect error but got: %v", err)
+			}
+			continue
+		}
+
+		if !reflect.DeepEqual(gotID, tc.expID) {
+			t.Errorf("Got ID %v, but expected %v, from volume key %v", gotID, tc.expID, tc.key)
+		}
+	}
+
+}
