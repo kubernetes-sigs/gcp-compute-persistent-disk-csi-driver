@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"k8s.io/klog"
 )
@@ -37,7 +38,7 @@ func buildKubernetes(k8sDir, command string) error {
 	return nil
 }
 
-func clusterUpGCE(k8sDir, gceZone string) error {
+func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 	kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
 	_, err := os.Stat(kshPath)
 	if err == nil {
@@ -58,6 +59,11 @@ func clusterUpGCE(k8sDir, gceZone string) error {
 		klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 	}
 
+	err = os.Setenv("NUM_NODES", strconv.Itoa(numNodes))
+	if err != nil {
+		return err
+	}
+
 	err = os.Setenv("KUBE_GCE_ZONE", gceZone)
 	if err != nil {
 		return err
@@ -71,7 +77,7 @@ func clusterUpGCE(k8sDir, gceZone string) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone string) error {
+func clusterUpGKE(gceZone string, numNodes int) error {
 	out, err := exec.Command("gcloud", "container", "clusters", "list", "--zone", gceZone,
 		"--filter", fmt.Sprintf("name=%s", gkeTestClusterName)).CombinedOutput()
 	if err != nil {
@@ -85,7 +91,7 @@ func clusterUpGKE(gceZone string) error {
 		}
 	}
 	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--quiet")
+		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes), "--quiet")
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)

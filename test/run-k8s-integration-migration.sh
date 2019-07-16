@@ -38,4 +38,5 @@ ${PKGDIR}/bin/k8s-integration-test --kube-version=${kube_version} \
 --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
 --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
 --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS} \
---gce-zone="us-central1-b" --deployment-strategy=${deployment_strategy} --test-version=${test_version}
+--gce-zone="us-central1-b" --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
+--num-nodes=3

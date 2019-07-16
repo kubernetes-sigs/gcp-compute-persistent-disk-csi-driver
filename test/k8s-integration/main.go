@@ -40,6 +40,7 @@ var (
 	localK8sDir      = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
 	deploymentStrat  = flag.String("deployment-strategy", "", "choose between deploying on gce or gke")
 	gkeClusterVer    = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
+	numNodes         = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
@@ -108,6 +109,10 @@ func main() {
 	if len(*localK8sDir) != 0 {
 		ensureVariable(kubeVersion, false, "Cannot set a kube version when using a local k8s dir.")
 		ensureVariable(testVersion, false, "Cannot set a test version when using a local k8s dir.")
+	}
+
+	if *numNodes == -1 {
+		klog.Fatalf("num-nodes must be set to number of nodes in cluster")
 	}
 
 	err := handle()
@@ -226,9 +231,9 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone)
+			err = clusterUpGCE(k8sDir, *gceZone, *numNodes)
 		case "gke":
-			err = clusterUpGKE(*gceZone)
+			err = clusterUpGKE(*gceZone, *numNodes)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -339,6 +344,7 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 		reportArg,
 		"-provider=gce",
 		"-node-os-distro=cos",
+		fmt.Sprintf("-num-nodes=%v", *numNodes),
 		fmt.Sprintf("-gce-zone=%s", gceZone),
 		testConfigArg)
 
