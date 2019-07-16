@@ -335,7 +335,7 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
 		"e2e.test",
 		"--",
-		"-v=10",
+		"-v=5",
 		reportArg,
 		"-provider=gce",
 		"-node-os-distro=cos",
