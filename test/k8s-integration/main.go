@@ -330,10 +330,12 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 
 	cmd := exec.Command("./ginkgo",
 		"-p",
+		"-v",
 		testFocusArg,
 		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
 		"e2e.test",
 		"--",
+		"-v=10",
 		reportArg,
 		"-provider=gce",
 		"-node-os-distro=cos",
