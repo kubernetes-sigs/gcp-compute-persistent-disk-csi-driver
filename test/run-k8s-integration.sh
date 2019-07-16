@@ -26,7 +26,7 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
             --storageclass-file=sc-standard.yaml --test-focus="External.Storage" --gce-zone="us-central1-b" \
-            --deployment-strategy=${deployment_strategy} --test-version=${test_version}"
+            --deployment-strategy=${deployment_strategy} --test-version=${test_version} --num-nodes=3"
 
 if [ "$deployment_strategy" = "gke" ]; then
   base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
