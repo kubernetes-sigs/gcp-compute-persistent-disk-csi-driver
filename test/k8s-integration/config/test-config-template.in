@@ -19,3 +19,6 @@ DriverInfo:
     block: true
     # dataSource: true
     # RWX: true
+  SupportedMountOption:
+    debug:
+    nouid32:
