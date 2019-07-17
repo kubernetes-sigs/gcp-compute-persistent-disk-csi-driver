@@ -5,33 +5,6 @@ metadata:
   name: csi-node-sa
 
 ---
-
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: driver-registrar-role
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-
-
----
-
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: driver-registrar-binding
-subjects:
-  - kind: ServiceAccount
-    name: csi-node-sa
-    namespace: default
-roleRef:
-  kind: ClusterRole
-  name: driver-registrar-role
-  apiGroup: rbac.authorization.k8s.io
-
----
 ##### Controller Service Account, Roles, Rolebindings
 apiVersion: v1
 kind: ServiceAccount
@@ -73,7 +46,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
+    namespace: pdcsi-serving
 roleRef:
   kind: ClusterRole
   name: external-provisioner-role
@@ -108,8 +81,33 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
+    namespace: pdcsi-serving
 roleRef:
   kind: ClusterRole
   name: external-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-controller-leaderelection
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "watch", "list", "delete", "update", "create"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-controller-leaderelection-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-controller-sa
+    # replace with non-default namespace name
+    namespace: pdcsi-serving
+roleRef:
+  kind: Role
+  name: csi-controller-leaderelection
   apiGroup: rbac.authorization.k8s.io

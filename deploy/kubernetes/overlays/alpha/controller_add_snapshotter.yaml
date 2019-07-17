@@ -8,10 +8,17 @@ spec:
       containers:
         - name: csi-snapshotter
           imagePullPolicy: Always
-          image: gke.gcr.io/csi-snapshotter:v1.0.1-gke.0
+          image: gke.gcr.io/csi-snapshotter:v1.2.0-gke.0
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
+            - "--leader-election"
+            - --leader-election-namespace=$(PDCSI_NAMESPACE)
+          env:
+          - name: PDCSI_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           volumeMounts:
             - name: socket-dir
               mountPath: /csi

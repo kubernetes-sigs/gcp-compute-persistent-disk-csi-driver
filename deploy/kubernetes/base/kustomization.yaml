@@ -1,7 +1,7 @@
 commonLabels:
   app: gcp-compute-persistent-disk-csi-driver
 namespace:
-  default
+  pdcsi-serving
 resources:
 - node.yaml
 - controller.yaml
