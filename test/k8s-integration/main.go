@@ -33,6 +33,7 @@ var (
 	teardownCluster  = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
 	teardownDriver   = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster   = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	gceProject       = flag.String("gce-project", "", "project that the gce k8s cluster is found in")
 	gceZone          = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
 	kubeVersion      = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
 	testVersion      = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
@@ -73,6 +74,7 @@ func main() {
 
 	if !*inProw {
 		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
+		ensureVariable(gceProject, true, "gce-project is a required flag")
 	}
 
 	ensureVariable(saFile, true, "service-account-file is a required flag")
@@ -133,10 +135,11 @@ func handle() error {
 	}
 
 	pkgDir := filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
+	project := *gceProject
 
 	// If running in Prow, then acquire and set up a project through Boskos
 	if *inProw {
-		project, _ := testutils.SetupProwConfig(*boskosResourceType)
+		project, _ = testutils.SetupProwConfig(*boskosResourceType)
 
 		oldProject, err := exec.Command("gcloud", "config", "get-value", "project").CombinedOutput()
 		if err != nil {
@@ -279,9 +282,9 @@ func handle() error {
 	// Run the tests using the testDir kubernetes
 	fullK8sBuildBinPath := filepath.Join(testDir, k8sBuildBinDir)
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, *storageClassFile, *gceZone)
+		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, *storageClassFile, project, *gceZone)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, *gceZone)
+		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, project, *gceZone)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -306,20 +309,20 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, k8sBinDir, testFocus, gceZone string) error {
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, k8sBinDir, testFocus, gceProject, gceZone string) error {
+	return runTestsWithConfig(k8sBinDir, gceProject, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
 }
 
-func runCSITests(pkgDir, k8sBinDir, testFocus, storageClassFile, gceZone string) error {
+func runCSITests(pkgDir, k8sBinDir, testFocus, storageClassFile, gceProject, gceZone string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg)
+	return runTestsWithConfig(k8sBinDir, gceProject, gceZone, testFocus, testConfigArg)
 }
 
-func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) error {
+func runTestsWithConfig(k8sBinDir, gceProject, gceZone, testFocus, testConfigArg string) error {
 	err := os.Chdir(k8sBinDir)
 	if err != nil {
 		return err
@@ -344,7 +347,7 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 		reportArg,
 		"-provider=gce",
 		"-node-os-distro=cos",
-		fmt.Sprintf("-num-nodes=%v", *numNodes),
+		fmt.Sprintf("-gce-project=%s", gceProject),
 		fmt.Sprintf("-gce-zone=%s", gceZone),
 		testConfigArg)
 
