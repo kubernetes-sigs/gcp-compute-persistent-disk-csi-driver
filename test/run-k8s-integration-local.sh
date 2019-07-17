@@ -38,7 +38,7 @@ make -C ${PKGDIR} test-k8s-integration
 # This version of the command does not build the driver or K8s, points to a
 # local K8s repo to get the e2e.test binary, and does not bring up or down the cluster
 
-${PKGDIR}/bin/k8s-integration-test --kube-version=master --run-in-prow=false \
+${PKGDIR}/bin/k8s-integration-test --run-in-prow=false \
 --staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
 --deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false --local-k8s-dir=$KTOP \
 --storageclass-file=sc-standard.yaml --do-driver-build=true  --test-focus="External.Storage" \

@@ -187,7 +187,6 @@ func handle() error {
 	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
 	testParentDir := generateUniqueTmpDir()
 	testDir := filepath.Join(testParentDir, "kubernetes")
-	k8sBuildBinDir := k8sInDockerBuildBinDir
 	defer removeDir(k8sParentDir)
 	defer removeDir(testParentDir)
 
@@ -217,11 +216,6 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
-		err = buildKubernetes(testDir, "ginkgo")
-		if err != nil {
-			return fmt.Errorf("failed to build Gingko: %v", err)
-		}
-		k8sBuildBinDir = k8sOutOfDockerBuildBinDir
 	} else {
 		testDir = k8sDir
 	}
@@ -277,11 +271,10 @@ func handle() error {
 	}
 
 	// Run the tests using the testDir kubernetes
-	fullK8sBuildBinPath := filepath.Join(testDir, k8sBuildBinDir)
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, *storageClassFile, *gceZone)
+		err = runCSITests(pkgDir, k8sDir, *testFocus, *storageClassFile)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, *gceZone)
+		err = runMigrationTests(pkgDir, k8sDir, *testFocus)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -306,21 +299,21 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, k8sBinDir, testFocus, gceZone string) error {
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, k8sDir, testFocus string) error {
+	return runTestsWithConfig(k8sDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd")
 }
 
-func runCSITests(pkgDir, k8sBinDir, testFocus, storageClassFile, gceZone string) error {
+func runCSITests(pkgDir, k8sDir, testFocus, storageClassFile string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
-	testConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg)
+	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
+	return runTestsWithConfig(k8sDir, testFocus, testConfigArg)
 }
 
-func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) error {
-	err := os.Chdir(k8sBinDir)
+func runTestsWithConfig(k8sDir, testFocus, testConfigArg string) error {
+	err := os.Chdir(k8sDir)
 	if err != nil {
 		return err
 	}
@@ -331,23 +324,17 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
 	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
 
-	testFocusArg := fmt.Sprintf("-focus=%s", testFocus)
+	kubetestArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
+		testFocus,
+		"\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
+		testConfigArg,
+		reportArg)
 
-	cmd := exec.Command("./ginkgo",
-		"-p",
-		"-v",
-		testFocusArg,
-		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
-		"e2e.test",
-		"--",
-		"-v=5",
-		reportArg,
-		"-provider=gce",
-		"-node-os-distro=cos",
-		fmt.Sprintf("-num-nodes=%v", *numNodes),
-		fmt.Sprintf("-gce-zone=%s", gceZone),
-		testConfigArg)
-
+	cmd := exec.Command("kubetest",
+		"--test",
+		"--ginkgo-parallel",
+		fmt.Sprintf("--test_args=%s", kubetestArgs),
+	)
 	err = runCommand("Running Tests", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
