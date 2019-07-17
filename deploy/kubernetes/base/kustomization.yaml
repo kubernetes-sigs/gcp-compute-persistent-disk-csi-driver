@@ -1,7 +1,7 @@
 commonLabels:
-  app: gcp-compute-persistent-disk-csi-driver
+  k8s-app: gcp-compute-persistent-disk-csi-driver
 namespace:
-  default
+  gce-pd-csi-driver
 resources:
 - node.yaml
 - controller.yaml

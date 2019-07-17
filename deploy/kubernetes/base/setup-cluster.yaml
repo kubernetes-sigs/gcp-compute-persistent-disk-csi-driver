@@ -5,33 +5,6 @@ metadata:
   name: csi-node-sa
 
 ---
-
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: driver-registrar-role
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-
-
----
-
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: driver-registrar-binding
-subjects:
-  - kind: ServiceAccount
-    name: csi-node-sa
-    namespace: default
-roleRef:
-  kind: ClusterRole
-  name: driver-registrar-role
-  apiGroup: rbac.authorization.k8s.io
-
----
 ##### Controller Service Account, Roles, Rolebindings
 apiVersion: v1
 kind: ServiceAccount
@@ -73,7 +46,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: external-provisioner-role
@@ -108,8 +80,27 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: external-attacher-role
   apiGroup: rbac.authorization.k8s.io
+
+---
+
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: gce-pd-csi-driver-controller
+value: 900000000
+globalDefault: false
+description: "This priority class should be used for the GCE PD CSI driver controller deployment only."
+
+---
+
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: gce-pd-csi-driver-node
+value: 900001000
+globalDefault: false
+description: "This priority class should be used for the GCE PD CSI driver node deployment only."

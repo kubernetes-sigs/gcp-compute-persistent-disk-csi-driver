@@ -16,7 +16,7 @@ set -o nounset
 set -o errexit
 set -x
 
-readonly NAMESPACE="${GCE_PD_DRIVER_NAMESPACE:-default}"
+readonly NAMESPACE="${GCE_PD_DRIVER_NAMESPACE:-gce-pd-csi-driver}"
 readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
 source "${PKGDIR}/deploy/common.sh"
@@ -73,6 +73,11 @@ ensure_kustomize
 
 if [ "$skip_sa_check" != true ]; then
   check_service_account
+fi
+
+if ! ${KUBECTL} get namespace ${NAMESPACE} -v="${VERBOSITY}";
+then
+  ${KUBECTL} create namespace ${NAMESPACE} -v="${VERBOSITY}"
 fi
 
 if ! ${KUBECTL} get secret cloud-sa -v="${VERBOSITY}" -n ${NAMESPACE};
