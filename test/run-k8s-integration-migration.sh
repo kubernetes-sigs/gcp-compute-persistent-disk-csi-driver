@@ -20,17 +20,9 @@ readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 
-readonly GCE_PD_TEST_FOCUS="\s[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:\sDynamic\sPV|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
-
+readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
 # TODO(#167): Enable reconstructions tests
-# TODO: Enabled inline volume tests
-# TODO: Fix and enable the following tests. They all exhibit the same testing infra error:
-# PersistentVolumes\sGCEPD|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]\s\[Testpattern:.*
-
-# The Error: "PV Create API error: persistentvolumes "gce-" is forbidden: error
-# querying GCE PD volume : can not fetch disk, zone is specified
-# ("us-central1-b"), but disk name is empty"
 
 make -C ${PKGDIR} test-k8s-integration
 ${PKGDIR}/bin/k8s-integration-test --kube-version=${kube_version} \
