@@ -272,9 +272,9 @@ func handle() error {
 
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, k8sDir, *testFocus, *storageClassFile)
+		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, k8sDir, *testFocus)
+		err = runMigrationTests(pkgDir, testDir, *testFocus)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -299,21 +299,21 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, k8sDir, testFocus string) error {
-	return runTestsWithConfig(k8sDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, testDir, testFocus string) error {
+	return runTestsWithConfig(testDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd")
 }
 
-func runCSITests(pkgDir, k8sDir, testFocus, storageClassFile string) error {
+func runCSITests(pkgDir, testDir, testFocus, storageClassFile string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(k8sDir, testFocus, testConfigArg)
+	return runTestsWithConfig(testDir, testFocus, testConfigArg)
 }
 
-func runTestsWithConfig(k8sDir, testFocus, testConfigArg string) error {
-	err := os.Chdir(k8sDir)
+func runTestsWithConfig(testDir, testFocus, testConfigArg string) error {
+	err := os.Chdir(testDir)
 	if err != nil {
 		return err
 	}
