@@ -1,0 +1,8 @@
+resources:
+- ../../../base/node
+images:
+  # Don't change stable image without changing pdImagePlaceholder in
+  # test/k8s-integration/main.go
+- name: gke.gcr.io/csi-node-driver-registrar
+  newName: gke.gcr.io/csi-node-driver-registrar
+  newTag: "v1.1.0-gke.0"

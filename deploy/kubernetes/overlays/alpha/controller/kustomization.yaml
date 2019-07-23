@@ -1,0 +1,6 @@
+resources:
+- ../../stable/controller
+patchesStrategicMerge:
+- controller_add_snapshotter.yaml
+- controller_add_resizer.yaml
+

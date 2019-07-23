@@ -1,0 +1,9 @@
+resources:
+- ../../alpha/controller
+patchesStrategicMerge:
+- controller_always_pull.yaml
+images:
+# Replace this with your private image names and tags
+- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/dyzz-csi-staging/csi/gce-pd-driver
+  newTag: "latest"

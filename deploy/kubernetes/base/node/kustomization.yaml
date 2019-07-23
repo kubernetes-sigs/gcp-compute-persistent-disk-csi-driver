@@ -1,0 +1,6 @@
+resources:
+- node.yaml
+
+commonLabels:
+  k8s-app: gcp-compute-persistent-disk-csi-driver
+namespace: pdcsi-serving
