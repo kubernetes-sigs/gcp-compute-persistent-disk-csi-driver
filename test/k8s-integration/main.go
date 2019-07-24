@@ -214,7 +214,7 @@ func handle() error {
 		}
 		err = buildKubernetes(testDir, "WHAT=test/e2e/e2e.test")
 		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes: %v", err)
+			return fmt.Errorf("failed to build Kubernetes e2e: %v", err)
 		}
 	} else {
 		testDir = k8sDir
@@ -321,6 +321,12 @@ func runTestsWithConfig(testDir, testFocus, testConfigArg string) error {
 	homeDir, _ := os.LookupEnv("HOME")
 	os.Setenv("KUBECONFIG", filepath.Join(homeDir, ".kube/config"))
 
+	cmd := exec.Command("export", "KUBECTL_PATH=$(which kubectl)")
+	err = runCommand("Exporting KUBECTL_PATH", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to export kubectl path: %v", err)
+	}
+
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
 	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
 
@@ -330,9 +336,10 @@ func runTestsWithConfig(testDir, testFocus, testConfigArg string) error {
 		testConfigArg,
 		reportArg)
 
-	cmd := exec.Command("kubetest",
+	cmd = exec.Command("kubetest",
 		"--test",
 		"--ginkgo-parallel",
+		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", kubetestArgs),
 	)
 	err = runCommand("Running Tests", cmd)
