@@ -85,7 +85,7 @@ func clusterUpGKE(gceZone string) error {
 		}
 	}
 	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--quiet")
+		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--quiet", "--machine-type", "n1-standard-2")
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
