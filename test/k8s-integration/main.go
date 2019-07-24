@@ -214,12 +214,16 @@ func handle() error {
 		}
 		err = buildKubernetes(testDir, "WHAT=test/e2e/e2e.test")
 		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes: %v", err)
+			return fmt.Errorf("failed to build Kubernetes e2e: %v", err)
 		}
-		// kubetest relies on ginkgo already built in the test k8s directory
+		// kubetest relies on ginkgo and kubectl already built in the test k8s directory
 		err = buildKubernetes(testDir, "ginkgo")
 		if err != nil {
 			return fmt.Errorf("failed to build gingko: %v", err)
+		}
+		err = buildKubernetes(testDir, "kubectl")
+		if err != nil {
+			return fmt.Errorf("failed to build kubectl: %v", err)
 		}
 	} else {
 		testDir = k8sDir
