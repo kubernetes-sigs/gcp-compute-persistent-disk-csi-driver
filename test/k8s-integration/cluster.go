@@ -21,7 +21,7 @@ func clusterDownGCE(k8sDir string) error {
 
 func clusterDownGKE(gceZone string) error {
 	cmd := exec.Command("gcloud", "container", "clusters", "delete", gkeTestClusterName,
-		"--zone", gceZone, "--quiet", "--machine-type", "n1-standard-2")
+		"--zone", gceZone, "--quiet")
 	err := runCommand("Bringing Down E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err)
@@ -91,7 +91,8 @@ func clusterUpGKE(gceZone string, numNodes int) error {
 		}
 	}
 	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes), "--quiet")
+		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
+		"--quiet", "--machine-type", "n1-standard-2")
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
