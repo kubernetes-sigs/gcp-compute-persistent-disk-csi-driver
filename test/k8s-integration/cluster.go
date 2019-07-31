@@ -156,3 +156,42 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 
 	return nil
 }
+
+func getGKEKubeTestArgs() ([]string, error) {
+	var gkeEnv string
+	switch gkeURL := os.Getenv("CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER"); gkeURL {
+	case "https://staging-container.sandbox.googleapis.com/":
+		gkeEnv = "staging"
+	case "https://test-container.sandbox.googleapis.com/":
+		gkeEnv = "test"
+	case "":
+		gkeEnv = "prod"
+	default:
+		// if the URL does not match to an option, assume it is a custom GKE backend
+		// URL and pass that to kubetest
+		gkeEnv = gkeURL
+	}
+
+	cmd := exec.Command("gcloud", "config", "get-value", "project")
+	project, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current project: %v", err)
+	}
+
+	args := []string{
+		"--up=false",
+		"--down=false",
+		"--provider=gke",
+		"--gcp-network=default",
+		"--check-version-skew=false",
+		"--deployment=gke",
+		"--gcp-node-image=cos",
+		"--gcp-network=default",
+		fmt.Sprintf("--cluster=%s", gkeTestClusterName),
+		fmt.Sprintf("--gke-environment=%s", gkeEnv),
+		fmt.Sprintf("--gcp-zone=%s", *gceZone),
+		fmt.Sprintf("--gcp-project=%s", project[:len(project)-1]),
+	}
+
+	return args, nil
+}

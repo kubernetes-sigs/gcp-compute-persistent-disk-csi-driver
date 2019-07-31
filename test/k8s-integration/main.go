@@ -216,9 +216,16 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
+		// kubetest relies on ginkgo already built in the test k8s directory
+		err = buildKubernetes(testDir, "ginkgo")
+		if err != nil {
+			return fmt.Errorf("failed to build gingko: %v", err)
+		}
 	} else {
 		testDir = k8sDir
 	}
+
+	var cloudProviderArgs []string
 
 	// Create a cluster either through GKE or GCE
 	if *bringupCluster {
@@ -228,6 +235,10 @@ func handle() error {
 			err = clusterUpGCE(k8sDir, *gceZone, *numNodes)
 		case "gke":
 			err = clusterUpGKE(*gceZone, *numNodes)
+			cloudProviderArgs, err = getGKEKubeTestArgs()
+			if err != nil {
+				return fmt.Errorf("failed to build GKE kubetest args: %v", err)
+			}
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -272,9 +283,9 @@ func handle() error {
 
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile)
+		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, cloudProviderArgs)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, testDir, *testFocus)
+		err = runMigrationTests(pkgDir, testDir, *testFocus, cloudProviderArgs)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -299,20 +310,20 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, testDir, testFocus string) error {
-	return runTestsWithConfig(testDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, testDir, testFocus string, cloudProviderArgs []string) error {
+	return runTestsWithConfig(testDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
 }
 
-func runCSITests(pkgDir, testDir, testFocus, storageClassFile string) error {
+func runCSITests(pkgDir, testDir, testFocus, storageClassFile string, cloudProviderArgs []string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(testDir, testFocus, testConfigArg)
+	return runTestsWithConfig(testDir, testFocus, testConfigArg, cloudProviderArgs)
 }
 
-func runTestsWithConfig(testDir, testFocus, testConfigArg string) error {
+func runTestsWithConfig(testDir, testFocus, testConfigArg string, cloudProviderArgs []string) error {
 	err := os.Chdir(testDir)
 	if err != nil {
 		return err
@@ -324,18 +335,21 @@ func runTestsWithConfig(testDir, testFocus, testConfigArg string) error {
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
 	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
 
-	kubetestArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
+	testArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
 		testFocus,
 		"\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
 		testConfigArg,
 		reportArg)
 
-	cmd := exec.Command("kubetest",
+	kubeTestArgs := []string{
 		"--test",
 		"--ginkgo-parallel",
-		fmt.Sprintf("--test_args=%s", kubetestArgs),
-	)
-	err = runCommand("Running Tests", cmd)
+		fmt.Sprintf("--test_args=%s", testArgs),
+	}
+
+	kubeTestArgs = append(kubeTestArgs, cloudProviderArgs...)
+
+	err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
 	}
