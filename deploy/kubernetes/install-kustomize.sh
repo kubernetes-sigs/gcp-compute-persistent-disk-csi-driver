@@ -9,7 +9,7 @@ set -o errexit
 
 readonly INSTALL_DIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin"
 readonly KUSTOMIZE_PATH="${INSTALL_DIR}/kustomize"
-readonly KUSTOMIZE_VERSION="2.0.3"
+readonly KUSTOMIZE_VERSION="3.0.0"
 readonly VERSION_REGEX="KustomizeVersion:([0-9]\.[0-9]\.[0-9])"
 
 if [ -f "${KUSTOMIZE_PATH}" ]; then
