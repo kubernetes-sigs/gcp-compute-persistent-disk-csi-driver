@@ -47,11 +47,14 @@ type GCENodeServer struct {
 var _ csi.NodeServer = &GCENodeServer{}
 
 // The constants are used to map from the machine type to the limit of
-// persistent disks that can be attached to an instance. Please refer to gcloud doc
-// https://cloud.google.com/compute/docs/disks/#pdnumberlimits
+// persistent disks that can be attached to an instance. Please refer to gcloud
+// doc https://cloud.google.com/compute/docs/disks/#pdnumberlimits
+// These constants are all the documented attach limit minus one because the
+// node boot disk is considered an attachable disk so effective attach limit is
+// one less.
 const (
-	volumeLimit16  int64 = 16
-	volumeLimit128 int64 = 128
+	volumeLimitSmall int64 = 15
+	volumeLimitBig   int64 = 127
 )
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -442,9 +445,9 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
 	machineType := ns.MetadataService.GetMachineType()
 	if strings.HasPrefix(machineType, "n1-") || strings.HasPrefix(machineType, "custom-") {
-		volumeLimits = volumeLimit128
+		volumeLimits = volumeLimitBig
 	} else {
-		volumeLimits = volumeLimit16
+		volumeLimits = volumeLimitSmall
 	}
 	return volumeLimits, nil
 }
