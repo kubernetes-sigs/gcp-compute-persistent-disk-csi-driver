@@ -74,27 +74,27 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		{
 			name:           "Predifined standard machine",
 			machineType:    "n1-standard-1",
-			expVolumeLimit: volumeLimit128,
+			expVolumeLimit: volumeLimitBig,
 		},
 		{
 			name:           "Predifined micro machine",
 			machineType:    "f1-micro",
-			expVolumeLimit: volumeLimit16,
+			expVolumeLimit: volumeLimitSmall,
 		},
 		{
 			name:           "Predifined small machine",
 			machineType:    "g1-small",
-			expVolumeLimit: volumeLimit16,
+			expVolumeLimit: volumeLimitSmall,
 		},
 		{
 			name:           "Custom machine with 1GiB Mem",
 			machineType:    "custom-1-1024",
-			expVolumeLimit: volumeLimit128,
+			expVolumeLimit: volumeLimitBig,
 		},
 		{
 			name:           "Custom machine with 4GiB Mem",
 			machineType:    "custom-2-4096",
-			expVolumeLimit: volumeLimit128,
+			expVolumeLimit: volumeLimitBig,
 		},
 	}
 

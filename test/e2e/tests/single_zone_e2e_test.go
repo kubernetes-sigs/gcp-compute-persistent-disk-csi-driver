@@ -42,7 +42,7 @@ const (
 	readyState               = "READY"
 	standardDiskType         = "pd-standard"
 	ssdDiskType              = "pd-ssd"
-	defaultVolumeLimit int64 = 128
+	defaultVolumeLimit int64 = 127
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
