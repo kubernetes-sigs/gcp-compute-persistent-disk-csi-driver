@@ -144,3 +144,7 @@ func GetDeviceName(volKey *meta.Key) (string, error) {
 func CreateNodeID(project, zone, name string) string {
 	return fmt.Sprintf(nodeIDFmt, project, zone, name)
 }
+
+func CreateZonalVolumeID(project, zone, name string) string {
+	return fmt.Sprintf(volIDZonalFmt, project, zone, name)
+}

@@ -375,7 +375,7 @@ func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key
 
 	disk.setSizeGb(common.BytesToGb(requestBytes))
 
-	return requestBytes, nil
+	return common.BytesToGb(requestBytes), nil
 
 }
 

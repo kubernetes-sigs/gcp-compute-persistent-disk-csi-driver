@@ -20,8 +20,11 @@ import (
 	"path"
 	"testing"
 
+	"github.com/google/uuid"
+
 	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
+	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
@@ -82,6 +85,37 @@ func TestSanity(t *testing.T) {
 		TargetPath:  mountPath,
 		StagingPath: stagePath,
 		Address:     endpoint,
+		IDGen:       newPDIDGenerator(project, zone),
 	}
 	sanity.Test(t, config)
+}
+
+type pdIDGenerator struct {
+	project string
+	zone    string
+}
+
+var _ sanity.IDGenerator = &pdIDGenerator{}
+
+func newPDIDGenerator(project, zone string) *pdIDGenerator {
+	return &pdIDGenerator{
+		project: project,
+		zone:    zone,
+	}
+}
+
+func (p pdIDGenerator) GenerateUniqueValidVolumeID() string {
+	return common.CreateZonalVolumeID(p.project, p.zone, uuid.New().String()[:10])
+}
+
+func (p pdIDGenerator) GenerateInvalidVolumeID() string {
+	return "fake-volid"
+}
+
+func (p pdIDGenerator) GenerateUniqueValidNodeID() string {
+	return common.CreateNodeID(p.project, p.zone, uuid.New().String()[:10])
+}
+
+func (p pdIDGenerator) GenerateInvalidNodeID() string {
+	return "fake-nodeid"
 }

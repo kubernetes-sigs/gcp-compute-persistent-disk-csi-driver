@@ -224,6 +224,8 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
+		// Cannot find volume associated with this ID because VolumeID is not in
+		// correct format, this is a success according to the Spec
 		klog.Warningf("Treating volume as deleted because volume id %s is invalid: %v", volumeID, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
