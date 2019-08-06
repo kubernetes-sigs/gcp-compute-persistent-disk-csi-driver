@@ -25,6 +25,10 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "25Mi"
         - name: csi-attacher
           image: gke.gcr.io/csi-attacher
           args:
@@ -33,6 +37,10 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "25Mi"
         - name: csi-resizer
           image: gke.gcr.io/csi-resizer
           args:
@@ -41,6 +49,10 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "25Mi"
         - name: gce-pd-driver
           # Don't change base image without changing pdImagePlaceholder in
           # test/k8s-integration/main.go
@@ -57,6 +69,10 @@ spec:
             - name: cloud-sa-volume
               readOnly: true
               mountPath: "/etc/cloud-sa"
+          resources:
+            requests:
+              cpu: "35m"
+              memory: "25Mi"
       volumes:
         - name: socket-dir
           emptyDir: {}
