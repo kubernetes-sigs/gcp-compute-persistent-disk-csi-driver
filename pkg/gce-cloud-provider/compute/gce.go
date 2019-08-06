@@ -17,12 +17,13 @@ package gcecloudprovider
 import (
 	"context"
 	"fmt"
-	"golang.org/x/oauth2/google"
-	"gopkg.in/gcfg.v1"
 	"net/http"
 	"os"
 	"runtime"
 	"time"
+
+	"golang.org/x/oauth2/google"
+	"gopkg.in/gcfg.v1"
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
@@ -241,4 +242,10 @@ func IsGCEError(err error, reason string) bool {
 		}
 	}
 	return false
+}
+
+// IsGCENotFoundError returns true if the error is a googleapi.Error with
+// notFound reason
+func IsGCENotFoundError(err error) bool {
+	return IsGCEError(err, "notFound")
 }

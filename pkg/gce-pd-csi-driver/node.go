@@ -90,8 +90,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 	if err != nil && !os.IsNotExist(err) {
-		klog.Errorf("cannot validate mount point: %s %v", targetPath, err)
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", targetPath, err))
 	}
 	if !notMnt {
 		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
@@ -129,8 +128,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		sourcePath = stagingTargetPath
 
 		if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
-			klog.Errorf("mkdir failed on disk %s (%v)", targetPath, err)
-			return nil, err
+			return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", targetPath, err))
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		klog.V(4).Infof("NodePublishVolume with block volume mode")
@@ -245,7 +243,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodeStageVolume Volume ID is invalid: %v", err))
 	}
 
 	// Part 1: Get device path of attached device
@@ -387,7 +385,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume volume ID is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
 	}
 
 	devicePath, err := ns.getDevicePath(volumeID, "")
