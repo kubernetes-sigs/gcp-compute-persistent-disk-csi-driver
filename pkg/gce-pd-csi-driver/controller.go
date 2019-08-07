@@ -232,7 +232,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
 	if err != nil {
-		klog.Warningf("Treating volume as deleted because cannot find volume %v: %v", volKey.String(), err)
+		klog.Warningf("Treating volume as deleted because cannot find volume %v: %v", volumeID, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
@@ -546,6 +546,15 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
+
+	// Check if volume exists
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	if err != nil {
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("CreateSnapshot could not find disk %v: %v", volKey.String(), err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateSnapshot unknown get disk error: %v", err))
+	}
 
 	// Check if snapshot already exists
 	var snapshot *compute.Snapshot

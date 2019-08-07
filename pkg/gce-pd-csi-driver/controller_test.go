@@ -59,11 +59,10 @@ var (
 			Segments: map[string]string{common.TopologyKeyZone: metadataservice.FakeZone},
 		},
 	}
-	testVolumeID         = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
-	region, _            = common.GetRegionFromZones([]string{zone})
-	testRegionalID       = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
-	testSnapshotID       = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
-	totalSnapshotsNumber = 5
+	testVolumeID   = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
+	region, _      = common.GetRegionFromZones([]string{zone})
+	testRegionalID = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
+	testSnapshotID = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
 )
 
 func TestCreateSnapshotArguments(t *testing.T) {
@@ -76,6 +75,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	testCases := []struct {
 		name        string
 		req         *csi.CreateSnapshotRequest
+		seedDisks   []*gce.CloudDisk
 		expSnapshot *csi.Snapshot
 		expErrCode  codes.Code
 	}{
@@ -84,6 +84,9 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
 			},
 			expSnapshot: &csi.Snapshot{
 				SnapshotId:     testSnapshotID,
@@ -110,19 +113,27 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			expErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "fail wrong source volume",
+			name: "fail not found source volume",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: common.CreateZonalVolumeID(project, zone, "non-exist-vol-name"),
+			},
+			expErrCode: codes.NotFound,
+		},
+		{
+			name: "fail invalid source volume",
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: "/test/wrongname",
 			},
-			expErrCode: codes.NotFound,
+			expErrCode: codes.InvalidArgument,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, tc.seedDisks)
 
 		// Start Test
 		resp, err := gceDriver.cs.CreateSnapshot(context.Background(), tc.req)
@@ -210,44 +221,45 @@ func TestListSnapshotsArguments(t *testing.T) {
 	testCases := []struct {
 		name         string
 		req          *csi.ListSnapshotsRequest
-		expSnapshots int
+		numSnapshots int
 		expErrCode   codes.Code
 	}{
 		{
 			name: "valid",
 			req: &csi.ListSnapshotsRequest{
-				SnapshotId: testSnapshotID,
+				SnapshotId: testSnapshotID + "0",
 			},
-			expSnapshots: 1,
+			numSnapshots: 1,
 		},
 		{
 			name: "invalid id",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: testSnapshotID + "/foo",
 			},
-			expSnapshots: 0,
+			numSnapshots: 0,
 		},
 		{
 			name: "no id",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: "",
 			},
-			expSnapshots: totalSnapshotsNumber + 1,
+			numSnapshots: 5,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
 
-		createReq := &csi.CreateSnapshotRequest{
-			Name:           name,
-			SourceVolumeId: testVolumeID,
+		disks := []*gce.CloudDisk{}
+		for i := 0; i < tc.numSnapshots; i++ {
+			sname := fmt.Sprintf("%s%d", name, i)
+			disks = append(disks, createZonalCloudDisk(sname))
 		}
-		gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 
-		for i := 0; i < totalSnapshotsNumber; i++ {
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriver(t, disks)
+
+		for i := 0; i < tc.numSnapshots; i++ {
 			volumeID := fmt.Sprintf("%s%d", testVolumeID, i)
 			nameID := fmt.Sprintf("%s%d", name, i)
 			createReq := &csi.CreateSnapshotRequest{
@@ -280,16 +292,16 @@ func TestListSnapshotsArguments(t *testing.T) {
 		// Make sure responses match
 		snapshots := resp.GetEntries()
 		//expectsnapshots := expSnapshot.GetEntries()
-		if (snapshots == nil || len(snapshots) == 0) && tc.expSnapshots == 0 {
+		if (snapshots == nil || len(snapshots) == 0) && tc.numSnapshots == 0 {
 			continue
 		}
 
 		if snapshots == nil || len(snapshots) == 0 {
 			// If one is nil or empty but not both
-			t.Fatalf("Expected snapshots number %v, got no snapshot", tc.expSnapshots)
+			t.Fatalf("Expected snapshots number %v, got no snapshot", tc.numSnapshots)
 		}
-		if len(snapshots) != tc.expSnapshots {
-			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshots[0].Snapshot, tc.expSnapshots)
+		if len(snapshots) != tc.numSnapshots {
+			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshots[0].Snapshot, tc.numSnapshots)
 			t.Errorf(errStr)
 		}
 	}
@@ -664,8 +676,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
 
-		//gceDriver.cs.CloudProvider.CreateSnapshot(context.Background, )
-
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		//check response
@@ -730,8 +740,6 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
-
-		//gceDriver.cs.CloudProvider.CreateSnapshot(context.Background, )
 
 		// Start Test
 		req := &csi.CreateVolumeRequest{
@@ -857,14 +865,14 @@ func TestDeleteVolume(t *testing.T) {
 			expErr: false,
 		},
 		{
-			name: "non-repairable ID",
+			name: "non-repairable ID (invalid)",
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk("nottherightname"),
 			},
 			req: &csi.DeleteVolumeRequest{
 				VolumeId: common.GenerateUnderspecifiedVolumeID(name, true /* isZonal */),
 			},
-			expErr: true,
+			expErr: false,
 		},
 	}
 	for _, tc := range testCases {
@@ -1416,7 +1424,10 @@ func TestPickRandAndConsecutive(t *testing.T) {
 
 func TestVolumeOperationConcurrency(t *testing.T) {
 	readyToExecute := make(chan chan struct{}, 1)
-	gceDriver := initBlockingGCEDriver(t, nil, readyToExecute)
+	gceDriver := initBlockingGCEDriver(t, []*gce.CloudDisk{
+		createZonalCloudDisk(name + "1"),
+		createZonalCloudDisk(name + "2"),
+	}, readyToExecute)
 	cs := gceDriver.cs
 
 	vol1CreateSnapshotAReq := &csi.CreateSnapshotRequest{
