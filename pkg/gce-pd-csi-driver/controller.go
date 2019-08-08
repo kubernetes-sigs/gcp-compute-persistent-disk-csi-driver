@@ -226,14 +226,17 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 	if err != nil {
 		// Cannot find volume associated with this ID because VolumeID is not in
 		// correct format, this is a success according to the Spec
-		klog.Warningf("Treating volume as deleted because volume id %s is invalid: %v", volumeID, err)
+		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %v", volumeID, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
 	if err != nil {
-		klog.Warningf("Treating volume as deleted because cannot find volume %v: %v", volumeID, err)
-		return &csi.DeleteVolumeResponse{}, nil
+		if gce.IsGCENotFoundError(err) {
+			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %v", volumeID, err)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "DeleteVolume error repairing underspecified volume key: %v", err)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -274,7 +277,10 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "ControllerPublishVolume error repairing underspecified volume key: %v", err)
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability

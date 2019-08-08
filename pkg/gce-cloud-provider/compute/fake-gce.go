@@ -75,7 +75,7 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 				return volumeKey, nil
 			}
 		}
-		return nil, fmt.Errorf("Couldn't repair unspecified volume information")
+		return nil, notFoundError()
 	case meta.Regional:
 		if volumeKey.Region != common.UnspecifiedValue {
 			return volumeKey, nil
