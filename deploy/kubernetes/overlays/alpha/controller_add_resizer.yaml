@@ -8,7 +8,7 @@ spec:
       containers:
         - name: csi-resizer
           imagePullPolicy: Always
-          image: quay.io/k8scsi/csi-resizer:canary
+          image: gke.gcr.io/csi-resizer:v0.2.0-gke.0
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"

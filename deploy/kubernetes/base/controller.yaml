@@ -14,6 +14,7 @@ spec:
         app: gcp-compute-persistent-disk-csi-driver
     spec:
       serviceAccountName: csi-controller-sa
+      priorityClassName: gce-pd-csi-driver-controller
       containers:
         - name: csi-provisioner
           image: gke.gcr.io/csi-provisioner
