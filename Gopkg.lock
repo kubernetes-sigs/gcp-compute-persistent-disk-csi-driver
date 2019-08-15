@@ -118,15 +118,15 @@
   version = "v0.6.1"
 
 [[projects]]
-  digest = "1:2af9c947430dba1b6895a8c552d5b915d95dc401ab78c1e017fae86905236fd3"
+  digest = "1:a56295e19bdcc1777d448e95df77ccd4378a963ccb0aac2c93c0b03d9d4f024a"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "pkg/sanity",
     "utils",
   ]
   pruneopts = "NUT"
-  revision = "6738ab2206eac88874f0a3ede59b40f680f59f43"
-  version = "v2.0.1"
+  revision = "82b05190c167c52bb6d5aaf2e1d7c833fa539783"
+  version = "v2.2.0"
 
 [[projects]]
   digest = "1:3c46171ee5eee66086897e1efca67b84bf552b1f80039d421068c90684868194"
@@ -540,6 +540,7 @@
     "github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta",
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/protobuf/ptypes",
+    "github.com/google/uuid",
     "github.com/kubernetes-csi/csi-lib-utils/protosanitizer",
     "github.com/kubernetes-csi/csi-test/pkg/sanity",
     "github.com/onsi/ginkgo",
@@ -566,6 +567,7 @@
     "k8s.io/kubernetes/pkg/util/resizefs",
     "k8s.io/test-infra/boskos/client",
     "k8s.io/test-infra/boskos/common",
+    "k8s.io/utils/exec",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

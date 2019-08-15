@@ -224,14 +224,19 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		// Cannot find volume associated with this ID because can't even get the name or zone
-		// This is a success according to the spec
+		// Cannot find volume associated with this ID because VolumeID is not in
+		// correct format, this is a success according to the Spec
+		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %v", volumeID, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+		if gce.IsGCENotFoundError(err) {
+			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %v", volumeID, err)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "DeleteVolume error repairing underspecified volume key: %v", err)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -267,12 +272,15 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerPublishVolume volume ID is invalid: %v", err))
 	}
 
 	volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, volKey)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "ControllerPublishVolume error repairing underspecified volume key: %v", err)
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
@@ -294,7 +302,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
-		if gce.IsGCEError(err, "notFound") {
+		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
@@ -305,7 +313,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
-		if gce.IsGCEError(err, "notFound") {
+		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find instance %v: %v", nodeID, err))
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get instance error: %v", err))
@@ -365,7 +373,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerUnpublishVolume Volume ID is invalid: %v", err))
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
@@ -382,7 +390,12 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
-		return nil, err
+		if gce.IsGCENotFoundError(err) {
+			// Node not existing on GCE means that disk has been detached
+			klog.Warningf("Treating volume %v as unpublished because node %v could not be found", volKey.String(), instanceName)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting instance: %v", err))
 	}
 
 	deviceName, err := common.GetDeviceName(volKey)
@@ -420,7 +433,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume ID is of improper format, got %v", volumeID))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ValidateVolumeCapabilities Volume ID is invalid: %v", err))
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -430,7 +443,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 
 	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
-		if gce.IsGCEError(err, "notFound") {
+		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.Name, err))
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
@@ -532,13 +545,22 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	}
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volumeID, err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateSnapshot Volume ID is invalid: %v", err))
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
+
+	// Check if volume exists
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	if err != nil {
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("CreateSnapshot could not find disk %v: %v", volKey.String(), err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateSnapshot unknown get disk error: %v", err))
+	}
 
 	// Check if snapshot already exists
 	var snapshot *compute.Snapshot
@@ -670,7 +692,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume volume ID is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
 	}
 
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, volKey, reqBytes)

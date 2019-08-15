@@ -72,6 +72,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, v
 	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
+		foundZone := ""
 		if volumeKey.Zone == common.UnspecifiedValue {
 			// list all zones, try to get disk in each zone
 			zones, err := cloud.ListZones(ctx, region)
@@ -80,13 +81,27 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, v
 			}
 			for _, zone := range zones {
 				_, err := cloud.getZonalDiskOrError(ctx, zone, volumeKey.Name)
-				if err == nil {
-					// If there is no error we have found a disk
-					volumeKey.Zone = zone
-					return volumeKey, nil
+				if err != nil {
+					if IsGCENotFoundError(err) {
+						// Couldn't find the disk in this zone so we keep
+						// looking
+						continue
+					}
+					// There is some miscellaneous error getting disk from zone
+					// so we return error immediately
+					return nil, err
 				}
+				if len(foundZone) > 0 {
+					return nil, fmt.Errorf("found disk %s in more than one zone: %s and %s", volumeKey.Name, foundZone, zone)
+				}
+				foundZone = zone
 			}
-			return nil, fmt.Errorf("volume zone unspecified and unable to find in any of these zones %v", zones)
+
+			if len(foundZone) == 0 {
+				return nil, notFoundError()
+			}
+			volumeKey.Zone = foundZone
+			return volumeKey, nil
 		}
 		return volumeKey, nil
 	case meta.Regional:
