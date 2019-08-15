@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"context"
+
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
@@ -53,6 +54,8 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	klog.V(3).Infof("GRPC call: %s", info.FullMethod)
+	// TODO: StripSecrets is very inefficient and uses significant CPU. Do more
+	// analysis to determine whether it's worth removing
 	klog.V(5).Infof("GRPC request: %+v", protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {

@@ -49,7 +49,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s> %s/prog.out 2> %s/prog.err < /dev/null &'",
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s --debug=true> %s/prog.out 2> %s/prog.err < /dev/null &'",
 		workspace, endpoint, workspace, workspace)
 
 	config := &remote.ClientConfig{

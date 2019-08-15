@@ -16,8 +16,14 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"math/rand"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
+	"syscall"
 	"time"
 
 	"k8s.io/klog"
@@ -35,6 +41,7 @@ func init() {
 var (
 	endpoint          = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	gceConfigFilePath = flag.String("cloud-config", "", "Path to GCE cloud provider config")
+	debug             = flag.Bool("debug", false, "Whether to start the driver in debug mode to get extra information")
 	vendorVersion     string
 )
 
@@ -48,6 +55,50 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	if *debug {
+		var tmpDir string
+		var err error
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+		tmpDir, err = ioutil.TempDir("", "gcp-pd-driver-pprof-")
+		if err != nil {
+			klog.Fatalf("Error creating temp dir: %v", err)
+		}
+		cpuprof := filepath.Join(tmpDir, "cpu.prof")
+		cpuf, err := os.Create(cpuprof)
+		if err != nil {
+			klog.Fatal("could not create CPU profile: ", err)
+		}
+		if err := pprof.StartCPUProfile(cpuf); err != nil {
+			klog.Fatal("could not start CPU profile: ", err)
+		}
+		klog.Infof("Start CPU profile")
+
+		go func() {
+			<-c
+			klog.Infof("Writing CPU profile to %s", cpuprof)
+			pprof.StopCPUProfile()
+			cpuf.Close()
+
+			memprof := filepath.Join(tmpDir, "mem.prof")
+
+			memf, err := os.Create(memprof)
+			if err != nil {
+				klog.Fatal("could not create memory profile: ", err)
+			}
+			klog.Infof("Writing MEM profile to %s", memprof)
+			runtime.GC() // get up-to-date statistics
+			if err := pprof.WriteHeapProfile(memf); err != nil {
+				klog.Fatal("could not write memory profile: ", err)
+			}
+			memf.Close()
+			os.Exit(0)
+		}()
+	}
+
 	rand.Seed(time.Now().UnixNano())
 	handle()
 	os.Exit(0)

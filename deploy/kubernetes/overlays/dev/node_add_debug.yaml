@@ -1,0 +1,16 @@
+- op: add
+  path: /spec/template/spec/containers/1/args/-
+  value:
+    --debug=true
+- op: add
+  path: /spec/template/spec/containers/1/volumeMounts/-
+  value:
+    name: debug-dir
+    mountPath: /tmp
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: debug-dir
+    hostPath:
+      path: /tmp/gce-pd-csi-driver-debug
+      type: DirectoryOrCreate
