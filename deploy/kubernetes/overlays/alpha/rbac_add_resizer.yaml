@@ -25,7 +25,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: external-resizer-role
