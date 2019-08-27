@@ -42,7 +42,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: external-snapshotter-role

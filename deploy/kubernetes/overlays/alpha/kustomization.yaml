@@ -15,3 +15,7 @@ patchesJson6902:
 resources:
 - rbac_add_snapshotter.yaml
 - rbac_add_resizer.yaml
+
+# Reapplying namespace transformer to include newly added RBAC rules.
+namespace:
+  gce-pd-csi-driver
