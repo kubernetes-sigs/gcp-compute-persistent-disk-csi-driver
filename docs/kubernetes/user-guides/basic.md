@@ -85,3 +85,9 @@ $ kubectl get pods
 NAME                      READY     STATUS    RESTARTS   AGE
 web-server                1/1       Running   0          1m
 ```
+
+## StorageClass Fields
+
+The list of recognized StorageClass [`parameters`](https://kubernetes.io/docs/concepts/storage/storage-classes/#parameters) is the same as the list of [CSI CreateVolume parameters](../../../README.md#createvolume-parameters).
+
+The list of recognized topology keys in [`allowedTopologies`](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) is listed [here](../../../README.md#topology)
