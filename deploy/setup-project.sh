@@ -70,7 +70,7 @@ then
 	gcloud iam service-accounts delete "${IAM_NAME}" --project "${PROJECT}" --quiet || true
 
 	# Create new Service Account
-	gcloud iam service-accounts create "${GCE_PD_SA_NAME}" --project "${PROJECT}"
+	gcloud iam service-accounts create "${GCE_PD_SA_NAME}" --project "${PROJECT}" --display-name "${GCE_PD_SA_NAME}"
 fi
 
 # Create or Update Custom Role
