@@ -17,6 +17,8 @@ readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
+readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
+readonly gce_region=${GCE_CLUSTER_REGION:-}
 
 export GCE_PD_VERBOSITY=9
 
@@ -25,13 +27,19 @@ make -C ${PKGDIR} test-k8s-integration
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-file=sc-standard.yaml --test-focus="External.Storage" --gce-zone="us-central1-b" \
+            --storageclass-file=sc-standard.yaml --test-focus="External.Storage" \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} --num-nodes=3"
 
 if [ "$deployment_strategy" = "gke" ]; then
   base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
 else
   base_cmd="${base_cmd} --kube-version=${kube_version}"
+fi
+
+if [ -z "$gce_region" ]; then
+  base_cmd="${base_cmd} --gce-zone=${gce_zone}"
+else
+  base_cmd="${base_cmd} --gce-region=${gce_region}"
 fi
 
 eval $base_cmd
