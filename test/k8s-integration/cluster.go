@@ -10,6 +10,20 @@ import (
 	"k8s.io/klog"
 )
 
+func gkeLocationArgs(gceZone, gceRegion string) (locationArg, locationVal string, err error) {
+	switch {
+	case len(gceZone) > 0:
+		locationArg = "--zone"
+		locationVal = gceZone
+	case len(gceRegion) > 0:
+		locationArg = "--region"
+		locationVal = gceRegion
+	default:
+		return "", "", fmt.Errorf("zone and region unspecified")
+	}
+	return
+}
+
 func clusterDownGCE(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-down.sh"))
 	err := runCommand("Bringing Down E2E Cluster on GCE", cmd)
@@ -19,10 +33,15 @@ func clusterDownGCE(k8sDir string) error {
 	return nil
 }
 
-func clusterDownGKE(gceZone string) error {
+func clusterDownGKE(gceZone, gceRegion string) error {
+	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
+	if err != nil {
+		return err
+	}
+
 	cmd := exec.Command("gcloud", "container", "clusters", "delete", gkeTestClusterName,
-		"--zone", gceZone, "--quiet")
-	err := runCommand("Bringing Down E2E Cluster on GKE", cmd)
+		locationArg, locationVal, "--quiet")
+	err = runCommand("Bringing Down E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err)
 	}
@@ -77,21 +96,27 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone string, numNodes int) error {
-	out, err := exec.Command("gcloud", "container", "clusters", "list", "--zone", gceZone,
+func clusterUpGKE(gceZone, gceRegion string, numNodes int) error {
+	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
+	if err != nil {
+		return err
+	}
+
+	out, err := exec.Command("gcloud", "container", "clusters", "list", locationArg, locationVal,
 		"--filter", fmt.Sprintf("name=%s", gkeTestClusterName)).CombinedOutput()
+
 	if err != nil {
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
 	}
 	if len(out) > 0 {
 		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", gkeTestClusterName)
-		err = clusterDownGKE(gceZone)
+		err = clusterDownGKE(gceZone, gceRegion)
 		if err != nil {
 			return err
 		}
 	}
 	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		"--zone", gceZone, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
+		locationArg, locationVal, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
 		"--quiet", "--machine-type", "n1-standard-2")
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
@@ -157,7 +182,17 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	return nil
 }
 
-func getGKEKubeTestArgs() ([]string, error) {
+func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
+	var locationArg, locationVal string
+	switch {
+	case len(gceZone) > 0:
+		locationArg = "--gcp-zone"
+		locationVal = gceZone
+	case len(gceRegion) > 0:
+		locationArg = "--gcp-region"
+		locationVal = gceRegion
+	}
+
 	var gkeEnv string
 	switch gkeURL := os.Getenv("CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER"); gkeURL {
 	case "https://staging-container.sandbox.googleapis.com/":
@@ -189,7 +224,7 @@ func getGKEKubeTestArgs() ([]string, error) {
 		"--gcp-network=default",
 		fmt.Sprintf("--cluster=%s", gkeTestClusterName),
 		fmt.Sprintf("--gke-environment=%s", gkeEnv),
-		fmt.Sprintf("--gcp-zone=%s", *gceZone),
+		fmt.Sprintf("%s=%s", locationArg, locationVal),
 		fmt.Sprintf("--gcp-project=%s", project[:len(project)-1]),
 	}
 
