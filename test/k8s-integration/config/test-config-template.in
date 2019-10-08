@@ -17,6 +17,7 @@ DriverInfo:
     fsGroup: true
     exec: true
     block: true
+    topology: true
     # dataSource: true
     # RWX: true
   SupportedMountOption:

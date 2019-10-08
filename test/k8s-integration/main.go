@@ -34,13 +34,15 @@ var (
 	teardownDriver   = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster   = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
 	gceZone          = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
+	gceRegion        = flag.String("gce-region", "", "region that gke regional cluster should be created in")
 	kubeVersion      = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
 	testVersion      = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
 	kubeFeatureGates = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
 	localK8sDir      = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
-	deploymentStrat  = flag.String("deployment-strategy", "", "choose between deploying on gce or gke")
+	deploymentStrat  = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
 	gkeClusterVer    = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
 	numNodes         = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
@@ -78,7 +80,12 @@ func main() {
 	ensureVariable(saFile, true, "service-account-file is a required flag")
 	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
 	ensureVariable(testFocus, true, "test-focus is a required flag")
-	ensureVariable(gceZone, true, "gce-zone is a required flag")
+
+	if len(*gceRegion) != 0 {
+		ensureVariable(gceZone, false, "gce-zone and gce-region cannot both be set")
+	} else {
+		ensureVariable(gceZone, true, "One of gce-zone or gce-region must be set")
+	}
 
 	if *migrationTest {
 		ensureVariable(storageClassFile, false, "storage-class-file and migration-test cannot both be set")
@@ -90,12 +97,6 @@ func main() {
 		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	}
 
-	if *bringupCluster || *teardownCluster {
-		ensureVariable(deploymentStrat, true, "Must set the deployment strategy if bringing up or down cluster.")
-	} else {
-		ensureVariable(deploymentStrat, false, "Cannot set the deployment strategy if not bringing up or down cluster.")
-	}
-
 	if *deploymentStrat == "gke" {
 		ensureFlag(migrationTest, false, "Cannot set deployment strategy to 'gke' for migration tests.")
 		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
@@ -104,6 +105,9 @@ func main() {
 		if len(*localK8sDir) == 0 {
 			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
 		}
+	} else if *deploymentStrat == "gce" {
+		ensureVariable(gceRegion, false, "regional clusters not supported for 'gce' deployment")
+		ensureVariable(gceZone, true, "gce-zone required for 'gce' deployment")
 	}
 
 	if len(*localK8sDir) != 0 {
@@ -229,8 +233,6 @@ func handle() error {
 		testDir = k8sDir
 	}
 
-	var cloudProviderArgs []string
-
 	// Create a cluster either through GKE or GCE
 	if *bringupCluster {
 		var err error = nil
@@ -238,11 +240,7 @@ func handle() error {
 		case "gce":
 			err = clusterUpGCE(k8sDir, *gceZone, *numNodes)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *numNodes)
-			cloudProviderArgs, err = getGKEKubeTestArgs()
-			if err != nil {
-				return fmt.Errorf("failed to build GKE kubetest args: %v", err)
-			}
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -261,7 +259,7 @@ func handle() error {
 					klog.Errorf("failed to cluster down: %v", err)
 				}
 			case "gke":
-				err := clusterDownGKE(*gceZone)
+				err := clusterDownGKE(*gceZone, *gceRegion)
 				if err != nil {
 					klog.Errorf("failed to cluster down: %v", err)
 				}
@@ -283,6 +281,15 @@ func handle() error {
 	}
 	if err != nil {
 		return fmt.Errorf("failed to install CSI Driver: %v", err)
+	}
+
+	var cloudProviderArgs []string
+	switch *deploymentStrat {
+	case "gke":
+		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion)
+		if err != nil {
+			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
+		}
 	}
 
 	// Run the tests using the testDir kubernetes
@@ -348,6 +355,7 @@ func runTestsWithConfig(testDir, testFocus, testConfigArg string, cloudProviderA
 	kubeTestArgs := []string{
 		"--test",
 		"--ginkgo-parallel",
+		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", testArgs),
 	}
 
