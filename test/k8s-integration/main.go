@@ -220,8 +220,7 @@ func runTests(k8sDir string) error {
 	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
 	reportArg := fmt.Sprintf("--report-dir=%s", artifactsDir)
 	testArgs := fmt.Sprintf("--test_args=--ginkgo.focus=CSI.*gcePD-external --ginkgo.skip=\\[Disruptive\\]|\\[Serial\\]|kubelet.*down %s", reportArg)
-	cmd := exec.Command("go", "run", "hack/e2e.go",
-		"--",
+	cmd := exec.Command("kubetest",
 		"--check-version-skew=false",
 		"--test",
 		"--ginkgo-parallel",
