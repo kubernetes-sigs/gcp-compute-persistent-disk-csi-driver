@@ -23,6 +23,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -42,7 +43,7 @@ type GCECompute interface {
 	GetDisk(ctx context.Context, volumeKey *meta.Key) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, diskType string, reqBytes, limBytes int64) error
-	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string) error
+	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error
 	DeleteDisk(ctx context.Context, volumeKey *meta.Key) error
 	AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
 	DetachDisk(ctx context.Context, deviceName string, instanceZone, instanceName string) error
@@ -217,13 +218,21 @@ func (cloud *CloudProvider) ValidateExistingDisk(ctx context.Context, resp *Clou
 	return nil
 }
 
-func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string) error {
+func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.insertZonalDisk(ctx, volKey, diskType, capBytes, capacityRange, snapshotID, diskEncryptionKmsKey)
+		if multiWriter {
+			return cloud.insertZonalAlphaDisk(ctx, volKey, diskType, capBytes, capacityRange, snapshotID, diskEncryptionKmsKey, multiWriter)
+		} else {
+			return cloud.insertZonalDisk(ctx, volKey, diskType, capBytes, capacityRange, snapshotID, diskEncryptionKmsKey)
+		}
 	case meta.Regional:
-		return cloud.insertRegionalDisk(ctx, volKey, diskType, capBytes, capacityRange, replicaZones, snapshotID, diskEncryptionKmsKey)
+		if multiWriter {
+			return cloud.insertRegionalAlphaDisk(ctx, volKey, diskType, capBytes, capacityRange, replicaZones, snapshotID, diskEncryptionKmsKey, multiWriter)
+		} else {
+			return cloud.insertRegionalDisk(ctx, volKey, diskType, capBytes, capacityRange, replicaZones, snapshotID, diskEncryptionKmsKey)
+		}
 	default:
 		return fmt.Errorf("could not insert disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -288,6 +297,66 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	return nil
 }
 
+func (cloud *CloudProvider) insertRegionalAlphaDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
+	diskToCreateAlpha := &computealpha.Disk{
+		Name:        volKey.Name,
+		SizeGb:      common.BytesToGb(capBytes),
+		Description: "Regional disk created by GCE-PD CSI Driver",
+		Type:        cloud.GetDiskTypeURI(volKey, diskType),
+		MultiWriter: multiWriter,
+	}
+	if snapshotID != "" {
+		diskToCreateAlpha.SourceSnapshot = snapshotID
+	}
+	if len(replicaZones) != 0 {
+		diskToCreateAlpha.ReplicaZones = replicaZones
+	}
+	if diskEncryptionKmsKey != "" {
+		diskToCreateAlpha.DiskEncryptionKey = &computealpha.CustomerEncryptionKey{
+			KmsKeyName: diskEncryptionKmsKey,
+		}
+	}
+
+	insertOp, err := cloud.alphaService.RegionDisks.Insert(cloud.project, volKey.Region, diskToCreateAlpha).Context(ctx).Do()
+	if err != nil {
+		if IsGCEError(err, "alreadyExists") {
+			disk, err := cloud.GetDisk(ctx, volKey)
+			if err != nil {
+				return err
+			}
+			err = cloud.ValidateExistingDisk(ctx, disk, diskType,
+				int64(capacityRange.GetRequiredBytes()),
+				int64(capacityRange.GetLimitBytes()))
+			if err != nil {
+				return err
+			}
+			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
+			return nil
+		}
+		return status.Error(codes.Internal, fmt.Sprintf("unkown Insert disk error: %v", err))
+	}
+
+	err = cloud.waitForRegionalAlphaOp(ctx, insertOp, volKey.Region)
+	if err != nil {
+		if IsGCEError(err, "alreadyExists") {
+			disk, err := cloud.GetDisk(ctx, volKey)
+			if err != nil {
+				return err
+			}
+			err = cloud.ValidateExistingDisk(ctx, disk, diskType,
+				int64(capacityRange.GetRequiredBytes()),
+				int64(capacityRange.GetLimitBytes()))
+			if err != nil {
+				return err
+			}
+			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
+			return nil
+		}
+		return fmt.Errorf("unkown Insert disk operation error: %v", err)
+	}
+	return nil
+}
+
 func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, snapshotID, diskEncryptionKmsKey string) error {
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
@@ -327,6 +396,67 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 	}
 
 	err = cloud.waitForZonalOp(ctx, op, volKey.Zone)
+
+	if err != nil {
+		if IsGCEError(err, "alreadyExists") {
+			disk, err := cloud.GetDisk(ctx, volKey)
+			if err != nil {
+				return err
+			}
+			err = cloud.ValidateExistingDisk(ctx, disk, diskType,
+				int64(capacityRange.GetRequiredBytes()),
+				int64(capacityRange.GetLimitBytes()))
+			if err != nil {
+				return err
+			}
+			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
+			return nil
+		}
+		return fmt.Errorf("unkown Insert disk operation error: %v", err)
+	}
+	return nil
+}
+
+func (cloud *CloudProvider) insertZonalAlphaDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
+	diskToCreateAlpha := &computealpha.Disk{
+		Name:        volKey.Name,
+		SizeGb:      common.BytesToGb(capBytes),
+		Description: "Disk created by GCE-PD CSI Driver",
+		Type:        cloud.GetDiskTypeURI(volKey, diskType),
+		MultiWriter: multiWriter,
+	}
+
+	if snapshotID != "" {
+		diskToCreateAlpha.SourceSnapshot = snapshotID
+	}
+
+	if diskEncryptionKmsKey != "" {
+		diskToCreateAlpha.DiskEncryptionKey = &computealpha.CustomerEncryptionKey{
+			KmsKeyName: diskEncryptionKmsKey,
+		}
+	}
+
+	op, err := cloud.alphaService.Disks.Insert(cloud.project, volKey.Zone, diskToCreateAlpha).Context(ctx).Do()
+
+	if err != nil {
+		if IsGCEError(err, "alreadyExists") {
+			disk, err := cloud.GetDisk(ctx, volKey)
+			if err != nil {
+				return err
+			}
+			err = cloud.ValidateExistingDisk(ctx, disk, diskType,
+				int64(capacityRange.GetRequiredBytes()),
+				int64(capacityRange.GetLimitBytes()))
+			if err != nil {
+				return err
+			}
+			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
+			return nil
+		}
+		return fmt.Errorf("unkown Insert disk error: %v", err)
+	}
+
+	err = cloud.waitForZonalAlphaOp(ctx, op, volKey.Zone)
 
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
@@ -492,6 +622,20 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, op *computev1.Op
 	})
 }
 
+func (cloud *CloudProvider) waitForZonalAlphaOp(ctx context.Context, op *computealpha.Operation, zone string) error {
+	svc := cloud.alphaService
+	project := cloud.project
+	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+		pollOp, err := svc.ZoneOperations.Get(project, zone, op.Name).Context(ctx).Do()
+		if err != nil {
+			klog.Errorf("WaitForOp(op: %#v, zone: %#v) failed to poll the operation", op, zone)
+			return false, err
+		}
+		done, err := alphaOpIsDone(pollOp)
+		return done, err
+	})
+}
+
 func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, op *computev1.Operation, region string) error {
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := cloud.service.RegionOperations.Get(cloud.project, region, op.Name).Context(ctx).Do()
@@ -500,6 +644,18 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, op *computev1
 			return false, err
 		}
 		done, err := opIsDone(pollOp)
+		return done, err
+	})
+}
+
+func (cloud *CloudProvider) waitForRegionalAlphaOp(ctx context.Context, op *computealpha.Operation, region string) error {
+	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+		pollOp, err := cloud.alphaService.RegionOperations.Get(cloud.project, region, op.Name).Context(ctx).Do()
+		if err != nil {
+			klog.Errorf("WaitForOp(op: %#v, region: %#v) failed to poll the operation", op, region)
+			return false, err
+		}
+		done, err := alphaOpIsDone(pollOp)
 		return done, err
 	})
 }
@@ -542,6 +698,16 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, volKey *meta.Key,
 }
 
 func opIsDone(op *computev1.Operation) (bool, error) {
+	if op == nil || op.Status != operationStatusDone {
+		return false, nil
+	}
+	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
+		return true, fmt.Errorf("operation %v failed (%v): %v", op.Name, op.Error.Errors[0].Code, op.Error.Errors[0].Message)
+	}
+	return true, nil
+}
+
+func alphaOpIsDone(op *computealpha.Operation) (bool, error) {
 	if op == nil || op.Status != operationStatusDone {
 		return false, nil
 	}

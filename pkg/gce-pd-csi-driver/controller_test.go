@@ -346,14 +346,19 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "fail with MULTI_NODE_MULTI_WRITER capability",
+			name: "success with block/MULTI_NODE_MULTI_WRITER capabilities",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
-				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+				VolumeCapabilities: createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 				Parameters:         stdParams,
 			},
-			expErrCode: codes.InvalidArgument,
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
 		},
 		{
 			name: "fail no name",
@@ -605,18 +610,9 @@ func TestCreateVolumeArguments(t *testing.T) {
 		{
 			name: "success with block volume capability",
 			req: &csi.CreateVolumeRequest{
-				Name:          name,
-				CapacityRange: stdCapRange,
-				VolumeCapabilities: []*csi.VolumeCapability{
-					{
-						AccessType: &csi.VolumeCapability_Block{
-							Block: &csi.VolumeCapability_BlockVolume{},
-						},
-						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-						},
-					},
-				},
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 			},
 			expVol: &csi.Volume{
 				CapacityBytes:      common.GbToBytes(20),

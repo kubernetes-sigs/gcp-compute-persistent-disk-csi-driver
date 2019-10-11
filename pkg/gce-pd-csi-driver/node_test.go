@@ -203,7 +203,7 @@ func TestNodePublishVolume(t *testing.T) {
 				TargetPath:        defaultTargetPath,
 				StagingTargetPath: defaultStagingPath,
 				Readonly:          false,
-				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_UNKNOWN),
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -346,7 +346,7 @@ func TestNodeStageVolume(t *testing.T) {
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: defaultStagingPath,
-				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_UNKNOWN),
 			},
 			expErrCode: codes.InvalidArgument,
 		},

@@ -27,6 +27,7 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
+	alpha "google.golang.org/api/compute/v0.alpha"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -42,16 +43,18 @@ const (
 
 	regionURITemplate = "projects/%s/regions/%s"
 
-	GCEComputeAPIEndpoint     = "https://www.googleapis.com/compute/v1/"
-	GCEComputeBetaAPIEndpoint = "https://www.googleapis.com/compute/beta/"
+	GCEComputeAPIEndpoint      = "https://www.googleapis.com/compute/v1/"
+	GCEComputeBetaAPIEndpoint  = "https://www.googleapis.com/compute/beta/"
+	GCEComputeAlphaAPIEndpoint = "https://www.googleapis.com/compute/alpha/"
 
 	replicaZoneURITemplateSingleZone = "%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 )
 
 type CloudProvider struct {
-	service *compute.Service
-	project string
-	zone    string
+	service      *compute.Service
+	alphaService *alpha.Service
+	project      string
+	zone         string
 
 	zonesCache map[string]([]string)
 }
@@ -88,16 +91,22 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 		return nil, err
 	}
 
+	alphasvc, err := createAlphaCloudService(vendorVersion, tokenSource)
+	if err != nil {
+		return nil, err
+	}
+
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting Project and Zone: %v", err)
 	}
 
 	return &CloudProvider{
-		service:    svc,
-		project:    project,
-		zone:       zone,
-		zonesCache: make(map[string]([]string)),
+		service:      svc,
+		alphaService: alphasvc,
+		project:      project,
+		zone:         zone,
+		zonesCache:   make(map[string]([]string)),
 	}, nil
 
 }
@@ -147,6 +156,19 @@ func readConfig(configPath string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("couldn't read cloud provider configuration at %s: %v", configPath, err)
 	}
 	return cfg, nil
+}
+
+func createAlphaCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*alpha.Service, error) {
+	client, err := newOauthClient(tokenSource)
+	if err != nil {
+		return nil, err
+	}
+	service, err := alpha.New(client)
+	if err != nil {
+		return nil, err
+	}
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
+	return service, nil
 }
 
 func createCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {

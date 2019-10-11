@@ -96,11 +96,15 @@ func validateVolumeCapability(vc *csi.VolumeCapability) error {
 	}
 	blk := vc.GetBlock()
 	mnt := vc.GetMount()
+	mod := vc.GetAccessMode().GetMode()
 	if mnt == nil && blk == nil {
 		return errors.New("must specify an access type")
 	}
 	if mnt != nil && blk != nil {
 		return errors.New("specified both mount and block access types")
+	}
+	if mnt != nil && mod == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return errors.New("specified multi writer with mount access type")
 	}
 	return nil
 }
@@ -115,7 +119,6 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
-		return errors.New("MULTI_NODE_MULTI_WRITER access mode is not yet supported for PD")
 	default:
 		return fmt.Errorf("%v access mode is not supported for for PD", am.GetMode())
 	}

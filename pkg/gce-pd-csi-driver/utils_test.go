@@ -54,6 +54,23 @@ func createVolumeCapability(am csi.VolumeCapability_AccessMode_Mode) *csi.Volume
 	}
 }
 
+func createBlockVolumeCapabilities(am csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
+	return []*csi.VolumeCapability{
+		createBlockVolumeCapability(am),
+	}
+}
+
+func createBlockVolumeCapability(am csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability {
+	return &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Block{
+			Block: &csi.VolumeCapability_BlockVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: am,
+		},
+	}
+}
+
 func TestValidateVolumeCapabilities(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -127,16 +144,16 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 		},
 		{
 			name: "success with block capabilities",
-			vc: []*csi.VolumeCapability{
-				{
-					AccessType: &csi.VolumeCapability_Block{
-						Block: &csi.VolumeCapability_BlockVolume{},
-					},
-					AccessMode: &csi.VolumeCapability_AccessMode{
-						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-					},
-				},
-			},
+			vc:   createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+		},
+		{
+			name: "success with block/MULTI_NODE_MULTI_WRITER capabilities",
+			vc:   createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+		},
+		{
+			name:   "fail with block/MULTI_NODE_SINGLE_WRITER capabilities",
+			vc:     createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER),
+			expErr: true,
 		},
 		{
 			name: "success with reader + writer capabilities",
