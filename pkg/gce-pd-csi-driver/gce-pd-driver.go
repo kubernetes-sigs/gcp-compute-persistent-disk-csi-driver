@@ -46,7 +46,7 @@ func GetGCEDriver() *GCEDriver {
 }
 
 func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter *mount.SafeFormatAndMount,
-	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, vendorVersion string) error {
+	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, name, vendorVersion string) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -78,7 +78,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 
 	// Set up RPC Servers
 	gceDriver.ids = NewIdentityServer(gceDriver)
-	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils, meta)
+	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
 	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider, meta)
 
 	return nil
@@ -134,13 +134,14 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:          gceDriver,
 		Mounter:         mounter,
 		DeviceUtils:     deviceUtils,
 		MetadataService: meta,
 		volumeLocks:     common.NewVolumeLocks(),
+		VolumeStatter:   statter,
 	}
 }
 

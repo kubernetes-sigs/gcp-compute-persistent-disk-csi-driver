@@ -53,7 +53,7 @@ func TestSanity(t *testing.T) {
 	deviceUtils := mountmanager.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, metadataservice.NewFakeService(), driverName, vendorVersion)
+	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(), driverName, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

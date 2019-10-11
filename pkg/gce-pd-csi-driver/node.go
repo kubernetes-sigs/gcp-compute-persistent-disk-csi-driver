@@ -22,7 +22,6 @@ import (
 
 	"context"
 
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -41,6 +40,7 @@ type GCENodeServer struct {
 	Driver          *GCEDriver
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
+	VolumeStatter   mountmanager.Statter
 	MetadataService metadataservice.MetadataService
 
 	// A map storing all volumes with ongoing operations so that additional operations
@@ -368,24 +368,25 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	if len(req.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
 	if len(req.VolumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
-	statfs := &unix.Statfs_t{}
-	err := unix.Statfs(req.VolumePath, statfs)
+
+	exists, err := ns.Mounter.Interface.ExistsPath(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", req.VolumePath, err)
+	}
+	if !exists {
+		return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
+	}
+
+	available, capacity, used, inodesFree, inodes, inodesUsed, err := ns.VolumeStatter.StatFS(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", req.VolumePath, err)
 	}
-
-	// Available is blocks available * fragment size
-	available := int64(statfs.Bavail) * int64(statfs.Bsize)
-	// Capacity is total block count * fragment size
-	capacity := int64(statfs.Blocks) * int64(statfs.Bsize)
-	// Usage is block being used * fragment size (aka block size).
-	usage := (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize)
-	inodes := int64(statfs.Files)
-	inodesFree := int64(statfs.Ffree)
-	inodesUsed := inodes - inodesFree
 
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
@@ -393,7 +394,7 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 				Unit:      csi.VolumeUsage_BYTES,
 				Available: available,
 				Total:     capacity,
-				Used:      usage,
+				Used:      used,
 			},
 			{
 				Unit:      csi.VolumeUsage_INODES,
