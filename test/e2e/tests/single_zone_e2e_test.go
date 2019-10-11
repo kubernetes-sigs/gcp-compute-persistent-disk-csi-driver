@@ -43,6 +43,8 @@ const (
 	standardDiskType         = "pd-standard"
 	ssdDiskType              = "pd-ssd"
 	defaultVolumeLimit int64 = 127
+
+	defaultEpsiolon = 500000000 // 500M
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
@@ -539,4 +541,68 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
 		}()
 	})
+
+	It("Should get correct VolumeStats", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			})
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		defer func() {
+			// Delete Disk
+			client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		verifyVolumeStats := func(a verifyArgs) error {
+			available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
+			if err != nil {
+				return fmt.Errorf("failed to get node volume stats: %v", err)
+			}
+			if !equalWithinEpsilon(available, common.GbToBytes(defaultSizeGb), defaultEpsiolon) || !equalWithinEpsilon(capacity, common.GbToBytes(defaultSizeGb), defaultEpsiolon) || !equalWithinEpsilon(used, 0, defaultEpsiolon) ||
+				inodesFree == 0 || inodes == 0 || inodesUsed == 0 {
+				return fmt.Errorf("got: available %v, capacity %v, used %v, inodesFree %v, inodes %v, inodesUsed %v -- expected: available ~= %v, capacity ~= %v, used = 0, inodesFree != 0, inodes != 0 , inodesUsed != 0",
+					available, capacity, used, inodesFree, inodes, inodesUsed, common.GbToBytes(defaultSizeGb), common.GbToBytes(defaultSizeGb))
+			}
+			return nil
+		}
+
+		// Attach Disk
+		err = testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, verifyVolumeStats, nil)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+
+	})
+
 })
+
+func equalWithinEpsilon(a, b, epsiolon int64) bool {
+	if a > b {
+		return a-b < epsiolon
+	}
+	return b-a < epsiolon
+}
