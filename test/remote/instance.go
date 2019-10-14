@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"golang.org/x/oauth2/google"
-	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -273,36 +272,6 @@ func GetComputeClient() (*compute.Service, error) {
 		}
 
 		cs, err = compute.New(client)
-		if err != nil {
-			continue
-		}
-		return cs, nil
-	}
-	return nil, err
-}
-
-func GetBetaComputeClient() (*computebeta.Service, error) {
-	const retries = 10
-	const backoff = time.Second * 6
-
-	klog.V(4).Infof("Getting compute client...")
-
-	// Setup the gce client for provisioning instances
-	// Getting credentials on gce jenkins is flaky, so try a couple times
-	var err error
-	var cs *computebeta.Service
-	for i := 0; i < retries; i++ {
-		if i > 0 {
-			time.Sleep(backoff)
-		}
-
-		var client *http.Client
-		client, err = google.DefaultClient(context.Background(), computebeta.ComputeScope)
-		if err != nil {
-			continue
-		}
-
-		cs, err = computebeta.New(client)
 		if err != nil {
 			continue
 		}

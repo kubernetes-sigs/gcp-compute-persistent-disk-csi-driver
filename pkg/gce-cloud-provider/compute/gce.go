@@ -27,7 +27,6 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
-	beta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -50,10 +49,9 @@ const (
 )
 
 type CloudProvider struct {
-	service     *compute.Service
-	betaService *beta.Service
-	project     string
-	zone        string
+	service *compute.Service
+	project string
+	zone    string
 
 	zonesCache map[string]([]string)
 }
@@ -90,22 +88,16 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 		return nil, err
 	}
 
-	betasvc, err := createBetaCloudService(vendorVersion, tokenSource)
-	if err != nil {
-		return nil, err
-	}
-
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting Project and Zone: %v", err)
 	}
 
 	return &CloudProvider{
-		service:     svc,
-		betaService: betasvc,
-		project:     project,
-		zone:        zone,
-		zonesCache:  make(map[string]([]string)),
+		service:    svc,
+		project:    project,
+		zone:       zone,
+		zonesCache: make(map[string]([]string)),
 	}, nil
 
 }
@@ -155,19 +147,6 @@ func readConfig(configPath string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("couldn't read cloud provider configuration at %s: %v", configPath, err)
 	}
 	return cfg, nil
-}
-
-func createBetaCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*beta.Service, error) {
-	client, err := newOauthClient(tokenSource)
-	if err != nil {
-		return nil, err
-	}
-	service, err := beta.New(client)
-	if err != nil {
-		return nil, err
-	}
-	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
-	return service, nil
 }
 
 func createCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
