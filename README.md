@@ -32,15 +32,15 @@ This plugin is compatible with CSI versions [v1.1.0](https://github.com/containe
 
 ### Kubernetes Compatibility
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15+|
-|--------------------------------------|---------------|------|------|------|------|
-| v0.1.x.alpha                         | yes           | no   | no   | no   | no   |
-| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   |
-| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  |
-| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  |
-| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  |
-| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  |
-| dev                                  | no            | no   | no   | yes  | yes  |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15 | 1.16+ |
+|--------------------------------------|---------------|------|------|------|------|-------|
+| v0.1.x.alpha                         | yes           | no   | no   | no   | no   | no    |
+| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   | no    |
+| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
+| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
+| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
+| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
+| dev                                  | no            | no   | no   | no   | no   | yes   |
 
 ### Known Issues
 
@@ -67,7 +67,9 @@ that represents availability by zone.
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
 | Topology        | Beta  | 1.14                          | 1.14                         | v0.5.0             | Stable             |
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
-| Resize (Expand) | Alpha | 1.14                          | 1.14                         | dev                | Alpha              |
+| Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | dev                | Stable             |
+
 
 ### Future Features
 
