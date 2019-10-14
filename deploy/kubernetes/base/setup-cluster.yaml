@@ -2,21 +2,21 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: csi-node-sa
+  name: csi-gce-pd-node-sa
 
 ---
 ##### Controller Service Account, Roles, Rolebindings
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: csi-controller-sa
+  name: csi-gce-pd-controller-sa
 
 ---
 # xref: https://github.com/kubernetes-csi/external-provisioner/blob/master/deploy/kubernetes/rbac.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: external-provisioner-role
+  name: csi-gce-pd-provisioner-role
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -42,13 +42,13 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-controller-provisioner-binding
+  name: csi-gce-pd-controller-provisioner-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-controller-sa
+    name: csi-gce-pd-controller-sa
 roleRef:
   kind: ClusterRole
-  name: external-provisioner-role
+  name: csi-gce-pd-provisioner-role
   apiGroup: rbac.authorization.k8s.io
   
 ---
@@ -56,7 +56,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: external-attacher-role
+  name: csi-gce-pd-attacher-role
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -76,13 +76,13 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-controller-attacher-binding
+  name: csi-gce-pd-controller-attacher-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-controller-sa
+    name: csi-gce-pd-controller-sa
 roleRef:
   kind: ClusterRole
-  name: external-attacher-role
+  name: csi-gce-pd-attacher-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
@@ -90,7 +90,7 @@ roleRef:
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: gce-pd-csi-driver-controller
+  name: csi-gce-pd-controller
 value: 900000000
 globalDefault: false
 description: "This priority class should be used for the GCE PD CSI driver controller deployment only."
@@ -100,7 +100,7 @@ description: "This priority class should be used for the GCE PD CSI driver contr
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: gce-pd-csi-driver-node
+  name: csi-gce-pd-node
 value: 900001000
 globalDefault: false
 description: "This priority class should be used for the GCE PD CSI driver node deployment only."

@@ -10,7 +10,7 @@ patchesJson6902:
     group: rbac.authorization.k8s.io
     version: v1
     kind: ClusterRole
-    name: external-provisioner-role
+    name: csi-gce-pd-provisioner-role
   path: rbac_add_snapshots_to_provisioner.yaml
 resources:
 - rbac_add_snapshotter.yaml
