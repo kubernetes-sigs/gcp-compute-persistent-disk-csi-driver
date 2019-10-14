@@ -12,8 +12,8 @@ spec:
       labels:
         app: gcp-compute-persistent-disk-csi-driver
     spec:
-      priorityClassName: gce-pd-csi-driver-node
-      serviceAccountName: csi-node-sa
+      priorityClassName: csi-gce-pd-node
+      serviceAccountName: csi-gce-pd-node-sa
       containers:
         - name: csi-driver-registrar
           image: gke.gcr.io/csi-node-driver-registrar
