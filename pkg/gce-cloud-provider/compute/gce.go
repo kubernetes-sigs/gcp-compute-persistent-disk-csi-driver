@@ -76,7 +76,7 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 	// At this point configFile could still be nil.
 	// Any following code that uses configFile should handle nil pointer gracefully.
 
-	klog.V(1).Infof("Using GCE provider config %+v", configFile)
+	klog.V(2).Infof("Using GCE provider config %+v", configFile)
 
 	tokenSource, err := generateTokenSource(configFile)
 	if err != nil {
@@ -109,7 +109,7 @@ func generateTokenSource(configFile *ConfigFile) (oauth2.TokenSource, error) {
 		// Use AltTokenSource
 
 		tokenSource := NewAltTokenSource(configFile.Global.TokenURL, configFile.Global.TokenBody)
-		klog.V(4).Infof("Using AltTokenSource %#v", tokenSource)
+		klog.V(2).Infof("Using AltTokenSource %#v", tokenSource)
 		return tokenSource, nil
 	}
 
@@ -122,11 +122,11 @@ func generateTokenSource(configFile *ConfigFile) (oauth2.TokenSource, error) {
 
 	// DefaultTokenSource relies on GOOGLE_APPLICATION_CREDENTIALS env var being set.
 	if gac, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS"); ok {
-		klog.V(4).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
+		klog.V(2).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
 	} else {
 		klog.Warningf("GOOGLE_APPLICATION_CREDENTIALS env var not set")
 	}
-	klog.V(4).Infof("Using DefaultTokenSource %#v", tokenSource)
+	klog.V(2).Infof("Using DefaultTokenSource %#v", tokenSource)
 
 	return tokenSource, err
 }
@@ -198,10 +198,10 @@ func getProjectAndZone(config *ConfigFile) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		klog.V(4).Infof("Using GCP project ID from the Metadata server: %q", projectID)
+		klog.V(2).Infof("Using GCP project ID from the Metadata server: %q", projectID)
 	} else {
 		projectID = config.Global.ProjectId
-		klog.V(4).Infof("Using GCP project ID from the local GCE cloud provider config file: %q", projectID)
+		klog.V(2).Infof("Using GCP project ID from the local GCE cloud provider config file: %q", projectID)
 	}
 
 	return projectID, zone, nil

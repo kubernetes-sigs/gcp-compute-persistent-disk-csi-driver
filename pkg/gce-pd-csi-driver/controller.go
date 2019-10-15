@@ -43,8 +43,9 @@ type GCEControllerServer struct {
 	CloudProvider   gce.GCECompute
 	MetadataService metadataservice.MetadataService
 
-	// A map storing all volumes with ongoing operations so that additional operations
-	// for that same volume (as defined by Volume Key) return an Aborted error
+	// A map storing all volumes with ongoing operations so that additional
+	// operations for that same volume (as defined by Volume Key) return an
+	// Aborted error
 	volumeLocks *common.VolumeLocks
 }
 
@@ -67,8 +68,6 @@ const (
 
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	var err error
-	klog.V(4).Infof("CreateVolume called with request %v", *req)
-
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
 	name := req.GetName()
@@ -167,6 +166,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
 		}
 		// If there is no validation error, immediately return success
+		klog.V(4).Infof("CreateVolume succeeded for disk %v, it already exists and was compatible", volKey)
 		return generateCreateVolumeResponse(existingDisk, capBytes, zones), nil
 	}
 
@@ -209,13 +209,12 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	default:
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", replicationType))
 	}
+	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
 	return generateCreateVolumeResponse(disk, capBytes, zones), nil
 
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	klog.V(4).Infof("DeleteVolume called with request %v", *req)
-
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -249,12 +248,11 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk error: %v", err))
 	}
 
+	klog.V(4).Infof("DeleteVolume succeeded for disk %v", volKey)
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
-	klog.V(4).Infof("ControllerPublishVolume called with request %v", *req)
-
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	readOnly := req.GetReadonly()
@@ -335,7 +333,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 	if attached {
 		// Volume is attached to node. Success!
-		klog.V(4).Infof("Attach operation is successful. PD %q was already attached to node %q.", volKey.Name, nodeID)
+		klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v, already attached.", volKey, nodeID)
 		return pubVolResp, nil
 	}
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
@@ -347,20 +345,16 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
 	}
 
-	klog.V(4).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, nodeID)
-
 	err = gceCS.CloudProvider.WaitForAttach(ctx, volKey, instanceZone, instanceName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
 	}
 
-	klog.V(4).Infof("Disk %v attached to instance %v successfully", volKey.Name, nodeID)
+	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
 	return pubVolResp, nil
 }
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
-	klog.V(4).Infof("ControllerUnpublishVolume called with request %v", *req)
-
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	nodeID := req.GetNodeId()
@@ -407,7 +401,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 
 	if !attached {
 		// Volume is not attached to node. Success!
-		klog.V(4).Infof("Detach operation is successful. PD %q was not attached to node %q.", volKey.Name, nodeID)
+		klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v. Already not attached.", volKey, nodeID)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
@@ -416,6 +410,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
 	}
 
+	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
@@ -533,8 +528,6 @@ func (gceCS *GCEControllerServer) ControllerGetCapabilities(ctx context.Context,
 }
 
 func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	klog.V(4).Infof("CreateSnapshot called with request %v", *req)
-
 	// Validate arguments
 	volumeID := req.GetSourceVolumeId()
 	if len(req.Name) == 0 {
@@ -607,6 +600,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			ReadyToUse:     ready,
 		},
 	}
+	klog.V(4).Infof("CreateSnapshot succeeded for snapshot %s on volume %s", cleanSelfLink(snapshot.SelfLink), volumeID)
 	return createResp, nil
 }
 
@@ -643,8 +637,6 @@ func isCSISnapshotReady(status string) (bool, error) {
 }
 
 func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	klog.V(4).Infof("DeleteSnapshot called with request %v", *req)
-
 	// Validate arguments
 	snapshotID := req.GetSnapshotId()
 	if len(snapshotID) == 0 {
@@ -668,8 +660,6 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 }
 
 func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	klog.V(4).Infof("ListSnapshots called with request %v", *req)
-
 	// case 1: SnapshotId is not empty, return snapshots that match the snapshot id.
 	if len(req.GetSnapshotId()) != 0 {
 		return gceCS.getSnapshotByID(ctx, req.GetSnapshotId())
@@ -700,6 +690,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume failed to resize disk: %v", err))
 	}
 
+	klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, resizedGb)
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         common.GbToBytes(resizedGb),
 		NodeExpansionRequired: true,
@@ -735,7 +726,6 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 		NextToken: nextToken,
 	}
 	return listSnapshotResp, nil
-
 }
 
 func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotID string) (*csi.ListSnapshotsResponse, error) {
@@ -984,7 +974,6 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []s
 			},
 		}
 		createResp.Volume.ContentSource = source
-
 	}
 	return createResp
 }
@@ -1011,12 +1000,10 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
 
-	klog.V(4).Infof("Completed creation of disk %v", name)
 	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disk after creating regional disk: %v", err)
 	}
-	klog.Warningf("GCE PD %s already exists after wait, reusing", name)
 	return disk, nil
 }
 
@@ -1029,8 +1016,6 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}
-
-	klog.V(4).Infof("Completed creation of disk %v", name)
 	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone))
 	if err != nil {
 		return nil, err
