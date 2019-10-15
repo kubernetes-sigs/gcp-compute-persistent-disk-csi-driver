@@ -15,13 +15,12 @@ limitations under the License.
 package gcecloudprovider
 
 import (
-	computebeta "google.golang.org/api/compute/v0.beta"
-	compute "google.golang.org/api/compute/v1"
+	computev1 "google.golang.org/api/compute/v1"
 )
 
 type CloudDisk struct {
-	ZonalDisk    *compute.Disk
-	RegionalDisk *computebeta.Disk
+	ZonalDisk    *computev1.Disk
+	RegionalDisk *computev1.Disk
 }
 
 type CloudDiskType string
@@ -35,13 +34,13 @@ const (
 	Global = "global"
 )
 
-func ZonalCloudDisk(disk *compute.Disk) *CloudDisk {
+func ZonalCloudDisk(disk *computev1.Disk) *CloudDisk {
 	return &CloudDisk{
 		ZonalDisk: disk,
 	}
 }
 
-func RegionalCloudDisk(disk *computebeta.Disk) *CloudDisk {
+func RegionalCloudDisk(disk *computev1.Disk) *CloudDisk {
 	return &CloudDisk{
 		RegionalDisk: disk,
 	}

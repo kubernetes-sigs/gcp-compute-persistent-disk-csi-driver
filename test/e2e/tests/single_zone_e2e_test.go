@@ -193,7 +193,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
-		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
@@ -213,7 +213,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
@@ -486,7 +486,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
-		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
@@ -527,7 +527,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 
 			// Delete Snapshot
