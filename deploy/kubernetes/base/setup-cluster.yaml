@@ -104,3 +104,37 @@ metadata:
 value: 900001000
 globalDefault: false
 description: "This priority class should be used for the GCE PD CSI driver node deployment only."
+
+---
+
+# Resizer must be able to work with PVCs, PVs, SCs.
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-gce-pd-resizer-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-gce-pd-resizer-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-gce-pd-controller-sa
+roleRef:
+  kind: ClusterRole
+  name: csi-gce-pd-resizer-role
+  apiGroup: rbac.authorization.k8s.io

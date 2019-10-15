@@ -17,3 +17,6 @@ images:
 - name: gke.gcr.io/csi-node-driver-registrar
   newName: gke.gcr.io/csi-node-driver-registrar
   newTag: "v1.2.0-gke.0"
+- name: gke.gcr.io/csi-resizer
+  newName: gke.gcr.io/csi-resizer
+  newTag: "v0.3.0-gke.0"

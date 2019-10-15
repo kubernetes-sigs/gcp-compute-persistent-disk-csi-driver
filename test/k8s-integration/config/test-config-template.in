@@ -13,13 +13,19 @@ DriverInfo:
     # ntfs: NTFS only available on Windows
   Capabilities:
     persistence: true
-    multipods: true
+    block:  true
     fsGroup: true
     exec: true
-    block: true
+    # snapshotDataSource:
+    # pvcDataSource:
+    multipods: true
+    # RWX:
+    controllerExpansion: true
+    nodeExpansion: true
+    # volumeLimits: # PD Supports volume limits but test is very slow
+    # singleNodeVolume:
     topology: true
-    # dataSource: true
-    # RWX: true
+    # dataSource:
   SupportedMountOption:
     debug:
     nouid32:
