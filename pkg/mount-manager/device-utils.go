@@ -133,15 +133,13 @@ func udevadmChangeToNewDrives(sdBeforeSet sets.String) error {
 // drivePath must be the block device path to trigger on, in the format "/dev/sd*", or a symlink to it.
 // This is workaround for Issue #7972. Once the underlying issue has been resolved, this may be removed.
 func udevadmChangeToDrive(drivePath string) error {
-	klog.V(5).Infof("udevadmChangeToDrive: drive=%q", drivePath)
+	klog.V(4).Infof("udevadmChangeToDrive: drive=%q", drivePath)
 
 	// Evaluate symlink, if any
 	drive, err := filepath.EvalSymlinks(drivePath)
 	if err != nil {
 		return fmt.Errorf("udevadmChangeToDrive: filepath.EvalSymlinks(%q) failed with %v.", drivePath, err)
 	}
-	klog.V(5).Infof("udevadmChangeToDrive: symlink path is %q", drive)
-
 	// Check to make sure input is "/dev/sd*"
 	if !strings.Contains(drive, diskSDPath) {
 		return fmt.Errorf("udevadmChangeToDrive: expected input in the form \"%s\" but drive is %q.", diskSDPattern, drive)

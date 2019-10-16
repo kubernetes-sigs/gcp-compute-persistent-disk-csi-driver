@@ -43,6 +43,11 @@ const (
 )
 
 func init() {
+	// klog verbosity guide for this package
+	// Use V(2) for one time config information
+	// Use V(4) for general debug information logging
+	// Use V(5) for GCE Cloud Provider Call informational logging
+	// Use V(6) for extra repeated/polling information
 	klog.InitFlags(flag.CommandLine)
 }
 
@@ -57,7 +62,7 @@ func handle() {
 	if vendorVersion == "" {
 		klog.Fatalf("vendorVersion must be set at compile time")
 	}
-	klog.V(4).Infof("Driver vendor version %v", vendorVersion)
+	klog.V(2).Infof("Driver vendor version %v", vendorVersion)
 
 	gceDriver := driver.GetGCEDriver()
 
