@@ -44,7 +44,7 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(cloudProvider, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
+	err := gceDriver.SetupGCEDriver(cloudProvider, nil, nil, metadataservice.NewFakeService(), nil, driver, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

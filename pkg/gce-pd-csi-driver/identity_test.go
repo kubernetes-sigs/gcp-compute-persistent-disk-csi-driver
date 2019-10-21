@@ -26,7 +26,7 @@ import (
 func TestGetPluginInfo(t *testing.T) {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), nil, driver, vendorVersion)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 func TestGetPluginCapabilities(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), nil, driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 
 func TestProbe(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), nil, driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

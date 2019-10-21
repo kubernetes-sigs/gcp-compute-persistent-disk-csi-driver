@@ -44,7 +44,7 @@ func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAn
 
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mounter, deviceUtils, metaService, driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter(), driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -53,11 +53,74 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 
 func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeBlockingMounter(readyToExecute), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
+	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeBlockingMounter(readyToExecute), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), nil, driver, "test-vendor")
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 	return gceDriver
+}
+
+func TestNodeGetVolumeStats(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+
+	req := &csi.NodePublishVolumeRequest{
+		VolumeId:          defaultVolumeID,
+		TargetPath:        defaultTargetPath,
+		StagingTargetPath: defaultStagingPath,
+		Readonly:          false,
+		VolumeCapability:  stdVolCap,
+	}
+	_, err := ns.NodePublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Failed to set up test by publishing default vol: %v", err)
+	}
+
+	testCases := []struct {
+		name       string
+		volumeID   string
+		volumePath string
+		expectErr  bool
+	}{
+		{
+			name:       "normal",
+			volumeID:   defaultVolumeID,
+			volumePath: defaultTargetPath,
+		},
+		{
+			name:       "no vol id",
+			volumePath: defaultTargetPath,
+			expectErr:  true,
+		},
+		{
+			name:      "no vol path",
+			volumeID:  defaultVolumeID,
+			expectErr: true,
+		},
+		{
+			name:       "bad vol path",
+			volumeID:   defaultVolumeID,
+			volumePath: "/mnt/fake",
+			expectErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			req := &csi.NodeGetVolumeStatsRequest{
+				VolumeId:   tc.volumeID,
+				VolumePath: tc.volumePath,
+			}
+			_, err := ns.NodeGetVolumeStats(context.Background(), req)
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Got unexpected err: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatal("Did not get error but expected one")
+			}
+		})
+	}
 }
 
 func TestNodeGetVolumeLimits(t *testing.T) {
