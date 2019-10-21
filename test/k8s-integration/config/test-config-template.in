@@ -12,20 +12,8 @@ DriverInfo:
     # xfs: XFS only available on Ubuntu
     # ntfs: NTFS only available on Windows
   Capabilities:
-    persistence: true
-    block:  true
-    fsGroup: true
-    exec: true
-    # snapshotDataSource:
-    # pvcDataSource:
-    multipods: true
-    # RWX:
-    controllerExpansion: true
-    nodeExpansion: true
-    # volumeLimits: # PD Supports volume limits but test is very slow
-    # singleNodeVolume:
-    topology: true
-    # dataSource:
+  {{range .Capabilities}}  {{ . }}: true
+  {{end}}
   SupportedMountOption:
     debug:
     nouid32:
