@@ -76,6 +76,8 @@ that represents availability by zone.
 See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues)
 
 ## Driver Deployment
+**Note:** With a Kubernetes Engine (GKE) cluster, we recommend automatically deploying the driver through cluster configuration instead of deploying manually using scripts in this repository. The automatic deployment mechanism is currently alpha, and the user guide can be found [here](https://docs.google.com/document/d/1EUqP73wD5XcxezHjT7vjZ15R7rRc_qPEHSu9JiEL8ZY/edit?usp=sharing).
+
 As part of the deployment process, the driver is deployed in a newly created namespace by default. The namespace will be deleted as part of the cleanup process.
 
 Controller-level and node-level deployments will both have priorityClassName set, and the corresponding priority value is close to the maximum possible for user-created PriorityClasses.
