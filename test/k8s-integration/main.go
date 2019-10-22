@@ -294,7 +294,7 @@ func handle() error {
 
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, cloudProviderArgs)
+		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, cloudProviderArgs, *deploymentStrat)
 	} else if *migrationTest {
 		err = runMigrationTests(pkgDir, testDir, *testFocus, cloudProviderArgs)
 	} else {
@@ -325,8 +325,8 @@ func runMigrationTests(pkgDir, testDir, testFocus string, cloudProviderArgs []st
 	return runTestsWithConfig(testDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
 }
 
-func runCSITests(pkgDir, testDir, testFocus, storageClassFile string, cloudProviderArgs []string) error {
-	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
+func runCSITests(pkgDir, testDir, testFocus, storageClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
