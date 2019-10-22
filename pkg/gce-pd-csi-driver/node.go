@@ -22,12 +22,15 @@ import (
 
 	"context"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
+
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/resizefs"
+
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -37,6 +40,7 @@ type GCENodeServer struct {
 	Driver          *GCEDriver
 	Mounter         *mount.SafeFormatAndMount
 	DeviceUtils     mountmanager.DeviceUtils
+	VolumeStatter   mountmanager.Statter
 	MetadataService metadataservice.MetadataService
 
 	// A map storing all volumes with ongoing operations so that additional operations
@@ -360,7 +364,61 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, fmt.Sprintf("NodeGetVolumeStats is not yet implemented"))
+	if len(req.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(req.VolumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
+	}
+
+	exists, err := ns.Mounter.Interface.ExistsPath(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", req.VolumePath, err)
+	}
+	if !exists {
+		return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
+	}
+
+	isBlock, err := ns.VolumeStatter.IsBlockDevice(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to determine whether %s is block device: %v", req.VolumePath, err)
+	}
+	if isBlock {
+		bcap, err := ns.getBlockSizeBytes(req.VolumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	available, capacity, used, inodesFree, inodes, inodesUsed, err := ns.VolumeStatter.StatFS(req.VolumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", req.VolumePath, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Unit:      csi.VolumeUsage_BYTES,
+				Available: available,
+				Total:     capacity,
+				Used:      used,
+			},
+			{
+				Unit:      csi.VolumeUsage_INODES,
+				Available: inodesFree,
+				Total:     inodes,
+				Used:      inodesUsed,
+			},
+		},
+	}, nil
 }
 
 func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {

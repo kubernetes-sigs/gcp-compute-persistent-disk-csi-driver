@@ -94,6 +94,7 @@ func (f *FakeMounter) Mount(source string, target string, fstype string, options
 	if err != nil {
 		absTarget = target
 	}
+	f.Filesystem[absTarget] = FileTypeDirectory
 	f.MountPoints = append(f.MountPoints, MountPoint{Device: source, Path: absTarget, Type: fstype, Opts: opts})
 	klog.V(5).Infof("Fake mounter: mounted %s to %s", source, absTarget)
 	f.Log = append(f.Log, FakeAction{Action: FakeActionMount, Target: absTarget, Source: source, FSType: fstype})
@@ -120,6 +121,7 @@ func (f *FakeMounter) Unmount(target string) error {
 		newMountpoints = append(newMountpoints, MountPoint{Device: mp.Device, Path: mp.Path, Type: mp.Type})
 	}
 	f.MountPoints = newMountpoints
+	delete(f.Filesystem, absTarget)
 	f.Log = append(f.Log, FakeAction{Action: FakeActionUnmount, Target: absTarget})
 	delete(f.MountCheckErrors, target)
 	return nil

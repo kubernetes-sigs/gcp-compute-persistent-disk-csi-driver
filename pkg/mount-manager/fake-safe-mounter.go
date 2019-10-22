@@ -17,7 +17,7 @@ package mountmanager
 import "k8s.io/kubernetes/pkg/util/mount"
 
 var (
-	fakeMounter = &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
+	fakeMounter = &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}, Filesystem: map[string]mount.FileType{}}
 	fakeExec    = mount.NewFakeExec(execCallback)
 )
 
