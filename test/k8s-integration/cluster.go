@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"k8s.io/klog"
 )
@@ -229,4 +231,29 @@ func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
 	}
 
 	return args, nil
+}
+
+func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
+	if kubeVersion != "" && gkeVersion != "" {
+		return "", fmt.Errorf("both kube version (%s) and gke version (%s) specified", kubeVersion, gkeVersion)
+	}
+	if kubeVersion == "" && gkeVersion == "" {
+		return "", errors.New("neither kube verison nor gke verison specified")
+	}
+	var v string
+	if kubeVersion != "" {
+		v = kubeVersion
+	} else if gkeVersion != "" {
+		v = gkeVersion
+	}
+	if v == "master" || v == "latest" {
+		// Ugh
+		return v, nil
+	}
+	toks := strings.Split(v, ".")
+	if len(toks) < 2 || len(toks) > 3 {
+		return "", fmt.Errorf("got unexpected number of tokens in version string %s - wanted 2 or 3", v)
+	}
+	return strings.Join(toks[:2], "."), nil
+
 }
