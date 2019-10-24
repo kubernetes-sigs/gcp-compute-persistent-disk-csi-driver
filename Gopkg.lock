@@ -22,12 +22,12 @@
   version = "1.5.0"
 
 [[projects]]
-  digest = "1:7f21fa1f8ab9a529dba26a7e9cf20de217c307fa1d96cb599d3afd9e5c83e9d6"
+  digest = "1:06e72a3140381f370345af6ed8986a22f4e6e7171fe317407c1d4675fe24e8d9"
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go/csi"]
   pruneopts = "NUT"
-  revision = "f750e6765f5f6b4ac0e13e95214d58901290fb4b"
-  version = "v1.1.0"
+  revision = "314ac542302938640c59b6fb501c635f27015326"
+  version = "v1.2.0"
 
 [[projects]]
   digest = "1:69cd6ed0dafecb4b529fa7da37e78d5175ac3fe7502fba7e27d32ac43e52380c"
@@ -547,8 +547,8 @@
     "github.com/onsi/gomega",
     "golang.org/x/oauth2",
     "golang.org/x/oauth2/google",
+    "golang.org/x/sys/unix",
     "google.golang.org/api/cloudresourcemanager/v1",
-    "google.golang.org/api/compute/v0.beta",
     "google.golang.org/api/compute/v1",
     "google.golang.org/api/googleapi",
     "google.golang.org/api/iterator",
