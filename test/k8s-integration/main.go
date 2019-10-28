@@ -272,12 +272,19 @@ func handle() error {
 		return fmt.Errorf("failed to install CSI Driver: %v", err)
 	}
 
+	normalizedVersion, err := getNormalizedVersion(*kubeVersion, *gkeClusterVer)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster minor version: %v", err)
+	}
+
+	testSkip := generateTestSkip(normalizedVersion)
+
 	// Run the tests using the testDir kubernetes
 	fullK8sBuildBinPath := filepath.Join(testDir, k8sBuildBinDir)
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, *storageClassFile, *gceZone)
+		err = runCSITests(pkgDir, fullK8sBuildBinPath, *testFocus, testSkip, *storageClassFile, *gceZone)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, *gceZone)
+		err = runMigrationTests(pkgDir, fullK8sBuildBinPath, *testFocus, testSkip, *gceZone)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -287,6 +294,31 @@ func handle() error {
 	}
 
 	return nil
+}
+
+func generateTestSkip(normalizedVersion string) string {
+	skipString := "\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]"
+	switch normalizedVersion {
+	// Fall-through versioning since all test cases we want to skip in 1.15
+	// should also be skipped in 1.14
+	case "1.13":
+		fallthrough
+	case "1.14":
+		fallthrough
+	case "1.15":
+		fallthrough
+	case "1.16":
+		// "volumeMode should not mount / map unused volumes in a pod" tests a
+		// bug-fix introduced in 1.17
+		// (https://github.com/kubernetes/kubernetes/pull/81163)
+		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
+		fallthrough
+	case "1.17":
+	case "latest":
+	case "master":
+	default:
+	}
+	return skipString
 }
 
 func setEnvProject(project string) error {
@@ -302,20 +334,20 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, k8sBinDir, testFocus, gceZone string) error {
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, "-storage.migratedPlugins=kubernetes.io/gce-pd")
+func runMigrationTests(pkgDir, k8sBinDir, testFocus, testSkip, gceZone string) error {
+	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testSkip, "-storage.migratedPlugins=kubernetes.io/gce-pd")
 }
 
-func runCSITests(pkgDir, k8sBinDir, testFocus, storageClassFile, gceZone string) error {
+func runCSITests(pkgDir, k8sBinDir, testFocus, testSkip, storageClassFile, gceZone string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("-storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg)
+	return runTestsWithConfig(k8sBinDir, gceZone, testFocus, testSkip, testConfigArg)
 }
 
-func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) error {
+func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testSkip, testConfigArg string) error {
 	err := os.Chdir(k8sBinDir)
 	if err != nil {
 		return err
@@ -332,7 +364,7 @@ func runTestsWithConfig(k8sBinDir, gceZone, testFocus, testConfigArg string) err
 	cmd := exec.Command("./ginkgo",
 		"-p",
 		testFocusArg,
-		"-skip=\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
+		fmt.Sprintf("-skip=%s", testSkip),
 		"e2e.test",
 		"--",
 		reportArg,
