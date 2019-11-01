@@ -47,7 +47,7 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
-  version = "2.2.0"
+  version = "2.4.0-rc1"
 
 [[constraint]]
   branch = "master"

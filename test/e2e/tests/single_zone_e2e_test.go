@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo"
@@ -423,6 +423,36 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 	})
 
+	It("Should create disks, attach them places, and verify List returns correct results", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		nodeID := testContext.Instance.GetNodeID()
+
+		_, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		defer deleteVolumeOrError(client, volID, p)
+
+		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z)
+		defer deleteVolumeOrError(client, secondVolID, p)
+
+		// Attach volID to current instance
+		err := client.ControllerPublishVolume(volID, nodeID)
+		Expect(err).To(BeNil(), "Failed ControllerPublishVolume")
+		defer client.ControllerUnpublishVolume(volID, nodeID)
+
+		// List Volumes
+		volsToNodes, err := client.ListVolumes()
+		Expect(err).To(BeNil(), "Failed ListVolumes")
+
+		// Verify
+		Expect(volsToNodes[volID]).ToNot(BeNil(), "Couldn't find attached nodes for vol")
+		Expect(volsToNodes[volID]).To(ContainElement(nodeID), "Couldn't find node in attached nodes for vol")
+		Expect(volsToNodes[secondVolID]).To(BeNil(), "Second vol ID attached nodes not nil")
+	})
+
 	It("Should create and delete snapshot for RePD in two zones ", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
@@ -580,10 +610,11 @@ func equalWithinEpsilon(a, b, epsiolon int64) bool {
 	return b-a < epsiolon
 }
 
-func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string) (string, string) {
+func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string) (volName, volID string) {
 	// Create Disk
-	volName := testNamePrefix + string(uuid.NewUUID())
-	volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+	var err error
+	volName = testNamePrefix + string(uuid.NewUUID())
+	volID, err = client.CreateVolume(volName, nil, defaultSizeGb,
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -600,6 +631,17 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
+	return
+}
 
-	return volName, volID
+func deleteVolumeOrError(client *remote.CsiClient, volID, project string) {
+	// Delete Disk
+	err := client.DeleteVolume(volID)
+	Expect(err).To(BeNil(), "DeleteVolume failed")
+
+	// Validate Disk Deleted
+	key, err := common.VolumeIDToKey(volID)
+	Expect(err).To(BeNil(), "Failed to conver volume ID To key")
+	_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 }

@@ -50,6 +50,7 @@ type GCECompute interface {
 	GetDiskTypeURI(volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error
 	ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error)
+	ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error)
 	// Regional Disk Methods
 	GetReplicaZoneURI(zone string) string
 	// Instance Methods
@@ -60,6 +61,23 @@ type GCECompute interface {
 	GetSnapshot(ctx context.Context, snapshotName string) (*computev1.Snapshot, error)
 	CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error)
 	DeleteSnapshot(ctx context.Context, snapshotName string) error
+}
+
+// ListDisks lists disks based on maxEntries and pageToken only in the project
+// and zone that the driver is running in.
+func (cloud *CloudProvider) ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error) {
+	lCall := cloud.service.Disks.List(cloud.project, cloud.zone)
+	if maxEntries != 0 {
+		lCall = lCall.MaxResults(maxEntries)
+	}
+	if len(pageToken) != 0 {
+		lCall = lCall.PageToken(pageToken)
+	}
+	diskList, err := lCall.Do()
+	if err != nil {
+		return nil, "", err
+	}
+	return diskList.Items, diskList.NextPageToken, nil
 }
 
 // RepairUnderspecifiedVolumeKey will query the cloud provider and check each zone for the disk specified

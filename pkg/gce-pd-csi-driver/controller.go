@@ -510,8 +510,42 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 
 func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	// https://cloud.google.com/compute/docs/reference/beta/disks/list
-	// List volumes in the whole region? In only the zone that this controller is running?
-	return nil, status.Error(codes.Unimplemented, "")
+	if req.MaxEntries < 0 {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"ListVolumes got max entries request %v. GCE only supports values between 0-500", req.MaxEntries))
+	}
+	var maxEntries int64 = int64(req.MaxEntries)
+	if maxEntries > 500 {
+		klog.Warningf("ListVolumes requested max entries of %v, GCE only supports values <=500 so defaulting value back to 500", maxEntries)
+		maxEntries = 500
+	}
+	diskList, nextToken, err := gceCS.CloudProvider.ListDisks(ctx, maxEntries, req.StartingToken)
+	if err != nil {
+		if gce.IsGCEInvalidError(err) {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid request: %v", err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list disk error: %v", err))
+	}
+	entries := []*csi.ListVolumesResponse_Entry{}
+	for _, d := range diskList {
+		users := []string{}
+		for _, u := range d.Users {
+			users = append(users, cleanSelfLink(u))
+		}
+		entries = append(entries, &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId: cleanSelfLink(d.SelfLink),
+			},
+			Status: &csi.ListVolumesResponse_VolumeStatus{
+				PublishedNodeIds: users,
+			},
+		})
+	}
+
+	return &csi.ListVolumesResponse{
+		Entries:   entries,
+		NextToken: nextToken,
+	}, nil
 }
 
 func (gceCS *GCEControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {

@@ -10,3 +10,4 @@ images:
 - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/dyzz-csi-staging/csi/gce-pd-driver
   newTag: "latest"
+  

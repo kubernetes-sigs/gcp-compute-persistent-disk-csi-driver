@@ -714,6 +714,64 @@ func TestCreateVolumeArguments(t *testing.T) {
 	}
 }
 
+func TestListVolumeArgs(t *testing.T) {
+	testCases := []struct {
+		name            string
+		maxEntries      int32
+		expectedEntries int
+		expectedErr     bool
+	}{
+		{
+			name:            "normal",
+			expectedEntries: 500,
+		},
+		{
+			name:            "fine amount of entries",
+			maxEntries:      420,
+			expectedEntries: 420,
+		},
+		{
+			name:            "too many entries, but defaults to 500",
+			maxEntries:      501,
+			expectedEntries: 500,
+		},
+		{
+			name:        "negative entries",
+			maxEntries:  -1,
+			expectedErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup new driver each time so no interference
+			d := []*gce.CloudDisk{}
+			for i := 0; i < 600; i++ {
+				// Create 600 dummy disks
+				d = append(d, &gce.CloudDisk{ZonalDisk: &compute.Disk{Name: fmt.Sprintf("%v", i)}})
+			}
+			gceDriver := initGCEDriver(t, d)
+			lvr := &csi.ListVolumesRequest{
+				MaxEntries: tc.maxEntries,
+			}
+			resp, err := gceDriver.cs.ListVolumes(context.TODO(), lvr)
+			if tc.expectedErr && err == nil {
+				t.Fatalf("Got no error when expecting an error")
+			}
+			if err != nil {
+				if !tc.expectedErr {
+					t.Fatalf("Got error %v, expecting none", err)
+				}
+				return
+			}
+
+			if len(resp.Entries) != tc.expectedEntries {
+				t.Fatalf("Got %v entries, expected %v", len(resp.Entries), tc.expectedEntries)
+			}
+		})
+	}
+}
+
 func TestCreateVolumeWithVolumeSource(t *testing.T) {
 	// Define test cases
 	testCases := []struct {

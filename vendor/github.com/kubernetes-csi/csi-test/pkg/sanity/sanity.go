@@ -48,6 +48,7 @@ type CSISecrets struct {
 	NodePublishVolumeSecret                    map[string]string `yaml:"NodePublishVolumeSecret"`
 	CreateSnapshotSecret                       map[string]string `yaml:"CreateSnapshotSecret"`
 	DeleteSnapshotSecret                       map[string]string `yaml:"DeleteSnapshotSecret"`
+	ControllerExpandVolumeSecret               map[string]string `yaml:"ControllerExpandVolumeSecret"`
 }
 
 // Config provides the configuration for the sanity tests. It
@@ -121,9 +122,10 @@ type Config struct {
 	// Timeout for the executed commands for path removal.
 	RemovePathCmdTimeout int
 
-	// IDGen is an optional interface for callers to provide a generator for
-	// valid Volume and Node IDs. Defaults to DefaultIDGenerator which generates
-	// generic string IDs
+	// IDGen is an optional interface for callers to provide a
+	// generator for valid Volume and Node IDs. If unset,
+	// it will be set to a DefaultIDGenerator instance when
+	// passing the config to Test or GinkgoTest.
 	IDGen IDGenerator
 }
 
@@ -143,6 +145,21 @@ type SanityContext struct {
 	StagingPath string
 }
 
+// newContext sets up sanity testing with a config supplied by the
+// user of the sanity package. Ownership of that config is shared
+// between the sanity package and the caller.
+func newContext(reqConfig *Config) *SanityContext {
+	// To avoid runtime if checks when using IDGen, a default
+	// is set here.
+	if reqConfig.IDGen == nil {
+		reqConfig.IDGen = &DefaultIDGenerator{}
+	}
+
+	return &SanityContext{
+		Config: reqConfig,
+	}
+}
+
 // Test will test the CSI driver at the specified address by
 // setting up a Ginkgo suite and running it.
 func Test(t *testing.T, reqConfig *Config) {
@@ -158,14 +175,7 @@ func Test(t *testing.T, reqConfig *Config) {
 		}
 	}
 
-	if reqConfig.IDGen == nil {
-		reqConfig.IDGen = &DefaultIDGenerator{}
-	}
-
-	sc := &SanityContext{
-		Config: reqConfig,
-	}
-
+	sc := newContext(reqConfig)
 	registerTestsInGinkgo(sc)
 	RegisterFailHandler(Fail)
 
@@ -180,11 +190,11 @@ func Test(t *testing.T, reqConfig *Config) {
 	}
 }
 
+// GinkoTest is another entry point for sanity testing: instead of directly
+// running tests like Test does, it merely registers the tests. This can
+// be used to embed sanity testing in a custom Ginkgo test suite.
 func GinkgoTest(reqConfig *Config) {
-	sc := &SanityContext{
-		Config: reqConfig,
-	}
-
+	sc := newContext(reqConfig)
 	registerTestsInGinkgo(sc)
 }
 
