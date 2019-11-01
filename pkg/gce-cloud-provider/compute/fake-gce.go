@@ -28,6 +28,9 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 const (
@@ -41,20 +44,22 @@ type FakeCloudProvider struct {
 	project string
 	zone    string
 
-	disks     map[string]*CloudDisk
-	instances map[string]*computev1.Instance
-	snapshots map[string]*computev1.Snapshot
+	disks      map[string]*CloudDisk
+	pageTokens map[string]sets.String
+	instances  map[string]*computev1.Instance
+	snapshots  map[string]*computev1.Snapshot
 }
 
 var _ GCECompute = &FakeCloudProvider{}
 
 func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
 	fcp := &FakeCloudProvider{
-		project:   project,
-		zone:      zone,
-		disks:     map[string]*CloudDisk{},
-		instances: map[string]*computev1.Instance{},
-		snapshots: map[string]*computev1.Snapshot{},
+		project:    project,
+		zone:       zone,
+		disks:      map[string]*CloudDisk{},
+		instances:  map[string]*computev1.Instance{},
+		snapshots:  map[string]*computev1.Snapshot{},
+		pageTokens: map[string]sets.String{},
 	}
 	for _, d := range cloudDisks {
 		fcp.disks[d.GetName()] = d
@@ -92,6 +97,45 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 
 func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
 	return []string{cloud.zone, "country-region-fakesecondzone"}, nil
+}
+
+func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error) {
+	// Ignore page tokens for now
+	var seen sets.String
+	var ok bool
+	var count int64 = 0
+	var newToken string
+	d := []*computev1.Disk{}
+
+	if pageToken != "" {
+		seen, ok = cloud.pageTokens[pageToken]
+		if !ok {
+			return nil, "", invalidError()
+		}
+	} else {
+		seen = sets.NewString()
+	}
+
+	if maxEntries == 0 {
+		maxEntries = 500
+	}
+
+	for name, cd := range cloud.disks {
+		// Only return zonal disks for simplicity
+		if !seen.Has(name) {
+			d = append(d, cd.ZonalDisk)
+			seen.Insert(name)
+			count++
+		}
+
+		if count >= maxEntries {
+			newToken = string(uuid.NewUUID())
+			cloud.pageTokens[newToken] = seen
+			break
+		}
+	}
+
+	return d, newToken, nil
 }
 
 func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*computev1.Snapshot, string, error) {

@@ -228,3 +228,9 @@ func IsGCEError(err error, reason string) bool {
 func IsGCENotFoundError(err error) bool {
 	return IsGCEError(err, "notFound")
 }
+
+// IsInvalidError returns true if the error is a googleapi.Error with
+// invalid reason
+func IsGCEInvalidError(err error) bool {
+	return IsGCEError(err, "invalid")
+}
