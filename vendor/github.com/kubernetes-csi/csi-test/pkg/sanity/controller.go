@@ -139,6 +139,7 @@ var _ = DescribeSanity("Controller Service [Controller Server]", func(sc *Sanity
 				case csi.ControllerServiceCapability_RPC_PUBLISH_READONLY:
 				case csi.ControllerServiceCapability_RPC_CLONE_VOLUME:
 				case csi.ControllerServiceCapability_RPC_EXPAND_VOLUME:
+				case csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES:
 				default:
 					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetRpc().GetType()))
 				}
@@ -259,11 +260,18 @@ var _ = DescribeSanity("Controller Service [Controller Server]", func(sc *Sanity
 			Expect(len(vols.GetEntries())).To(Equal(totalVols))
 		})
 
-		It("pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted", func() {
+		// Disabling this below case as it is fragile and results are inconsistent
+		// when no of volumes are different. The test might fail on a driver
+		// which implements the pagination based on index just by altering
+		// minVolCount := 4 and maxEntries := 3
+		// Related discussion links:
+		//  https://github.com/intel/pmem-csi/pull/424#issuecomment-540499938
+		//  https://github.com/kubernetes-csi/csi-test/issues/223
+		XIt("pagination should detect volumes added between pages and accept tokens when the last volume from a page is deleted", func() {
 			// minVolCount is the minimum number of volumes expected to exist,
 			// based on which paginated volume listing is performed.
 			minVolCount := 3
-			// maxEntried is the maximum entries in list volume request.
+			// maxEntries is the maximum entries in list volume request.
 			maxEntries := 2
 			// existing_vols to keep a record of the volumes that should exist
 			existing_vols := map[string]bool{}
@@ -358,6 +366,8 @@ var _ = DescribeSanity("Controller Service [Controller Server]", func(sc *Sanity
 			Expect(err).NotTo(HaveOccurred())
 			Expect(vol).NotTo(BeNil())
 			Expect(vol.Volume).NotTo(BeNil())
+			// Register the volume so it's automatically cleaned
+			cl.RegisterVolume(vol.Volume.VolumeId, VolumeInfo{VolumeID: vol.Volume.VolumeId})
 			existing_vols[vol.Volume.VolumeId] = true
 
 			vols, err = c.ListVolumes(
@@ -2097,6 +2107,7 @@ var _ = DescribeSanity("ExpandVolume [Controller Server]", func(sc *SanityContex
 			CapacityRange: &csi.CapacityRange{
 				RequiredBytes: TestVolumeExpandSize(sc),
 			},
+			Secrets: sc.Secrets.ControllerExpandVolumeSecret,
 		}
 		rsp, err := c.ControllerExpandVolume(context.Background(), expReq)
 		Expect(err).To(HaveOccurred())
@@ -2110,6 +2121,7 @@ var _ = DescribeSanity("ExpandVolume [Controller Server]", func(sc *SanityContex
 	It("should fail if no capacity range is given", func() {
 		expReq := &csi.ControllerExpandVolumeRequest{
 			VolumeId: "",
+			Secrets:  sc.Secrets.ControllerExpandVolumeSecret,
 		}
 		rsp, err := c.ControllerExpandVolume(context.Background(), expReq)
 		Expect(err).To(HaveOccurred())
@@ -2156,6 +2168,7 @@ var _ = DescribeSanity("ExpandVolume [Controller Server]", func(sc *SanityContex
 			CapacityRange: &csi.CapacityRange{
 				RequiredBytes: TestVolumeExpandSize(sc),
 			},
+			Secrets: sc.Secrets.ControllerExpandVolumeSecret,
 		}
 		rsp, err := c.ControllerExpandVolume(context.Background(), expReq)
 		Expect(err).NotTo(HaveOccurred())
