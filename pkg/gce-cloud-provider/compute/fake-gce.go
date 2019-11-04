@@ -155,7 +155,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 }
 
 // Disk Methods
-func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key) (*CloudDisk, error) {
+func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key, api ApiVersion) (*CloudDisk, error) {
 	disk, ok := cloud.disks[volKey.Name]
 	if !ok {
 		return nil, notFoundError()
@@ -163,7 +163,7 @@ func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key) (
 	return disk, nil
 }
 
-func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, diskType string, reqBytes, limBytes int64) error {
+func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, diskType string, reqBytes, limBytes int64, multiWriter bool) error {
 	if resp == nil {
 		return fmt.Errorf("disk does not exist")
 	}
@@ -182,6 +182,12 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 		return fmt.Errorf("disk already exists with incompatible type. Need %v. Got %v",
 			diskType, respType[len(respType)-1])
 	}
+
+	// We are assuming here that a multiWriter disk could be used as non-multiWriter
+	if multiWriter && !resp.GetMultiWriter() {
+		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
+	}
+
 	klog.V(4).Infof("Compatible disk already exists")
 	return nil
 }
@@ -190,7 +196,8 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 	if disk, ok := cloud.disks[volKey.Name]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, diskType,
 			int64(capacityRange.GetRequiredBytes()),
-			int64(capacityRange.GetLimitBytes()))
+			int64(capacityRange.GetLimitBytes()),
+			multiWriter)
 		if err != nil {
 			return err
 		}

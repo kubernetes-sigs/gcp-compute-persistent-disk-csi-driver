@@ -114,13 +114,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 	}
 	// Determine multiWriter
-	multiWriter := false
-	for _, vc := range volumeCapabilities {
-		// No nil checks needed here since it is done above during validation
-		if vc.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
-			multiWriter = true
-			break
-		}
+	apiVersion := gce.V1
+	multiWriter, _ := getMultiWriterFromCapabilities(volumeCapabilities)
+	if multiWriter {
+		apiVersion = gce.Alpha
 	}
 	// Determine the zone or zones+region of the disk
 	var zones []string
@@ -160,7 +157,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	defer gceCS.volumeLocks.Release(volumeID)
 
 	// Validate if disk already exists
-	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
+	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, volKey, apiVersion)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume unknown get disk error when validating: %v", err))
@@ -170,7 +167,8 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		// There was no error so we want to validate the disk that we find
 		err = gceCS.CloudProvider.ValidateExistingDisk(ctx, existingDisk, diskType,
 			int64(capacityRange.GetRequiredBytes()),
-			int64(capacityRange.GetLimitBytes()))
+			int64(capacityRange.GetLimitBytes()),
+			multiWriter)
 		if err != nil {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
 		}
@@ -307,7 +305,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		PublishContext: nil,
 	}
 
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey, gce.V1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
@@ -445,7 +443,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey, gce.V1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.Name, err))
@@ -556,7 +554,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	defer gceCS.volumeLocks.Release(volumeID)
 
 	// Check if volume exists
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey, gce.V1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("CreateSnapshot could not find disk %v: %v", volKey.String(), err))
@@ -1010,7 +1008,12 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
 
-	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region))
+	apiVersion := gce.V1
+	if multiWriter {
+		apiVersion = gce.Alpha
+	}
+
+	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region), apiVersion)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disk after creating regional disk: %v", err)
 	}
@@ -1026,7 +1029,12 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}
-	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone))
+
+	apiVersion := gce.V1
+	if multiWriter {
+		apiVersion = gce.Alpha
+	}
+	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone), apiVersion)
 	if err != nil {
 		return nil, err
 	}

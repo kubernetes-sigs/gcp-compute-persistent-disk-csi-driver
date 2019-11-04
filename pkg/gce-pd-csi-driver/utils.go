@@ -124,3 +124,27 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	}
 	return nil
 }
+
+func getMultiWriterFromCapability(vc *csi.VolumeCapability) (bool, error) {
+	if vc.GetAccessMode() == nil {
+		return false, errors.New("access mode is nil")
+	}
+	mode := vc.GetAccessMode().GetMode()
+	return (mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER), nil
+}
+
+func getMultiWriterFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
+	if vcs == nil {
+		return false, errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		multiWriter, err := getMultiWriterFromCapability(vc)
+		if err != nil {
+			return false, err
+		}
+		if multiWriter {
+			return true, nil
+		}
+	}
+	return false, nil
+}

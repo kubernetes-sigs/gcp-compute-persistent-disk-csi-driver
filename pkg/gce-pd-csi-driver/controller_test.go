@@ -346,6 +346,16 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
+			name: "fail with mount/MULTI_NODE_MULTI_WRITER capabilities",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
 			name: "success with block/MULTI_NODE_MULTI_WRITER capabilities",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",

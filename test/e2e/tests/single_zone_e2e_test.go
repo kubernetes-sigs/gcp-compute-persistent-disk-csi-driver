@@ -571,6 +571,59 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
+	// Pending while multi-writer feature is in Alpha
+	PIt("Should create and delete multi-writer disk", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, _, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Hardcode to us-east1-a while feature is in alpha
+		zone := "us-east1-a"
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := client.CreateVolumeWithCaps(volName, nil, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			},
+			[]*csi.VolumeCapability{
+				&csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+		)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeAlphaService.Disks.Get(p, zone, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(cloudDisk.MultiWriter).To(Equal(true))
+
+		defer func() {
+			// Delete Disk
+			client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeAlphaService.Disks.Get(p, zone, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
