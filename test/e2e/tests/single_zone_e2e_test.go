@@ -593,7 +593,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				},
 			},
 			[]*csi.VolumeCapability{
-				&csi.VolumeCapability{
+				{
 					AccessType: &csi.VolumeCapability_Block{
 						Block: &csi.VolumeCapability_BlockVolume{},
 					},
