@@ -30,6 +30,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: "5m"
+              memory: "5Mi"
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -44,6 +48,10 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
+          resources:
+            requests:
+              cpu: "40m"
+              memory: "50Mi"
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
