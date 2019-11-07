@@ -64,7 +64,7 @@ type FakeBlockingMounter struct {
 	ReadyToExecute chan chan struct{}
 }
 
-// Mount is ovverridden and adds functionality to finely control the order of execution of FakeMounter's Mount calls.
+// Mount is overridden and adds functionality to finely control the order of execution of FakeMounter's Mount calls.
 // Upon starting a Mount, it passes a chan 'executeMount' into readyToExecute, then blocks on executeMount.
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the Mount to continue by passing a struct into executeMount.
