@@ -335,11 +335,15 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
 		alphaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.alphaService.RegionDisks.Insert(cloud.project, volKey.Region, alphaDiskToCreate).Context(ctx).Do()
-		opName = insertOp.Name
+		if err == nil {
+			opName = insertOp.Name
+		}
 	} else {
 		var insertOp *computev1.Operation
 		insertOp, err = cloud.service.RegionDisks.Insert(cloud.project, volKey.Region, diskToCreate).Context(ctx).Do()
-		opName = insertOp.Name
+		if err == nil {
+			opName = insertOp.Name
+		}
 	}
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
@@ -415,11 +419,15 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
 		alphaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.alphaService.Disks.Insert(cloud.project, volKey.Zone, alphaDiskToCreate).Context(ctx).Do()
-		opName = insertOp.Name
+		if err == nil {
+			opName = insertOp.Name
+		}
 	} else {
 		var insertOp *computev1.Operation
 		insertOp, err = cloud.service.Disks.Insert(cloud.project, volKey.Zone, diskToCreate).Context(ctx).Do()
-		opName = insertOp.Name
+		if err == nil {
+			opName = insertOp.Name
+		}
 	}
 
 	if err != nil {
