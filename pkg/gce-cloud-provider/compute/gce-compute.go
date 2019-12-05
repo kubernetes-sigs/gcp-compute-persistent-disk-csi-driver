@@ -38,18 +38,18 @@ const (
 	diskKind                       = "compute#disk"
 )
 
-type ApiVersion string
+type GCEAPIVersion string
 
 const (
 	// V1 key type
-	V1 ApiVersion = "v1"
+	GCEAPIVersionV1 GCEAPIVersion = "v1"
 	// Alpha key type
-	Alpha ApiVersion = "alpha"
+	GCEAPIVersionAlpha GCEAPIVersion = "alpha"
 )
 
 type GCECompute interface {
 	// Disk Methods
-	GetDisk(ctx context.Context, volumeKey *meta.Key, apiVersion ApiVersion) (*CloudDisk, error)
+	GetDisk(ctx context.Context, volumeKey *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, diskType string, reqBytes, limBytes int64, multiWriter bool) error
 	InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error
@@ -156,11 +156,11 @@ func (cloud *CloudProvider) ListSnapshots(ctx context.Context, filter string, ma
 
 }
 
-func (cloud *CloudProvider) GetDisk(ctx context.Context, key *meta.Key, apiVersion ApiVersion) (*CloudDisk, error) {
+func (cloud *CloudProvider) GetDisk(ctx context.Context, key *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error) {
 	klog.V(5).Infof("Getting disk %v", key)
 	switch key.Type() {
 	case meta.Zonal:
-		if apiVersion == Alpha {
+		if gceAPIVersion == GCEAPIVersionAlpha {
 			disk, err := cloud.getZonalAlphaDiskOrError(ctx, key.Zone, key.Name)
 			return ZonalAlphaCloudDisk(disk), err
 		} else {
@@ -168,7 +168,7 @@ func (cloud *CloudProvider) GetDisk(ctx context.Context, key *meta.Key, apiVersi
 			return ZonalCloudDisk(disk), err
 		}
 	case meta.Regional:
-		if apiVersion == Alpha {
+		if gceAPIVersion == GCEAPIVersionAlpha {
 			disk, err := cloud.getRegionalAlphaDiskOrError(ctx, key.Region, key.Name)
 			return RegionalAlphaCloudDisk(disk), err
 		} else {
@@ -303,13 +303,13 @@ func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk) *computealpha.Disk {
 
 func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
 	var (
-		err        error
-		opName     string
-		apiVersion = V1
+		err           error
+		opName        string
+		gceAPIVersion = GCEAPIVersionV1
 	)
 
 	if multiWriter {
-		apiVersion = Alpha
+		gceAPIVersion = GCEAPIVersionAlpha
 	}
 
 	diskToCreate := &computev1.Disk{
@@ -330,24 +330,24 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 		}
 	}
 
-	if apiVersion == Alpha {
+	if gceAPIVersion == GCEAPIVersionAlpha {
 		var insertOp *computealpha.Operation
 		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
 		alphaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.alphaService.RegionDisks.Insert(cloud.project, volKey.Region, alphaDiskToCreate).Context(ctx).Do()
-		if err == nil {
+		if insertOp != nil {
 			opName = insertOp.Name
 		}
 	} else {
 		var insertOp *computev1.Operation
 		insertOp, err = cloud.service.RegionDisks.Insert(cloud.project, volKey.Region, diskToCreate).Context(ctx).Do()
-		if err == nil {
+		if insertOp != nil {
 			opName = insertOp.Name
 		}
 	}
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, V1)
+			disk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
 			if err != nil {
 				return err
 			}
@@ -367,7 +367,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	err = cloud.waitForRegionalOp(ctx, opName, volKey.Region)
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, V1)
+			disk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
 			if err != nil {
 				return err
 			}
@@ -388,13 +388,13 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 
 func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
 	var (
-		err        error
-		opName     string
-		apiVersion = V1
+		err           error
+		opName        string
+		gceAPIVersion = GCEAPIVersionV1
 	)
 
 	if multiWriter {
-		apiVersion = Alpha
+		gceAPIVersion = GCEAPIVersionAlpha
 	}
 
 	diskToCreate := &computev1.Disk{
@@ -414,25 +414,25 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 		}
 	}
 
-	if apiVersion == Alpha {
+	if gceAPIVersion == GCEAPIVersionAlpha {
 		var insertOp *computealpha.Operation
 		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
 		alphaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.alphaService.Disks.Insert(cloud.project, volKey.Zone, alphaDiskToCreate).Context(ctx).Do()
-		if err == nil {
+		if insertOp != nil {
 			opName = insertOp.Name
 		}
 	} else {
 		var insertOp *computev1.Operation
 		insertOp, err = cloud.service.Disks.Insert(cloud.project, volKey.Zone, diskToCreate).Context(ctx).Do()
-		if err == nil {
+		if insertOp != nil {
 			opName = insertOp.Name
 		}
 	}
 
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, apiVersion)
+			disk, err := cloud.GetDisk(ctx, volKey, gceAPIVersion)
 			if err != nil {
 				return err
 			}
@@ -453,7 +453,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, apiVersion)
+			disk, err := cloud.GetDisk(ctx, volKey, gceAPIVersion)
 			if err != nil {
 				return err
 			}
@@ -649,7 +649,7 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, volKey *meta.Key,
 	start := time.Now()
 	return wait.Poll(5*time.Second, 2*time.Minute, func() (bool, error) {
 		klog.V(6).Infof("Polling for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
-		disk, err := cloud.GetDisk(ctx, volKey, V1)
+		disk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
 		if err != nil {
 			return false, fmt.Errorf("GetDisk failed to get disk: %v", err)
 		}
@@ -740,7 +740,7 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key
 
 func (cloud *CloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error) {
 	klog.V(5).Infof("Resizing disk %v to size %v", volKey, requestBytes)
-	cloudDisk, err := cloud.GetDisk(ctx, volKey, V1)
+	cloudDisk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
 	if err != nil {
 		return -1, fmt.Errorf("failed to get disk: %v", err)
 	}
