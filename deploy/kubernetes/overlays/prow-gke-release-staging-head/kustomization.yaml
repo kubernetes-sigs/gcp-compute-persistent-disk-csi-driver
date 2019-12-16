@@ -7,14 +7,14 @@ images:
   newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
   newTag: "latest"
 - name: gke.gcr.io/csi-provisioner
-  newName: gcr.io/gke-release-staging/csi-provisioner
-  newTag: "latest"
+  newName: quay.io/k8scsi/csi-provisioner
+  newTag: "canary"
 - name: gke.gcr.io/csi-attacher
-  newName: gcr.io/gke-release-staging/csi-attacher
-  newTag: "latest"
+  newName: quay.io/k8scsi/csi-attacher
+  newTag: "canary"
 - name: gke.gcr.io/csi-node-driver-registrar
-  newName: gcr.io/gke-release-staging/csi-node-driver-registrar
-  newTag: "latest"
+  newName: quay.io/k8scsi/csi-node-driver-registrar
+  newTag: "canary"
 - name: gke.gcr.io/csi-resizer
-  newName: gke.gcr.io/csi-resizer
-  newTag: "v0.3.0-gke.0"
+  newName: quay.io/k8scsi/csi-resizer
+  newTag: "canary"
