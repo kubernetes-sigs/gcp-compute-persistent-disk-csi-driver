@@ -138,3 +138,56 @@ roleRef:
   kind: ClusterRole
   name: csi-gce-pd-resizer-role
   apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: csi-gce-pd-node-psp
+spec:
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  privileged: true
+  volumes:
+  - '*'
+  hostNetwork: true
+  allowedHostPaths:
+  - pathPrefix: "/var/lib/kubelet/plugins_registry/"
+  - pathPrefix: "/var/lib/kubelet"
+  - pathPrefix: "/var/lib/kubelet/plugins/pd.csi.storage.gke.io/"
+  - pathPrefix: "/dev"
+  - pathPrefix: "/etc/udev"
+  - pathPrefix: "/lib/udev"
+  - pathPrefix: "/run/udev"
+  - pathPrefix: "/sys"
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-gce-pd-node-deploy
+rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs:     ['use']
+    resourceNames:
+    - csi-gce-pd-node-psp
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-gce-pd-node
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: csi-gce-pd-node-deploy
+subjects:
+- kind: ServiceAccount
+  name: csi-gce-pd-node-sa
