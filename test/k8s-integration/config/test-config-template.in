@@ -7,9 +7,9 @@ DriverInfo:
     ext2:
     ext3:
     ext4:
+    xfs:
     # The following FS types supported by GCE PD but
-    # currently we do not test the CSI Driver on Ubuntu or Windows
-    # xfs: XFS only available on Ubuntu
+    # currently we do not test the CSI Driver on Windows
     # ntfs: NTFS only available on Windows
   Capabilities:
   {{range .Capabilities}}  {{ . }}: true

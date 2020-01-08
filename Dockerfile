@@ -25,6 +25,6 @@ FROM gcr.io/google-containers/debian-base-amd64:v2.0.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 
 # Install necessary dependencies
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
 
 ENTRYPOINT ["/gce-pd-csi-driver"]

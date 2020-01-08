@@ -42,6 +42,7 @@ var (
 	deploymentStrat  = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
 	gkeClusterVer    = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
 	numNodes         = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	imageType        = flag.String("image-type", "cos", "the image type to use for the cluster")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -80,6 +81,7 @@ func main() {
 	ensureVariable(saFile, true, "service-account-file is a required flag")
 	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
 	ensureVariable(testFocus, true, "test-focus is a required flag")
+	ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
 
 	if len(*gceRegion) != 0 {
 		ensureVariable(gceZone, false, "gce-zone and gce-region cannot both be set")
@@ -238,9 +240,9 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone, *numNodes)
+			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, *imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *imageType)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -286,7 +288,7 @@ func handle() error {
 	var cloudProviderArgs []string
 	switch *deploymentStrat {
 	case "gke":
-		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion)
+		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, *imageType)
 		if err != nil {
 			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
 		}
@@ -375,8 +377,11 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 	homeDir, _ := os.LookupEnv("HOME")
 	os.Setenv("KUBECONFIG", filepath.Join(homeDir, ".kube/config"))
 
-	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
-	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
+	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
+	reportArg := ""
+	if ok {
+		reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
+	}
 
 	testArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
 		testFocus,
