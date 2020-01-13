@@ -59,7 +59,7 @@ func buildKubernetes(k8sDir, command string) error {
 	return nil
 }
 
-func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
+func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error {
 	kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
 	_, err := os.Stat(kshPath)
 	if err == nil {
@@ -80,6 +80,11 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 		klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 	}
 
+	err = setImageTypeEnvs(imageType)
+	if err != nil {
+		return fmt.Errorf("failed to set image type environment variables: %v", err)
+	}
+
 	err = os.Setenv("NUM_NODES", strconv.Itoa(numNodes))
 	if err != nil {
 		return err
@@ -98,7 +103,35 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int) error {
+func setImageTypeEnvs(imageType string) error {
+	//const image = "ubuntu-1804-bionic-v20191211"
+	//const imageProject = "ubuntu-os-cloud"
+	switch strings.ToLower(imageType) {
+	case "cos":
+	case "gci": // GCI/COS is default type and does not need env vars set
+	case "ubuntu":
+		return errors.New("setting environment vars for bringing up *ubuntu* cluster on GCE is unimplemented")
+		/* TODO(dyzz) figure out how to bring up a Ubuntu cluster on GCE. The below doesn't work.
+		err := os.Setenv("KUBE_OS_DISTRIBUTION", "ubuntu")
+		if err != nil {
+			return err
+		}
+		err = os.Setenv("KUBE_GCE_NODE_IMAGE", image)
+		if err != nil {
+			return err
+		}
+		err = os.Setenv("KUBE_GCE_NODE_PROJECT", imageProject)
+		if err != nil {
+			return err
+		}
+		*/
+	default:
+		return fmt.Errorf("could not set env for image type %s, only gci, cos, ubuntu supported", imageType)
+	}
+	return nil
+}
+
+func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string) error {
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
@@ -119,7 +152,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int) error {
 	}
 	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
 		locationArg, locationVal, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2")
+		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType)
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
@@ -184,7 +217,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	return nil
 }
 
-func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
+func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) {
 	var locationArg, locationVal string
 	switch {
 	case len(gceZone) > 0:
@@ -222,7 +255,7 @@ func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
 		"--gcp-network=default",
 		"--check-version-skew=false",
 		"--deployment=gke",
-		"--gcp-node-image=cos",
+		fmt.Sprintf("--gcp-node-image=%s", imageType),
 		"--gcp-network=default",
 		fmt.Sprintf("--cluster=%s", gkeTestClusterName),
 		fmt.Sprintf("--gke-environment=%s", gkeEnv),
