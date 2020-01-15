@@ -60,6 +60,11 @@ func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *
 	return gceDriver
 }
 
+/*
+// TODO(#452) Temporarily disabled until k8s.io/kubernetes/pkg/mount
+// is migrated over to pkg/util mount for fix in the fake mounter
+// that affects GetVolumeStats
+
 func TestNodeGetVolumeStats(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
@@ -122,6 +127,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		})
 	}
 }
+*/
 
 func TestNodeGetVolumeLimits(t *testing.T) {
 

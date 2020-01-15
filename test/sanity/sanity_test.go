@@ -21,8 +21,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 
-	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
+	sanity "github.com/kubernetes-csi/csi-test/v3/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -81,10 +82,11 @@ func TestSanity(t *testing.T) {
 	}()
 
 	// Run test
-	config := &sanity.Config{
+	config := sanity.TestConfig{
 		TargetPath:  mountPath,
 		StagingPath: stagePath,
 		Address:     endpoint,
+		DialOptions: []grpc.DialOption{grpc.WithInsecure()},
 		IDGen:       newPDIDGenerator(project, zone),
 	}
 	sanity.Test(t, config)
