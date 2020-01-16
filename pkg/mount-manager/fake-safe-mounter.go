@@ -14,45 +14,27 @@ limitations under the License.
 
 package mountmanager
 
-import "k8s.io/kubernetes/pkg/util/mount"
-
-var (
-	fakeMounter = &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}, Filesystem: map[string]mount.FileType{}}
-	fakeExec    = mount.NewFakeExec(execCallback)
+import (
+	"k8s.io/utils/exec"
+	testingexec "k8s.io/utils/exec/testing"
+	"k8s.io/utils/mount"
 )
 
-func execCallback(cmd string, args ...string) ([]byte, error) {
-	return nil, nil
-	// TODO(#48): Fill out exec callback for errors
-	/*
-		if len(test.execScripts) <= execCallCount {
-			t.Errorf("Unexpected command: %s %v", cmd, args)
-			return nil, nil
-		}
-		script := test.execScripts[execCallCount]
-		execCallCount++
-		if script.command != cmd {
-			t.Errorf("Unexpected command %s. Expecting %s", cmd, script.command)
-		}
-		for j := range args {
-			if args[j] != script.args[j] {
-				t.Errorf("Unexpected args %v. Expecting %v", args, script.args)
-			}
-		}
-		return []byte(script.output), script.err
-	*/
-}
+var (
+	fakeMounter = &mount.FakeMounter{MountPoints: []mount.MountPoint{}}
+	fakeExec    = &testingexec.FakeExec{DisableScripts: true}
+)
 
 func NewFakeSafeMounter() *mount.SafeFormatAndMount {
 	return NewCustomFakeSafeMounter(fakeMounter, fakeExec)
 }
 
-func NewFakeSafeMounterWithCustomExec(exec mount.Exec) *mount.SafeFormatAndMount {
-	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}, Log: []mount.FakeAction{}}
+func NewFakeSafeMounterWithCustomExec(exec exec.Interface) *mount.SafeFormatAndMount {
+	fakeMounter := &mount.FakeMounter{MountPoints: []mount.MountPoint{}}
 	return NewCustomFakeSafeMounter(fakeMounter, exec)
 }
 
-func NewCustomFakeSafeMounter(mounter mount.Interface, exec mount.Exec) *mount.SafeFormatAndMount {
+func NewCustomFakeSafeMounter(mounter mount.Interface, exec exec.Interface) *mount.SafeFormatAndMount {
 	return &mount.SafeFormatAndMount{
 		Interface: mounter,
 		Exec:      exec,

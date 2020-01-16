@@ -34,7 +34,7 @@ import (
 )
 
 var (
-	boskos = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
+	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
 
 func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext, error) {
@@ -171,7 +171,7 @@ func ReadFile(instance *remote.InstanceInfo, filePath string) (string, error) {
 }
 
 func GetFSSizeInGb(instance *remote.InstanceInfo, mountPath string) (int64, error) {
-	output, err := instance.SSHNoSudo("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
+	output, err := instance.SSH("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
 	if err != nil {
 		return -1, fmt.Errorf("failed to get size of path %s. Output: %v, error: %v", mountPath, output, err)
 	}
