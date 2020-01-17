@@ -1054,7 +1054,6 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	if err != nil {
 		return nil, err
 	}
-	klog.Warningf("GCE PD %s already exists after wait, reusing", name)
 	return disk, nil
 }
 

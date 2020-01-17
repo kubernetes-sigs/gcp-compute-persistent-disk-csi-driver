@@ -83,11 +83,12 @@ func TestSanity(t *testing.T) {
 
 	// Run test
 	config := sanity.TestConfig{
-		TargetPath:  mountPath,
-		StagingPath: stagePath,
-		Address:     endpoint,
-		DialOptions: []grpc.DialOption{grpc.WithInsecure()},
-		IDGen:       newPDIDGenerator(project, zone),
+		TargetPath:     mountPath,
+		StagingPath:    stagePath,
+		Address:        endpoint,
+		DialOptions:    []grpc.DialOption{grpc.WithInsecure()},
+		IDGen:          newPDIDGenerator(project, zone),
+		TestVolumeSize: common.GbToBytes(200),
 	}
 	sanity.Test(t, config)
 }

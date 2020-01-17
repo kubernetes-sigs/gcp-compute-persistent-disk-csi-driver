@@ -28,12 +28,12 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/util/resizefs"
+	"k8s.io/utils/mount"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
 
 type GCENodeServer struct {
@@ -130,7 +130,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 
 		sourcePath = stagingTargetPath
 
-		if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
+		if err := os.MkdirAll(targetPath, 0750); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", targetPath, err))
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
@@ -147,7 +147,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		}
 
 		// Expose block volume as file at target path
-		err = ns.Mounter.MakeFile(targetPath)
+		err = makeFile(targetPath)
 		if err != nil {
 			if removeErr := os.Remove(targetPath); removeErr != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Error removing block file at target path %v: %v, mounti error: %v", targetPath, removeErr, err))
@@ -188,6 +188,18 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 
 	klog.V(4).Infof("NodePublishVolume succeeded on volume %v to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func makeFile(path string) error {
+	// Create file
+	newFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0750)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %v", path, err)
+	}
+	if err := newFile.Close(); err != nil {
+		return fmt.Errorf("failed to close file %s: %v", path, err)
+	}
+	return nil
 }
 
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
@@ -264,7 +276,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := ns.Mounter.Interface.MakeDir(stagingTargetPath); err != nil {
+			if err := os.MkdirAll(stagingTargetPath, 0750); err != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create directory (%q): %v", stagingTargetPath, err))
 			}
 			notMnt = true
@@ -371,12 +383,12 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	exists, err := ns.Mounter.Interface.ExistsPath(req.VolumePath)
+	_, err := os.Stat(req.VolumePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
+		}
 		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", req.VolumePath, err)
-	}
-	if !exists {
-		return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
 	}
 
 	isBlock, err := ns.VolumeStatter.IsBlockDevice(req.VolumePath)
@@ -528,14 +540,14 @@ func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (strin
 }
 
 func (ns *GCENodeServer) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := ns.Mounter.Exec.Run("blockdev", "--getsize64", devicePath)
+	output, err := ns.Mounter.Exec.Command("blockdev", "--getsize64", devicePath).CombinedOutput()
 	if err != nil {
 		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
 	}
 	strOut := strings.TrimSpace(string(output))
 	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
 	if err != nil {
-		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
+		return -1, fmt.Errorf("failed to parse %s into an int size", strOut)
 	}
 	return gotSizeBytes, nil
 }
