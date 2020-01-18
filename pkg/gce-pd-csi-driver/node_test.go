@@ -165,6 +165,11 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "custom-2-4096",
 			expVolumeLimit: volumeLimitBig,
 		},
+		{
+			name:           "Predifined e2 machine",
+			machineType:    "e2-micro",
+			expVolumeLimit: volumeLimitSmall,
+		},
 	}
 
 	for _, tc := range testCases {

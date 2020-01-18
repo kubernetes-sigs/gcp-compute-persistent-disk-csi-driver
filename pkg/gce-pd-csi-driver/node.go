@@ -505,16 +505,16 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 }
 
 func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
-	var volumeLimits int64
-
 	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
 	machineType := ns.MetadataService.GetMachineType()
-	if strings.HasPrefix(machineType, "n1-") || strings.HasPrefix(machineType, "custom-") {
-		volumeLimits = volumeLimitBig
-	} else {
-		volumeLimits = volumeLimitSmall
+
+	smallMachineTypes := []string{"f1-micro", "g1-small", "e2-micro", "e2-small", "e2-medium"}
+	for _, st := range smallMachineTypes {
+		if machineType == st {
+			return volumeLimitSmall, nil
+		}
 	}
-	return volumeLimits, nil
+	return volumeLimitBig, nil
 }
 
 func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (string, error) {
