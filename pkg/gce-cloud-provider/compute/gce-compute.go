@@ -620,6 +620,10 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key
 	}
 }
 
+// ResizeDisk takes in the requested disk size in bytes and returns the resized
+// size in Gi
+// TODO(#461) The whole driver could benefit from standardized usage of the
+// k8s.io/apimachinery/quantity package for better size handling
 func (cloud *CloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error) {
 	klog.V(5).Infof("Resizing disk %v to size %v", volKey, requestBytes)
 	cloudDisk, err := cloud.GetDisk(ctx, volKey)
@@ -630,9 +634,10 @@ func (cloud *CloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, re
 	sizeGb := cloudDisk.GetSizeGb()
 	requestGb := common.BytesToGb(requestBytes)
 
-	// If disk is already of size equal or greater than requested size, we simply return
+	// If disk is already of size equal or greater than requested size, we
+	// simply return the found size
 	if sizeGb >= requestGb {
-		return requestBytes, nil
+		return sizeGb, nil
 	}
 
 	switch volKey.Type() {
