@@ -436,45 +436,45 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID must be provided")
+		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
 	}
 	capacityRange := req.GetCapacityRange()
 	reqBytes, err := getRequestCapacity(capacityRange)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume capacity range is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("capacity range is invalid: %v", err))
 	}
 
 	volumePath := req.GetVolumePath()
 	if len(volumePath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume path must be provided")
+		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("volume ID is invalid: %v", err))
 	}
 
 	devicePath, err := ns.getDevicePath(volumeID, "")
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting device path for %s: %v", volumeID, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting device path for %s: %v", volumeID, err))
 	}
 
 	// TODO(#328): Use requested size in resize if provided
 	resizer := resizefs.NewResizeFs(ns.Mounter)
 	_, err = resizer.Resize(devicePath, volumePath)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when resizing volume %s: %v", volKey.String(), err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s: %v", volKey.String(), err))
 
 	}
 
 	// Check the block size
 	gotBlockSizeBytes, err := ns.getBlockSizeBytes(devicePath)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting size of block volume at path %s: %v", devicePath, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting size of block volume at path %s: %v", devicePath, err))
 	}
 	if gotBlockSizeBytes < reqBytes {
 		// It's possible that the somewhere the volume size was rounded up, getting more size than requested is a success :)
-		return nil, status.Errorf(codes.Internal, "ControllerExpandVolume resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
+		return nil, status.Errorf(codes.Internal, "resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
 	}
 
 	// TODO(dyzz) Some sort of formatted volume could also check the fs size.
