@@ -28,10 +28,6 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
-func init() {
-	flag.Set("logtostderr", "true")
-}
-
 var (
 	endpoint          = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	gceConfigFilePath = flag.String("cloud-config", "", "Path to GCE cloud provider config")
@@ -49,6 +45,7 @@ func init() {
 	// Use V(5) for GCE Cloud Provider Call informational logging
 	// Use V(6) for extra repeated/polling information
 	klog.InitFlags(flag.CommandLine)
+	flag.Set("logtostderr", "true")
 }
 
 func main() {
