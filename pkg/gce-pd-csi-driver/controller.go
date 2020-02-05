@@ -91,32 +91,14 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	diskType := "pd-standard"
-	// Start process for creating a new disk
-	replicationType := replicationTypeNone
-	diskEncryptionKmsKey := ""
-	for k, v := range req.GetParameters() {
-		if k == "csiProvisionerSecretName" || k == "csiProvisionerSecretNamespace" {
-			// These are hardcoded secrets keys required to function but not needed by GCE PD
-			continue
-		}
-		switch strings.ToLower(k) {
-		case common.ParameterKeyType:
-			klog.V(4).Infof("Setting type: %v", v)
-			diskType = v
-		case common.ParameterKeyReplicationType:
-			replicationType = strings.ToLower(v)
-		case common.ParameterKeyDiskEncryptionKmsKey:
-			// Resource names (e.g. "keyRings", "cryptoKeys", etc.) are case sensitive, so do not change case
-			diskEncryptionKmsKey = v
-		default:
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume invalid option %q", k))
-		}
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
 	}
 	// Determine the zone or zones+region of the disk
 	var zones []string
 	var volKey *meta.Key
-	switch replicationType {
+	switch params.ReplicationType {
 	case replicationTypeNone:
 		zones, err = pickZones(gceCS, req.GetAccessibilityRequirements(), 1)
 		if err != nil {
@@ -138,7 +120,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 		volKey = meta.RegionalKey(name, region)
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", replicationType))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", params.ReplicationType))
 	}
 
 	volumeID, err := common.KeyToVolumeID(volKey, gceCS.MetadataService.GetProject())
@@ -159,7 +141,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	}
 	if err == nil {
 		// There was no error so we want to validate the disk that we find
-		err = gceCS.CloudProvider.ValidateExistingDisk(ctx, existingDisk, diskType,
+		err = gceCS.CloudProvider.ValidateExistingDisk(ctx, existingDisk, params,
 			int64(capacityRange.GetRequiredBytes()),
 			int64(capacityRange.GetLimitBytes()))
 		if err != nil {
@@ -189,12 +171,12 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// Create the disk
 	var disk *gce.CloudDisk
-	switch replicationType {
+	switch params.ReplicationType {
 	case replicationTypeNone:
 		if len(zones) != 1 {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
 		}
-		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotID, diskEncryptionKmsKey)
+		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create single zonal disk %#v: %v", name, err))
 		}
@@ -202,12 +184,12 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if len(zones) != 2 {
 			return nil, status.Errorf(codes.Internal, fmt.Sprintf("CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones))
 		}
-		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, diskType, capacityRange, capBytes, snapshotID, diskEncryptionKmsKey)
+		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create regional disk %#v: %v", name, err))
 		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", replicationType))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", params.ReplicationType))
 	}
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
 	return generateCreateVolumeResponse(disk, capBytes, zones), nil
@@ -415,20 +397,16 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 }
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	// TODO(#162): Implement ValidateVolumeCapabilities
-
-	klog.V(5).Infof("Using default ValidateVolumeCapabilities")
-	// Validate Arguments
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume Capabilities must be provided")
+		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities must be provided")
 	}
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities Volume ID must be provided")
+		return nil, status.Error(codes.InvalidArgument, "Volume ID must be provided")
 	}
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ValidateVolumeCapabilities Volume ID is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Volume ID is invalid: %v", err))
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -436,7 +414,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	disk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.Name, err))
@@ -444,68 +422,44 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
 	}
 
+	// Check Volume Context is Empty
+	if len(req.GetVolumeContext()) != 0 {
+		return generateFailedValidationMessage("VolumeContext expected to be empty but got %v", req.GetVolumeContext()), nil
+	}
+
+	// Check volume capabilities supported by PD. These are the same for any PD
+	if err := validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
+		return generateFailedValidationMessage("VolumeCapabilities not valid: %v", err), nil
+	}
+
+	// Validate the disk parameters match the disk we GET
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
+	}
+	if err := gce.ValidateDiskParameters(disk, params); err != nil {
+		return generateFailedValidationMessage("Parameters %v do not match given disk %s: %v", req.GetParameters(), disk.GetName(), err), nil
+	}
+
+	// Ignore secrets
+	if len(req.GetSecrets()) != 0 {
+		return generateFailedValidationMessage("Secrets expected to be empty but got %v", req.GetSecrets()), nil
+	}
+
+	// All valid, return success
 	return &csi.ValidateVolumeCapabilitiesResponse{
-		Message: "ValidateVolumeCapabilities is currently unimplemented for CSI v1.0.0",
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeContext:      req.GetVolumeContext(),
+			VolumeCapabilities: req.GetVolumeCapabilities(),
+			Parameters:         req.GetParameters(),
+		},
 	}, nil
-	/*
-		for _, c := range req.GetVolumeCapabilities() {
-			found := false
-			for _, c1 := range gceCS.Driver.vcap {
-				if c1.Mode == c.GetAccessMode().Mode {
-					found = true
-				}
-			}
-			if !found {
-				return &csi.ValidateVolumeCapabilitiesResponse{
-					Supported: false,
-					Message:   "Driver does not support mode:" + c.GetAccessMode().Mode.String(),
-				}, status.Error(codes.InvalidArgument, "Driver does not support mode:"+c.GetAccessMode().Mode.String())
-			}
-			// TODO: Ignoring mount & block types for now.
-		}
+}
 
-		for _, top := range req.GetAccessibleTopology() {
-			for k, v := range top.GetSegments() {
-				switch k {
-				case common.TopologyKeyZone:
-					switch volKey.Type() {
-					case meta.Zonal:
-						if v == volKey.Zone {
-							// Accessible zone matches with storage zone
-							return &csi.ValidateVolumeCapabilitiesResponse{
-								Supported: true,
-							}, nil
-						}
-					case meta.Regional:
-						// TODO: This should more accurately check the disks replica Zones but that involves
-						// GET-ing the disk
-						region, err := common.GetRegionFromZones([]string{v})
-						if err != nil {
-							return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ValidateVolumeCapabilities could not extract topology region from zone %v: %v", v, err))
-						}
-						if region == volKey.Region {
-							// Accessible region matches with storage region
-							return &csi.ValidateVolumeCapabilitiesResponse{
-								Supported: true,
-							}, nil
-						}
-					default:
-						// Accessible zone does not match
-						return &csi.ValidateVolumeCapabilitiesResponse{
-							Supported: false,
-							Message:   fmt.Sprintf("Volume %s is not accesible from topology %s:%s", volumeID, k, v),
-						}, nil
-					}
-				default:
-					return nil, status.Error(codes.InvalidArgument, "ValidateVolumeCapabilities unknown topology segment key")
-				}
-			}
-		}
-
-		return &csi.ValidateVolumeCapabilitiesResponse{
-			Supported: true,
-		}, nil
-	*/
+func generateFailedValidationMessage(format string, a ...interface{}) *csi.ValidateVolumeCapabilitiesResponse {
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Message: fmt.Sprintf(format, a...),
+	}
 }
 
 func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
@@ -1017,7 +971,7 @@ func cleanSelfLink(selfLink string) string {
 	return strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
 }
 
-func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotID, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
+func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string) (*gce.CloudDisk, error) {
 	region, err := common.GetRegionFromZones(zones)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get region from zones: %v", err)
@@ -1029,7 +983,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 			fullyQualifiedReplicaZones, cloudProvider.GetReplicaZoneURI(replicaZone))
 	}
 
-	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), diskType, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, diskEncryptionKmsKey)
+	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
@@ -1041,12 +995,12 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	return disk, nil
 }
 
-func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, diskType string, capacityRange *csi.CapacityRange, capBytes int64, snapshotID, diskEncryptionKmsKey string) (*gce.CloudDisk, error) {
+func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string) (*gce.CloudDisk, error) {
 	if len(zones) != 1 {
 		return nil, fmt.Errorf("got wrong number of zones for zonal create volume: %v", len(zones))
 	}
 	diskZone := zones[0]
-	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), diskType, capBytes, capacityRange, nil, snapshotID, diskEncryptionKmsKey)
+	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}

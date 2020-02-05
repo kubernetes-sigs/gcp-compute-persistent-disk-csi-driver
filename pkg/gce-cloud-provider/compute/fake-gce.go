@@ -207,7 +207,7 @@ func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key) (
 	return disk, nil
 }
 
-func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, diskType string, reqBytes, limBytes int64) error {
+func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64) error {
 	if resp == nil {
 		return fmt.Errorf("disk does not exist")
 	}
@@ -219,20 +219,12 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
 	}
 
-	respType := strings.Split(resp.GetType(), "/")
-	typeMatch := strings.TrimSpace(respType[len(respType)-1]) == strings.TrimSpace(diskType)
-	typeDefault := diskType == "" && strings.TrimSpace(respType[len(respType)-1]) == "pd-standard"
-	if !typeMatch && !typeDefault {
-		return fmt.Errorf("disk already exists with incompatible type. Need %v. Got %v",
-			diskType, respType[len(respType)-1])
-	}
-	klog.V(4).Infof("Compatible disk already exists")
-	return nil
+	return ValidateDiskParameters(resp, params)
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string) error {
 	if disk, ok := cloud.disks[volKey.Name]; ok {
-		err := cloud.ValidateExistingDisk(ctx, disk, diskType,
+		err := cloud.ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
 			int64(capacityRange.GetLimitBytes()))
 		if err != nil {
@@ -247,13 +239,13 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Name:             volKey.Name,
 			SizeGb:           common.BytesToGb(capBytes),
 			Description:      "Disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
 			SourceSnapshotId: snapshotID,
 		}
-		if diskEncryptionKmsKey != "" {
+		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateGA.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: diskEncryptionKmsKey,
+				KmsKeyName: params.DiskEncryptionKMSKey,
 			}
 		}
 		diskToCreate = ZonalCloudDisk(diskToCreateGA)
@@ -262,13 +254,13 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Name:             volKey.Name,
 			SizeGb:           common.BytesToGb(capBytes),
 			Description:      "Regional disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
 			SourceSnapshotId: snapshotID,
 		}
-		if diskEncryptionKmsKey != "" {
+		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateV1.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: diskEncryptionKmsKey,
+				KmsKeyName: params.DiskEncryptionKMSKey,
 			}
 		}
 		diskToCreate = RegionalCloudDisk(diskToCreateV1)
