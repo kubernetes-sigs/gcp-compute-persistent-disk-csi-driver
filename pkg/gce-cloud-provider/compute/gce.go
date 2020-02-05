@@ -68,7 +68,7 @@ type ConfigGlobal struct {
 	ProjectId string `gcfg:"project-id"`
 }
 
-func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -78,12 +78,12 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 
 	klog.V(2).Infof("Using GCE provider config %+v", configFile)
 
-	tokenSource, err := generateTokenSource(configFile)
+	tokenSource, err := generateTokenSource(ctx, configFile)
 	if err != nil {
 		return nil, err
 	}
 
-	svc, err := createCloudService(vendorVersion, tokenSource)
+	svc, err := createCloudService(ctx, vendorVersion, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 
 }
 
-func generateTokenSource(configFile *ConfigFile) (oauth2.TokenSource, error) {
+func generateTokenSource(ctx context.Context, configFile *ConfigFile) (oauth2.TokenSource, error) {
 
 	if configFile != nil && configFile.Global.TokenURL != "" && configFile.Global.TokenURL != "nil" {
 		// configFile.Global.TokenURL is defined
@@ -116,7 +116,7 @@ func generateTokenSource(configFile *ConfigFile) (oauth2.TokenSource, error) {
 	// Use DefaultTokenSource
 
 	tokenSource, err := google.DefaultTokenSource(
-		context.Background(),
+		ctx,
 		compute.CloudPlatformScope,
 		compute.ComputeScope)
 
@@ -149,13 +149,13 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
-	svc, err := createCloudServiceWithDefaultServiceAccount(vendorVersion, tokenSource)
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
+	svc, err := createCloudServiceWithDefaultServiceAccount(ctx, vendorVersion, tokenSource)
 	return svc, err
 }
 
-func createCloudServiceWithDefaultServiceAccount(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
-	client, err := newOauthClient(tokenSource)
+func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func createCloudServiceWithDefaultServiceAccount(vendorVersion string, tokenSour
 	return service, nil
 }
 
-func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
+func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
 	if err := wait.PollImmediate(5*time.Second, 30*time.Second, func() (bool, error) {
 		if _, err := tokenSource.Token(); err != nil {
 			klog.Errorf("error fetching initial token: %v", err)
@@ -178,7 +178,7 @@ func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
 		return nil, err
 	}
 
-	return oauth2.NewClient(context.Background(), tokenSource), nil
+	return oauth2.NewClient(ctx, tokenSource), nil
 }
 
 func getProjectAndZone(config *ConfigFile) (string, string, error) {
