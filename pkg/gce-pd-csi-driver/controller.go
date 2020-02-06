@@ -118,7 +118,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	var volKey *meta.Key
 	switch replicationType {
 	case replicationTypeNone:
-		zones, err = pickZones(gceCS, req.GetAccessibilityRequirements(), 1)
+		zones, err = pickZones(ctx, gceCS, req.GetAccessibilityRequirements(), 1)
 		if err != nil {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to pick zones for disk: %v", err))
 		}
@@ -128,7 +128,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		volKey = meta.ZonalKey(name, zones[0])
 
 	case replicationTypeRegionalPD:
-		zones, err = pickZones(gceCS, req.GetAccessibilityRequirements(), 2)
+		zones, err = pickZones(ctx, gceCS, req.GetAccessibilityRequirements(), 2)
 		if err != nil {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to pick zones for disk: %v", err))
 		}
@@ -941,7 +941,7 @@ func getZoneFromSegment(seg map[string]string) (string, error) {
 	return zone, nil
 }
 
-func pickZones(gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZones int) ([]string, error) {
+func pickZones(ctx context.Context, gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZones int) ([]string, error) {
 	var zones []string
 	var err error
 	if top != nil {
@@ -950,7 +950,7 @@ func pickZones(gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZone
 			return nil, fmt.Errorf("failed to pick zones from topology: %v", err)
 		}
 	} else {
-		zones, err = getDefaultZonesInRegion(gceCS, []string{gceCS.MetadataService.GetZone()}, numZones)
+		zones, err = getDefaultZonesInRegion(ctx, gceCS, []string{gceCS.MetadataService.GetZone()}, numZones)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default %v zones in region: %v", numZones, err)
 		}
@@ -960,13 +960,13 @@ func pickZones(gceCS *GCEControllerServer, top *csi.TopologyRequirement, numZone
 	return zones, nil
 }
 
-func getDefaultZonesInRegion(gceCS *GCEControllerServer, existingZones []string, numZones int) ([]string, error) {
+func getDefaultZonesInRegion(ctx context.Context, gceCS *GCEControllerServer, existingZones []string, numZones int) ([]string, error) {
 	region, err := common.GetRegionFromZones(existingZones)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get region from zones: %v", err)
 	}
 	needToGet := numZones - len(existingZones)
-	totZones, err := gceCS.CloudProvider.ListZones(context.Background(), region)
+	totZones, err := gceCS.CloudProvider.ListZones(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list zones from cloud provider: %v", err)
 	}

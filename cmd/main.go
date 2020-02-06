@@ -15,6 +15,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"math/rand"
 	"os"
@@ -63,8 +64,11 @@ func handle() {
 
 	gceDriver := driver.GetGCEDriver()
 
-	//Initialize GCE Driver (Move setup to main?)
-	cloudProvider, err := gce.CreateCloudProvider(vendorVersion, *gceConfigFilePath)
+	//Initialize GCE Driver
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cloudProvider, err := gce.CreateCloudProvider(ctx, vendorVersion, *gceConfigFilePath)
 	if err != nil {
 		klog.Fatalf("Failed to get cloud provider: %v", err)
 	}
