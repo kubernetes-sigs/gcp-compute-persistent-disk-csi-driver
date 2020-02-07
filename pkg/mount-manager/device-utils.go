@@ -171,7 +171,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 			// device to get the device to show up in /dev/by-id/
 			innerErr := udevadmTriggerForDiskIfExists(diskName)
 			if innerErr != nil {
-				return false, fmt.Errorf("failed to trigger udevadm fix for disk %s: %v", diskName, innerErr)
+				return false, fmt.Errorf("failed to trigger udevadm fix: %v", innerErr)
 			}
 			// Go to next retry loop to get the deviceName again after
 			// potentially fixing it with the udev command
@@ -199,7 +199,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 		// The devicePath is not mapped to the correct disk
 		innerErr = udevadmTriggerForDiskIfExists(diskName)
 		if innerErr != nil {
-			return false, fmt.Errorf("failed to trigger udevadm fix for disk %s: %v", diskName, innerErr)
+			return false, fmt.Errorf("failed to trigger udevadm fix: %v", innerErr)
 		}
 		// Go to next retry loop to get the deviceName again after
 		// potentially fixing it with the udev command
@@ -214,6 +214,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 }
 
 func udevadmTriggerForDiskIfExists(diskName string) error {
+	devToSCSI := map[string]string{}
 	sds, err := filepath.Glob(diskSDPattern)
 	if err != nil {
 		return fmt.Errorf("failed to filepath.Glob(\"%s\"): %v", diskSDPattern, err)
@@ -221,20 +222,22 @@ func udevadmTriggerForDiskIfExists(diskName string) error {
 	for _, devSDX := range sds {
 		scsiSerial, err := getScsiSerial(devSDX)
 		if err != nil {
-			return fmt.Errorf("failed to get SCSI Serial num for %s: %v", devSDX, err)
+			return fmt.Errorf("failed to get SCSI Serial num: %v", err)
 		}
+		devToSCSI[devSDX] = scsiSerial
 		if scsiSerial == diskName {
 			// Found the disk that we're looking for so run a trigger on it
 			// to resolve its /dev/by-id/ path
 			klog.Warningf("udevadm --trigger running to fix disk at path %s which has SCSI ID %s", devSDX, scsiSerial)
 			err := udevadmChangeToDrive(devSDX)
 			if err != nil {
-				return fmt.Errorf("failed to fix disk at path %s which has SCSI ID %s: %v", devSDX, scsiSerial, err)
+				return fmt.Errorf("failed to fix disk which has SCSI ID %s: %v", scsiSerial, err)
 			}
 			return nil
 		}
 	}
-	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", diskName, sds)
+	klog.Warningf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", diskName, devToSCSI)
+	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found", diskName)
 }
 
 // Calls "udevadm trigger --action=change" on the specified drive. drivePath
