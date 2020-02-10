@@ -20,3 +20,5 @@ DriverInfo:
   SupportedSizeRange:
     Min: 5Gi
     Max: 64Ti
+  TopologyKeys:
+    - topology.gke.io/zone

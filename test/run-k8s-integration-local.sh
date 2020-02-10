@@ -35,6 +35,17 @@ make -C ${PKGDIR} test-k8s-integration
 # --deployment-strategy=gce --kube-version=${kube_version} \
 # --test-version=${test_version} --num-nodes=3
 
+
+# This version of the command creates a regional GKE cluster. It will test with
+# the latest GKE version and the master test version
+
+# ${PKGDIR}/bin/k8s-integration-test --run-in-prow=false \
+# --staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
+# --deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false \
+# --storageclass-file=sc-standard.yaml --do-driver-build=false  --test-focus="schedule.a.pod.with.AllowedTopologies" \
+# --gce-region="us-central1" --num-nodes=${NUM_NODES:-3} --gke-cluster-version="latest" --deployment-strategy="gke" \
+# --test-version="master"
+
 # This version of the command does not build the driver or K8s, points to a
 # local K8s repo to get the e2e.test binary, and does not bring up or down the cluster
 
