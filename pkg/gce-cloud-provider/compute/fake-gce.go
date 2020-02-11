@@ -67,6 +67,14 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 	return fcp, nil
 }
 
+func (cloud *FakeCloudProvider) GetDefaultProject() string {
+	return cloud.project
+}
+
+func (cloud *FakeCloudProvider) GetDefaultZone() string {
+	return cloud.zone
+}
+
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
 	switch volumeKey.Type() {
 	case meta.Zonal:

@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
@@ -44,7 +43,8 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(cloudProvider, nil, nil, metadataservice.NewFakeService(), nil, driver, vendorVersion)
+	controllerServer := NewControllerServer(gceDriver, cloudProvider)
+	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

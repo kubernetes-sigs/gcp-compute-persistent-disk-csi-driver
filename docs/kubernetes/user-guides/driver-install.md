@@ -18,7 +18,7 @@ compute.instances.get
 compute.instances.attachDisk
 compute.instances.detachDisk
 roles/compute.storageAdmin
-roles/iam.serviceAccountUser 
+roles/iam.serviceAccountUser
 ```
 
 If there is a pre-existing service account with these roles for use then the
@@ -80,3 +80,21 @@ iam.serviceAccounts.delete
 
 These permissions are not required if you already have a service account ready
 for use by the PD Driver.
+
+## Disabling particular CSI driver services
+
+Traditionally, you run the CSI controllers with the GCE PD driver in the same Kubernetes cluster.
+Though, there may be cases where you will only want to run a subset of the available driver services (for example, one scenario is running the controllers outside of the cluster they are serving (while the GCE PD driver still runs inside the served cluster), but there might be others scenarios).
+The CSI driver consists out of these services:
+
+* The **controller** service starts the GRPC server that serves `CreateVolume`, `DeleteVolume`, etc. It is depending on the GCP service account credentials and talks with the GCP API.
+* The **identity** service is responsible to provide identity services like capability information of the CSI plugin.
+* The **node** service implements the various operations for volumes that are run locally from the node, for example `NodePublishVolume`, `NodeStageVolume`, etc. It does not do operations like `CreateVolume` or `ControllerPublish`. Also, as it runs directly on the GCE instances, it is depending on the GCE metadata service.
+
+The CSI driver has two command line flags, `--run-controller-service` and `--run-node-service` which both default to `true`.
+You can disable the individual services by setting the respective flags to `false`.
+
+Note: If you want to run the CSI controllers outside of the cluster you have to specify both the `zone` and `projectId` parameters in the GCE cloud provider config.
+The `zone` is the name of one of the availability zones the served Kubernetes cluster is deployed to.
+It is used to derive the GCP region and to discover the other availability zones in this region.
+The `project-id` is the GCP project ID in which the controller is operating.

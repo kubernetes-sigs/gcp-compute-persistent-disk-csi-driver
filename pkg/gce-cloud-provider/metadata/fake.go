@@ -21,9 +21,8 @@ type fakeServiceManager struct{}
 var _ MetadataService = &fakeServiceManager{}
 
 const (
-	FakeZone       = "country-region-zone"
-	FakeSecondZone = "country-region-zone2"
-	FakeProject    = "test-project"
+	FakeZone    = "country-region-zone"
+	FakeProject = "test-project"
 )
 
 var FakeMachineType = "n1-standard-1"

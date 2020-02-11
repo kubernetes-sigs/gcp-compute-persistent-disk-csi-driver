@@ -17,7 +17,7 @@ spec:
       # since it replaces GCE Metadata Server with GKE Metadata Server. Remove
       # this requirement when issue is resolved and before any exposure of
       # metrics ports
-      hostNetwork: true 
+      hostNetwork: true
       serviceAccountName: csi-gce-pd-controller-sa
       priorityClassName: csi-gce-pd-controller
       containers:
@@ -27,6 +27,8 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--feature-gates=Topology=true"
+          # - "--run-controller-service=false" # disable the controller service of the CSI driver
+          # - "--run-node-service=false"       # disable the node service of the CSI driver
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
