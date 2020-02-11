@@ -36,7 +36,7 @@ func TestSanity(t *testing.T) {
 	// Set up variables
 	driverName := "test-driver"
 	project := "test-project"
-	zone := "test-zone"
+	zone := "country-region-zone"
 	vendorVersion := "test-version"
 	tmpDir := "/tmp/csi"
 	endpoint := fmt.Sprintf("unix:%s/csi.sock", tmpDir)

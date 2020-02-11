@@ -81,7 +81,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 	// Set up RPC Servers
 	gceDriver.ids = NewIdentityServer(gceDriver)
 	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
-	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider, meta)
+	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider)
 
 	return nil
 }
@@ -147,12 +147,11 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, meta metadataservice.MetadataService) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:          gceDriver,
-		CloudProvider:   cloudProvider,
-		MetadataService: meta,
-		volumeLocks:     common.NewVolumeLocks(),
+		Driver:        gceDriver,
+		CloudProvider: cloudProvider,
+		volumeLocks:   common.NewVolumeLocks(),
 	}
 }
 

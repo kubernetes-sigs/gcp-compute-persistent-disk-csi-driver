@@ -40,7 +40,7 @@ push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 test-sanity: gce-pd-driver
-	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
+	go test -v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
 
 test-k8s-integration:
 	go build -o bin/k8s-integration-test ./test/k8s-integration
