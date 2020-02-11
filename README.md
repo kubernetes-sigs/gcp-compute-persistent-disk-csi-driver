@@ -12,7 +12,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 ## Project Status
 
 Status: Beta
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.6.0-gke.0`
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.6.2-gke.0`
 
 ### Test Status
 
