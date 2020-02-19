@@ -67,6 +67,8 @@ spec:
               mountPath: /run/udev
             - name: sys
               mountPath: /sys
+      nodeSelector:
+        kubernetes.io/os: linux
       volumes:
         - name: registration-dir
           hostPath:
