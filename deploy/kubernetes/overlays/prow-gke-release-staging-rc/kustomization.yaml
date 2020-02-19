@@ -11,10 +11,18 @@ images:
   newTag: "v1.5.0-gke.0"
 - name: gke.gcr.io/csi-attacher
   newName: gcr.io/gke-release-staging/csi-attacher
-  newTag: "v2.1.0-gke.0"
+  newTag: "v2.1.1-gke.0"
 - name: gke.gcr.io/csi-node-driver-registrar
   newName: gcr.io/gke-release-staging/csi-node-driver-registrar
   newTag: "v1.2.0-gke.0"
 - name: gke.gcr.io/csi-resizer
   newName: gke.gcr.io/gke-release-staging/csi-resizer
   newTag: "v0.4.0-gke.0"
+
+patchesJson6902:
+- target:
+    group: apps
+    version: v1
+    kind: StatefulSet
+    name: csi-gce-pd-controller
+  path: enable_sidecar_metrics.yaml
