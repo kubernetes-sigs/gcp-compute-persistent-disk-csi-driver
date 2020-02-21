@@ -528,7 +528,7 @@ func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (strin
 	}
 
 	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
-	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths, volumeKey.Name)
+	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths, deviceName)
 
 	if err != nil {
 		return "", fmt.Errorf("error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err)
