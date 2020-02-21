@@ -68,7 +68,7 @@ type DeviceUtils interface {
 
 	// VerifyDevicePath returns the first of the list of device paths that
 	// exists on the machine, or an empty string if none exists
-	VerifyDevicePath(devicePaths []string, diskName string) (string, error)
+	VerifyDevicePath(devicePaths []string, deviceName string) (string, error)
 }
 
 type deviceUtils struct {
@@ -138,7 +138,7 @@ func parseScsiSerial(output string) (string, error) {
 // candidate devicePaths or an empty string if none is found. If
 // /lib/udev_containerized/scsi_id exists it will attempt to fix any issues
 // caused by missing paths or mismatched devices by running a udevadm --trigger.
-func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (string, error) {
+func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) (string, error) {
 	var devicePath string
 	var err error
 	const (
@@ -167,9 +167,9 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 
 		if len(devicePath) == 0 {
 			// Couldn't find the path so we need to find a /dev/sdx with the SCSI
-			// serial that matches diskName. Then we run udevadm trigger on that
+			// serial that matches deviceName. Then we run udevadm trigger on that
 			// device to get the device to show up in /dev/by-id/
-			innerErr := udevadmTriggerForDiskIfExists(diskName)
+			innerErr := udevadmTriggerForDiskIfExists(deviceName)
 			if innerErr != nil {
 				return false, fmt.Errorf("failed to trigger udevadm fix: %v", innerErr)
 			}
@@ -188,16 +188,16 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 		if strings.Contains(devSDX, diskSDPath) {
 			scsiSerial, innerErr := getScsiSerial(devSDX)
 			if innerErr != nil {
-				return false, fmt.Errorf("couldn't get SCSI serial number for disk %s: %v", diskName, innerErr)
+				return false, fmt.Errorf("couldn't get SCSI serial number for disk %s: %v", deviceName, innerErr)
 			}
 			// SUCCESS! devicePath points to a /dev/sdx that has a SCSI serial
 			// equivilant to our disk name
-			if scsiSerial == diskName {
+			if scsiSerial == deviceName {
 				return true, nil
 			}
 		}
 		// The devicePath is not mapped to the correct disk
-		innerErr = udevadmTriggerForDiskIfExists(diskName)
+		innerErr = udevadmTriggerForDiskIfExists(deviceName)
 		if innerErr != nil {
 			return false, fmt.Errorf("failed to trigger udevadm fix: %v", innerErr)
 		}
@@ -207,13 +207,13 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (s
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("failed to find and re-link disk %s with udevadm after retrying for %v: %v", diskName, pollTimeout, err)
+		return "", fmt.Errorf("failed to find and re-link disk %s with udevadm after retrying for %v: %v", deviceName, pollTimeout, err)
 	}
 
 	return devicePath, nil
 }
 
-func udevadmTriggerForDiskIfExists(diskName string) error {
+func udevadmTriggerForDiskIfExists(deviceName string) error {
 	devToSCSI := map[string]string{}
 	sds, err := filepath.Glob(diskSDPattern)
 	if err != nil {
@@ -225,7 +225,7 @@ func udevadmTriggerForDiskIfExists(diskName string) error {
 			return fmt.Errorf("failed to get SCSI Serial num: %v", err)
 		}
 		devToSCSI[devSDX] = scsiSerial
-		if scsiSerial == diskName {
+		if scsiSerial == deviceName {
 			// Found the disk that we're looking for so run a trigger on it
 			// to resolve its /dev/by-id/ path
 			klog.Warningf("udevadm --trigger running to fix disk at path %s which has SCSI ID %s", devSDX, scsiSerial)
@@ -236,8 +236,8 @@ func udevadmTriggerForDiskIfExists(diskName string) error {
 			return nil
 		}
 	}
-	klog.Warningf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", diskName, devToSCSI)
-	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found", diskName)
+	klog.Warningf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", deviceName, devToSCSI)
+	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found", deviceName)
 }
 
 // Calls "udevadm trigger --action=change" on the specified drive. drivePath
