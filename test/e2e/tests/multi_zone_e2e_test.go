@@ -136,7 +136,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			if i >= 1 {
 				readOnly = true
 			}
-			testAttachWriteReadDetach(volID, volName, testContext.Instance, testContext.Client, readOnly)
+			err = testAttachWriteReadDetach(volID, volName, testContext.Instance, testContext.Client, readOnly)
+			Expect(err).To(BeNil(), "failed lifecycle of volume")
 			i = i + 1
 		}
 
