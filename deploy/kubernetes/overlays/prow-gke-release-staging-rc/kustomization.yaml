@@ -16,7 +16,7 @@ images:
   newName: gcr.io/gke-release-staging/csi-node-driver-registrar
   newTag: "v1.2.0-gke.0"
 - name: gke.gcr.io/csi-resizer
-  newName: gke.gcr.io/gke-release-staging/csi-resizer
+  newName: gcr.io/gke-release-staging/csi-resizer
   newTag: "v0.4.0-gke.0"
 
 patchesJson6902:
