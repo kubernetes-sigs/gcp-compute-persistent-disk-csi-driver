@@ -15,8 +15,10 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -59,6 +61,8 @@ var _ csi.NodeServer = &GCENodeServer{}
 const (
 	volumeLimitSmall int64 = 15
 	volumeLimitBig   int64 = 127
+
+	defaultFSType string = "ext4"
 )
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -95,13 +99,20 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", targetPath, err))
 	}
 	if !notMnt {
-		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
-		/*
-			1) Target Path MUST be the vol referenced by vol ID
-			2) TODO(#253): Check volume capability matches for ALREADY_EXISTS
-			3) Readonly MUST match
+		// Validate that the existing volume is compatible
+		partition := ""
+		if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
+			partition = part
+		}
+		devicePath, err := ns.getDevicePath(volumeID, partition)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
+		}
 
-		*/
+		if err := ns.volumeCompatible(targetPath, devicePath, volumeCapability); err != nil {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Mount point %s already exists but found to be incompatible: %v", stagingTargetPath, err))
+		}
+
 		klog.V(4).Infof("NodePublishVolume succeeded on volume %v to %s, mount already exists.", volumeID, targetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
@@ -118,8 +129,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		if mnt.FsType != "" {
 			fstype = mnt.FsType
 		} else {
-			// Default fstype is ext4
-			fstype = "ext4"
+			fstype = defaultFSType
 		}
 
 		klog.V(4).Infof("NodePublishVolume with filesystem %s", fstype)
@@ -286,13 +296,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	if !notMnt {
-		// TODO(#95): Check who is mounted here. No error if its us
-		/*
-			1) Target Path MUST be the vol referenced by vol ID
-			2) VolumeCapability MUST match
-			3) Readonly MUST match
-
-		*/
+		// Validate that the existing volume is compatible
+		if err := ns.volumeCompatible(stagingTargetPath, devicePath, volumeCapability); err != nil {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Mount point %s already exists but found to be incompatible: %v", stagingTargetPath, err))
+		}
 
 		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
@@ -300,8 +307,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	// Part 3: Mount device to stagingTargetPath
-	// Default fstype is ext4
-	fstype := "ext4"
+	fstype := defaultFSType
 	options := []string{}
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		if mnt.FsType != "" {
@@ -325,6 +331,58 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	klog.V(4).Infof("NodeStageVolume succeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
+}
+
+func (ns *GCENodeServer) volumeCompatible(mountedPath, devicePath string, volumeCapability *csi.VolumeCapability) error {
+	if blk := volumeCapability.GetBlock(); blk != nil {
+		// If the volume capability request is type "Block" we don't care what
+		// format the disk is in because user could have re-formatted to a
+		// different type
+		// TODO: Need to check whether loopback device file is the same as the
+		// device path given, the following code to check for mount path doesn't
+		// work for block devices
+		return nil
+	}
+
+	// Part 1: Check that volume mounted at mountedPath is the same as one at
+	// devicePath
+	devicePathDev, err := filepath.EvalSymlinks(devicePath)
+	if err != nil {
+		return fmt.Errorf("failed to find backing disk for devicePath %s: %v", devicePath, err)
+	}
+	// df -P returns with the rows containing the backing disk and the location
+	// of the mount. awk proccesses the result by getting the line with the
+	// location of the mount we're looking for and printing out the backing
+	// disk. the resulting output should be a path to a device such as
+	// "/dev/sda"
+	mountedPathDevBytes, err := ns.Mounter.Exec.Command("sh", "-c", fmt.Sprintf("df -P | awk '$6==\"%s\"{print $1}'", mountedPath)).CombinedOutput()
+	if err != nil || len(mountedPathDevBytes) == 0 {
+		return fmt.Errorf("failed to find backing disk for mountedPath %s: %s: %v", mountedPath, string(mountedPathDevBytes), err)
+	}
+	mountedPathDev := strings.TrimSpace(string(mountedPathDevBytes))
+	if devicePathDev != mountedPathDev {
+		return fmt.Errorf("devices at paths %s and %s were not the same, got %s and %s respectively", devicePath, mountedPath, devicePathDev, mountedPathDev)
+	}
+
+	// Part 2: Check volumeCapability format compatibility
+	format, err := ns.Mounter.GetDiskFormat(devicePath)
+	if err != nil {
+		return fmt.Errorf("failed to get the format of disk %s: %v", devicePath, err)
+	}
+
+	mnt := volumeCapability.GetMount()
+	if mnt == nil {
+		return errors.New("block and mount capabilities are nil, invalid volume capability")
+	}
+
+	wantFmt := mnt.FsType
+	if wantFmt == "" {
+		wantFmt = defaultFSType
+	}
+	if mnt.FsType != format {
+		return fmt.Errorf("device at %s has format %s but volume capability requires %s", devicePath, format, mnt.FsType)
+	}
+	return nil
 }
 
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {

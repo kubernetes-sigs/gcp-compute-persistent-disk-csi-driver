@@ -37,6 +37,8 @@ import (
 	"google.golang.org/api/iterator"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 	fieldmask "google.golang.org/genproto/protobuf/field_mask"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -157,6 +159,147 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				klog.Errorf("Failed to rm file path %s: %v", fp, err)
 			}
 		}()
+	})
+
+	It("Should fail validation if the same disk with different capabilities is staged/published to the same path", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Setup: Create Disk A
+		volNameA, volIDA := createAndValidateUniqueZonalDisk(client, p, z)
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volIDA)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volNameA).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Setup: Attach Disk A
+		err := client.ControllerPublishVolume(volIDA, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volIDA, instance.GetNodeID())
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volIDA, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+		}()
+
+		// Setup: Create Disk B
+		volNameB, volIDB := createAndValidateUniqueZonalDisk(client, p, z)
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volIDB)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volNameB).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Setup: Attach Disk B
+		err = client.ControllerPublishVolume(volIDB, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volIDB, instance.GetNodeID())
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volIDB, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+		}()
+
+		// Setup: Stage Disk A
+		stageDirA := filepath.Join("/tmp/", volNameA, "stage")
+		err = client.NodeStageExt4Volume(volIDA, stageDirA)
+		Expect(err).To(BeNil(), "failed to stage volume")
+
+		// Assert: Stage to same location with different fstype should fail
+		err = client.NodeStageVolume(volIDA, stageDirA, &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					FsType: "xfs",
+				},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		})
+		e, ok := status.FromError(err)
+		Expect(ok).To(BeTrue(), "Could not get error type from err", err)
+		Expect(e.Code()).To(Equal(codes.AlreadyExists), "Volume staged with different fs type should result in already exists error")
+
+		// Assert: Stage to same location with same fstype should work
+		err = client.NodeStageVolume(volIDA, stageDirA, &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					FsType: "ext4",
+				},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		})
+		Expect(err).To(BeNil(), "Staged volume to same location with same fs type should work")
+
+		// Assert: Stage volume using block to location with fs type already should always work
+		err = client.NodeStageBlockVolume(volIDA, stageDirA)
+		Expect(err).To(BeNil(), "Staged volume of block type should always work")
+
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volIDA, stageDirA)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volNameA)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+
+		// Assert: Stage Disk B to Disk A position and fail even both as EXT4
+		err = client.NodeStageExt4Volume(volIDB, stageDirA)
+		e, ok = status.FromError(err)
+		Expect(ok).To(BeTrue(), "Could not get error type from err", err)
+		Expect(e.Code()).To(Equal(codes.AlreadyExists), "Volume B staged with same fs type to Volume A staging path should result in already exists error")
+
+		// Setup: Stage Disk B with EXT3
+		stageDirB := filepath.Join("/tmp/", volNameB, "stage")
+		err = client.NodeStageVolume(volIDB, stageDirB, &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					FsType: "ext3",
+				},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		})
+		Expect(err).To(BeNil(), "failed to stage volume")
+
+		// Setup: Publish A to publishDirA
+		publishDirA := filepath.Join("/tmp/", volNameA, "mount")
+		err = client.NodePublishVolume(volIDA, stageDirA, publishDirA)
+		Expect(err).To(BeNil(), "failed to publish volume")
+		defer func() {
+			err = client.NodeUnpublishVolume(volIDA, publishDirA)
+			Expect(err).To(BeNil(), "failed to unpublish volume")
+		}()
+		// Assert: Publish A to publishDirA with block which already has an fs should work
+		err = client.NodePublishBlockVolume(volIDA, stageDirA, publishDirA)
+		Expect(err).To(BeNil(), "publish block volume to an the existing location with fstype should work")
+
+		// Assert: Publish B to publishDirA should fail because disks are different
+		err = client.NodePublishBlockVolume(volIDB, stageDirB, publishDirA)
+		Expect(ok).To(BeTrue(), "Could not get error type from err", err)
+		Expect(e.Code()).To(Equal(codes.AlreadyExists), "Volume B staged with same fs type to Volume A staging path should result in already exists error")
 	})
 
 	It("Should create disks in correct zones when topology is specified", func() {
