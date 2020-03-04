@@ -12,7 +12,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 ## Project Status
 
 Status: Beta
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.6.2-gke.0`
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.7.0-gke.0`
 
 ### Test Status
 
@@ -40,6 +40,7 @@ This plugin is compatible with CSI versions [v1.1.0](https://github.com/containe
 | v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
 | v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
 | v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
+| v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   |
 | dev                                  | no            | no   | no   | no   | no   | yes   |
 
 ### Known Issues
@@ -68,7 +69,7 @@ that represents availability by zone.
 | Topology        | Beta  | 1.14                          | 1.14                         | v0.5.0             | Stable             |
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
-| Resize (Expand) | Beta  | 1.16                          | 1.16                         | dev                | Stable             |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
 
 
 ### Future Features

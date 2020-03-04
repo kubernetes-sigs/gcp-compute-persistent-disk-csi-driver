@@ -5,7 +5,7 @@ bases:
 images:
 - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
-  newTag: "v0.6.2-gke.0"
+  newTag: "v0.7.0-gke.0"
 - name: gke.gcr.io/csi-provisioner
   newName: gcr.io/gke-release-staging/csi-provisioner
   newTag: "v1.5.0-gke.0"
