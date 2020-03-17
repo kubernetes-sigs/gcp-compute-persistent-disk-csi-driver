@@ -17,6 +17,7 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -57,9 +58,19 @@ var _ csi.NodeServer = &GCENodeServer{}
 // node boot disk is considered an attachable disk so effective attach limit is
 // one less.
 const (
-	volumeLimitSmall int64 = 15
-	volumeLimitBig   int64 = 127
+	volumeLimitSmall     int64 = 15
+	volumeLimitBig       int64 = 127
+	defaultLinuxFsType         = "ext4"
+	defaultWindowsFsType       = "ntfs"
 )
+
+func getDefaultFsType() string {
+	if runtime.GOOS == "windows" {
+		return defaultWindowsFsType
+	} else {
+		return defaultLinuxFsType
+	}
+}
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// Validate Arguments
@@ -129,10 +140,10 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		}
 
 		sourcePath = stagingTargetPath
-
-		if err := os.MkdirAll(targetPath, 0750); err != nil {
+		if err := preparePublishPath(targetPath, ns.Mounter); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", targetPath, err))
 		}
+
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		klog.V(4).Infof("NodePublishVolume with block volume mode")
 
@@ -141,7 +152,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 			partition = part
 		}
 
-		sourcePath, err = ns.getDevicePath(volumeID, partition)
+		sourcePath, err = getDevicePath(ns, volumeID, partition)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
 		}
@@ -218,11 +229,9 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
-	err := mount.CleanupMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
-	if err != nil {
+	if err := cleanupPublishPath(targetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
 	}
-
 	klog.V(4).Infof("NodeUnpublishVolume succeded on %v from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
@@ -264,27 +273,19 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
 		partition = part
 	}
+	devicePath, err := getDevicePath(ns, volumeID, partition)
 
-	devicePath, err := ns.getDevicePath(volumeID, partition)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
 	}
 
 	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
-	// Part 2: Check if mount already exists at targetpath
+	// Part 2: Check if mount already exists at stagingTargetPath
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(stagingTargetPath, 0750); err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create directory (%q): %v", stagingTargetPath, err))
-			}
-			notMnt = true
-		} else {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown error when checking mount point (%q): %v", stagingTargetPath, err))
-		}
+	if err != nil && !os.IsNotExist(err) {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", stagingTargetPath, err))
 	}
-
 	if !notMnt {
 		// TODO(#95): Check who is mounted here. No error if its us
 		/*
@@ -293,15 +294,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			3) Readonly MUST match
 
 		*/
-
 		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 
 	}
+	if err := prepareStagePath(stagingTargetPath, ns.Mounter); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", stagingTargetPath, err))
+	}
 
 	// Part 3: Mount device to stagingTargetPath
-	// Default fstype is ext4
-	fstype := "ext4"
+	fstype := getDefaultFsType()
+
 	options := []string{}
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		if mnt.FsType != "" {
@@ -316,7 +319,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	err = ns.Mounter.FormatAndMount(devicePath, stagingTargetPath, fstype, options)
+	err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
@@ -343,9 +346,8 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
-	err := mount.CleanupMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed to unmount at path %s: %v", stagingTargetPath, err))
+	if err := cleanupStagePath(stagingTargetPath, ns.Mounter); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err, stagingTargetPath))
 	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeded on %v from %s", volumeID, stagingTargetPath)
@@ -454,7 +456,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("volume ID is invalid: %v", err))
 	}
 
-	devicePath, err := ns.getDevicePath(volumeID, "")
+	devicePath, err := getDevicePath(ns, volumeID, "")
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting device path for %s: %v", volumeID, err))
 	}
@@ -515,28 +517,6 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 		}
 	}
 	return volumeLimitBig, nil
-}
-
-func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (string, error) {
-	volumeKey, err := common.VolumeIDToKey(volumeID)
-	if err != nil {
-		return "", err
-	}
-	deviceName, err := common.GetDeviceName(volumeKey)
-	if err != nil {
-		return "", fmt.Errorf("error getting device name: %v", err)
-	}
-
-	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
-	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths, deviceName)
-
-	if err != nil {
-		return "", fmt.Errorf("error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err)
-	}
-	if devicePath == "" {
-		return "", fmt.Errorf("unable to find device path out of attempted paths: %v", devicePaths)
-	}
-	return devicePath, nil
 }
 
 func (ns *GCENodeServer) getBlockSizeBytes(devicePath string) (int64, error) {
