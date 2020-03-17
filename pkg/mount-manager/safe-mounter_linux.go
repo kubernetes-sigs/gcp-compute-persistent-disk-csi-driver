@@ -1,3 +1,5 @@
+// +build linux
+
 /*
 Copyright 2018 The Kubernetes Authors.
 
@@ -19,12 +21,12 @@ import (
 	"k8s.io/utils/mount"
 )
 
-func NewSafeMounter() *mount.SafeFormatAndMount {
+func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 	realMounter := mount.New("")
 	realExec := exec.New()
 	return &mount.SafeFormatAndMount{
 		Interface: realMounter,
 		Exec:      realExec,
-	}
+	}, nil
 
 }
