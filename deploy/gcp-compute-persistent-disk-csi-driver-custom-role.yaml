@@ -1,4 +1,4 @@
-title: "GCP Compute Persistent Disk CSI Driver Custom Roles"
+title: "Google Compute Engine Persistent Disk CSI Driver Custom Roles"
 description: Custom roles required for functions of the gcp-compute-persistent-disk-csi-driver
 stage: ALPHA
 includedPermissions:

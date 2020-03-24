@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This script will remove the GCP Compute Persistent Disk CSI Driver from the
-# currently available Kubernetes cluster
+# This script will remove the Google Compute Engine Persistent Disk CSI Driver
+# from the currently available Kubernetes cluster
 #
 # Args:
 # GCE_PD_DRIVER_VERSION: The kustomize overlay to deploy (located under
