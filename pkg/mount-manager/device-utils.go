@@ -164,7 +164,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		if innerErr != nil {
 			return false, fmt.Errorf("failed to check for existing device path: %v", innerErr)
 		}
-
+		//return false, fmt.Errorf("failed to check for existing device path: %s;  Paths: %v ", devicePath, devicePaths)
 		if len(devicePath) == 0 {
 			// Couldn't find the path so we need to find a /dev/sdx with the SCSI
 			// serial that matches deviceName. Then we run udevadm trigger on that
@@ -193,7 +193,8 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 			// SUCCESS! devicePath points to a /dev/sdx that has a SCSI serial
 			// equivilant to our disk name
 			if scsiSerial == deviceName {
-				return true, nil
+				return false, fmt.Errorf("devicePath %s, devSDX %s, scsi %s deviceName %s,",devicePath, devSDX, scsiSerial, deviceName)
+				//return true, nil
 			}
 		}
 		// The devicePath is not mapped to the correct disk
@@ -233,11 +234,11 @@ func udevadmTriggerForDiskIfExists(deviceName string) error {
 			if err != nil {
 				return fmt.Errorf("failed to fix disk which has SCSI ID %s: %v", scsiSerial, err)
 			}
-			return nil
+			//return nil
 		}
 	}
 	klog.Warningf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", deviceName, devToSCSI)
-	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found", deviceName)
+	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found %v", deviceName, devToSCSI)
 }
 
 // Calls "udevadm trigger --action=change" on the specified drive. drivePath
