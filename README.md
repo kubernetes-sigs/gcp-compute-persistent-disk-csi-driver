@@ -1,10 +1,10 @@
-# GCP Compute Persistent Disk CSI Driver
+# Google Compute Engine Persistent Disk CSI Driver
 
 WARNING: This driver is beta and should not be used in performance critical applications
 
 DISCLAIMER: This is not an officially supported Google product
 
-The GCP Compute Persistent Disk CSI Driver is a
+The Google Compute Engine Persistent Disk CSI Driver is a
 [CSI](https://github.com/container-storage-interface/spec/blob/master/spec.md)
 Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
