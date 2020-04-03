@@ -90,7 +90,10 @@ func handle() {
 	//Initialize requirements for the node service
 	var nodeServer *driver.GCENodeServer
 	if *runNodeService {
-		mounter := mountmanager.NewSafeMounter()
+		mounter, err := mountmanager.NewSafeMounter()
+		if err != nil {
+			klog.Fatalf("Failed to get safe mounter: %v", err)
+		}
 		deviceUtils := mountmanager.NewDeviceUtils()
 		statter := mountmanager.NewStatter()
 		meta, err := metadataservice.NewMetadataService()
