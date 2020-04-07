@@ -8,16 +8,16 @@ images:
   newTag: "v0.7.0-gke.0"
 - name: gke.gcr.io/csi-provisioner
   newName: gcr.io/gke-release-staging/csi-provisioner
-  newTag: "v1.5.0-gke.0"
+  newTag: "v1.6.0-gke.0"
 - name: gke.gcr.io/csi-attacher
   newName: gcr.io/gke-release-staging/csi-attacher
-  newTag: "v2.1.1-gke.0"
+  newTag: "v2.2.0-gke.0"
 - name: gke.gcr.io/csi-node-driver-registrar
   newName: gcr.io/gke-release-staging/csi-node-driver-registrar
-  newTag: "v1.2.0-gke.0"
+  newTag: "v1.3.0-gke.0"
 - name: gke.gcr.io/csi-resizer
   newName: gcr.io/gke-release-staging/csi-resizer
-  newTag: "v0.4.0-gke.0"
+  newTag: "v0.5.0-gke.0"
 
 patchesJson6902:
 - target:
