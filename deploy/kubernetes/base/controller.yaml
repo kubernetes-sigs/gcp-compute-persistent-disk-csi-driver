@@ -27,6 +27,7 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--feature-gates=Topology=true"
+            - "--metrics-address=:22011"
           # - "--run-controller-service=false" # disable the controller service of the CSI driver
           # - "--run-node-service=false"       # disable the node service of the CSI driver
           volumeMounts:
@@ -37,6 +38,7 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
+            - "--metrics-address=:22012"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -45,6 +47,7 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
+            - "--metrics-address=:22013"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi

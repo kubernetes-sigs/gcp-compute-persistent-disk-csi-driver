@@ -18,11 +18,3 @@ images:
 - name: gke.gcr.io/csi-resizer
   newName: gcr.io/gke-release-staging/csi-resizer
   newTag: "v0.5.0-gke.0"
-
-patchesJson6902:
-- target:
-    group: apps
-    version: v1
-    kind: StatefulSet
-    name: csi-gce-pd-controller
-  path: enable_sidecar_metrics.yaml
