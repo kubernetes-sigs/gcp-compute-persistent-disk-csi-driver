@@ -35,6 +35,7 @@ var (
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
 	vendorVersion        string
+	version              string
 )
 
 const (
@@ -60,9 +61,10 @@ func main() {
 
 func handle() {
 	var err error
-
+	klog.Infof("version is %q", version)
+	klog.Infof("vendorVersion is %q", vendorVersion)
 	if vendorVersion == "" {
-		klog.Fatalf("vendorVersion must be set at compile time")
+		klog.Fatalf("test vendorVersion must be set at compile time")
 	}
 	klog.V(2).Infof("Driver vendor version %v", vendorVersion)
 

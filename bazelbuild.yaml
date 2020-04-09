@@ -1,0 +1,22 @@
+substitutions:
+  _TAG: "0.1.0"
+  _PROJECT_ID: "jing-k8s-dev"
+
+steps:
+#- name: gcr.io/cloud-builders/go
+#  id: cloud-build
+#  args: ['build', '-o', 'bin/gce-pd-windows.exe', './cmd/']
+- name: golang
+  id: build
+  #dir: .
+  args: [ 'go', 'build', '-ldflags', '-X=main.vendorVersion=dev', '-o', 'gce-pd-csi-driver-windows.exe', './cmd/']
+  env: 
+  - 'GOOS=windows'
+  - 'GOFLAGS=-ldflags=-X=main.vendorVersion=v1.0.0'
+#- name: 'gcr.io/cloud-builders/bazel'
+  #timeout: 3600s
+  #args: [ '--command', 'powershell.exe -file build.ps1']
+#  args: ['run', '--cpu=x86_64-windows', '--define=PROJECT_ID=${_PROJECT_ID}', '--define=TAG=${_TAG}', '//:gce-pd-windows1909']
+- name: 'gcr.io/cloud-builders/bazel'
+  id: win2019container
+  args: ['run', '--cpu=x86_64-windows', '--define=PROJECT_ID=${_PROJECT_ID}', '--define=TAG=${_TAG}', '//:gce-pd-windows2019']
