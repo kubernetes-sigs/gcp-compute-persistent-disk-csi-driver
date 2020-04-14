@@ -1,0 +1,9 @@
+ARG BASE_IMAGE
+ARG BASE_IMAGE_TAG
+
+FROM mcr.microsoft.com/windows/${BASE_IMAGE}:${BASE_IMAGE_TAG}
+LABEL description="PD CSI driver"
+COPY bin/gce-pd-csi-driver.exe /gce-pd-csi-driver.exe
+
+USER ContainerAdministrator
+ENTRYPOINT ["/gce-pd-csi-driver.exe"]
