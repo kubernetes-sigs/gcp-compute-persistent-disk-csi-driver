@@ -310,7 +310,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
-		return status.Error(codes.Internal, fmt.Sprintf("unkown Insert disk error: %v", err))
+		return status.Error(codes.Internal, fmt.Sprintf("unknown Insert disk error: %v", err))
 	}
 
 	err = cloud.waitForRegionalOp(ctx, insertOp, volKey.Region)
@@ -329,7 +329,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unkown Insert disk operation error: %v", err)
+		return fmt.Errorf("unknown Insert disk operation error: %v", err)
 	}
 	return nil
 }
@@ -369,7 +369,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unkown Insert disk error: %v", err)
+		return fmt.Errorf("unknown Insert disk error: %v", err)
 	}
 
 	err = cloud.waitForZonalOp(ctx, op, volKey.Zone)
@@ -389,7 +389,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unkown Insert disk operation error: %v", err)
+		return fmt.Errorf("unknown Insert disk operation error: %v", err)
 	}
 	return nil
 }

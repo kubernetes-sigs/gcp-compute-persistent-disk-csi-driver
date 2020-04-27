@@ -41,7 +41,7 @@ endif
 
 build-and-push-windows-container-ltsc2019:
 ifndef GCE_PD_CSI_STAGING_IMAGE
-	$(error "Must set enviroment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
@@ -49,7 +49,7 @@ endif
 
 build-and-push-windows-container-1909:
 ifndef GCE_PD_CSI_STAGING_IMAGE
-	$(error "Must set enviroment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \

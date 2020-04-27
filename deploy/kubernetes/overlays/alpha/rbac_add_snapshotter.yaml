@@ -16,7 +16,7 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
-  # Secrets resource ommitted since GCE PD snapshots does not require them
+  # Secrets resource omitted since GCE PD snapshots does not require them
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotclasses"]
     verbs: ["get", "list", "watch"]
