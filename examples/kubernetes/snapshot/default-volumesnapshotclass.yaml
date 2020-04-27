@@ -5,4 +5,3 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: "true"
   name: default-snapshot-class
 snapshotter: pd.csi.storage.gke.io
-

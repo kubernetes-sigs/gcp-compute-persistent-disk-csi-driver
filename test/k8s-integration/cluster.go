@@ -271,7 +271,7 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 		return "", fmt.Errorf("both kube version (%s) and gke version (%s) specified", kubeVersion, gkeVersion)
 	}
 	if kubeVersion == "" && gkeVersion == "" {
-		return "", errors.New("neither kube verison nor gke verison specified")
+		return "", errors.New("neither kube version nor gke version specified")
 	}
 	var v string
 	if kubeVersion != "" {
