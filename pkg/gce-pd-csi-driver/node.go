@@ -232,7 +232,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 	if err := cleanupPublishPath(targetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
 	}
-	klog.V(4).Infof("NodeUnpublishVolume succeded on %v from %s", volumeID, targetPath)
+	klog.V(4).Infof("NodeUnpublishVolume succeeded on %v from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -294,7 +294,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			3) Readonly MUST match
 
 		*/
-		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
+		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 
 	}
@@ -315,7 +315,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
-		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
+		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -326,7 +326,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 				devicePath, stagingTargetPath, fstype, options, err))
 	}
 
-	klog.V(4).Infof("NodeStageVolume succeded on %v to %s", volumeID, stagingTargetPath)
+	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -350,7 +350,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err, stagingTargetPath))
 	}
 
-	klog.V(4).Infof("NodeUnstageVolume succeded on %v from %s", volumeID, stagingTargetPath)
+	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 

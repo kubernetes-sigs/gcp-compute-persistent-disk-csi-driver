@@ -191,7 +191,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 				return false, fmt.Errorf("couldn't get SCSI serial number for disk %s: %v", deviceName, innerErr)
 			}
 			// SUCCESS! devicePath points to a /dev/sdx that has a SCSI serial
-			// equivilant to our disk name
+			// equivalent to our disk name
 			if scsiSerial == deviceName {
 				return true, nil
 			}
