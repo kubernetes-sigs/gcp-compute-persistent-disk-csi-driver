@@ -1,4 +1,3 @@
-ShortName: pdtest
 StorageClass:
   FromFile: {{.StorageClassFile}}
 DriverInfo:
@@ -14,6 +13,9 @@ DriverInfo:
   Capabilities:
   {{range .Capabilities}}  {{ . }}: true
   {{end}}
+  StressTestOptions:
+    NumPods: 10
+    NumRestarts: 10
   SupportedMountOption:
     debug:
     nouid32:
