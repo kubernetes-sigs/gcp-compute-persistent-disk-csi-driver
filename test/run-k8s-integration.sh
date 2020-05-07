@@ -44,4 +44,10 @@ else
   base_cmd="${base_cmd} --gce-region=${gce_region}"
 fi
 
+# TODO: When beta csi snapshotter sidecar is promoted to stable, add stable
+# overlay to the check.
+if [[ "$overlay_name" =~ .*"gke-release-staging".* ]]; then
+  base_cmd="${base_cmd} --snapshotclass-file=pd-volumesnapshotclass.yaml"
+fi
+
 eval $base_cmd

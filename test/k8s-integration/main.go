@@ -47,6 +47,7 @@ var (
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
+	snapshotClassFile  = flag.String("snapshotclass-file", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
@@ -300,10 +301,9 @@ func handle() error {
 	}
 
 	testSkip := generateTestSkip(normalizedVersion)
-
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, testSkip, *storageClassFile, cloudProviderArgs, *deploymentStrat)
+		err = runCSITests(pkgDir, testDir, *testFocus, testSkip, *storageClassFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat)
 	} else if *migrationTest {
 		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
 	} else {
@@ -318,7 +318,7 @@ func handle() error {
 }
 
 func generateTestSkip(normalizedVersion string) string {
-	skipString := "\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]"
+	skipString := "\\[Disruptive\\]|\\[Serial\\]"
 	switch normalizedVersion {
 	// Fall-through versioning since all test cases we want to skip in 1.15
 	// should also be skipped in 1.14
@@ -333,6 +333,8 @@ func generateTestSkip(normalizedVersion string) string {
 		// bug-fix introduced in 1.17
 		// (https://github.com/kubernetes/kubernetes/pull/81163)
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
+		// Skip Snapshot tests pre 1.17
+		skipString = skipString + "|External.*Storage.*snapshot"
 		fallthrough
 	case "1.17":
 	case "latest":
@@ -359,8 +361,8 @@ func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProvide
 	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
 }
 
-func runCSITests(pkgDir, testDir, testFocus, testSkip, storageClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
-	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile, deploymentStrat)
+func runCSITests(pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
