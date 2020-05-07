@@ -44,4 +44,8 @@ else
   base_cmd="${base_cmd} --gce-region=${gce_region}"
 fi
 
+if [[ "$overlay_name" =~ .*"gke-release-staging".* ]]; then
+  base_cmd="${base_cmd} --snapshotclass-file=pd-volumesnapshotclass.yaml"
+fi
+
 eval $base_cmd

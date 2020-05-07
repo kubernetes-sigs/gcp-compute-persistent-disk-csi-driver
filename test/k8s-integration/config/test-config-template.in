@@ -1,5 +1,9 @@
 StorageClass:
   FromFile: {{.StorageClassFile}}
+{{if .SnapshotClassFile }}
+SnapshotClass:
+  FromFile: {{ .SnapshotClassFile }}
+{{end}}
 DriverInfo:
   Name: csi-gcepd
   SupportedFsType:
