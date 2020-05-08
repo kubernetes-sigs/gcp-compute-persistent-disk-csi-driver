@@ -296,8 +296,10 @@ func handle() error {
 	if err != nil {
 		return fmt.Errorf("failed to get cluster minor version: %v", err)
 	}
+	klog.Infof("using cluster version %s", normalizedVersion)
 
 	testSkip := generateTestSkip(normalizedVersion)
+	klog.Infof("using test skip %s", testSkip)
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
 		err = runCSITests(pkgDir, testDir, *testFocus, testSkip, *storageClassFile, cloudProviderArgs)
