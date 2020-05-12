@@ -333,11 +333,14 @@ func generateTestSkip(normalizedVersion string) string {
 		// bug-fix introduced in 1.17
 		// (https://github.com/kubernetes/kubernetes/pull/81163)
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
-		// Skip Snapshot tests pre 1.17
+		fallthrough
+	case "latest":
+		// "latest" is passed only for GKE deployment strategy. Skip snapshot tests pre 1.17.
+		// TODO: When "latest" GKE upgrades to 1.17 and higher, remove the skipString for snapshot tests
+		// from "latest" can capture it only in 1.16.
 		skipString = skipString + "|snapshot"
 		fallthrough
 	case "1.17":
-	case "latest":
 	case "master":
 	default:
 	}
