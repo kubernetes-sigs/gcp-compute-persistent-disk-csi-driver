@@ -70,7 +70,7 @@ that represents availability by zone.
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
 | Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
-
+| Snapshots       | Beta  | 1.17                          | Any                          | master             | Stable             |
 
 ### Future Features
 
