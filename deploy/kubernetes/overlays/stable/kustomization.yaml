@@ -20,3 +20,6 @@ images:
 - name: gke.gcr.io/csi-resizer
   newName: gke.gcr.io/csi-resizer
   newTag: "v0.4.0-gke.0"
+- name: gke.gcr.io/csi-snapshotter
+  newName: gke.gcr.io/csi-snapshotter
+  newTag: "v2.1.1-gke.0"
