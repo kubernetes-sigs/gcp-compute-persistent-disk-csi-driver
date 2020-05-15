@@ -1,25 +1,8 @@
-# Kubernetes Snapshots User Guide (Alpha)
+# Kubernetes Snapshots User Guide (Beta)
 
->**Attention:** VolumeSnapshot is an alpha feature. Make sure you have enabled it in Kubernetes API server using `--feature-gates=VolumeSnapshotDataSource=true` flag.
+>**Attention:** Attention: VolumeSnapshot is a Beta feature enabled by default in Kubernetes 1.17+. Attention: VolumeSnapshot is only available in the driver version "master".
 
-### Install Driver with alpha snapshot feature
-
-1. [One-time per project] Create GCP service account for the CSI driver and set required roles
-
-    ```
-    PROJECT=your-project-here                       # GCP project
-    GCE_PD_SA_NAME=my-gce-pd-csi-sa                 # Name of the service account to create
-    GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
-    ./deploy/setup-project.sh
-    ```
-
-1. Deploy driver to Kubernetes Cluster
-
-    ```
-    GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
-    GCE_PD_DRIVER_VERSION=alpha                     # Driver version to deploy
-    ./deploy/kubernetes/deploy-driver.sh
-    ```
+### Install Driver with beta snapshot feature as described [here](driver-install.md)
 
 ### Snapshot Example
 
@@ -79,19 +62,34 @@
     The output is similar to this:
 
     ```yaml
-    apiVersion: snapshot.storage.k8s.io/v1alpha1
     kind: VolumeSnapshot
     metadata:
-      ...
-      name: snapshot-source-pvc
-      namespace: default
-      ...
+        creationTimestamp: "2020-05-13T21:48:08Z"
+        finalizers:
+        - snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection
+        - snapshot.storage.kubernetes.io/volumesnapshot-bound-protection
+        generation: 1
+        managedFields:
+        - apiVersion: snapshot.storage.k8s.io/v1beta1
+        fieldsType: FieldsV1
+        fieldsV1:
+            f:status:
+            f:readyToUse: {}
+        manager: snapshot-controller
+        operation: Update
+        time: "2020-05-13T21:49:42Z"
+        name: snapshot-source-pvc
+        namespace: default
+        resourceVersion: "531499"
+        selfLink: /apis/snapshot.storage.k8s.io/v1beta1/namespaces/default/volumesnapshots/snapshot-source-pvc
+        uid: a10fd0ff-b868-4527-abe7-74d5b420731e
     spec:
-      snapshotClassName: default-snapshot-class
-      snapshotContentName: snapcontent-b408076b-720b-11e9-b9e3-42010a800014
-      ...
+      source:
+        persistentVolumeClaimName: source-pvc
+      volumeSnapshotClassName: csi-gce-pd-snapshot-class
     status:
-      creationTime: "2019-05-09T03:37:01Z"
+      boundVolumeSnapshotContentName: snapcontent-a10fd0ff-b868-4527-abe7-74d5b420731e
+      creationTime: "2020-05-13T21:48:43Z"
       readyToUse: true
       restoreSize: 6Gi
     ```
