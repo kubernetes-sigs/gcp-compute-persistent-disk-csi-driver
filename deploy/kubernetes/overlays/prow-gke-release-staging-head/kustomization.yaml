@@ -18,3 +18,6 @@ images:
 - name: gke.gcr.io/csi-resizer
   newName: quay.io/k8scsi/csi-resizer
   newTag: "canary"
+- name: gke.gcr.io/csi-snapshotter
+  newName: quay.io/k8scsi/csi-snapshotter
+  newTag: "canary"

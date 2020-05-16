@@ -9,8 +9,9 @@ import (
 )
 
 type driverConfig struct {
-	StorageClassFile string
-	Capabilities     []string
+	StorageClassFile  string
+	SnapshotClassFile string
+	Capabilities      []string
 }
 
 const (
@@ -21,7 +22,7 @@ const (
 
 // generateDriverConfigFile loads a testdriver config template and creates a file
 // with the test-specific configuration
-func generateDriverConfigFile(pkgDir, storageClassFile, deploymentStrat string) (string, error) {
+func generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deploymentStrat string) (string, error) {
 	// Load template
 	t, err := template.ParseFiles(filepath.Join(pkgDir, testConfigDir, configTemplateFile))
 	if err != nil {
@@ -51,7 +52,6 @@ func generateDriverConfigFile(pkgDir, storageClassFile, deploymentStrat string) 
 	}
 
 	/* Unsupported Capabilities:
-	   snapshotDataSource
 	   pvcDataSource
 	   RWX
 	   volumeLimits # PD Supports volume limits but test is very slow
@@ -72,9 +72,18 @@ func generateDriverConfigFile(pkgDir, storageClassFile, deploymentStrat string) 
 		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", deploymentStrat)
 	}
 
+	var absSnapshotClassFilePath string
+	// If snapshot class is passed in as argument, include snapshot specific driver capabiltiites.
+	if snapshotClassFile != "" {
+		caps = append(caps, "snapshotDataSource")
+		// Update the absolute file path pointing to the snapshot class file, if it is provided as an argument.
+		absSnapshotClassFilePath = filepath.Join(pkgDir, testConfigDir, snapshotClassFile)
+	}
+
 	params := driverConfig{
-		StorageClassFile: filepath.Join(pkgDir, testConfigDir, storageClassFile),
-		Capabilities:     caps,
+		StorageClassFile:  filepath.Join(pkgDir, testConfigDir, storageClassFile),
+		SnapshotClassFile: absSnapshotClassFilePath,
+		Capabilities:      caps,
 	}
 
 	// Write config file

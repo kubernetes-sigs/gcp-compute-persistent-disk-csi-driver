@@ -28,7 +28,7 @@ make -C ${PKGDIR} test-k8s-integration
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-file=sc-standard.yaml --test-focus="External.Storage" \
+            --storageclass-file=sc-standard.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus="External.Storage" \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} --num-nodes=3 \
             --image-type=${image_type}"
 

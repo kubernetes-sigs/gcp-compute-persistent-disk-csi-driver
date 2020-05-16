@@ -18,7 +18,9 @@ images:
 - name: gke.gcr.io/csi-resizer
   newName: gcr.io/gke-release-staging/csi-resizer
   newTag: "v0.5.0-gke.0"
-
+- name: gke.gcr.io/csi-snapshotter
+  newName: gcr.io/gke-release-staging/csi-snapshotter
+  newTag: "v2.1.1-gke.0"
 patchesJson6902:
 - target:
     group: apps

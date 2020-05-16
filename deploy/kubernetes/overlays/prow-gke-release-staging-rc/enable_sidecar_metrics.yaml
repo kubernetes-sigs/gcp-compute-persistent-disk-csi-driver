@@ -12,3 +12,8 @@
 - op: add
   path: /spec/template/spec/containers/2/args/-
   value: "--metrics-address=:22013"
+
+# for external-snapshotter
+- op: add
+  path: /spec/template/spec/containers/3/args/-
+  value: "--metrics-address=:22014"
