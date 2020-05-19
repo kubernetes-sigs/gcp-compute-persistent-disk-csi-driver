@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+- ../base
+images:
+- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  # Don't change stable image without changing pdImagePlaceholder in
+  # test/k8s-integration/main.go
+  newName: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newTag: "v0.7.0-gke.0"
+- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver-win
+  # Temporarly set to the private repo. Will swtich to public one
+  # once it is available.
+  newName: gcr.io/jing-k8s-dev/gce-pd-windows-2019
+  newTag: "0.2.0"
+

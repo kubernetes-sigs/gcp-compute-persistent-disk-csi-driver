@@ -1,7 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 bases:
-- ../../base
+- ../../../base
+namespace:
+  gce-pd-csi-driver
+resources:
+- node.yaml
+patchesStrategicMerge:
+- allowedHostPaths.yaml
 images:
 - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   # Don't change stable image without changing pdImagePlaceholder in
@@ -10,16 +16,16 @@ images:
   newTag: "v0.7.0-gke.0"
 - name: gke.gcr.io/csi-provisioner
   newName: gke.gcr.io/csi-provisioner
-  newTag: "v1.6.0-gke.0"
+  newTag: "v1.5.0-gke.0"
 - name: gke.gcr.io/csi-attacher
   newName: gke.gcr.io/csi-attacher
-  newTag: "v2.2.0-gke.0"
+  newTag: "v2.1.1-gke.0"
 - name: gke.gcr.io/csi-node-driver-registrar
   newName: gke.gcr.io/csi-node-driver-registrar
-  newTag: "v1.3.0-gke.0"
+  newTag: "v1.2.0-gke.0"
 - name: gke.gcr.io/csi-resizer
   newName: gke.gcr.io/csi-resizer
-  newTag: "v0.5.0-gke.0"
+  newTag: "v0.4.0-gke.0"
 - name: gke.gcr.io/csi-snapshotter
   newName: gke.gcr.io/csi-snapshotter
   newTag: "v2.1.1-gke.0"

@@ -1,0 +1,8 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-node
+spec:
+  template:
+    spec:
+      hostNetwork: true

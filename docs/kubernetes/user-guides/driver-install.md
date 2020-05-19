@@ -54,6 +54,21 @@ $ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
+After adding Windows driver support, we have another environment variable for setting up OS and deployment versions.
+For example, if you want to deploy on Windows with alpha version, 
+
+```console
+$ DEPLOY_OS_VERSIONS="windows alpha"
+$ ./deploy/kubernetes/deploy-driver.sh
+```
+
+DEPLOY_OS_VERSIONS can also take multiple values for both Linux and Windows. If you have a cluster which has both Windows
+and Linux nodes and want to deploy drivers for both, you can set
+
+```console
+$ DEPLOY_OS_VERSIONS="windows dev; linux dev"
+```
+
 ## GCP Permissions Required
 
 The `setup-project.sh` script only needs to be run once per project to generate

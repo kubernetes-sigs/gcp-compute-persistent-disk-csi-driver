@@ -15,10 +15,13 @@ spec:
       # Host network must be used for interaction with Workload Identity in GKE
       # since it replaces GCE Metadata Server with GKE Metadata Server. Remove
       # this requirement when issue is resolved and before any exposure of
-      # metrics ports.
+      # metrics ports. But hostNetwork is not working for Windows, might be an issue
+      # when deploying on GKE Windows node.
       hostNetwork: true
       priorityClassName: csi-gce-pd-node
       serviceAccountName: csi-gce-pd-node-sa
+      nodeSelector:
+        kubernetes.io/os: linux
       containers:
         - name: csi-driver-registrar
           image: gke.gcr.io/csi-node-driver-registrar
@@ -26,10 +29,6 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock"
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/pd.csi.storage.gke.io /registration/pd.csi.storage.gke.io-reg.sock"]
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -41,14 +40,14 @@ spec:
             - name: registration-dir
               mountPath: /registration
         - name: gce-pd-driver
-          securityContext:
-            privileged: true
           # Don't change base image without changing pdImagePlaceholder in
           # test/k8s-integration/main.go
           image: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
+          securityContext:
+            privileged: true
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -67,8 +66,6 @@ spec:
               mountPath: /run/udev
             - name: sys
               mountPath: /sys
-      nodeSelector:
-        kubernetes.io/os: linux
       volumes:
         - name: registration-dir
           hostPath:

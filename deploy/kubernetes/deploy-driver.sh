@@ -19,6 +19,7 @@ set -x
 readonly NAMESPACE="${GCE_PD_DRIVER_NAMESPACE:-gce-pd-csi-driver}"
 readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+readonly DEPLOY_OS_VERSIONS=${DEPLOY_OS_VERSIONS:-"linux stable"}
 source "${PKGDIR}/deploy/common.sh"
 
 print_usage()
@@ -94,7 +95,10 @@ fi
 # Debug log: print ${KUBECTL} version
 ${KUBECTL} version
 
-readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.yaml
-${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
-${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec
+echo ${DEPLOY_OS_VERSIONS} | tr ';' '\n' | while read -r NODE_OS VERSION; do \
+	VERSION="${VERSION:-${DEPLOY_VERSION}}"; \
+	tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated-${NODE_OS}.yaml; \
+	${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${NODE_OS}/${VERSION} | tee $tmp_spec; \
+	${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec; \
+done
 

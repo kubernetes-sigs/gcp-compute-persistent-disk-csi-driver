@@ -17,6 +17,8 @@ spec:
       # since it replaces GCE Metadata Server with GKE Metadata Server. Remove
       # this requirement when issue is resolved and before any exposure of
       # metrics ports
+      nodeSelector:
+        kubernetes.io/os: linux
       hostNetwork: true
       serviceAccountName: csi-gce-pd-controller-sa
       priorityClassName: csi-gce-pd-controller
@@ -82,5 +84,10 @@ spec:
         - name: cloud-sa-volume
           secret:
             secretName: cloud-sa
+      # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      # See "special case". This will tolerate everything. Node component should
+      # be scheduled on all nodes.
+      tolerations:
+      - operator: Exists
   # This is needed due to https://github.com/kubernetes-sigs/kustomize/issues/504
   volumeClaimTemplates: []

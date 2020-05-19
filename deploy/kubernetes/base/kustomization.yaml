@@ -3,6 +3,5 @@ commonLabels:
 namespace:
   gce-pd-csi-driver
 resources:
-- node.yaml
 - controller.yaml
 - setup-cluster.yaml

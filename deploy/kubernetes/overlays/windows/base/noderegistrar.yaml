@@ -1,0 +1,17 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-node
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver-registrar
+          args:
+            - --v=5
+            - --csi-address=unix://C:\\csi\\csi.sock
+            - --kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\pd.csi.storage.gke.io\\csi.sock
+          lifecycle:
+              preStop:
+                exec:
+                  command: ["cmd", "/c", "del  C:\\registration\\pd.csi.storage.gke.io-reg.sock"]

@@ -9,7 +9,7 @@ import (
 )
 
 func getOverlayDir(pkgDir, deployOverlayName string) string {
-	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
+	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", "linux", deployOverlayName)
 }
 
 func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {

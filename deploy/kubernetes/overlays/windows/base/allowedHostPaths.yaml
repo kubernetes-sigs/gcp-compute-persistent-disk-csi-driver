@@ -1,0 +1,12 @@
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: csi-gce-pd-node-psp
+spec:
+  allowedHostPaths:
+  - pathPrefix: \var\lib\kubelet
+  - pathPrefix: \var\lib\kubelet\plugins_registry
+  - pathPrefix: \var\lib\kubelet\plugins\pd.csi.storage.gke.io
+  - pathPrefix: \\.\pipe\csi-proxy-disk-v1alpha1
+  - pathPrefix: \\.\pipe\csi-proxy-volume-v1alpha1
+  - pathPrefix: \\.\pipe\csi-proxy-filesystem-v1alpha1
