@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    k8s-app: installer 
+  name: diskutil-installer
+  namespace: gce-pd-csi-driver
+spec:
+  selector:
+    matchLabels:
+      name: diskutil-installer
+  template:
+    metadata:
+      labels:
+        name: diskutil-installer
+    spec:
+      tolerations:
+      - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: windows
+      initContainers:
+      - name: diskutil-installer
+        image: mcr.microsoft.com/windows/servercore:ltsc2019
+        command: ["powershell"]
+        args: [Invoke-WebRequest -Uri https://ddebroywin1.s3-us-west-2.amazonaws.com/diskutil.exe -OutFile \diskutil\disktuil.exe]
+        volumeMounts:
+          - name: diskutil-dir
+            mountPath: C:\diskutil
+      containers:
+        - name: installer
+          image: gcr.io/gke-release/pause-win:1.0.0
+          volumeMounts:
+          - name: diskutil-dir
+            mountPath: C:\diskutil
+      volumes:
+        - name: diskutil-dir
+          hostPath:
+            path: "C:\\Windows\\System32"
+            type: Directory
+

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    k8s-app: installer 
+  name: proxy-installer
+  namespace: gce-pd-csi-driver
+spec:
+  selector:
+    matchLabels:
+      name: proxy-installer
+  template:
+    metadata:
+      labels:
+        name: proxy-installer
+    spec:
+      tolerations:
+      - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: windows
+      initContainers:
+      - name: proxy-installer
+        image: mcr.microsoft.com/windows/servercore:ltsc2019
+        command: ["powershell"]
+        args: ["Invoke-WebRequest -Uri https://storage.googleapis.com/storage/v1/b/disksize-bucket/o/csi-proxy.exe?alt=media -UseBasicParsing -OutFile C:\\csiproxy\\csi-proxy.exe"]
+        volumeMounts:
+          - name: csiproxy-dir
+            mountPath: C:\csiproxy
+      containers:
+      - name: installer
+        image: gcr.io/gke-release/pause-win:1.0.0
+        volumeMounts:
+        - name: csiproxy-dir
+          mountPath: C:\csiproxy
+      volumes:
+        - name: csiproxy-dir
+          hostPath:
+            path: "C:\\etc\\kubernetes\\node\\bin"
+            type: Directory
+

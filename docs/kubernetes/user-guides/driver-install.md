@@ -54,6 +54,14 @@ $ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
+In order to install driver for Windows node, please set the following environment variables
+```console
+$ NODE_OS=windows    # Directory to get the service account key
+$ GCE_PD_DRIVER_VERSION=alpha                    # Only alpha version is supported for Windows for now
+$ ./deploy/kubernetes/deploy-driver.sh
+```
+This will trigger to install csi-proxy binaary to each Windows node. Currently user has to log in to each Windows node, start csi proxy binary installed under /etc/kubernetes/node/bin/csi-proxy.exe
+
 ## GCP Permissions Required
 
 The `setup-project.sh` script only needs to be run once per project to generate

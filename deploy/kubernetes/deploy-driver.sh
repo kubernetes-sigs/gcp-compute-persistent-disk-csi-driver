@@ -19,6 +19,7 @@ set -x
 readonly NAMESPACE="${GCE_PD_DRIVER_NAMESPACE:-gce-pd-csi-driver}"
 readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+readonly OS="${NODE_OS:-linux}"
 source "${PKGDIR}/deploy/common.sh"
 
 print_usage()
@@ -98,3 +99,6 @@ readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.ya
 ${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
 ${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec
 
+if ["$OS" == "windows"]; then
+	${KUBECTL} apply -v="${VERBOSITY}" -f ${PKGDIR}/deploy/windows"
+fi
