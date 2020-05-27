@@ -51,10 +51,11 @@ var (
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
-	stagingImage      = flag.String("staging-image", "", "name of image to stage to")
-	saFile            = flag.String("service-account-file", "", "path of service account file")
-	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
-	doDriverBuild     = flag.Bool("do-driver-build", true, "building the driver from source")
+	stagingImage        = flag.String("staging-image", "", "name of image to stage to")
+	saFile              = flag.String("service-account-file", "", "path of service account file")
+	deployOverlayName   = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	doDriverBuild       = flag.Bool("do-driver-build", true, "building the driver from source")
+	useGKEManagedDriver = flag.Bool("use-gke-managed-driver", false, "use GKE managed PD CSI driver for the tests")
 
 	// Test flags
 	migrationTest = flag.Bool("migration-test", false, "sets the flag on the e2e binary signalling migration")
@@ -75,12 +76,21 @@ func init() {
 func main() {
 	flag.Parse()
 
-	if !*inProw {
+	if !*inProw && !*useGKEManagedDriver {
 		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
 
+	if *useGKEManagedDriver {
+		ensureVariableVal(deploymentStrat, "gke", "deployment strategy must be GKE for using managed driver")
+		ensureFlag(doDriverBuild, false, "driver build flag will be ignored when using GKE managed driver")
+		ensureFlag(teardownDriver, false, "driver teardown flag will be ignored when using GKE managed driver")
+	}
+
 	ensureVariable(saFile, true, "service-account-file is a required flag")
-	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	if !*useGKEManagedDriver {
+		ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	}
+
 	ensureVariable(testFocus, true, "test-focus is a required flag")
 	ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
 
@@ -243,7 +253,7 @@ func handle() error {
 		case "gce":
 			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, *imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *imageType)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *imageType, *useGKEManagedDriver)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -272,21 +282,24 @@ func handle() error {
 		}()
 	}
 
-	// Install the driver and defer its teardown
-	err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
-	if *teardownDriver {
-		defer func() {
-			// TODO (#140): collect driver logs
-			if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
-				klog.Errorf("failed to delete driver: %v", teardownErr)
-			}
-		}()
-	}
-	if err != nil {
-		return fmt.Errorf("failed to install CSI Driver: %v", err)
+	if !*useGKEManagedDriver {
+		// Install the driver and defer its teardown
+		err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+		if *teardownDriver {
+			defer func() {
+				// TODO (#140): collect driver logs
+				if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
+					klog.Errorf("failed to delete driver: %v", teardownErr)
+				}
+			}()
+		}
+		if err != nil {
+			return fmt.Errorf("failed to install CSI Driver: %v", err)
+		}
 	}
 
 	var cloudProviderArgs []string
+	var err error
 	switch *deploymentStrat {
 	case "gke":
 		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, *imageType)

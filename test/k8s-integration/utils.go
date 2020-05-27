@@ -79,3 +79,9 @@ func shredFile(filePath string) {
 		klog.V(4).Infof("Failed to remove service account file %s: %v", filePath, err)
 	}
 }
+
+func ensureVariableVal(v *string, val string, msgOnError string) {
+	if *v != val {
+		klog.Fatal(msgOnError)
+	}
+}
