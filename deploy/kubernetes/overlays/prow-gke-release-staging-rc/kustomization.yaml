@@ -21,10 +21,3 @@ images:
 - name: gke.gcr.io/csi-snapshotter
   newName: gcr.io/gke-release-staging/csi-snapshotter
   newTag: "v2.1.1-gke.0"
-patchesJson6902:
-- target:
-    group: apps
-    version: v1
-    kind: StatefulSet
-    name: csi-gce-pd-controller
-  path: enable_sidecar_metrics.yaml
