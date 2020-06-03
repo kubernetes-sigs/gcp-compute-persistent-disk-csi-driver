@@ -1,0 +1,74 @@
+# for external-provisioner
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: "--enable-leader-election"
+
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: "--leader-election-type=leases"
+
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+
+- op: add
+  path: /spec/template/spec/containers/0/env
+  value:
+  - name: PDCSI_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+    
+
+# # for external-attacher
+- op: add
+  path: /spec/template/spec/containers/1/args/-
+  value: "--leader-election"
+
+- op: add
+  path: /spec/template/spec/containers/1/args/-
+  value: "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+
+- op: add
+  path: /spec/template/spec/containers/1/env
+  value:
+  - name: PDCSI_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+
+
+# # for external-resizer
+- op: add
+  path: /spec/template/spec/containers/2/args/-
+  value: "--leader-election"
+
+- op: add
+  path: /spec/template/spec/containers/2/args/-
+  value: "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+
+- op: add
+  path: /spec/template/spec/containers/2/env
+  value:
+  - name: PDCSI_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+
+
+# for external-snapshotter
+- op: add
+  path: /spec/template/spec/containers/3/args/-
+  value: "--leader-election"
+
+- op: add
+  path: /spec/template/spec/containers/3/args/-
+  value: "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+
+- op: add
+  path: /spec/template/spec/containers/3/env
+  value:
+  - name: PDCSI_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
