@@ -1,0 +1,57 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-gcepd-driver-prow-head
+imageTag:
+  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
+  newTag: "latest"
+---
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-provisioner-prow-head
+imageTag:
+  name: gke.gcr.io/csi-provisioner
+  newName: quay.io/k8scsi/csi-provisioner
+  newTag: "canary"
+
+---
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-attacher-prow-head
+imageTag:
+  name: gke.gcr.io/csi-attacher
+  newName: quay.io/k8scsi/csi-attacher
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-nodo-registrar-prow-head
+imageTag:
+  name: gke.gcr.io/csi-node-driver-registrar
+  newName: quay.io/k8scsi/csi-node-driver-registrar
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-resizer-prow-head
+imageTag:
+  name: gke.gcr.io/csi-resizer
+  newName: quay.io/k8scsi/csi-resizer
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-snapshotter-prow-head
+imageTag:
+  name: gke.gcr.io/csi-snapshotter
+  newName: quay.io/k8scsi/csi-snapshotter
+  newTag: "canary"
