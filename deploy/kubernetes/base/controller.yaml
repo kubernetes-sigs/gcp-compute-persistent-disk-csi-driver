@@ -1,9 +1,8 @@
-kind: StatefulSet
+kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: csi-gce-pd-controller
 spec:
-  serviceName: "csi-gce-pd"
   replicas: 1
   selector:
     matchLabels:
@@ -28,8 +27,16 @@ spec:
             - "--csi-address=/csi/csi.sock"
             - "--feature-gates=Topology=true"
             - "--metrics-address=:22011"
+            - "--enable-leader-election"
+            - "--leader-election-type=leases"
+            - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
           # - "--run-controller-service=false" # disable the controller service of the CSI driver
           # - "--run-node-service=false"       # disable the node service of the CSI driver
+          env:
+            - name: PDCSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -39,6 +46,13 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--metrics-address=:22012"
+            - "--leader-election"
+            - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+          env:
+            - name: PDCSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -48,6 +62,13 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--metrics-address=:22013"
+            - "--leader-election"
+            - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+          env:
+            - name: PDCSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -57,6 +78,13 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--metrics-address=:22014"
+            - "--leader-election"
+            - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+          env:
+            - name: PDCSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -82,5 +110,3 @@ spec:
         - name: cloud-sa-volume
           secret:
             secretName: cloud-sa
-  # This is needed due to https://github.com/kubernetes-sigs/kustomize/issues/504
-  volumeClaimTemplates: []
