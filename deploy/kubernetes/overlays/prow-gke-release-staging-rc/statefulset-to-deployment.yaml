@@ -1,7 +1,0 @@
-- op: remove
-  path: "/spec/serviceName"
-- op: remove
-  path: "/spec/volumeClaimTemplates"
-- op: replace
-  path: /kind
-  value: Deployment
