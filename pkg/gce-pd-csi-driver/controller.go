@@ -62,6 +62,29 @@ const (
 	replicationTypeRegionalPD = "regional-pd"
 )
 
+func isDiskReady(disk *gce.CloudDisk) (bool, error) {
+	status := disk.GetStatus()
+	switch status {
+	case "READY":
+		return true, nil
+	case "FAILED":
+		return false, fmt.Errorf("Disk %s status is FAILED", disk.GetName())
+	case "CREATING":
+		klog.V(4).Infof("Disk %s status is CREATING", disk.GetName())
+		return false, nil
+	case "DELETING":
+		klog.V(4).Infof("Disk %s status is DELETING", disk.GetName())
+		return false, nil
+	case "RESTORING":
+		klog.V(4).Infof("Disk %s status is RESTORING", disk.GetName())
+		return false, nil
+	default:
+		klog.V(4).Infof("Disk %s status is: %s", disk.GetName(), status)
+	}
+
+	return false, nil
+}
+
 func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	var err error
 	// Validate arguments
@@ -143,6 +166,16 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if err != nil {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
 		}
+
+		ready, err := isDiskReady(existingDisk)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v had error checking ready status: %v", volKey, err))
+		}
+
+		if !ready {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v is not ready", volKey))
+		}
+
 		// If there is no validation error, immediately return success
 		klog.V(4).Infof("CreateVolume succeeded for disk %v, it already exists and was compatible", volKey)
 		return generateCreateVolumeResponse(existingDisk, capBytes, zones), nil
@@ -187,6 +220,15 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	default:
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", params.ReplicationType))
 	}
+
+	ready, err := isDiskReady(disk)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v had error checking ready status: %v", volKey, err))
+	}
+	if !ready {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v is not ready", volKey))
+	}
+
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
 	return generateCreateVolumeResponse(disk, capBytes, zones), nil
 
