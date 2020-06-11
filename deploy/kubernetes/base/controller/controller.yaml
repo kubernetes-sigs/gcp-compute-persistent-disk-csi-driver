@@ -17,6 +17,8 @@ spec:
       # this requirement when issue is resolved and before any exposure of
       # metrics ports
       hostNetwork: true
+      nodeSelector:
+        kubernetes.io/os: linux
       serviceAccountName: csi-gce-pd-controller-sa
       priorityClassName: csi-gce-pd-controller
       containers:
