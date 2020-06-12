@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/klog"
 )
 
@@ -131,7 +133,7 @@ func setImageTypeEnvs(imageType string) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string) error {
+func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, useManagedDriver bool) error {
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
@@ -150,9 +152,23 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string) err
 			return err
 		}
 	}
-	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		locationArg, locationVal, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType)
+
+	var cmd *exec.Cmd
+	cmdParams := []string{"container", "clusters", "create", gkeTestClusterName,
+		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes)}
+	if isVariableSet(gkeClusterVer) {
+		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+	} else {
+		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+	}
+
+	if useManagedDriver {
+		// PD CSI Driver add on is enabled only in gcloud beta.
+		cmdParams = append([]string{"beta"}, cmdParams...)
+		cmdParams = append(cmdParams, "--addons", "GcePersistentDiskCsiDriver")
+	}
+
+	cmd = exec.Command("gcloud", cmdParams...)
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
@@ -289,4 +305,31 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 	}
 	return strings.Join(toks[:2], "."), nil
 
+}
+
+func getKubeClusterVersion() (string, error) {
+	out, err := exec.Command("kubectl", "version", "-o=json").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain cluster version, error: %v", err)
+	}
+	type version struct {
+		ClientVersion *apimachineryversion.Info `json:"clientVersion,omitempty" yaml:"clientVersion,omitempty"`
+		ServerVersion *apimachineryversion.Info `json:"serverVersion,omitempty" yaml:"serverVersion,omitempty"`
+	}
+
+	var v version
+	err = json.Unmarshal(out, &v)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v", err)
+	}
+
+	return v.ServerVersion.GitVersion, nil
+}
+
+func mustGetKubeClusterVersion() string {
+	ver, err := getKubeClusterVersion()
+	if err != nil {
+		klog.Fatalf("Error: %v", err)
+	}
+	return ver
 }

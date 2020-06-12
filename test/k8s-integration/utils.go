@@ -58,6 +58,19 @@ func ensureFlag(v *bool, setTo bool, msgOnError string) {
 	}
 }
 
+func ensureExactlyOneVariableSet(vars []*string, msgOnError string) {
+	var count int
+	for _, v := range vars {
+		if len(*v) != 0 {
+			count++
+		}
+	}
+
+	if count != 1 {
+		klog.Fatal(msgOnError)
+	}
+}
+
 func shredFile(filePath string) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		klog.V(4).Infof("File %v was not found, skipping shredding", filePath)
@@ -78,4 +91,14 @@ func shredFile(filePath string) {
 	if err != nil {
 		klog.V(4).Infof("Failed to remove service account file %s: %v", filePath, err)
 	}
+}
+
+func ensureVariableVal(v *string, val string, msgOnError string) {
+	if *v != val {
+		klog.Fatal(msgOnError)
+	}
+}
+
+func isVariableSet(v *string) bool {
+	return len(*v) != 0
 }
