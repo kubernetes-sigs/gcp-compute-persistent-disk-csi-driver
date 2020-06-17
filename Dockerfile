@@ -14,17 +14,21 @@
 
 
 
-FROM golang:1.11.2-alpine3.8 as builder
+FROM golang:1.13.4-alpine3.10 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
 ARG TAG
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.vendorVersion='"${TAG:-latest}"' -extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
 
-# Start from Google Debian base
-FROM gcr.io/google-containers/debian-base-amd64:v1.0.0
-COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
+# MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
+FROM gcr.io/google-containers/debian-base-amd64:v2.0.0 as base
+RUN clean-install udev
 
+# Start from Google Debian base
+FROM gcr.io/google-containers/debian-base-amd64:v2.0.0
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+COPY --from=base /lib/udev/scsi_id /lib/udev_containerized/scsi_id
 
 ENTRYPOINT ["/gce-pd-csi-driver"]

@@ -21,8 +21,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 
-	sanity "github.com/kubernetes-csi/csi-test/pkg/sanity"
+	sanity "github.com/kubernetes-csi/csi-test/v3/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -35,7 +36,7 @@ func TestSanity(t *testing.T) {
 	// Set up variables
 	driverName := "test-driver"
 	project := "test-project"
-	zone := "test-zone"
+	zone := "country-region-zone"
 	vendorVersion := "test-version"
 	tmpDir := "/tmp/csi"
 	endpoint := fmt.Sprintf("unix:%s/csi.sock", tmpDir)
@@ -53,7 +54,10 @@ func TestSanity(t *testing.T) {
 	deviceUtils := mountmanager.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, metadataservice.NewFakeService(), driverName, vendorVersion)
+	identityServer := driver.NewIdentityServer(gceDriver)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider)
+	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter())
+	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
@@ -81,11 +85,13 @@ func TestSanity(t *testing.T) {
 	}()
 
 	// Run test
-	config := &sanity.Config{
-		TargetPath:  mountPath,
-		StagingPath: stagePath,
-		Address:     endpoint,
-		IDGen:       newPDIDGenerator(project, zone),
+	config := sanity.TestConfig{
+		TargetPath:     mountPath,
+		StagingPath:    stagePath,
+		Address:        endpoint,
+		DialOptions:    []grpc.DialOption{grpc.WithInsecure()},
+		IDGen:          newPDIDGenerator(project, zone),
+		TestVolumeSize: common.GbToBytes(200),
 	}
 	sanity.Test(t, config)
 }

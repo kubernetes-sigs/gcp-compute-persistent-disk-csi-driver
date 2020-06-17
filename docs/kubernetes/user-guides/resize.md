@@ -1,6 +1,6 @@
-# Kubernetes Resize User Guide (Alpha)
+# Kubernetes Resize User Guide
 
->**Attention:** Volume Resize is an alpha feature. Make sure you have enabled it in Kubernetes API server using `--feature-gates=ExpandCSIVolumes=true` flag.
+>**Attention:** Volume Resize is a Kubernetes Beta feature enabled by default in 1.16+.
 >**Attention:** Volume Resize is only available in the driver version v0.6.0+
 
 ### Install Driver with alpha resize feature
@@ -18,7 +18,7 @@ $ ./deploy/setup-project.sh
 
 ```
 $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
-$ GCE_PD_DRIVER_VERSION=alpha                     # Driver version to deploy
+$ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 

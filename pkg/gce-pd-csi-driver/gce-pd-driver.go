@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -45,14 +45,10 @@ func GetGCEDriver() *GCEDriver {
 	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter *mount.SafeFormatAndMount,
-	deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, name, vendorVersion string) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, identityServer *GCEIdentityServer, controllerServer *GCEControllerServer, nodeServer *GCENodeServer) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
-
-	gceDriver.name = name
-	gceDriver.vendorVersion = vendorVersion
 
 	// Adding Capabilities
 	vcam := []csi.VolumeCapability_AccessMode_Mode{
@@ -67,18 +63,22 @@ func (gceDriver *GCEDriver) SetupGCEDriver(cloudProvider gce.GCECompute, mounter
 		csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 		csi.ControllerServiceCapability_RPC_PUBLISH_READONLY,
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 	}
 	gceDriver.AddControllerServiceCapabilities(csc)
 	ns := []csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 	}
 	gceDriver.AddNodeServiceCapabilities(ns)
 
-	// Set up RPC Servers
-	gceDriver.ids = NewIdentityServer(gceDriver)
-	gceDriver.ns = NewNodeServer(gceDriver, mounter, deviceUtils, meta)
-	gceDriver.cs = NewControllerServer(gceDriver, cloudProvider, meta)
+	gceDriver.name = name
+	gceDriver.vendorVersion = vendorVersion
+	gceDriver.ids = identityServer
+	gceDriver.cs = controllerServer
+	gceDriver.ns = nodeServer
 
 	return nil
 }
@@ -133,22 +133,22 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:          gceDriver,
 		Mounter:         mounter,
 		DeviceUtils:     deviceUtils,
 		MetadataService: meta,
 		volumeLocks:     common.NewVolumeLocks(),
+		VolumeStatter:   statter,
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, meta metadataservice.MetadataService) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:          gceDriver,
-		CloudProvider:   cloudProvider,
-		MetadataService: meta,
-		volumeLocks:     common.NewVolumeLocks(),
+		Driver:        gceDriver,
+		CloudProvider: cloudProvider,
+		volumeLocks:   common.NewVolumeLocks(),
 	}
 }
 

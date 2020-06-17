@@ -1,0 +1,5 @@
+namespace:
+  gce-pd-csi-driver
+resources:
+- ../stable/
+- image.yaml

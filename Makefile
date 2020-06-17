@@ -14,33 +14,53 @@
 
 # Args:
 # GCE_PD_CSI_STAGING_IMAGE: Staging image repository
-
+REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git rev-list -n1 HEAD)
+ifdef GCE_PD_CSI_STAGING_VERSION
+	STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
+else
+	STAGINGVERSION=${REV}
+endif
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
-STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
+DRIVERBINARY=gce-pd-csi-driver
+DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 all: gce-pd-driver
-
 gce-pd-driver:
 	mkdir -p bin
-ifndef GCE_PD_CSI_STAGING_VERSION
-	$(error "Must set environment variable GCE_PD_CSI_STAGING_VERSION to staging version")
-endif
-	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/
+	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
+
+gce-pd-driver-windows:
+	mkdir -p bin
+	GOOS=windows go build -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/
 
 build-container:
 ifndef GCE_PD_CSI_STAGING_IMAGE
 	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
 endif
-ifndef GCE_PD_CSI_STAGING_VERSION
-	$(error "Must set environment variable GCE_PD_CSI_STAGING_VERSION to staging version")
-endif
 	docker build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
+
+build-and-push-windows-container-ltsc2019:
+ifndef GCE_PD_CSI_STAGING_IMAGE
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+endif
+	@sh init-buildx.sh; \
+	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=ltsc2019 --push .
+
+build-and-push-windows-container-1909:
+ifndef GCE_PD_CSI_STAGING_IMAGE
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+endif
+	@sh init-buildx.sh; \
+	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=1909 --push .
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 test-sanity: gce-pd-driver
-	go test -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/test -run ^TestSanity$
+	go test -v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
 
 test-k8s-integration:
 	go build -o bin/k8s-integration-test ./test/k8s-integration
+

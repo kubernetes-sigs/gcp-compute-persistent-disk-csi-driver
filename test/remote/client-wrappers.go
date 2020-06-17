@@ -138,6 +138,18 @@ func (c *CsiClient) ControllerPublishVolume(volId, nodeId string) error {
 	return err
 }
 
+func (c *CsiClient) ListVolumes() (map[string]([]string), error) {
+	resp, err := c.ctrlClient.ListVolumes(context.Background(), &csipb.ListVolumesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	vols := map[string]([]string){}
+	for _, e := range resp.Entries {
+		vols[e.Volume.VolumeId] = e.Status.PublishedNodeIds
+	}
+	return vols, nil
+}
+
 func (c *CsiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	cupreq := &csipb.ControllerUnpublishVolumeRequest{
 		VolumeId: volId,
@@ -232,6 +244,36 @@ func (c *CsiClient) NodeExpandVolume(volumeID, volumePath string, sizeGb int64) 
 func (c *CsiClient) NodeGetInfo() (*csipb.NodeGetInfoResponse, error) {
 	resp, err := c.nodeClient.NodeGetInfo(context.Background(), &csipb.NodeGetInfoRequest{})
 	return resp, err
+}
+
+func (c *CsiClient) NodeGetVolumeStats(volumeID, volumePath string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+	resp, err := c.nodeClient.NodeGetVolumeStats(context.Background(), &csipb.NodeGetVolumeStatsRequest{
+		VolumeId:   volumeID,
+		VolumePath: volumePath,
+	})
+	if err != nil {
+		return
+	}
+	for _, usage := range resp.Usage {
+		if usage == nil {
+			continue
+		}
+		unit := usage.GetUnit()
+		switch unit {
+		case csipb.VolumeUsage_BYTES:
+			available = usage.GetAvailable()
+			capacity = usage.GetTotal()
+			used = usage.GetUsed()
+		case csipb.VolumeUsage_INODES:
+			inodesFree = usage.GetAvailable()
+			inodes = usage.GetTotal()
+			inodesUsed = usage.GetUsed()
+		default:
+			err = fmt.Errorf("unknown key %s in usage", unit.String())
+			return
+		}
+	}
+	return
 }
 
 func (c *CsiClient) CreateSnapshot(snapshotName, sourceVolumeId string, params map[string]string) (string, error) {

@@ -15,13 +15,14 @@ limitations under the License.
 package gcecloudprovider
 
 import (
-	computebeta "google.golang.org/api/compute/v0.beta"
-	compute "google.golang.org/api/compute/v1"
+	"strings"
+
+	computev1 "google.golang.org/api/compute/v1"
 )
 
 type CloudDisk struct {
-	ZonalDisk    *compute.Disk
-	RegionalDisk *computebeta.Disk
+	ZonalDisk    *computev1.Disk
+	RegionalDisk *computev1.Disk
 }
 
 type CloudDiskType string
@@ -35,13 +36,13 @@ const (
 	Global = "global"
 )
 
-func ZonalCloudDisk(disk *compute.Disk) *CloudDisk {
+func ZonalCloudDisk(disk *computev1.Disk) *CloudDisk {
 	return &CloudDisk{
 		ZonalDisk: disk,
 	}
 }
 
-func RegionalCloudDisk(disk *computebeta.Disk) *CloudDisk {
+func RegionalCloudDisk(disk *computev1.Disk) *CloudDisk {
 	return &CloudDisk{
 		RegionalDisk: disk,
 	}
@@ -91,15 +92,21 @@ func (d *CloudDisk) GetKind() string {
 	}
 }
 
-func (d *CloudDisk) GetType() string {
+// GetPDType returns the type of the PD as either 'pd-standard' or 'pd-ssd' The
+// "Type" field on the compute disk is stored as a url like
+// projects/project/zones/zone/diskTypes/pd-standard
+func (d *CloudDisk) GetPDType() string {
+	var pdType string
 	switch d.Type() {
 	case Zonal:
-		return d.ZonalDisk.Type
+		pdType = d.ZonalDisk.Type
 	case Regional:
-		return d.RegionalDisk.Type
+		pdType = d.RegionalDisk.Type
 	default:
 		return ""
 	}
+	respType := strings.Split(pdType, "/")
+	return strings.TrimSpace(respType[len(respType)-1])
 }
 
 func (d *CloudDisk) GetSelfLink() string {
@@ -155,4 +162,20 @@ func (d *CloudDisk) GetSnapshotId() string {
 	default:
 		return ""
 	}
+}
+
+func (d *CloudDisk) GetKMSKeyName() string {
+	var dek *computev1.CustomerEncryptionKey
+	switch d.Type() {
+	case Zonal:
+		dek = d.ZonalDisk.DiskEncryptionKey
+	case Regional:
+		dek = d.RegionalDisk.DiskEncryptionKey
+	default:
+		return ""
+	}
+	if dek == nil {
+		return ""
+	}
+	return dek.KmsKeyName
 }

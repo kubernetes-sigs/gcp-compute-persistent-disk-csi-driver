@@ -27,7 +27,6 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
-	beta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -50,10 +49,9 @@ const (
 )
 
 type CloudProvider struct {
-	service     *compute.Service
-	betaService *beta.Service
-	project     string
-	zone        string
+	service *compute.Service
+	project string
+	zone    string
 
 	zonesCache map[string]([]string)
 }
@@ -68,9 +66,10 @@ type ConfigGlobal struct {
 	TokenURL  string `gcfg:"token-url"`
 	TokenBody string `gcfg:"token-body"`
 	ProjectId string `gcfg:"project-id"`
+	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -78,19 +77,14 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 	// At this point configFile could still be nil.
 	// Any following code that uses configFile should handle nil pointer gracefully.
 
-	klog.V(1).Infof("Using GCE provider config %+v", configFile)
+	klog.V(2).Infof("Using GCE provider config %+v", configFile)
 
-	tokenSource, err := generateTokenSource(configFile)
+	tokenSource, err := generateTokenSource(ctx, configFile)
 	if err != nil {
 		return nil, err
 	}
 
-	svc, err := createCloudService(vendorVersion, tokenSource)
-	if err != nil {
-		return nil, err
-	}
-
-	betasvc, err := createBetaCloudService(vendorVersion, tokenSource)
+	svc, err := createCloudService(ctx, vendorVersion, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -101,40 +95,38 @@ func CreateCloudProvider(vendorVersion string, configPath string) (*CloudProvide
 	}
 
 	return &CloudProvider{
-		service:     svc,
-		betaService: betasvc,
-		project:     project,
-		zone:        zone,
-		zonesCache:  make(map[string]([]string)),
+		service:    svc,
+		project:    project,
+		zone:       zone,
+		zonesCache: make(map[string]([]string)),
 	}, nil
 
 }
 
-func generateTokenSource(configFile *ConfigFile) (oauth2.TokenSource, error) {
-
+func generateTokenSource(ctx context.Context, configFile *ConfigFile) (oauth2.TokenSource, error) {
 	if configFile != nil && configFile.Global.TokenURL != "" && configFile.Global.TokenURL != "nil" {
 		// configFile.Global.TokenURL is defined
 		// Use AltTokenSource
 
 		tokenSource := NewAltTokenSource(configFile.Global.TokenURL, configFile.Global.TokenBody)
-		klog.V(4).Infof("Using AltTokenSource %#v", tokenSource)
+		klog.V(2).Infof("Using AltTokenSource %#v", tokenSource)
 		return tokenSource, nil
 	}
 
 	// Use DefaultTokenSource
 
 	tokenSource, err := google.DefaultTokenSource(
-		context.Background(),
+		ctx,
 		compute.CloudPlatformScope,
 		compute.ComputeScope)
 
 	// DefaultTokenSource relies on GOOGLE_APPLICATION_CREDENTIALS env var being set.
 	if gac, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS"); ok {
-		klog.V(4).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
+		klog.V(2).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
 	} else {
 		klog.Warningf("GOOGLE_APPLICATION_CREDENTIALS env var not set")
 	}
-	klog.V(4).Infof("Using DefaultTokenSource %#v", tokenSource)
+	klog.V(2).Infof("Using DefaultTokenSource %#v", tokenSource)
 
 	return tokenSource, err
 }
@@ -157,26 +149,13 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createBetaCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*beta.Service, error) {
-	client, err := newOauthClient(tokenSource)
-	if err != nil {
-		return nil, err
-	}
-	service, err := beta.New(client)
-	if err != nil {
-		return nil, err
-	}
-	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
-	return service, nil
-}
-
-func createCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
-	svc, err := createCloudServiceWithDefaultServiceAccount(vendorVersion, tokenSource)
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
+	svc, err := createCloudServiceWithDefaultServiceAccount(ctx, vendorVersion, tokenSource)
 	return svc, err
 }
 
-func createCloudServiceWithDefaultServiceAccount(vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
-	client, err := newOauthClient(tokenSource)
+func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +167,7 @@ func createCloudServiceWithDefaultServiceAccount(vendorVersion string, tokenSour
 	return service, nil
 }
 
-func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
+func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
 	if err := wait.PollImmediate(5*time.Second, 30*time.Second, func() (bool, error) {
 		if _, err := tokenSource.Token(); err != nil {
 			klog.Errorf("error fetching initial token: %v", err)
@@ -199,15 +178,22 @@ func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
 		return nil, err
 	}
 
-	return oauth2.NewClient(context.Background(), tokenSource), nil
+	return oauth2.NewClient(ctx, tokenSource), nil
 }
 
 func getProjectAndZone(config *ConfigFile) (string, string, error) {
 	var err error
 
-	zone, err := metadata.Zone()
-	if err != nil {
-		return "", "", err
+	var zone string
+	if config == nil || config.Global.Zone == "" {
+		zone, err = metadata.Zone()
+		if err != nil {
+			return "", "", err
+		}
+		klog.V(2).Infof("Using GCP zone from the Metadata server: %q", zone)
+	} else {
+		zone = config.Global.Zone
+		klog.V(2).Infof("Using GCP zone from the local GCE cloud provider config file: %q", zone)
 	}
 
 	var projectID string
@@ -219,10 +205,10 @@ func getProjectAndZone(config *ConfigFile) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		klog.V(4).Infof("Using GCP project ID from the Metadata server: %q", projectID)
+		klog.V(2).Infof("Using GCP project ID from the Metadata server: %q", projectID)
 	} else {
 		projectID = config.Global.ProjectId
-		klog.V(4).Infof("Using GCP project ID from the local GCE cloud provider config file: %q", projectID)
+		klog.V(2).Infof("Using GCP project ID from the local GCE cloud provider config file: %q", projectID)
 	}
 
 	return projectID, zone, nil
@@ -248,4 +234,10 @@ func IsGCEError(err error, reason string) bool {
 // notFound reason
 func IsGCENotFoundError(err error) bool {
 	return IsGCEError(err, "notFound")
+}
+
+// IsInvalidError returns true if the error is a googleapi.Error with
+// invalid reason
+func IsGCEInvalidError(err error) bool {
+	return IsGCEError(err, "invalid")
 }

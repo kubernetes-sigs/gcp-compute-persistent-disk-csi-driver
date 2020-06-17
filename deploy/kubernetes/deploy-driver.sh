@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This script will deploy the GCP Compute Persistent Disk CSI Driver to the
-# currently available Kubernetes cluster
+# This script will deploy the Google Compute Engine Persistent Disk CSI Driver
+# to the currently available Kubernetes cluster
 
 # Note: setup-cluster.yaml depends on the existence of cluster-roles
 # system:csi-external-attacher and system:csi-external-provisioner
@@ -97,4 +97,3 @@ ${KUBECTL} version
 readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.yaml
 ${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
 ${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec
-

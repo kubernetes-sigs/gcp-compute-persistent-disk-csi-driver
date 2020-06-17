@@ -20,13 +20,13 @@ import (
 	"context"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 )
 
 func TestGetPluginInfo(t *testing.T) {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, vendorVersion)
+	identityServer := NewIdentityServer(gceDriver)
+	err := gceDriver.SetupGCEDriver(driver, vendorVersion, identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -48,7 +48,8 @@ func TestGetPluginInfo(t *testing.T) {
 
 func TestGetPluginCapabilities(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	identityServer := NewIdentityServer(gceDriver)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -80,7 +81,8 @@ func TestGetPluginCapabilities(t *testing.T) {
 
 func TestProbe(t *testing.T) {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, nil, nil, metadataservice.NewFakeService(), driver, "test-vendor")
+	identityServer := NewIdentityServer(gceDriver)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

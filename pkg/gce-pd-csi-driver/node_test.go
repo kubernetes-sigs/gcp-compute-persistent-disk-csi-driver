@@ -11,21 +11,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 package gceGCEDriver
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strconv"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
-	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -44,7 +42,8 @@ func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAn
 
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils mountmanager.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mounter, deviceUtils, metaService, driver, "test-vendor")
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter())
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -53,11 +52,83 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 
 func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	err := gceDriver.SetupGCEDriver(nil, mountmanager.NewFakeSafeBlockingMounter(readyToExecute), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), driver, "test-vendor")
+	nodeServer := NewNodeServer(gceDriver, mountmanager.NewFakeSafeBlockingMounter(readyToExecute), mountmanager.NewFakeDeviceUtils(), metadataservice.NewFakeService(), mountmanager.NewFakeStatter())
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 	return gceDriver
+}
+
+func TestNodeGetVolumeStats(t *testing.T) {
+	gceDriver := getTestGCEDriver(t)
+	ns := gceDriver.ns
+
+	tempDir, err := ioutil.TempDir("", "ngvs")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	targetPath := filepath.Join(tempDir, defaultTargetPath)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
+
+	req := &csi.NodePublishVolumeRequest{
+		VolumeId:          defaultVolumeID,
+		TargetPath:        targetPath,
+		StagingTargetPath: stagingPath,
+		Readonly:          false,
+		VolumeCapability:  stdVolCap,
+	}
+	_, err = ns.NodePublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Failed to set up test by publishing default vol: %v", err)
+	}
+
+	testCases := []struct {
+		name       string
+		volumeID   string
+		volumePath string
+		expectErr  bool
+	}{
+		{
+			name:       "normal",
+			volumeID:   defaultVolumeID,
+			volumePath: targetPath,
+		},
+		{
+			name:       "no vol id",
+			volumePath: targetPath,
+			expectErr:  true,
+		},
+		{
+			name:      "no vol path",
+			volumeID:  defaultVolumeID,
+			expectErr: true,
+		},
+		{
+			name:       "bad vol path",
+			volumeID:   defaultVolumeID,
+			volumePath: "/mnt/fake",
+			expectErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			req := &csi.NodeGetVolumeStatsRequest{
+				VolumeId:   tc.volumeID,
+				VolumePath: tc.volumePath,
+			}
+			_, err := ns.NodeGetVolumeStats(context.Background(), req)
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Got unexpected err: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatal("Did not get error but expected one")
+			}
+		})
+	}
 }
 
 func TestNodeGetVolumeLimits(t *testing.T) {
@@ -96,6 +167,11 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "custom-2-4096",
 			expVolumeLimit: volumeLimitBig,
 		},
+		{
+			name:           "Predifined e2 machine",
+			machineType:    "e2-micro",
+			expVolumeLimit: volumeLimitSmall,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -118,6 +194,15 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 func TestNodePublishVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
+
+	tempDir, err := ioutil.TempDir("", "npv")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	targetPath := filepath.Join(tempDir, defaultTargetPath)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
+
 	testCases := []struct {
 		name       string
 		req        *csi.NodePublishVolumeRequest
@@ -127,8 +212,8 @@ func TestNodePublishVolume(t *testing.T) {
 			name: "Valid request",
 			req: &csi.NodePublishVolumeRequest{
 				VolumeId:          defaultVolumeID,
-				TargetPath:        defaultTargetPath,
-				StagingTargetPath: defaultStagingPath,
+				TargetPath:        targetPath,
+				StagingTargetPath: stagingPath,
 				Readonly:          false,
 				VolumeCapability:  stdVolCap,
 			},
@@ -137,8 +222,8 @@ func TestNodePublishVolume(t *testing.T) {
 			name: "Invalid request (invalid access mode)",
 			req: &csi.NodePublishVolumeRequest{
 				VolumeId:          defaultVolumeID,
-				TargetPath:        defaultTargetPath,
-				StagingTargetPath: defaultStagingPath,
+				TargetPath:        targetPath,
+				StagingTargetPath: stagingPath,
 				Readonly:          false,
 				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 			},
@@ -147,8 +232,8 @@ func TestNodePublishVolume(t *testing.T) {
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodePublishVolumeRequest{
-				TargetPath:        defaultTargetPath,
-				StagingTargetPath: defaultStagingPath,
+				TargetPath:        targetPath,
+				StagingTargetPath: stagingPath,
 				Readonly:          false,
 				VolumeCapability:  stdVolCap,
 			},
@@ -158,7 +243,7 @@ func TestNodePublishVolume(t *testing.T) {
 			name: "Invalid request (No TargetPath)",
 			req: &csi.NodePublishVolumeRequest{
 				VolumeId:          defaultVolumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				Readonly:          false,
 				VolumeCapability:  stdVolCap,
 			},
@@ -168,7 +253,7 @@ func TestNodePublishVolume(t *testing.T) {
 			name: "Invalid request (No StagingTargetPath)",
 			req: &csi.NodePublishVolumeRequest{
 				VolumeId:         defaultVolumeID,
-				TargetPath:       defaultTargetPath,
+				TargetPath:       targetPath,
 				Readonly:         false,
 				VolumeCapability: stdVolCap,
 			},
@@ -178,8 +263,8 @@ func TestNodePublishVolume(t *testing.T) {
 			name: "Invalid request (Nil VolumeCapability)",
 			req: &csi.NodePublishVolumeRequest{
 				VolumeId:          defaultVolumeID,
-				TargetPath:        defaultTargetPath,
-				StagingTargetPath: defaultStagingPath,
+				TargetPath:        targetPath,
+				StagingTargetPath: stagingPath,
 				Readonly:          false,
 				VolumeCapability:  nil,
 			},
@@ -208,6 +293,14 @@ func TestNodePublishVolume(t *testing.T) {
 func TestNodeUnpublishVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
+
+	tempDir, err := ioutil.TempDir("", "nupv")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	targetPath := filepath.Join(tempDir, defaultTargetPath)
+
 	testCases := []struct {
 		name       string
 		req        *csi.NodeUnpublishVolumeRequest
@@ -217,13 +310,13 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			name: "Valid request",
 			req: &csi.NodeUnpublishVolumeRequest{
 				VolumeId:   defaultVolumeID,
-				TargetPath: defaultTargetPath,
+				TargetPath: targetPath,
 			},
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeUnpublishVolumeRequest{
-				TargetPath: defaultTargetPath,
+				TargetPath: targetPath,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -265,6 +358,13 @@ func TestNodeStageVolume(t *testing.T) {
 		AccessType: blockCap,
 	}
 
+	tempDir, err := ioutil.TempDir("", "nsv")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
+
 	testCases := []struct {
 		name       string
 		req        *csi.NodeStageVolumeRequest
@@ -274,7 +374,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Valid request",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
 		},
@@ -282,7 +382,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (Bad Access Mode)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 			},
 			expErrCode: codes.InvalidArgument,
@@ -290,7 +390,7 @@ func TestNodeStageVolume(t *testing.T) {
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeStageVolumeRequest{
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
 			expErrCode: codes.InvalidArgument,
@@ -307,7 +407,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (Nil VolumeCapability)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				VolumeCapability:  nil,
 			},
 			expErrCode: codes.InvalidArgument,
@@ -316,7 +416,7 @@ func TestNodeStageVolume(t *testing.T) {
 			name: "Invalid request (No Mount in capability)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 				VolumeCapability:  cap,
 			},
 			expErrCode: codes.InvalidArgument,
@@ -341,6 +441,18 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 }
 
+// TODO: This test is too brittle due to the fakeexec package not being
+// expressive enough for our purposes. The main issue being that the actions
+// executed by fakeexec are executed in order of definition instead of by
+// "command name" or some other way. This forces the test to "code to the
+// implementation" in that we have to take each test case and order the CMD
+// actions in the exact order that we expect to see them appear and hardcode the
+// expected results. This is an exercise in re-implementing the current state of
+// the implementation of the function under test but with hardcoded return
+// values and brings no real value besides incurring a brittle test. This
+// functionality is covered by e2e tests instead. Beware those who would attempt
+// to un-comment
+/*
 func TestNodeExpandVolume(t *testing.T) {
 	// TODO: Add tests/functionality for non-existant volume
 	var resizedBytes int64 = 2000000000
@@ -360,6 +472,11 @@ func TestNodeExpandVolume(t *testing.T) {
 				CapacityRange: &csi.CapacityRange{
 					RequiredBytes: resizedBytes,
 				},
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+				},
 			},
 			fsOrBlock:    "ext4",
 			expRespBytes: resizedBytes,
@@ -371,6 +488,11 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumePath: "some-path",
 				CapacityRange: &csi.CapacityRange{
 					RequiredBytes: resizedBytes,
+				},
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Block{
+						Block: &csi.VolumeCapability_BlockVolume{},
+					},
 				},
 			},
 			fsOrBlock:    "block",
@@ -384,6 +506,11 @@ func TestNodeExpandVolume(t *testing.T) {
 				CapacityRange: &csi.CapacityRange{
 					RequiredBytes: resizedBytes,
 				},
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+				},
 			},
 			fsOrBlock:    "xfs",
 			expRespBytes: resizedBytes,
@@ -391,40 +518,71 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
+		actionList := []testingexec.FakeCommandAction{
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							if tc.fsOrBlock == "block" {
+								// blkid returns exit code 2 when run on unformatted device
+								return nil, nil, exec.CodeExitError{
+									Err:  errors.New("this is an exit error"),
+									Code: 2,
+								}
+							}
+							return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=%s", tc.fsOrBlock)), nil, nil
+						},
+					},
+				},
+				"blkid",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte(strconv.Itoa(int(resizedBytes))), nil, nil
+						},
+					},
+				},
+				"blockdev",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							if tc.fsOrBlock == "ext4" {
+								return nil, nil, nil
+							}
+							return nil, nil, fmt.Errorf("resize fs called on device with %s", tc.fsOrBlock)
+						},
+					},
+				},
+				"resize2fs",
+			),
 
-		execCallback := func(cmd string, args ...string) ([]byte, error) {
-			switch cmd {
-			case "blkid":
-				if tc.fsOrBlock == "block" {
-					// blkid returns exit code 2 when run on unformatted device
-					return nil, utilexec.CodeExitError{
-						Err:  errors.New("this is an exit error"),
-						Code: 2,
-					}
-				}
-				return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=%s", tc.fsOrBlock)), nil
-			case "resize2fs":
-				if tc.fsOrBlock == "ext4" {
-					return nil, nil
-				}
-				t.Fatalf("resize fs called on device with %s", tc.fsOrBlock)
-			case "xfs_growfs":
-				if tc.fsOrBlock != "xfs" {
-					t.Fatalf("xfs_growfs called on device with %s", tc.fsOrBlock)
-				}
-				for _, arg := range args {
-					if arg == tc.req.VolumePath {
-						return nil, nil
-					}
-				}
-				t.Errorf("xfs_growfs args did not contain volume path %s", tc.req.VolumePath)
-			case "blockdev":
-				return []byte(strconv.Itoa(int(resizedBytes))), nil
-			}
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							if tc.fsOrBlock != "xfs" {
+								t.Fatalf("xfs_growfs called on device with %s", tc.fsOrBlock)
+							}
+							for _, arg := range args {
+								if arg == tc.req.VolumePath {
+									return nil, nil, nil
+								}
+							}
+							return nil, nil, fmt.Errorf("xfs_growfs args did not contain volume path %s", tc.req.VolumePath)
 
-			return nil, fmt.Errorf("fake exec got unknown call to %v %v", cmd, args)
+							return nil,nil,nil
+						},
+					},
+				},
+				"xfs_growfs",
+			),
+
 		}
-		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(mount.NewFakeExec(execCallback))
+		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList}) // TODO(dyzz) add the command list to here.
 		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
 
 		resp, err := gceDriver.ns.NodeExpandVolume(context.Background(), tc.req)
@@ -448,9 +606,26 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 }
 
+func makeFakeCmd(fakeCmd *testingexec.FakeCmd, cmd string, args ...string) testingexec.FakeCommandAction {
+	c := cmd
+	a := args
+	return func(cmd string, args ...string) exec.Cmd {
+		command := testingexec.InitFakeCmd(fakeCmd, c, a...)
+		return command
+	}
+}
+*/
+
 func TestNodeUnstageVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
+	tempDir, err := ioutil.TempDir("", "nusv")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
+
 	testCases := []struct {
 		name       string
 		req        *csi.NodeUnstageVolumeRequest
@@ -460,13 +635,13 @@ func TestNodeUnstageVolume(t *testing.T) {
 			name: "Valid request",
 			req: &csi.NodeUnstageVolumeRequest{
 				VolumeId:          defaultVolumeID,
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 			},
 		},
 		{
 			name: "Invalid request (No VolumeId)",
 			req: &csi.NodeUnstageVolumeRequest{
-				StagingTargetPath: defaultStagingPath,
+				StagingTargetPath: stagingPath,
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -512,25 +687,32 @@ func TestConcurrentNodeOperations(t *testing.T) {
 	readyToExecute := make(chan chan struct{}, 1)
 	gceDriver := getTestBlockingGCEDriver(t, readyToExecute)
 	ns := gceDriver.ns
+	tempDir, err := ioutil.TempDir("", "cno")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	targetPath := filepath.Join(tempDir, defaultTargetPath)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
 	vol1PublishTargetAReq := &csi.NodePublishVolumeRequest{
 		VolumeId:          defaultVolumeID + "1",
-		TargetPath:        defaultTargetPath + "a",
-		StagingTargetPath: defaultStagingPath + "1",
+		TargetPath:        targetPath + "a",
+		StagingTargetPath: stagingPath + "1",
 		Readonly:          false,
 		VolumeCapability:  stdVolCap,
 	}
 	vol1PublishTargetBReq := &csi.NodePublishVolumeRequest{
 		VolumeId:          defaultVolumeID + "1",
-		TargetPath:        defaultTargetPath + "b",
-		StagingTargetPath: defaultStagingPath + "1",
+		TargetPath:        targetPath + "b",
+		StagingTargetPath: stagingPath + "1",
 		Readonly:          false,
 		VolumeCapability:  stdVolCap,
 	}
 	vol2PublishTargetCReq := &csi.NodePublishVolumeRequest{
 		VolumeId:          defaultVolumeID + "2",
-		TargetPath:        defaultTargetPath + "c",
-		StagingTargetPath: defaultStagingPath + "2",
+		TargetPath:        targetPath + "c",
+		StagingTargetPath: stagingPath + "2",
 		Readonly:          false,
 		VolumeCapability:  stdVolCap,
 	}

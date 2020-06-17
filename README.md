@@ -1,10 +1,10 @@
-# GCP Compute Persistent Disk CSI Driver
+# Google Compute Engine Persistent Disk CSI Driver
 
 WARNING: This driver is beta and should not be used in performance critical applications
 
 DISCLAIMER: This is not an officially supported Google product
 
-The GCP Compute Persistent Disk CSI Driver is a
+The Google Compute Engine Persistent Disk CSI Driver is a
 [CSI](https://github.com/container-storage-interface/spec/blob/master/spec.md)
 Specification compliant driver used by Container Orchestrators to manage the
 lifecycle of Google Compute Engine Persistent Disks.
@@ -12,7 +12,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 ## Project Status
 
 Status: Beta
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.6.0-gke.0`
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.7.0-gke.0`
 
 ### Test Status
 
@@ -32,15 +32,16 @@ This plugin is compatible with CSI versions [v1.1.0](https://github.com/containe
 
 ### Kubernetes Compatibility
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15+|
-|--------------------------------------|---------------|------|------|------|------|
-| v0.1.x.alpha                         | yes           | no   | no   | no   | no   |
-| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   |
-| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  |
-| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  |
-| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  |
-| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  |
-| dev                                  | no            | no   | no   | yes  | yes  |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15 | 1.16+ |
+|--------------------------------------|---------------|------|------|------|------|-------|
+| v0.1.x.alpha                         | yes           | no   | no   | no   | no   | no    |
+| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   | no    |
+| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
+| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
+| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
+| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
+| v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   |
+| dev                                  | no            | no   | no   | no   | no   | yes   |
 
 ### Known Issues
 
@@ -67,7 +68,9 @@ that represents availability by zone.
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
 | Topology        | Beta  | 1.14                          | 1.14                         | v0.5.0             | Stable             |
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
-| Resize (Expand) | Alpha | 1.14                          | 1.14                         | dev                | Alpha              |
+| Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
+| Snapshots       | Beta  | 1.17                          | Any                          | master             | Stable             |
 
 ### Future Features
 

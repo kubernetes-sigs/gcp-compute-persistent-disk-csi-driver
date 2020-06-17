@@ -1,28 +1,30 @@
-ShortName: pdtest
 StorageClass:
   FromFile: {{.StorageClassFile}}
+{{if .SnapshotClassFile }}
+SnapshotClass:
+  FromFile: {{ .SnapshotClassFile }}
+{{end}}
 DriverInfo:
   Name: csi-gcepd
   SupportedFsType:
     ext2:
     ext3:
     ext4:
+    xfs:
     # The following FS types supported by GCE PD but
-    # currently we do not test the CSI Driver on Ubuntu or Windows
-    # xfs: XFS only available on Ubuntu
+    # currently we do not test the CSI Driver on Windows
     # ntfs: NTFS only available on Windows
   Capabilities:
-    persistence: true
-    multipods: true
-    fsGroup: true
-    exec: true
-    block: true
-    topology: true
-    # dataSource: true
-    # RWX: true
+  {{range .Capabilities}}  {{ . }}: true
+  {{end}}
+  StressTestOptions:
+    NumPods: 10
+    NumRestarts: 10
   SupportedMountOption:
     debug:
     nouid32:
   SupportedSizeRange:
     Min: 5Gi
     Max: 64Ti
+  TopologyKeys:
+    - topology.gke.io/zone

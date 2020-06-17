@@ -105,7 +105,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
-		cloudDisk, err := betaComputeService.RegionDisks.Get(p, region, volName).Do()
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
@@ -125,7 +125,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = betaComputeService.RegionDisks.Get(p, region, volName).Do()
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 
@@ -136,17 +136,50 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			if i >= 1 {
 				readOnly = true
 			}
-			testAttachWriteReadDetach(volID, volName, testContext.Instance, testContext.Client, readOnly)
+			err = testAttachWriteReadDetach(volID, volName, testContext.Instance, testContext.Client, readOnly)
+			Expect(err).To(BeNil(), "failed volume lifecycle checks")
 			i = i + 1
 		}
-
 	})
-
 })
 
-func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
-	var err error
+type verifyArgs struct {
+	publishDir string
+}
 
+type verifyFunc func(verifyArgs) error
+
+func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
+	var testFileContents = "test"
+	writeFile := func(a verifyArgs) error {
+		if !readOnly {
+			// Write a file
+			testFile := filepath.Join(a.publishDir, "testfile")
+			err := testutils.WriteFile(instance, testFile, testFileContents)
+			if err != nil {
+				return fmt.Errorf("Failed to write file: %v", err)
+			}
+		}
+		return nil
+	}
+
+	verifyReadFile := func(a verifyArgs) error {
+		// Read File
+		secondTestFile := filepath.Join(a.publishDir, "testfile")
+		readContents, err := testutils.ReadFile(instance, secondTestFile)
+		if err != nil {
+			return fmt.Errorf("ReadFile failed with error: %v", err)
+		}
+		if strings.TrimSpace(string(readContents)) != testFileContents {
+			return fmt.Errorf("wanted test file content: %s, got content: %s", testFileContents, readContents)
+		}
+		return nil
+	}
+	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile)
+}
+
+func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc) error {
+	var err error
 	klog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
 	// Attach Disk
 	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
@@ -165,7 +198,13 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 
 	// Stage Disk
 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	err = client.NodeStageExt4Volume(volID, stageDir)
+	if useBlock {
+		err = client.NodeStageBlockVolume(volID, stageDir)
+	} else {
+		err = client.NodeStageExt4Volume(volID, stageDir)
+	}
+
+	//err = client.NodeStageExt4Volume(volID, stageDir)
 	if err != nil {
 		return fmt.Errorf("NodeStageExt4Volume failed with error: %v", err)
 	}
@@ -185,7 +224,13 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
-	err = client.NodePublishVolume(volID, stageDir, publishDir)
+
+	if useBlock {
+		err = client.NodePublishBlockVolume(volID, stageDir, publishDir)
+	} else {
+		err = client.NodePublishVolume(volID, stageDir, publishDir)
+	}
+
 	if err != nil {
 		return fmt.Errorf("NodePublishVolume failed with error: %v", err)
 	}
@@ -193,14 +238,14 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 	if err != nil {
 		return fmt.Errorf("Chmod failed with error: %v", err)
 	}
-	testFileContents := "test"
-	if !readOnly {
-		// Write a file
-		testFile := filepath.Join(publishDir, "testfile")
-		err = testutils.WriteFile(instance, testFile, testFileContents)
-		if err != nil {
-			return fmt.Errorf("Failed to write file: %v", err)
-		}
+
+	a := verifyArgs{
+		publishDir: publishDir,
+	}
+
+	err = firstMountVerify(a)
+	if err != nil {
+		return fmt.Errorf("failed to verify after first mount to %s: %v", publishDir, err)
 	}
 
 	// Unmount Disk
@@ -209,29 +254,28 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
 	}
 
-	// Mount disk somewhere else
-	secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
-	err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
-	if err != nil {
-		return fmt.Errorf("NodePublishVolume failed with error: %v", err)
-	}
-	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-	if err != nil {
-		return fmt.Errorf("Chmod failed with error: %v", err)
-	}
+	if secondMountVerify != nil {
+		// Mount disk somewhere else
+		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
+		err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
+		if err != nil {
+			return fmt.Errorf("NodePublishVolume failed with error: %v", err)
+		}
+		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		if err != nil {
+			return fmt.Errorf("Chmod failed with error: %v", err)
+		}
 
-	// Read File
-	secondTestFile := filepath.Join(secondPublishDir, "testfile")
-	readContents, err := testutils.ReadFile(instance, secondTestFile)
-	if err != nil {
-		return fmt.Errorf("ReadFile failed with error: %v", err)
-	}
-	Expect(strings.TrimSpace(string(readContents))).To(Equal(testFileContents))
+		b := verifyArgs{
+			publishDir: secondPublishDir,
+		}
+		secondMountVerify(b)
 
-	// Unmount Disk
-	err = client.NodeUnpublishVolume(volID, secondPublishDir)
-	if err != nil {
-		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+		// Unmount Disk
+		err = client.NodeUnpublishVolume(volID, secondPublishDir)
+		if err != nil {
+			return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+		}
 	}
 
 	klog.Infof("Completed testAttachWriteReadDetach with volume %v node %v\n", volID, instance.GetNodeID())

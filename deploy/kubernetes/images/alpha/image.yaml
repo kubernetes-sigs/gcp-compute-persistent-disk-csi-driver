@@ -1,0 +1,18 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-gcepd-driver-alpha-win
+imageTag:
+  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver-win
+  newName: gcr.io/jing-k8s-dev/gce-pd-windows-2019
+  newTag: "0.2.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-node-registrar-win
+imageTag:
+  name: gke.gcr.io/k8s-staging-csi/csi-node-driver-registrar-win
+  newName: gcr.io/k8s-staging-csi/csi-node-driver-registrar
+  newTag: "amd64-windows-v20200428-v1.3.0-26-g510710d5"

@@ -22,37 +22,41 @@ import (
 	"path/filepath"
 	"syscall"
 
-	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
-
 	"k8s.io/apimachinery/pkg/util/uuid"
+	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/klog"
+	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
 
 var (
 	// Kubernetes cluster flags
-	teardownCluster  = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	teardownDriver   = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
-	bringupCluster   = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	gceZone          = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
-	gceRegion        = flag.String("gce-region", "", "region that gke regional cluster should be created in")
-	kubeVersion      = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
-	testVersion      = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
-	kubeFeatureGates = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
-	localK8sDir      = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
-	deploymentStrat  = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
-	gkeClusterVer    = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
-	numNodes         = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	teardownCluster   = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver    = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster    = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	gceZone           = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
+	gceRegion         = flag.String("gce-region", "", "region that gke regional cluster should be created in")
+	kubeVersion       = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
+	testVersion       = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
+	kubeFeatureGates  = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	localK8sDir       = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
+	deploymentStrat   = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
+	gkeClusterVer     = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
+	numNodes          = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	imageType         = flag.String("image-type", "cos", "the image type to use for the cluster")
+	gkeReleaseChannel = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
+	snapshotClassFile  = flag.String("snapshotclass-file", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
-	stagingImage      = flag.String("staging-image", "", "name of image to stage to")
-	saFile            = flag.String("service-account-file", "", "path of service account file")
-	deployOverlayName = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
-	doDriverBuild     = flag.Bool("do-driver-build", true, "building the driver from source")
+	stagingImage        = flag.String("staging-image", "", "name of image to stage to")
+	saFile              = flag.String("service-account-file", "", "path of service account file")
+	deployOverlayName   = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	doDriverBuild       = flag.Bool("do-driver-build", true, "building the driver from source")
+	useGKEManagedDriver = flag.Bool("use-gke-managed-driver", false, "use GKE managed PD CSI driver for the tests")
 
 	// Test flags
 	migrationTest = flag.Bool("migration-test", false, "sets the flag on the e2e binary signalling migration")
@@ -73,13 +77,25 @@ func init() {
 func main() {
 	flag.Parse()
 
-	if !*inProw {
+	if !*inProw && !*useGKEManagedDriver {
 		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
 
+	if *useGKEManagedDriver {
+		ensureVariableVal(deploymentStrat, "gke", "deployment strategy must be GKE for using managed driver")
+		ensureFlag(doDriverBuild, false, "'do-driver-build' must be false when using GKE managed driver")
+		ensureFlag(teardownDriver, false, "'teardown-driver' must be false when using GKE managed driver")
+		ensureVariable(stagingImage, false, "'staging-image' must not be set when using GKE managed driver")
+		ensureVariable(deployOverlayName, false, "'deploy-overlay-name' must not be set when using GKE managed driver")
+	}
+
 	ensureVariable(saFile, true, "service-account-file is a required flag")
-	ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	if !*useGKEManagedDriver {
+		ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+	}
+
 	ensureVariable(testFocus, true, "test-focus is a required flag")
+	ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
 
 	if len(*gceRegion) != 0 {
 		ensureVariable(gceZone, false, "gce-zone and gce-region cannot both be set")
@@ -100,7 +116,8 @@ func main() {
 	if *deploymentStrat == "gke" {
 		ensureFlag(migrationTest, false, "Cannot set deployment strategy to 'gke' for migration tests.")
 		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
-		ensureVariable(gkeClusterVer, true, "Must set gke-cluster-version when using deployment strategy 'gke'.")
+		ensureExactlyOneVariableSet([]*string{gkeClusterVer, gkeReleaseChannel},
+			"For GKE cluster deployment, exactly one of 'gke-cluster-version' or 'gke-release-channel' must be set")
 		ensureVariable(kubeFeatureGates, false, "Cannot set feature gates when using deployment strategy 'gke'.")
 		if len(*localK8sDir) == 0 {
 			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
@@ -238,9 +255,9 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone, *numNodes)
+			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, *imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *imageType, *useGKEManagedDriver)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
 		}
@@ -269,34 +286,51 @@ func handle() error {
 		}()
 	}
 
-	// Install the driver and defer its teardown
-	err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
-	if *teardownDriver {
-		defer func() {
-			// TODO (#140): collect driver logs
-			if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
-				klog.Errorf("failed to delete driver: %v", teardownErr)
-			}
-		}()
-	}
-	if err != nil {
-		return fmt.Errorf("failed to install CSI Driver: %v", err)
+	if !*useGKEManagedDriver {
+		// Install the driver and defer its teardown
+		err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+		if *teardownDriver {
+			defer func() {
+				// TODO (#140): collect driver logs
+				if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
+					klog.Errorf("failed to delete driver: %v", teardownErr)
+				}
+			}()
+		}
+		if err != nil {
+			return fmt.Errorf("failed to install CSI Driver: %v", err)
+		}
 	}
 
 	var cloudProviderArgs []string
+	var err error
 	switch *deploymentStrat {
 	case "gke":
-		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion)
+		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, *imageType)
 		if err != nil {
 			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
 		}
 	}
 
+	// Kubernetes version of GKE deployments are expected to be of the pattern x.y.z-gke.k,
+	// hence we use the main.Version utils to parse and compare GKE managed cluster versions.
+	// For clusters deployed on GCE, use the apimachinery version utils (which supports non-gke based semantic versioning).
+	clusterVersion := mustGetKubeClusterVersion()
+	var testSkip string
+	switch *deploymentStrat {
+	case "gce":
+		testSkip = generateGCETestSkip(clusterVersion)
+	case "gke":
+		testSkip = generateGKETestSkip(clusterVersion, *useGKEManagedDriver)
+	default:
+		return fmt.Errorf("Unknown deployment strategy %s", *deploymentStrat)
+	}
+
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, *storageClassFile, cloudProviderArgs)
+		err = runCSITests(pkgDir, testDir, *testFocus, testSkip, *storageClassFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat)
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, testDir, *testFocus, cloudProviderArgs)
+		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -306,6 +340,43 @@ func handle() error {
 	}
 
 	return nil
+}
+
+func generateGCETestSkip(clusterVersion string) string {
+	skipString := "\\[Disruptive\\]|\\[Serial\\]"
+	v := apimachineryversion.MustParseSemantic(clusterVersion)
+
+	// "volumeMode should not mount / map unused volumes in a pod" tests a
+	// (https://github.com/kubernetes/kubernetes/pull/81163)
+	// bug-fix introduced in 1.16
+	if v.LessThan(apimachineryversion.MustParseSemantic("1.16.0")) {
+		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
+	}
+
+	if v.LessThan(apimachineryversion.MustParseSemantic("1.17.0")) {
+		skipString = skipString + "|VolumeSnapshotDataSource"
+	}
+	return skipString
+}
+
+func generateGKETestSkip(clusterVersion string, use_gke_managed_driver bool) string {
+	skipString := "\\[Disruptive\\]|\\[Serial\\]"
+	curVer := mustParseVersion(clusterVersion)
+
+	// "volumeMode should not mount / map unused volumes in a pod" tests a
+	// (https://github.com/kubernetes/kubernetes/pull/81163)
+	// bug-fix introduced in 1.16
+	if curVer.lessThan(mustParseVersion("1.16.0")) {
+		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
+	}
+
+	// For GKE deployed PD CSI snapshot is enabled in 1.17.6-gke.4(and higher), 1.18.3-gke.0(and higher).
+	if (use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.17.6-gke.4"))) ||
+		(!use_gke_managed_driver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
+		skipString = skipString + "|VolumeSnapshotDataSource"
+	}
+
+	return skipString
 }
 
 func setEnvProject(project string) error {
@@ -321,20 +392,20 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, testDir, testFocus string, cloudProviderArgs []string) error {
-	return runTestsWithConfig(testDir, testFocus, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
+func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProviderArgs []string) error {
+	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
 }
 
-func runCSITests(pkgDir, testDir, testFocus, storageClassFile string, cloudProviderArgs []string) error {
-	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile)
+func runCSITests(pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(testDir, testFocus, testConfigArg, cloudProviderArgs)
+	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs)
 }
 
-func runTestsWithConfig(testDir, testFocus, testConfigArg string, cloudProviderArgs []string) error {
+func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string) error {
 	err := os.Chdir(testDir)
 	if err != nil {
 		return err
@@ -343,12 +414,15 @@ func runTestsWithConfig(testDir, testFocus, testConfigArg string, cloudProviderA
 	homeDir, _ := os.LookupEnv("HOME")
 	os.Setenv("KUBECONFIG", filepath.Join(homeDir, ".kube/config"))
 
-	artifactsDir, _ := os.LookupEnv("ARTIFACTS")
-	reportArg := fmt.Sprintf("-report-dir=%s", artifactsDir)
+	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
+	reportArg := ""
+	if ok {
+		reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
+	}
 
 	testArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
 		testFocus,
-		"\\[Disruptive\\]|\\[Serial\\]|\\[Feature:.+\\]",
+		testSkip,
 		testConfigArg,
 		reportArg)
 

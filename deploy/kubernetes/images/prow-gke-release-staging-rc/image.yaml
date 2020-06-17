@@ -1,0 +1,60 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-provisioner-prow-rc
+imageTag:
+  name: gke.gcr.io/csi-provisioner
+  newName: gcr.io/gke-release-staging/csi-provisioner
+  newTag: "v1.6.0-gke.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-attacher-prow-rc
+imageTag:
+  name: gke.gcr.io/csi-attacher
+  newName: gcr.io/gke-release-staging/csi-attacher
+  newTag: "v2.2.0-gke.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-resize-prow-rc
+imageTag:
+  name: gke.gcr.io/csi-resizer
+  newName: gcr.io/gke-release-staging/csi-resizer
+  newTag: "v0.5.0-gke.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-gce-driver-prow-rc
+imageTag:
+  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
+  newTag: "v0.7.0-gke.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-node-registrar-prow-rc
+imageTag:
+  name: gke.gcr.io/csi-node-driver-registrar
+  newName: gcr.io/gke-release-staging/csi-node-driver-registrar
+  newTag: "v1.3.0-gke.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-snapshotter-prow-head
+imageTag:
+  name: gke.gcr.io/csi-snapshotter
+  newName: gcr.io/gke-release-staging/csi-snapshotter
+  newTag: "v2.1.1-gke.0"
+---
+
