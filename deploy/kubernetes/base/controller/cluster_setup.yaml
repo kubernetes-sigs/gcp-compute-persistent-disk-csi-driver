@@ -272,4 +272,3 @@ roleRef:
   kind: Role
   name: csi-gce-pd-leaderelection-role
   apiGroup: rbac.authorization.k8s.io
-

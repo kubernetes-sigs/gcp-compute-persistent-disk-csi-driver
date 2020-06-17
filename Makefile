@@ -45,7 +45,7 @@ ifndef GCE_PD_CSI_STAGING_IMAGE
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
-	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=ltsc2019 --push .
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=ltsc2019 --build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-1909:
 ifndef GCE_PD_CSI_STAGING_IMAGE
@@ -53,7 +53,7 @@ ifndef GCE_PD_CSI_STAGING_IMAGE
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
-	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=1909 --push .
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=1909 --build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)

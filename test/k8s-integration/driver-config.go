@@ -12,6 +12,7 @@ type driverConfig struct {
 	StorageClassFile  string
 	SnapshotClassFile string
 	Capabilities      []string
+	SupportedFsType   []string
 }
 
 const (
@@ -22,7 +23,7 @@ const (
 
 // generateDriverConfigFile loads a testdriver config template and creates a file
 // with the test-specific configuration
-func generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deploymentStrat string) (string, error) {
+func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat string) (string, error) {
 	// Load template
 	t, err := template.ParseFiles(filepath.Join(pkgDir, testConfigDir, configTemplateFile))
 	if err != nil {
@@ -49,6 +50,17 @@ func generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deplo
 		"exec",
 		"multipods",
 		"topology",
+	}
+	var fsTypes []string
+	if platform == "windows" {
+		fsTypes = []string{"ntfs"}
+	} else {
+		fsTypes = []string{
+			"ext2",
+			"ext3",
+			"ext4",
+			"xfs",
+		}
 	}
 
 	/* Unsupported Capabilities:
@@ -83,6 +95,7 @@ func generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deplo
 	params := driverConfig{
 		StorageClassFile:  filepath.Join(pkgDir, testConfigDir, storageClassFile),
 		SnapshotClassFile: absSnapshotClassFilePath,
+		SupportedFsType:   fsTypes,
 		Capabilities:      caps,
 	}
 

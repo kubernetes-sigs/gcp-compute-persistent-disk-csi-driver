@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -33,6 +34,7 @@ var (
 	teardownCluster   = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
 	teardownDriver    = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster    = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	platform          = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
 	gceZone           = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
 	gceRegion         = flag.String("gce-region", "", "region that gke regional cluster should be created in")
 	kubeVersion       = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
@@ -95,7 +97,6 @@ func main() {
 	}
 
 	ensureVariable(testFocus, true, "test-focus is a required flag")
-	ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
 
 	if len(*gceRegion) != 0 {
 		ensureVariable(gceZone, false, "gce-zone and gce-region cannot both be set")
@@ -111,6 +112,12 @@ func main() {
 
 	if !*bringupCluster {
 		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
+	} else {
+		ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
+	}
+
+	if *platform == "windows" {
+		ensureFlag(bringupCluster, false, "bringupCluster is set to false if it is for testing in windows cluster")
 	}
 
 	if *deploymentStrat == "gke" {
@@ -132,7 +139,7 @@ func main() {
 		ensureVariable(testVersion, false, "Cannot set a test version when using a local k8s dir.")
 	}
 
-	if *numNodes == -1 {
+	if *numNodes == -1 && *bringupCluster {
 		klog.Fatalf("num-nodes must be set to number of nodes in cluster")
 	}
 
@@ -157,28 +164,32 @@ func handle() error {
 
 	// If running in Prow, then acquire and set up a project through Boskos
 	if *inProw {
-		project, _ := testutils.SetupProwConfig(*boskosResourceType)
-
 		oldProject, err := exec.Command("gcloud", "config", "get-value", "project").CombinedOutput()
+		project := strings.TrimSpace(string(oldProject))
 		if err != nil {
 			return fmt.Errorf("failed to get gcloud project: %s, err: %v", oldProject, err)
 		}
-
-		err = setEnvProject(project)
-		if err != nil {
-			return fmt.Errorf("failed to set project environment to %s: %v", project, err)
-		}
-		defer func() {
-			err = setEnvProject(string(oldProject))
+		// TODO: Currently for prow tests with linux cluster, here it manually sets up a project from Boskos.
+		// For Windows, we used kubernetes_e2e.py which already set up the project and kubernetes automatically.
+		// Will update Linux in the future to use the same way as Windows test.
+		if *platform != "windows" {
+			newproject, _ := testutils.SetupProwConfig(*boskosResourceType)
+			err = setEnvProject(newproject)
 			if err != nil {
-				klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
+				return fmt.Errorf("failed to set project environment to %s: %v", newproject, err)
 			}
-		}()
 
-		if *doDriverBuild {
-			*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", project)
+			defer func() {
+				err = setEnvProject(string(oldProject))
+				if err != nil {
+					klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
+				}
+			}()
+			project = newproject
 		}
-
+		if *doDriverBuild {
+			*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", strings.TrimSpace(string(project)))
+		}
 		if _, ok := os.LookupEnv("USER"); !ok {
 			err = os.Setenv("USER", "prow")
 			if err != nil {
@@ -189,7 +200,7 @@ func handle() error {
 
 	// Build and push the driver, if required. Defer the driver image deletion.
 	if *doDriverBuild {
-		err := pushImage(pkgDir, *stagingImage, stagingVersion)
+		err := pushImage(pkgDir, *stagingImage, stagingVersion, *platform)
 		if err != nil {
 			return fmt.Errorf("failed pushing image: %v", err)
 		}
@@ -319,7 +330,7 @@ func handle() error {
 	var testSkip string
 	switch *deploymentStrat {
 	case "gce":
-		testSkip = generateGCETestSkip(clusterVersion)
+		testSkip = generateGCETestSkip(clusterVersion, *platform)
 	case "gke":
 		testSkip = generateGKETestSkip(clusterVersion, *useGKEManagedDriver)
 	default:
@@ -328,7 +339,7 @@ func handle() error {
 
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFile) != 0 {
-		err = runCSITests(pkgDir, testDir, *testFocus, testSkip, *storageClassFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat)
+		err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, *storageClassFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat)
 	} else if *migrationTest {
 		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
 	} else {
@@ -342,7 +353,7 @@ func handle() error {
 	return nil
 }
 
-func generateGCETestSkip(clusterVersion string) string {
+func generateGCETestSkip(clusterVersion, platform string) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
 	v := apimachineryversion.MustParseSemantic(clusterVersion)
 
@@ -352,9 +363,11 @@ func generateGCETestSkip(clusterVersion string) string {
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.16.0")) {
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
 	}
-
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.17.0")) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
+	}
+	if platform == "windows" {
+		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
 	return skipString
 }
@@ -375,7 +388,6 @@ func generateGKETestSkip(clusterVersion string, use_gke_managed_driver bool) str
 		(!use_gke_managed_driver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
-
 	return skipString
 }
 
@@ -396,8 +408,8 @@ func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProvide
 	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
 }
 
-func runCSITests(pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
-	testDriverConfigFile, err := generateDriverConfigFile(pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
+func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
@@ -419,10 +431,12 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 	if ok {
 		reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
 	}
-
-	testArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s %s %s",
-		testFocus,
-		testSkip,
+	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testFocus, testSkip)
+	if *platform == "windows" {
+		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s", *platform)
+	}
+	testArgs := fmt.Sprintf("%s %s %s",
+		ginkgoArgs,
 		testConfigArg,
 		reportArg)
 
@@ -432,7 +446,6 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", testArgs),
 	}
-
 	kubeTestArgs = append(kubeTestArgs, cloudProviderArgs...)
 
 	err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
