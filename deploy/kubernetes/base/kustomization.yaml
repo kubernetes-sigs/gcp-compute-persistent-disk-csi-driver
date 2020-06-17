@@ -1,8 +1,8 @@
-commonLabels:
-  k8s-app: gcp-compute-persistent-disk-csi-driver
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 namespace:
   gce-pd-csi-driver
 resources:
-- node.yaml
-- controller.yaml
-- setup-cluster.yaml
+- controller
+- node_linux
+- node_windows

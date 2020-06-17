@@ -17,6 +17,7 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -28,12 +29,12 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/util/resizefs"
+	"k8s.io/utils/mount"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
 
 type GCENodeServer struct {
@@ -57,9 +58,19 @@ var _ csi.NodeServer = &GCENodeServer{}
 // node boot disk is considered an attachable disk so effective attach limit is
 // one less.
 const (
-	volumeLimitSmall int64 = 15
-	volumeLimitBig   int64 = 127
+	volumeLimitSmall     int64 = 15
+	volumeLimitBig       int64 = 127
+	defaultLinuxFsType         = "ext4"
+	defaultWindowsFsType       = "ntfs"
 )
+
+func getDefaultFsType() string {
+	if runtime.GOOS == "windows" {
+		return defaultWindowsFsType
+	} else {
+		return defaultLinuxFsType
+	}
+}
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// Validate Arguments
@@ -129,10 +140,10 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		}
 
 		sourcePath = stagingTargetPath
-
-		if err := ns.Mounter.Interface.MakeDir(targetPath); err != nil {
+		if err := preparePublishPath(targetPath, ns.Mounter); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", targetPath, err))
 		}
+
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		klog.V(4).Infof("NodePublishVolume with block volume mode")
 
@@ -141,13 +152,13 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 			partition = part
 		}
 
-		sourcePath, err = ns.getDevicePath(volumeID, partition)
+		sourcePath, err = getDevicePath(ns, volumeID, partition)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
 		}
 
 		// Expose block volume as file at target path
-		err = ns.Mounter.MakeFile(targetPath)
+		err = makeFile(targetPath)
 		if err != nil {
 			if removeErr := os.Remove(targetPath); removeErr != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Error removing block file at target path %v: %v, mounti error: %v", targetPath, removeErr, err))
@@ -190,6 +201,18 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
+func makeFile(path string) error {
+	// Create file
+	newFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0750)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %v", path, err)
+	}
+	if err := newFile.Close(); err != nil {
+		return fmt.Errorf("failed to close file %s: %v", path, err)
+	}
+	return nil
+}
+
 func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	// Validate Arguments
 	targetPath := req.GetTargetPath()
@@ -206,12 +229,10 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
-	err := mount.CleanupMountPoint(targetPath, ns.Mounter.Interface, false /* bind mount */)
-	if err != nil {
+	if err := cleanupPublishPath(targetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err, targetPath))
 	}
-
-	klog.V(4).Infof("NodeUnpublishVolume succeded on %v from %s", volumeID, targetPath)
+	klog.V(4).Infof("NodeUnpublishVolume succeeded on %v from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -252,27 +273,19 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
 		partition = part
 	}
+	devicePath, err := getDevicePath(ns, volumeID, partition)
 
-	devicePath, err := ns.getDevicePath(volumeID, partition)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err))
 	}
 
 	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
-	// Part 2: Check if mount already exists at targetpath
+	// Part 2: Check if mount already exists at stagingTargetPath
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := ns.Mounter.Interface.MakeDir(stagingTargetPath); err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create directory (%q): %v", stagingTargetPath, err))
-			}
-			notMnt = true
-		} else {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown error when checking mount point (%q): %v", stagingTargetPath, err))
-		}
+	if err != nil && !os.IsNotExist(err) {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", stagingTargetPath, err))
 	}
-
 	if !notMnt {
 		// TODO(#95): Check who is mounted here. No error if its us
 		/*
@@ -281,15 +294,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			3) Readonly MUST match
 
 		*/
-
-		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
+		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 
 	}
+	if err := prepareStagePath(stagingTargetPath, ns.Mounter); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", stagingTargetPath, err))
+	}
 
 	// Part 3: Mount device to stagingTargetPath
-	// Default fstype is ext4
-	fstype := "ext4"
+	fstype := getDefaultFsType()
+
 	options := []string{}
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		if mnt.FsType != "" {
@@ -300,18 +315,18 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
-		klog.V(4).Infof("NodeStageVolume succeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
+		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	err = ns.Mounter.FormatAndMount(devicePath, stagingTargetPath, fstype, options)
+	err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
 				devicePath, stagingTargetPath, fstype, options, err))
 	}
 
-	klog.V(4).Infof("NodeStageVolume succeded on %v to %s", volumeID, stagingTargetPath)
+	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -331,12 +346,11 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
-	err := mount.CleanupMountPoint(stagingTargetPath, ns.Mounter.Interface, false /* bind mount */)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed to unmount at path %s: %v", stagingTargetPath, err))
+	if err := cleanupStagePath(stagingTargetPath, ns.Mounter); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err, stagingTargetPath))
 	}
 
-	klog.V(4).Infof("NodeUnstageVolume succeded on %v from %s", volumeID, stagingTargetPath)
+	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
@@ -371,12 +385,12 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	exists, err := ns.Mounter.Interface.ExistsPath(req.VolumePath)
+	_, err := os.Stat(req.VolumePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
+		}
 		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", req.VolumePath, err)
-	}
-	if !exists {
-		return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
 	}
 
 	isBlock, err := ns.VolumeStatter.IsBlockDevice(req.VolumePath)
@@ -424,45 +438,45 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID must be provided")
+		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
 	}
 	capacityRange := req.GetCapacityRange()
 	reqBytes, err := getRequestCapacity(capacityRange)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume capacity range is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("capacity range is invalid: %v", err))
 	}
 
 	volumePath := req.GetVolumePath()
 	if len(volumePath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume path must be provided")
+		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
 	volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("volume ID is invalid: %v", err))
 	}
 
-	devicePath, err := ns.getDevicePath(volumeID, "")
+	devicePath, err := getDevicePath(ns, volumeID, "")
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting device path for %s: %v", volumeID, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting device path for %s: %v", volumeID, err))
 	}
 
 	// TODO(#328): Use requested size in resize if provided
 	resizer := resizefs.NewResizeFs(ns.Mounter)
 	_, err = resizer.Resize(devicePath, volumePath)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when resizing volume %s: %v", volKey.String(), err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s: %v", volKey.String(), err))
 
 	}
 
 	// Check the block size
 	gotBlockSizeBytes, err := ns.getBlockSizeBytes(devicePath)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume error when getting size of block volume at path %s: %v", devicePath, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting size of block volume at path %s: %v", devicePath, err))
 	}
 	if gotBlockSizeBytes < reqBytes {
 		// It's possible that the somewhere the volume size was rounded up, getting more size than requested is a success :)
-		return nil, status.Errorf(codes.Internal, "ControllerExpandVolume resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
+		return nil, status.Errorf(codes.Internal, "resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
 	}
 
 	// TODO(dyzz) Some sort of formatted volume could also check the fs size.
@@ -493,49 +507,27 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 }
 
 func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
-	var volumeLimits int64
-
 	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
 	machineType := ns.MetadataService.GetMachineType()
-	if strings.HasPrefix(machineType, "n1-") || strings.HasPrefix(machineType, "custom-") {
-		volumeLimits = volumeLimitBig
-	} else {
-		volumeLimits = volumeLimitSmall
-	}
-	return volumeLimits, nil
-}
 
-func (ns *GCENodeServer) getDevicePath(volumeID string, partition string) (string, error) {
-	volumeKey, err := common.VolumeIDToKey(volumeID)
-	if err != nil {
-		return "", err
+	smallMachineTypes := []string{"f1-micro", "g1-small", "e2-micro", "e2-small", "e2-medium"}
+	for _, st := range smallMachineTypes {
+		if machineType == st {
+			return volumeLimitSmall, nil
+		}
 	}
-	deviceName, err := common.GetDeviceName(volumeKey)
-	if err != nil {
-		return "", fmt.Errorf("error getting device name: %v", err)
-	}
-
-	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
-	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths)
-
-	if err != nil {
-		return "", fmt.Errorf("error verifying GCE PD (%q) is attached: %v", volumeKey.Name, err)
-	}
-	if devicePath == "" {
-		return "", fmt.Errorf("unable to find device path out of attempted paths: %v", devicePaths)
-	}
-	return devicePath, nil
+	return volumeLimitBig, nil
 }
 
 func (ns *GCENodeServer) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := ns.Mounter.Exec.Run("blockdev", "--getsize64", devicePath)
+	output, err := ns.Mounter.Exec.Command("blockdev", "--getsize64", devicePath).CombinedOutput()
 	if err != nil {
 		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
 	}
 	strOut := strings.TrimSpace(string(output))
 	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
 	if err != nil {
-		return -1, fmt.Errorf("failed to parse size %s into int a size", strOut)
+		return -1, fmt.Errorf("failed to parse %s into an int size", strOut)
 	}
 	return gotSizeBytes, nil
 }

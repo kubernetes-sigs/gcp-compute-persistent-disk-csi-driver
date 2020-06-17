@@ -17,14 +17,18 @@ package tests
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
+	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo"
@@ -83,7 +87,78 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Attach Disk
 		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
 
+	It("Should automatically fix symlink errors between /dev/sdx and /dev/by-id if disk is not found", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Set-up instance to have scsi_id where we expect it
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolume(volID, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+
+		}()
+
+		// MESS UP THE symlink
+		devicePaths := mountmanager.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			err = testutils.RmAll(instance, devicePath)
+			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
+		}
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
+
+		// Validate that the link is correct
+		var validated bool
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				break
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
 	})
 
 	It("Should create disks in correct zones when topology is specified", func() {
@@ -425,6 +500,36 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 	})
 
+	It("Should create disks, attach them places, and verify List returns correct results", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		nodeID := testContext.Instance.GetNodeID()
+
+		_, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		defer deleteVolumeOrError(client, volID, p)
+
+		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z)
+		defer deleteVolumeOrError(client, secondVolID, p)
+
+		// Attach volID to current instance
+		err := client.ControllerPublishVolume(volID, nodeID)
+		Expect(err).To(BeNil(), "Failed ControllerPublishVolume")
+		defer client.ControllerUnpublishVolume(volID, nodeID)
+
+		// List Volumes
+		volsToNodes, err := client.ListVolumes()
+		Expect(err).To(BeNil(), "Failed ListVolumes")
+
+		// Verify
+		Expect(volsToNodes[volID]).ToNot(BeNil(), "Couldn't find attached nodes for vol")
+		Expect(volsToNodes[volID]).To(ContainElement(nodeID), "Couldn't find node in attached nodes for vol")
+		Expect(volsToNodes[secondVolID]).To(BeNil(), "Second vol ID attached nodes not nil")
+	})
+
 	It("Should create and delete snapshot for RePD in two zones ", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
@@ -650,10 +755,11 @@ func equalWithinEpsilon(a, b, epsiolon int64) bool {
 	return b-a < epsiolon
 }
 
-func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string) (string, string) {
+func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string) (volName, volID string) {
 	// Create Disk
-	volName := testNamePrefix + string(uuid.NewUUID())
-	volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+	var err error
+	volName = testNamePrefix + string(uuid.NewUUID())
+	volID, err = client.CreateVolume(volName, nil, defaultSizeGb,
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -670,8 +776,19 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
+	return
+}
 
-	return volName, volID
+func deleteVolumeOrError(client *remote.CsiClient, volID, project string) {
+	// Delete Disk
+	err := client.DeleteVolume(volID)
+	Expect(err).To(BeNil(), "DeleteVolume failed")
+
+	// Validate Disk Deleted
+	key, err := common.VolumeIDToKey(volID)
+	Expect(err).To(BeNil(), "Failed to conver volume ID To key")
+	_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 }
 
 func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string) (string, string) {

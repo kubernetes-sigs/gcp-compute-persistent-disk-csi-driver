@@ -15,6 +15,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"math/rand"
 	"os"
@@ -28,14 +29,12 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
-func init() {
-	flag.Set("logtostderr", "true")
-}
-
 var (
-	endpoint          = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
-	gceConfigFilePath = flag.String("cloud-config", "", "Path to GCE cloud provider config")
-	vendorVersion     string
+	cloudConfigFilePath  = flag.String("cloud-config", "", "Path to GCE cloud provider config")
+	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
+	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
+	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
+	vendorVersion        string
 )
 
 const (
@@ -49,6 +48,7 @@ func init() {
 	// Use V(5) for GCE Cloud Provider Call informational logging
 	// Use V(6) for extra repeated/polling information
 	klog.InitFlags(flag.CommandLine)
+	flag.Set("logtostderr", "true")
 }
 
 func main() {
@@ -59,6 +59,8 @@ func main() {
 }
 
 func handle() {
+	var err error
+
 	if vendorVersion == "" {
 		klog.Fatalf("vendorVersion must be set at compile time")
 	}
@@ -66,21 +68,42 @@ func handle() {
 
 	gceDriver := driver.GetGCEDriver()
 
-	//Initialize GCE Driver (Move setup to main?)
-	cloudProvider, err := gce.CreateCloudProvider(vendorVersion, *gceConfigFilePath)
-	if err != nil {
-		klog.Fatalf("Failed to get cloud provider: %v", err)
+	//Initialize GCE Driver
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	//Initialize identity server
+	identityServer := driver.NewIdentityServer(gceDriver)
+
+	//Initialize requirements for the controller service
+	var controllerServer *driver.GCEControllerServer
+	if *runControllerService {
+		cloudProvider, err := gce.CreateCloudProvider(ctx, vendorVersion, *cloudConfigFilePath)
+		if err != nil {
+			klog.Fatalf("Failed to get cloud provider: %v", err)
+		}
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider)
+	} else if *cloudConfigFilePath != "" {
+		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
 
-	mounter := mountmanager.NewSafeMounter()
-	deviceUtils := mountmanager.NewDeviceUtils()
-	statter := mountmanager.NewStatter()
-	ms, err := metadataservice.NewMetadataService()
-	if err != nil {
-		klog.Fatalf("Failed to set up metadata service: %v", err)
+	//Initialize requirements for the node service
+	var nodeServer *driver.GCENodeServer
+	if *runNodeService {
+		mounter, err := mountmanager.NewSafeMounter()
+		if err != nil {
+			klog.Fatalf("Failed to get safe mounter: %v", err)
+		}
+		deviceUtils := mountmanager.NewDeviceUtils()
+		statter := mountmanager.NewStatter()
+		meta, err := metadataservice.NewMetadataService()
+		if err != nil {
+			klog.Fatalf("Failed to set up metadata service: %v", err)
+		}
+		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
 	}
 
-	err = gceDriver.SetupGCEDriver(cloudProvider, mounter, deviceUtils, ms, statter, driverName, vendorVersion)
+	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

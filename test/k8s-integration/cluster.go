@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/klog"
 )
 
@@ -59,7 +61,7 @@ func buildKubernetes(k8sDir, command string) error {
 	return nil
 }
 
-func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
+func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error {
 	kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
 	_, err := os.Stat(kshPath)
 	if err == nil {
@@ -80,6 +82,11 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 		klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 	}
 
+	err = setImageTypeEnvs(imageType)
+	if err != nil {
+		return fmt.Errorf("failed to set image type environment variables: %v", err)
+	}
+
 	err = os.Setenv("NUM_NODES", strconv.Itoa(numNodes))
 	if err != nil {
 		return err
@@ -98,7 +105,35 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int) error {
+func setImageTypeEnvs(imageType string) error {
+	//const image = "ubuntu-1804-bionic-v20191211"
+	//const imageProject = "ubuntu-os-cloud"
+	switch strings.ToLower(imageType) {
+	case "cos":
+	case "gci": // GCI/COS is default type and does not need env vars set
+	case "ubuntu":
+		return errors.New("setting environment vars for bringing up *ubuntu* cluster on GCE is unimplemented")
+		/* TODO(dyzz) figure out how to bring up a Ubuntu cluster on GCE. The below doesn't work.
+		err := os.Setenv("KUBE_OS_DISTRIBUTION", "ubuntu")
+		if err != nil {
+			return err
+		}
+		err = os.Setenv("KUBE_GCE_NODE_IMAGE", image)
+		if err != nil {
+			return err
+		}
+		err = os.Setenv("KUBE_GCE_NODE_PROJECT", imageProject)
+		if err != nil {
+			return err
+		}
+		*/
+	default:
+		return fmt.Errorf("could not set env for image type %s, only gci, cos, ubuntu supported", imageType)
+	}
+	return nil
+}
+
+func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, useManagedDriver bool) error {
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
@@ -117,9 +152,23 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int) error {
 			return err
 		}
 	}
-	cmd := exec.Command("gcloud", "container", "clusters", "create", gkeTestClusterName,
-		locationArg, locationVal, "--cluster-version", *gkeClusterVer, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2")
+
+	var cmd *exec.Cmd
+	cmdParams := []string{"container", "clusters", "create", gkeTestClusterName,
+		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes)}
+	if isVariableSet(gkeClusterVer) {
+		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+	} else {
+		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+	}
+
+	if useManagedDriver {
+		// PD CSI Driver add on is enabled only in gcloud beta.
+		cmdParams = append([]string{"beta"}, cmdParams...)
+		cmdParams = append(cmdParams, "--addons", "GcePersistentDiskCsiDriver")
+	}
+
+	cmd = exec.Command("gcloud", cmdParams...)
 	err = runCommand("Staring E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
@@ -184,7 +233,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	return nil
 }
 
-func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
+func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) {
 	var locationArg, locationVal string
 	switch {
 	case len(gceZone) > 0:
@@ -222,7 +271,7 @@ func getGKEKubeTestArgs(gceZone, gceRegion string) ([]string, error) {
 		"--gcp-network=default",
 		"--check-version-skew=false",
 		"--deployment=gke",
-		"--gcp-node-image=cos",
+		fmt.Sprintf("--gcp-node-image=%s", imageType),
 		"--gcp-network=default",
 		fmt.Sprintf("--cluster=%s", gkeTestClusterName),
 		fmt.Sprintf("--gke-environment=%s", gkeEnv),
@@ -238,7 +287,7 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 		return "", fmt.Errorf("both kube version (%s) and gke version (%s) specified", kubeVersion, gkeVersion)
 	}
 	if kubeVersion == "" && gkeVersion == "" {
-		return "", errors.New("neither kube verison nor gke verison specified")
+		return "", errors.New("neither kube version nor gke version specified")
 	}
 	var v string
 	if kubeVersion != "" {
@@ -256,4 +305,31 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 	}
 	return strings.Join(toks[:2], "."), nil
 
+}
+
+func getKubeClusterVersion() (string, error) {
+	out, err := exec.Command("kubectl", "version", "-o=json").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain cluster version, error: %v", err)
+	}
+	type version struct {
+		ClientVersion *apimachineryversion.Info `json:"clientVersion,omitempty" yaml:"clientVersion,omitempty"`
+		ServerVersion *apimachineryversion.Info `json:"serverVersion,omitempty" yaml:"serverVersion,omitempty"`
+	}
+
+	var v version
+	err = json.Unmarshal(out, &v)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v", err)
+	}
+
+	return v.ServerVersion.GitVersion, nil
+}
+
+func mustGetKubeClusterVersion() string {
+	ver, err := getKubeClusterVersion()
+	if err != nil {
+		klog.Fatalf("Error: %v", err)
+	}
+	return ver
 }

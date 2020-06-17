@@ -18,6 +18,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -137,9 +138,9 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		if err != nil {
 			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
 			if op != nil {
-				ret = fmt.Sprintf("%s: %v", ret, op.Error)
+				ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
 			}
-			return fmt.Errorf(ret)
+			return errors.New(ret)
 		} else if op.Error != nil {
 			return fmt.Errorf("could not create instance %s: %+v", i.name, op.Error)
 		}

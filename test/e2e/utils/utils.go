@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ import (
 )
 
 var (
-	boskos = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
+	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
 
 func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext, error) {
@@ -49,8 +50,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver --endpoint=%s> %s/prog.out 2> %s/prog.err < /dev/null &'",
-		workspace, endpoint, workspace, workspace)
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s 2> %s/prog.out < /dev/null > /dev/null &'",
+		workspace, endpoint, workspace)
 
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
@@ -188,7 +189,7 @@ func ReadBlock(instance *remote.InstanceInfo, path string, length int) (string, 
 }
 
 func GetFSSizeInGb(instance *remote.InstanceInfo, mountPath string) (int64, error) {
-	output, err := instance.SSHNoSudo("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
+	output, err := instance.SSH("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
 	if err != nil {
 		return -1, fmt.Errorf("failed to get size of path %s. Output: %v, error: %v", mountPath, output, err)
 	}
@@ -212,10 +213,69 @@ func GetBlockSizeInGb(instance *remote.InstanceInfo, devicePath string) (int64, 
 	return utilcommon.BytesToGb(n), nil
 }
 
+func Symlink(instance *remote.InstanceInfo, src, dest string) error {
+	output, err := instance.SSH("ln", "-s", src, dest)
+	if err != nil {
+		return fmt.Errorf("failed to symlink from %s to %s. Output: %v, errror: %v", src, dest, output, err)
+	}
+	return nil
+}
+
 func RmAll(instance *remote.InstanceInfo, filePath string) error {
 	output, err := instance.SSH("rm", "-rf", filePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete all %s. Output: %v, errror: %v", filePath, output, err)
 	}
 	return nil
+}
+
+func MkdirAll(instance *remote.InstanceInfo, dir string) error {
+	output, err := instance.SSH("mkdir", "-p", dir)
+	if err != nil {
+		return fmt.Errorf("failed to mkdir -p %s. Output: %v, errror: %v", dir, output, err)
+	}
+	return nil
+}
+
+func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
+	output, err := instance.SSH("cp", src, dest)
+	if err != nil {
+		return fmt.Errorf("failed to copy %s to %s. Output: %v, errror: %v", src, dest, output, err)
+	}
+	return nil
+}
+
+// ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
+// link location - it then finds the backing PD using scsi_id and validates that
+// it is the same as diskName
+func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName string) (bool, error) {
+	const (
+		scsiPattern = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`
+		sdPattern   = "sd\\w"
+	)
+	// regex to parse scsi_id output and extract the serial
+	scsiRegex := regexp.MustCompile(scsiPattern)
+	sdRegex := regexp.MustCompile(sdPattern)
+
+	devSDX, err := instance.SSH("find", link, "-printf", "'%l'")
+	if err != nil {
+		return false, fmt.Errorf("failed to find %s's symbolic link. Output: %v, errror: %v", link, devSDX, err)
+	}
+	if len(devSDX) == 0 {
+		return false, nil
+	}
+	sdx := sdRegex.Find([]byte(devSDX))
+	fullDevPath := path.Join("/dev/", string(sdx))
+	scsiIDOut, err := instance.SSH("/lib/udev_containerized/scsi_id", "--page=0x83", "--whitelisted", fmt.Sprintf("--device=%v", fullDevPath))
+	if err != nil {
+		return false, fmt.Errorf("failed to find %s's SCSI ID. Output: %v, errror: %v", devSDX, scsiIDOut, err)
+	}
+	scsiID := scsiRegex.FindStringSubmatch(scsiIDOut)
+	if len(scsiID) == 0 {
+		return false, fmt.Errorf("scsi_id output cannot be parsed: %s", scsiID)
+	}
+	if scsiID[1] != diskName {
+		return false, fmt.Errorf("scsiID %s did not match expected diskName %s", scsiID, diskName)
+	}
+	return true, nil
 }

@@ -94,6 +94,16 @@ var _ = BeforeSuite(func() {
 				klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 			}
 
+			err = testutils.MkdirAll(i, "/lib/udev_containerized")
+			if err != nil {
+				klog.Fatalf("Could not make scsi_id containerized directory: %v", err)
+			}
+
+			err = testutils.CopyFile(i, "/lib/udev/scsi_id", "/lib/udev_containerized/scsi_id")
+			if err != nil {
+				klog.Fatalf("could not copy scsi_id to containerized directory: %v", err)
+			}
+
 			klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
 			testContext, err := testutils.GCEClientAndDriverSetup(i)

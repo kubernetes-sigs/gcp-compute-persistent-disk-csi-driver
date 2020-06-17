@@ -1,12 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../alpha
 patches:
 - controller_always_pull.yaml
 - node_always_pull.yaml
-images:
-# Replace this with your private image names and tags
-- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/dyzz-csi-staging/csi/gce-pd-driver
-  newTag: "latest"
+namespace:
+  gce-pd-csi-driver
+transformers:
+- ../../images/dev
+

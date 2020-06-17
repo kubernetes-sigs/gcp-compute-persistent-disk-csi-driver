@@ -142,6 +142,18 @@ func (c *CsiClient) ControllerPublishVolume(volId, nodeId string) error {
 	return err
 }
 
+func (c *CsiClient) ListVolumes() (map[string]([]string), error) {
+	resp, err := c.ctrlClient.ListVolumes(context.Background(), &csipb.ListVolumesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	vols := map[string]([]string){}
+	for _, e := range resp.Entries {
+		vols[e.Volume.VolumeId] = e.Status.PublishedNodeIds
+	}
+	return vols, nil
+}
+
 func (c *CsiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	cupreq := &csipb.ControllerUnpublishVolumeRequest{
 		VolumeId: volId,

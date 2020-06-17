@@ -15,8 +15,10 @@ limitations under the License.
 package gcecloudprovider
 
 import (
-	computealpha "google.golang.org/api/compute/v0.alpha"
+	"strings"
+
 	computev1 "google.golang.org/api/compute/v1"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 )
 
 type CloudDisk struct {
@@ -125,19 +127,25 @@ func (d *CloudDisk) GetKind() string {
 	}
 }
 
-func (d *CloudDisk) GetType() string {
+// GetPDType returns the type of the PD as either 'pd-standard' or 'pd-ssd' The
+// "Type" field on the compute disk is stored as a url like
+// projects/project/zones/zone/diskTypes/pd-standard
+func (d *CloudDisk) GetPDType() string {
+	var pdType string
 	switch d.Type() {
 	case Zonal:
-		return d.ZonalDisk.Type
+		pdType = d.ZonalDisk.Type
 	case Regional:
-		return d.RegionalDisk.Type
+		pdType = d.RegionalDisk.Type
 	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Type
+		pdType = d.ZonalAlphaDisk.Type
 	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Type
+		pdType = d.RegionalAlphaDisk.Type
 	default:
 		return ""
 	}
+	respType := strings.Split(pdType, "/")
+	return strings.TrimSpace(respType[len(respType)-1])
 }
 
 func (d *CloudDisk) GetSelfLink() string {
@@ -213,6 +221,22 @@ func (d *CloudDisk) GetSnapshotId() string {
 	default:
 		return ""
 	}
+}
+
+func (d *CloudDisk) GetKMSKeyName() string {
+	var dek *computev1.CustomerEncryptionKey
+	switch d.Type() {
+	case Zonal:
+		dek = d.ZonalDisk.DiskEncryptionKey
+	case Regional:
+		dek = d.RegionalDisk.DiskEncryptionKey
+	default:
+		return ""
+	}
+	if dek == nil {
+		return ""
+	}
+	return dek.KmsKeyName
 }
 
 func (d *CloudDisk) GetMultiWriter() bool {

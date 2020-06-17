@@ -30,7 +30,7 @@ func (m *fakeDeviceUtils) GetDiskByIdPaths(pdName string, partition string) []st
 }
 
 // Returns the first path that exists, or empty string if none exist.
-func (m *fakeDeviceUtils) VerifyDevicePath(devicePaths []string) (string, error) {
+func (m *fakeDeviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (string, error) {
 	// Return any random device path to use as mount source
 	return "/dev/disk/fake-path", nil
 }

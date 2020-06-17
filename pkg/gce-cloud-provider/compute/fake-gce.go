@@ -28,6 +28,9 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 const (
@@ -41,25 +44,35 @@ type FakeCloudProvider struct {
 	project string
 	zone    string
 
-	disks     map[string]*CloudDisk
-	instances map[string]*computev1.Instance
-	snapshots map[string]*computev1.Snapshot
+	disks      map[string]*CloudDisk
+	pageTokens map[string]sets.String
+	instances  map[string]*computev1.Instance
+	snapshots  map[string]*computev1.Snapshot
 }
 
 var _ GCECompute = &FakeCloudProvider{}
 
 func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
 	fcp := &FakeCloudProvider{
-		project:   project,
-		zone:      zone,
-		disks:     map[string]*CloudDisk{},
-		instances: map[string]*computev1.Instance{},
-		snapshots: map[string]*computev1.Snapshot{},
+		project:    project,
+		zone:       zone,
+		disks:      map[string]*CloudDisk{},
+		instances:  map[string]*computev1.Instance{},
+		snapshots:  map[string]*computev1.Snapshot{},
+		pageTokens: map[string]sets.String{},
 	}
 	for _, d := range cloudDisks {
 		fcp.disks[d.GetName()] = d
 	}
 	return fcp, nil
+}
+
+func (cloud *FakeCloudProvider) GetDefaultProject() string {
+	return cloud.project
+}
+
+func (cloud *FakeCloudProvider) GetDefaultZone() string {
+	return cloud.zone
 }
 
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
@@ -92,6 +105,45 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 
 func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
 	return []string{cloud.zone, "country-region-fakesecondzone"}, nil
+}
+
+func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error) {
+	// Ignore page tokens for now
+	var seen sets.String
+	var ok bool
+	var count int64 = 0
+	var newToken string
+	d := []*computev1.Disk{}
+
+	if pageToken != "" {
+		seen, ok = cloud.pageTokens[pageToken]
+		if !ok {
+			return nil, "", invalidError()
+		}
+	} else {
+		seen = sets.NewString()
+	}
+
+	if maxEntries == 0 {
+		maxEntries = 500
+	}
+
+	for name, cd := range cloud.disks {
+		// Only return zonal disks for simplicity
+		if !seen.Has(name) {
+			d = append(d, cd.ZonalDisk)
+			seen.Insert(name)
+			count++
+		}
+
+		if count >= maxEntries {
+			newToken = string(uuid.NewUUID())
+			cloud.pageTokens[newToken] = seen
+			break
+		}
+	}
+
+	return d, newToken, nil
 }
 
 func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*computev1.Snapshot, string, error) {
@@ -163,7 +215,7 @@ func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key, a
 	return disk, nil
 }
 
-func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, diskType string, reqBytes, limBytes int64, multiWriter bool) error {
+func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error {
 	if resp == nil {
 		return fmt.Errorf("disk does not exist")
 	}
@@ -189,12 +241,12 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	}
 
 	klog.V(4).Infof("Compatible disk already exists")
-	return nil
+	return ValidateDiskParameters(resp, params)
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, diskType string, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID, diskEncryptionKmsKey string, multiWriter bool) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, multiWriter bool) error {
 	if disk, ok := cloud.disks[volKey.Name]; ok {
-		err := cloud.ValidateExistingDisk(ctx, disk, diskType,
+		err := cloud.ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
 			int64(capacityRange.GetLimitBytes()),
 			multiWriter)
@@ -210,13 +262,13 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Name:             volKey.Name,
 			SizeGb:           common.BytesToGb(capBytes),
 			Description:      "Disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
 			SourceSnapshotId: snapshotID,
 		}
-		if diskEncryptionKmsKey != "" {
+		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateGA.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: diskEncryptionKmsKey,
+				KmsKeyName: params.DiskEncryptionKMSKey,
 			}
 		}
 		diskToCreate = ZonalCloudDisk(diskToCreateGA)
@@ -225,13 +277,13 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Name:             volKey.Name,
 			SizeGb:           common.BytesToGb(capBytes),
 			Description:      "Regional disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, diskType),
+			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
 			SourceSnapshotId: snapshotID,
 		}
-		if diskEncryptionKmsKey != "" {
+		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateV1.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: diskEncryptionKmsKey,
+				KmsKeyName: params.DiskEncryptionKMSKey,
 			}
 		}
 		diskToCreate = RegionalCloudDisk(diskToCreateV1)

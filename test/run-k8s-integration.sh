@@ -19,19 +19,34 @@ readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly gce_region=${GCE_CLUSTER_REGION:-}
+readonly image_type=${IMAGE_TYPE:-cos}
+readonly use_gke_managed_driver=${USE_GKE_MANAGED_DRIVER:-false}
+readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
+readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 
 export GCE_PD_VERBOSITY=9
 
 make -C ${PKGDIR} test-k8s-integration
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
-            --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
-            --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-file=sc-standard.yaml --test-focus="External.Storage" \
-            --deployment-strategy=${deployment_strategy} --test-version=${test_version} --num-nodes=3"
+            --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
+            --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
+            --storageclass-file=sc-standard.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus="External.Storage" \
+            --deployment-strategy=${deployment_strategy} --test-version=${test_version} --num-nodes=3 \
+            --image-type=${image_type}"
+
+if [ "$use_gke_managed_driver" = false ]; then
+  base_cmd="${base_cmd} --deploy-overlay-name=${overlay_name}"
+else
+  base_cmd="${base_cmd} --use-gke-managed-driver=${use_gke_managed_driver}"
+fi
 
 if [ "$deployment_strategy" = "gke" ]; then
-  base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
+  if [ "$gke_release_channel" ]; then
+    base_cmd="${base_cmd} --gke-release-channel=${gke_release_channel}"
+  else
+    base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
+  fi
 else
   base_cmd="${base_cmd} --kube-version=${kube_version}"
 fi

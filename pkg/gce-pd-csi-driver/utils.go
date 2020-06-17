@@ -23,7 +23,6 @@ import (
 	"context"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
 )
@@ -53,12 +52,12 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	klog.V(4).Infof("%s called with request: %+v", info.FullMethod, protosanitizer.StripSecrets(req))
+	klog.V(4).Infof("%s called with request: %+v", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
 		klog.Errorf("%s returned with error: %v", info.FullMethod, err)
 	} else {
-		klog.V(4).Infof("%s returned with response: %+v", info.FullMethod, protosanitizer.StripSecrets(resp))
+		klog.V(4).Infof("%s returned with response: %+v", info.FullMethod, resp)
 	}
 	return resp, err
 }
