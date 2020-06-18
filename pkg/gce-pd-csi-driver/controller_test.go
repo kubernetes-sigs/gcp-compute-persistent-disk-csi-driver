@@ -1549,3 +1549,111 @@ func TestVolumeOperationConcurrency(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
+
+func TestCreateVolumeDiskReady(t *testing.T) {
+	// Define test cases
+	testCases := []struct {
+		name       string
+		diskStatus string
+		req        *csi.CreateVolumeRequest
+		expVol     *csi.Volume
+		expErrCode codes.Code
+	}{
+		{
+			name:       "disk status RESTORING",
+			diskStatus: "RESTORING",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.Internal,
+		},
+		{
+			name:       "disk status CREATING",
+			diskStatus: "CREATING",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.Internal,
+		},
+		{
+			name:       "disk status DELETING",
+			diskStatus: "DELETING",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.Internal,
+		},
+		{
+			name:       "disk status FAILED",
+			diskStatus: "FAILED",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expErrCode: codes.Internal,
+		},
+		{
+			name:       "success default",
+			diskStatus: "READY",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+
+			// Setup hook to create new disks with given status.
+			fcp.UpdateDiskStatus(tc.diskStatus)
+			// Setup new driver each time so no interference
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			// Start Test
+			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+			//check response
+			if err != nil {
+				serverError, ok := status.FromError(err)
+				if !ok {
+					t.Fatalf("Could not get error status code from err: %v", serverError)
+				}
+				if serverError.Code() != tc.expErrCode {
+					t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+				}
+				return
+			}
+			if tc.expErrCode != codes.OK {
+				t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+			}
+
+			vol := resp.GetVolume()
+			if !reflect.DeepEqual(vol, tc.expVol) {
+				t.Fatalf("Mismatch in expected vol %v, current volume: %v\n", tc.expVol, vol)
+			}
+		})
+	}
+}
