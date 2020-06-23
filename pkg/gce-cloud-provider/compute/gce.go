@@ -92,7 +92,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	alphasvc, err := createAlphaCloudService(vendorVersion, tokenSource)
+	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -158,8 +158,8 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createAlphaCloudService(vendorVersion string, tokenSource oauth2.TokenSource) (*alpha.Service, error) {
-	client, err := newOauthClient(tokenSource)
+func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*alpha.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}

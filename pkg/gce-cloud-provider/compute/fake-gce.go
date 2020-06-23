@@ -227,12 +227,12 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
 	}
 
-	respType := strings.Split(resp.GetType(), "/")
-	typeMatch := strings.TrimSpace(respType[len(respType)-1]) == strings.TrimSpace(diskType)
-	typeDefault := diskType == "" && strings.TrimSpace(respType[len(respType)-1]) == "pd-standard"
+	respType := strings.Split(resp.GetPDType(), "/")
+	typeMatch := strings.TrimSpace(respType[len(respType)-1]) == strings.TrimSpace(params.DiskType)
+	typeDefault := params.DiskType == "" && strings.TrimSpace(respType[len(respType)-1]) == "pd-standard"
 	if !typeMatch && !typeDefault {
 		return fmt.Errorf("disk already exists with incompatible type. Need %v. Got %v",
-			diskType, respType[len(respType)-1])
+			params.DiskType, respType[len(respType)-1])
 	}
 
 	// We are assuming here that a multiWriter disk could be used as non-multiWriter
