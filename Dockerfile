@@ -14,7 +14,7 @@
 
 
 
-FROM golang:1.13.4-alpine3.10 as builder
+FROM golang:1.14.4-alpine3.12 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
 ARG TAG
