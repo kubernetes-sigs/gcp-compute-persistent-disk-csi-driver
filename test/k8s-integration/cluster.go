@@ -161,6 +161,8 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
 	} else {
 		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+		// release channel based GKE clusters require autorepair to be enabled.
+		cmdParams = append(cmdParams, "--enable-autorepair")
 	}
 
 	if useManagedDriver {
