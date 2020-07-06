@@ -92,6 +92,17 @@ func (d *CloudDisk) GetKind() string {
 	}
 }
 
+func (d *CloudDisk) GetStatus() string {
+	switch d.Type() {
+	case Zonal:
+		return d.ZonalDisk.Status
+	case Regional:
+		return d.RegionalDisk.Status
+	default:
+		return "Unknown"
+	}
+}
+
 // GetPDType returns the type of the PD as either 'pd-standard' or 'pd-ssd' The
 // "Type" field on the compute disk is stored as a url like
 // projects/project/zones/zone/diskTypes/pd-standard
