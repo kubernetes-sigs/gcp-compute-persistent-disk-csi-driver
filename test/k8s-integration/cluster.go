@@ -155,11 +155,14 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 
 	var cmd *exec.Cmd
 	cmdParams := []string{"container", "clusters", "create", gkeTestClusterName,
-		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes)}
+		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
+		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType}
 	if isVariableSet(gkeClusterVer) {
 		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
 	} else {
 		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+		// release channel based GKE clusters require autorepair to be enabled.
+		cmdParams = append(cmdParams, "--enable-autorepair")
 	}
 
 	if useManagedDriver {

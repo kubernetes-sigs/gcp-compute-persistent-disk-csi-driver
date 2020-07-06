@@ -48,6 +48,9 @@ type FakeCloudProvider struct {
 	pageTokens map[string]sets.String
 	instances  map[string]*computev1.Instance
 	snapshots  map[string]*computev1.Snapshot
+
+	// marker to set disk status during InsertDisk operation.
+	mockDiskStatus string
 }
 
 var _ GCECompute = &FakeCloudProvider{}
@@ -60,6 +63,8 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		instances:  map[string]*computev1.Instance{},
 		snapshots:  map[string]*computev1.Snapshot{},
 		pageTokens: map[string]sets.String{},
+		// A newly created disk is marked READY by default.
+		mockDiskStatus: "READY",
 	}
 	for _, d := range cloudDisks {
 		fcp.disks[d.GetName()] = d
@@ -265,6 +270,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
 			SourceSnapshotId: snapshotID,
+			Status:           cloud.mockDiskStatus,
 		}
 		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateGA.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
@@ -280,6 +286,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
 			SourceSnapshotId: snapshotID,
+			Status:           cloud.mockDiskStatus,
 		}
 		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateV1.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
@@ -479,6 +486,10 @@ func (cloud *FakeCloudProvider) getGlobalSnapshotURI(snapshotName string) string
 		snapshotURITemplateGlobal,
 		cloud.project,
 		snapshotName)
+}
+
+func (cloud *FakeCloudProvider) UpdateDiskStatus(s string) {
+	cloud.mockDiskStatus = s
 }
 
 type FakeBlockingCloudProvider struct {
