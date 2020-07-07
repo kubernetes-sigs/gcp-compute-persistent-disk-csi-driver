@@ -87,7 +87,7 @@ func deleteDriver(goPath, pkgDir, deployOverlayName string) error {
 	return nil
 }
 
-func pushImage(pkgDir, stagingImage, stagingVersion string) error {
+func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", stagingVersion)
 	if err != nil {
 		return err
@@ -96,9 +96,16 @@ func pushImage(pkgDir, stagingImage, stagingVersion string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("make", "-C", pkgDir, "push-container",
-		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	var cmd *exec.Cmd
+	if platform != "windows" {
+		cmd = exec.Command("make", "-C", pkgDir, "push-container",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	} else {
+		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-1909",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	}
 	err = runCommand("Pushing GCP Container", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run make command: err: %v", err)

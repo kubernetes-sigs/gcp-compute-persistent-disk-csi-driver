@@ -7,13 +7,8 @@ SnapshotClass:
 DriverInfo:
   Name: csi-gcepd
   SupportedFsType:
-    ext2:
-    ext3:
-    ext4:
-    xfs:
-    # The following FS types supported by GCE PD but
-    # currently we do not test the CSI Driver on Windows
-    # ntfs: NTFS only available on Windows
+  {{range .SupportedFsType}}  {{ . }}:
+  {{end}}
   Capabilities:
   {{range .Capabilities}}  {{ . }}: true
   {{end}}
