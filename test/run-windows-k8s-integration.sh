@@ -11,7 +11,7 @@ set -o errexit
 
 readonly GCE_PD_DO_DRIVER_BUILD=false
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
-readonly LOCAL_K8S_DIR=${GOPATH}/src/k8s.io/kubernetes
+readonly k8s_dir=${PKGDIR}/kubernetes
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-alpha}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
@@ -22,7 +22,7 @@ readonly teardown_driver=${GCE_CLUSTER_ZONE:-true}
 make -C ${PKGDIR} test-k8s-integration
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
-            --platform=windows --local-k8s-dir=${LOCAL_K8S_DIR} --bringup-cluster=false --teardown-cluster=false --teardown-driver=${teardown_driver}\
+            --platform=windows --local-k8s-dir=${k8s_dir} --bringup-cluster=false --teardown-cluster=false --teardown-driver=${teardown_driver}\
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --gce-zone=${gce_zone}\
             --storageclass-file=sc-windows.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus="External.Storage" \

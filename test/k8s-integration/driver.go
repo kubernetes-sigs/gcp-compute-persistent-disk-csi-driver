@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"k8s.io/klog"
 )
 
 func getOverlayDir(pkgDir, deployOverlayName string) string {
@@ -65,12 +67,18 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 
 	// TODO (#139): wait for driver to be running
 	time.Sleep(time.Minute)
-	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "default")
+	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "gce-pd-csi-driver")
 	err = runCommand("Checking driver pods", statusCmd)
 	if err != nil {
 		return fmt.Errorf("failed to check driver pods: %v", err)
 	}
-
+	time.Sleep(time.Minute)
+	statusCmd = exec.Command("kubectl", "describe", "pods", "-n", "gce-pd-csi-driver")
+	out, err = statusCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to get nodes: %v", err)
+	}
+	klog.Infof("Jing add pod %v", string(out))
 	return nil
 }
 
