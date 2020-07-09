@@ -298,6 +298,23 @@ func handle() error {
 			}
 		}()
 	}
+	// For windows cluster, when cluster is up, all Windows nodes are tainted with NoSchedule to avoid linux pods
+	// being scheduled to Windows nodes. When running windows tests, we need to remove the taint.
+	if *platform == "windows" {
+		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "beta.kubernetes.io/os=windows", "-o", "name")
+		out, err := nodesCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to get nodes: %v", err)
+		}
+		nodes := strings.Fields(string(out))
+		for _, node := range nodes {
+			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule-")
+			_, err = taintCmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to untaint windows node %v", err)
+			}
+		}
+	}
 
 	if !*useGKEManagedDriver {
 		// Install the driver and defer its teardown
