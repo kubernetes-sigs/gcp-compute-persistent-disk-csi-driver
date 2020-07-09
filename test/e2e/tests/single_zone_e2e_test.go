@@ -37,7 +37,6 @@ import (
 	"google.golang.org/api/iterator"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 	fieldmask "google.golang.org/genproto/protobuf/field_mask"
-	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
 
 const (

@@ -291,11 +291,11 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 		return fmt.Errorf("actual pd type %s did not match the expected param %s", disk.GetPDType(), params.DiskType)
 	}
 
-	if params.ReplicationType == "none" && disk.Type() != Zonal {
+	if params.ReplicationType == "none" && disk.Type() != Zonal && disk.Type() != ZonalAlpha {
 		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), params.ReplicationType)
 	}
 
-	if params.ReplicationType == "regional-pd" && disk.Type() != Regional {
+	if params.ReplicationType == "regional-pd" && disk.Type() != Regional && disk.Type() != RegionalAlpha {
 		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), "regional-pd")
 	}
 
@@ -393,7 +393,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	}
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
+			disk, err := cloud.GetDisk(ctx, volKey, gceAPIVersion)
 			if err != nil {
 				return err
 			}
@@ -413,7 +413,7 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	err = cloud.waitForRegionalOp(ctx, opName, volKey.Region)
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
-			disk, err := cloud.GetDisk(ctx, volKey, GCEAPIVersionV1)
+			disk, err := cloud.GetDisk(ctx, volKey, gceAPIVersion)
 			if err != nil {
 				return err
 			}
@@ -714,16 +714,6 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, volKey *meta.Key,
 }
 
 func opIsDone(op *computev1.Operation) (bool, error) {
-	if op == nil || op.Status != operationStatusDone {
-		return false, nil
-	}
-	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
-		return true, fmt.Errorf("operation %v failed (%v): %v", op.Name, op.Error.Errors[0].Code, op.Error.Errors[0].Message)
-	}
-	return true, nil
-}
-
-func alphaOpIsDone(op *computealpha.Operation) (bool, error) {
 	if op == nil || op.Status != operationStatusDone {
 		return false, nil
 	}

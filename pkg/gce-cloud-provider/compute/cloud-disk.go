@@ -17,8 +17,8 @@ package gcecloudprovider
 import (
 	"strings"
 
-	computev1 "google.golang.org/api/compute/v1"
 	computealpha "google.golang.org/api/compute/v0.alpha"
+	computev1 "google.golang.org/api/compute/v1"
 )
 
 type CloudDisk struct {
@@ -133,6 +133,10 @@ func (d *CloudDisk) GetStatus() string {
 		return d.ZonalDisk.Status
 	case Regional:
 		return d.RegionalDisk.Status
+	case ZonalAlpha:
+		return d.ZonalAlphaDisk.Status
+	case RegionalAlpha:
+		return d.RegionalAlphaDisk.Status
 	default:
 		return "Unknown"
 	}
@@ -236,18 +240,26 @@ func (d *CloudDisk) GetSnapshotId() string {
 
 func (d *CloudDisk) GetKMSKeyName() string {
 	var dek *computev1.CustomerEncryptionKey
+	var dekAlpha *computealpha.CustomerEncryptionKey
 	switch d.Type() {
 	case Zonal:
 		dek = d.ZonalDisk.DiskEncryptionKey
 	case Regional:
 		dek = d.RegionalDisk.DiskEncryptionKey
+	case ZonalAlpha:
+		dekAlpha = d.ZonalAlphaDisk.DiskEncryptionKey
+	case RegionalAlpha:
+		dekAlpha = d.RegionalAlphaDisk.DiskEncryptionKey
 	default:
 		return ""
 	}
-	if dek == nil {
-		return ""
+
+	if dek != nil {
+		return dek.KmsKeyName
+	} else if dekAlpha != nil {
+		return dekAlpha.KmsKeyName
 	}
-	return dek.KmsKeyName
+	return ""
 }
 
 func (d *CloudDisk) GetMultiWriter() bool {
