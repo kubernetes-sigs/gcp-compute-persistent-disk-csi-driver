@@ -1,11 +1,15 @@
 reviewers:
-  - msau42
   - davidz627
-  - saad-ali
-  - verult
   - jingxu97
+  - mattcary
+  - msau42
+  - saad-ali
+  - saikat-royc
+  - verult
 approvers:
   - davidz627
-  - saad-ali
+  - mattcary
   - msau42
+  - saad-ali
+  - saikat-royc
   - verult
