@@ -9,7 +9,6 @@
 set -o nounset
 set -o errexit
 
-readonly GCE_PD_DO_DRIVER_BUILD=false
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 readonly k8s_dir=${PKGDIR}/kubernetes
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-alpha}"
