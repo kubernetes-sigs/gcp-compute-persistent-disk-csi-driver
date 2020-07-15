@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"k8s.io/kubernetes/test/e2e/framework/podlogs"
 )
 
 func getOverlayDir(pkgDir, deployOverlayName string) string {
@@ -65,7 +68,7 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 
 	// TODO (#139): wait for driver to be running
 	time.Sleep(time.Minute)
-	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "default")
+	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace)
 	err = runCommand("Checking driver pods", statusCmd)
 	if err != nil {
 		return fmt.Errorf("failed to check driver pods: %v", err)
@@ -120,4 +123,30 @@ func deleteImage(stagingImage, stagingVersion string) error {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
 	}
 	return nil
+}
+
+// dumpDriverLogs will watch all pods in the driver namespace
+// and copy its logs to the test artifacts directory, if set.
+// It returns a context.CancelFunc that needs to be invoked when
+// the test is finished.
+func dumpDriverLogs() (context.CancelFunc, error) {
+	// Dump all driver logs to the test artifacts
+	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
+	if ok {
+		client, err := getKubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get kubeclient: %v", err)
+		}
+		out := podlogs.LogOutput{
+			StatusWriter:  os.Stdout,
+			LogPathPrefix: filepath.Join(artifactsDir, "pd-csi-driver") + "/",
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		if err = podlogs.CopyAllLogs(ctx, client, driverNamespace, out); err != nil {
+			return cancel, fmt.Errorf("failed to start pod logger: %v", err)
+		}
+		return cancel, nil
+	}
+	return nil, nil
+
 }
