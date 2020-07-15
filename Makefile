@@ -27,11 +27,11 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 all: gce-pd-driver
 gce-pd-driver:
 	mkdir -p bin
-	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
+	go build -mod=vendor -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
 
 gce-pd-driver-windows:
 	mkdir -p bin
-	GOOS=windows go build -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/
+	GOOS=windows go build -mod=vendor -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/
 
 build-container:
 ifndef GCE_PD_CSI_STAGING_IMAGE
@@ -59,8 +59,8 @@ push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 test-sanity: gce-pd-driver
-	go test -v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
+	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
 
 test-k8s-integration:
-	go build -o bin/k8s-integration-test ./test/k8s-integration
+	go build -mod=vendor -o bin/k8s-integration-test ./test/k8s-integration
 
