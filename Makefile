@@ -24,7 +24,7 @@ STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 DRIVERBINARY=gce-pd-csi-driver
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
-all: gce-pd-driver
+all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
 	go build -mod=vendor -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
