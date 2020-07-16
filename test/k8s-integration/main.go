@@ -25,27 +25,29 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
 
 var (
 	// Kubernetes cluster flags
-	teardownCluster   = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	teardownDriver    = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
-	bringupCluster    = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	platform          = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
-	gceZone           = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
-	gceRegion         = flag.String("gce-region", "", "region that gke regional cluster should be created in")
-	kubeVersion       = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
-	testVersion       = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
-	kubeFeatureGates  = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
-	localK8sDir       = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
-	deploymentStrat   = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
-	gkeClusterVer     = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
-	numNodes          = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
-	imageType         = flag.String("image-type", "cos", "the image type to use for the cluster")
-	gkeReleaseChannel = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
+	teardownCluster    = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver     = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster     = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	platform           = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
+	gceZone            = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
+	gceRegion          = flag.String("gce-region", "", "region that gke regional cluster should be created in")
+	kubeVersion        = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
+	testVersion        = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
+	kubeFeatureGates   = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	localK8sDir        = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
+	deploymentStrat    = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
+	gkeClusterVer      = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
+	numNodes           = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	imageType          = flag.String("image-type", "cos", "the image type to use for the cluster")
+	gkeReleaseChannel  = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
+	gkeTestClusterName = flag.String("gke-cluster-name", "gcp-pd-csi-driver-test-cluster", "GKE cluster name")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -69,7 +71,7 @@ const (
 	pdImagePlaceholder        = "gke.gcr.io/gcp-compute-persistent-disk-csi-driver"
 	k8sInDockerBuildBinDir    = "_output/dockerized/bin/linux/amd64"
 	k8sOutOfDockerBuildBinDir = "_output/bin"
-	gkeTestClusterName        = "gcp-pd-csi-driver-test-cluster"
+	driverNamespace           = "gce-pd-csi-driver"
 )
 
 func init() {
@@ -79,7 +81,7 @@ func init() {
 func main() {
 	flag.Parse()
 
-	if !*inProw && !*useGKEManagedDriver {
+	if !*inProw && *doDriverBuild {
 		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
 
@@ -302,7 +304,6 @@ func handle() error {
 		err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
 		if *teardownDriver {
 			defer func() {
-				// TODO (#140): collect driver logs
 				if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
 					klog.Errorf("failed to delete driver: %v", teardownErr)
 				}
@@ -311,6 +312,17 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to install CSI Driver: %v", err)
 		}
+
+		// Dump all driver logs to the test artifacts
+		cancel, err := dumpDriverLogs()
+		if err != nil {
+			return fmt.Errorf("failed to start driver logging: %v", err)
+		}
+		defer func() {
+			if cancel != nil {
+				cancel()
+			}
+		}()
 	}
 
 	var cloudProviderArgs []string
@@ -423,8 +435,11 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 		return err
 	}
 
-	homeDir, _ := os.LookupEnv("HOME")
-	os.Setenv("KUBECONFIG", filepath.Join(homeDir, ".kube/config"))
+	kubeconfig, err := getKubeConfig()
+	if err != nil {
+		return err
+	}
+	os.Setenv("KUBECONFIG", kubeconfig)
 
 	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
 	reportArg := ""
