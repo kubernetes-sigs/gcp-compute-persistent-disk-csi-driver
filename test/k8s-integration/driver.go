@@ -71,9 +71,8 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace)
 	err = runCommand("Checking driver pods", statusCmd)
 	if err != nil {
-		return fmt.Errorf("failed to check driver pods: %v", err)
+		return fmt.Errorf("failed to describe pods: %v", err)
 	}
-
 	return nil
 }
 
