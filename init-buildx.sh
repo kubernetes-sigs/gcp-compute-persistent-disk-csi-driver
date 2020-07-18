@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -o errexit -o nounset -o pipefail
+set -o errexit
+set -o nounset
 
 export DOCKER_CLI_EXPERIMENTAL=enabled
-
 # Ensure we use a builder that can leverage it (the default on linux will not)
 docker buildx rm windows-builder || true
 docker buildx create --use --name=windows-builder
+# Register gcloud as a Docker credential helper.
+# Required for "docker buildx build --push".
+gcloud auth configure-docker --quiet;
