@@ -15,4 +15,4 @@ metadata:
 imageTag:
   name: gke.gcr.io/k8s-staging-csi/csi-node-driver-registrar-win
   newName: gcr.io/k8s-staging-csi/csi-node-driver-registrar
-  newTag: "amd64-windows-v20200428-v1.3.0-26-g510710d5"
+  newTag: "amd64-windows-canary"

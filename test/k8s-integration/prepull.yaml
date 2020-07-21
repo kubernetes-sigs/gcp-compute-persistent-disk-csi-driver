@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prepull-test-containers
+spec:
+  selector:
+    matchLabels:
+      prepull-test-images: e2e
+  template:
+    metadata:
+      labels:
+        prepull-test-images: e2e
+    spec:
+      nodeSelector:
+        kubernetes.io/os: windows
+      # To see containers that are known to be used in e2e tests, run this
+      # command against the build-log.txt output from a test run:
+      #   grep -v 'Node Info: &Node' build-log.txt \
+      #     | grep -ho -E 'e2eteam/([[:alnum:]_-]+):([[:alnum:]./_-]+)' \
+      #     | sort | uniq
+      # NOTE: this command captures only a subset of the test containers,
+      # unfortunately; not all test containers will have their names printed in
+      # the test output. Running the command against the output from multiple
+      # test runs is also recommended. Filtering out the 'Node Info' lines
+      # avoids capturing containers that are only found in the test log
+      # *because* we prepulled them. Overall this command may be useful for
+      # detecting newly-used test containers but there's not a great way to
+      # prune unused containers from this manifest right now.
+      #
+      # Examining initImageConfigs() in https://github.com/kubernetes/kubernetes/blob/master/test/utils/image/manifest.go may also help, but many of the containers listed there are only used for Linux tests.
+      #
+      # DaemonSets do not support a RestartPolicy other than 'Always', so we
+      # run ping in each container to keep it alive so that kubernetes does not
+      # continually restart the containers while we're prepulling.
+      containers:
+      - image: e2eteam/agnhost:2.20
+        name: agnhost-212
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/busybox:1.29
+        name: busybox1
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/dnsutils:1.1
+        name: dnsutils6
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/echoserver:2.2
+        name: echoserver7
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/etcd:3.4.3
+        name: etcd-343
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/gb-frontend:v6
+        name: gb-frontend12
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/gb-redisslave:v3
+        name: gb-redisslave-v3
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/httpd:2.4.39-alpine
+        name: httpd-2439
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/jessie-dnsutils:1.0
+        name: jessie-dnsutils17
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/kitten:1.0
+        name: kitten18
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/mounttest:1.0
+        name: mounttest21
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/nautilus:1.0
+        name: nautilus22
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/nginx:1.14-alpine
+        name: nginx26
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/pause:3.1
+        name: pause-31
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/sample-apiserver:1.17
+        name: sample-apiserver-117
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
+      - image: e2eteam/test-webserver:1.0
+        name: test-webserver4
+        resources:
+          requests:
+            cpu: 1m
+        command: ['cmd.exe', '/c', 'ping -n 1800 127.0.0.1 >NUL']
