@@ -35,6 +35,7 @@ const (
 	operationStatusDone            = "DONE"
 	waitForSnapshotCreationTimeOut = 2 * time.Minute
 	diskKind                       = "compute#disk"
+	cryptoKeyVerDelimiter          = "/cryptoKeyVersions"
 )
 
 type GCECompute interface {
@@ -256,7 +257,9 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), "regional-pd")
 	}
 
-	if disk.GetKMSKeyName() != params.DiskEncryptionKMSKey {
+	if !kmsKeyEqual(
+		disk.GetKMSKeyName(), /* fetchedKMSKey */
+		params.DiskEncryptionKMSKey /* storageClassKMSKey */) {
 		return fmt.Errorf("actual disk KMS key name %s did not match expected param %s", disk.GetKMSKeyName(), params.DiskEncryptionKMSKey)
 	}
 
@@ -766,4 +769,22 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, snapsho
 			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
 		}
 	}
+}
+
+// kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.
+// fetchedKMSKey - key returned by the server
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}/cryptoKeyVersions/{4}
+// storageClassKMSKey - key as provided by the client
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
+// cryptoKeyVersions should be disregarded if the rest of the key is identical.
+func kmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
+	return removeCryptoKeyVersion(fetchedKMSKey) == removeCryptoKeyVersion(storageClassKMSKey)
+}
+
+func removeCryptoKeyVersion(kmsKey string) string {
+	i := strings.LastIndex(kmsKey, cryptoKeyVerDelimiter)
+	if i > 0 {
+		return kmsKey[:i]
+	}
+	return kmsKey
 }
