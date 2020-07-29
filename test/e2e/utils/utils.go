@@ -34,6 +34,11 @@ import (
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
+const (
+	DiskLabelKey   = "csi"
+	DiskLabelValue = "e2e-test"
+)
+
 var (
 	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
@@ -50,8 +55,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s 2> %s/prog.out < /dev/null > /dev/null &'",
-		workspace, endpoint, workspace)
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s --extra-labels=%s=%s 2> %s/prog.out < /dev/null > /dev/null &'",
+		workspace, endpoint, DiskLabelKey, DiskLabelValue, workspace)
 
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,

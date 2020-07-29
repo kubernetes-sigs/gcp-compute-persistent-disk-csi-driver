@@ -25,6 +25,7 @@ const (
 	ParameterKeyType                 = "type"
 	ParameterKeyReplicationType      = "replication-type"
 	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
+	ParameterKeyLabels               = "labels"
 
 	replicationTypeNone = "none"
 
@@ -33,7 +34,7 @@ const (
 	ParameterKeyPVCNamespace = "csi.storage.k8s.io/pvc/namespace"
 	ParameterKeyPVName       = "csi.storage.k8s.io/pv/name"
 
-	// Keys for tags to attach to the provisioned disk.
+	// Keys for tags to put in the provisioned disk description.
 	tagKeyCreatedForClaimNamespace = "kubernetes.io/created-for/pvc/namespace"
 	tagKeyCreatedForClaimName      = "kubernetes.io/created-for/pvc/name"
 	tagKeyCreatedForVolumeName     = "kubernetes.io/created-for/pv/name"
@@ -60,7 +61,9 @@ type DiskParameters struct {
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
-// put them into a well defined struct making sure to default unspecified fields
+// put them into a well defined struct making sure to default unspecified fields.
+// extraVolumeLabels are added as labels; if there are also labels specified in
+// parameters, any matching extraVolumeLabels will be overridden.
 func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string) (DiskParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
@@ -68,6 +71,10 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		DiskEncryptionKMSKey: "",                      // Default
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
+	}
+
+	for k, v := range extraVolumeLabels {
+		p.Labels[k] = v
 	}
 
 	for k, v := range parameters {
@@ -93,15 +100,21 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.Tags[tagKeyCreatedForClaimNamespace] = v
 		case ParameterKeyPVName:
 			p.Tags[tagKeyCreatedForVolumeName] = v
+		case ParameterKeyLabels:
+			paramLabels, err := ConvertLabelsStringToMap(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
+			}
+			// Override any existing labels with those from this parameter.
+			for labelKey, labelValue := range paramLabels {
+				p.Labels[labelKey] = labelValue
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
 	}
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
-	}
-	for k, v := range extraVolumeLabels {
-		p.Labels[k] = v
 	}
 	return p, nil
 }

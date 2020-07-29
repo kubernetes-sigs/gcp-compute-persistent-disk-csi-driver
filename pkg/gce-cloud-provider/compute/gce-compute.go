@@ -384,6 +384,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		SizeGb:      common.BytesToGbRoundUp(capBytes),
 		Description: description,
 		Type:        cloud.GetDiskTypeURI(volKey, params.DiskType),
+		Labels:      params.Labels,
 	}
 	if snapshotID != "" {
 		diskToCreate.SourceSnapshot = snapshotID
