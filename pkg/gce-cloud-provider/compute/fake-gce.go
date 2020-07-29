@@ -267,6 +267,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 		Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 		SourceSnapshotId: snapshotID,
 		Status:           cloud.mockDiskStatus,
+		Labels:           params.Labels,
 	}
 	if params.DiskEncryptionKMSKey != "" {
 		computeDisk.DiskEncryptionKey = &computev1.CustomerEncryptionKey{

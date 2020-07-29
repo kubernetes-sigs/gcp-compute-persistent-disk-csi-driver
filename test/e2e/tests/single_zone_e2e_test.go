@@ -292,6 +292,46 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
+	It("Should create and delete disk with labels", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		params := map[string]string{
+			common.ParameterKeyLabels: "key1=value1,key2=value2",
+		}
+		volID, err := client.CreateVolume(volName, params, defaultSizeGb, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Labels).To(Equal(map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+			// The label below is added as an --extra-label driver command line argument.
+			testutils.DiskLabelKey: testutils.DiskLabelValue,
+		}))
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
 	// Test volume already exists idempotency
 
 	// Test volume with op pending

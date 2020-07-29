@@ -1,0 +1,4 @@
+# for gce-pd-driver
+- op: add
+  path: /spec/template/spec/containers/4/args/2
+  value: "--extra-labels=csi=gce-pd-driver  # Used for testing, not to be merged to stable"
