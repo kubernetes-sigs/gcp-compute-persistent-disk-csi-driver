@@ -674,6 +674,31 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: stdTopology,
 			},
 		},
+		{
+			name: "success with labels parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"labels": "key1=value1,key2=value2"},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+		{
+			name: "fail with malformed labels parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"labels": "key1=value1,#=$;;"},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
 	}
 
 	// Run test cases

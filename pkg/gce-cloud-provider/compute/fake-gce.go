@@ -271,6 +271,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
 			SourceSnapshotId: snapshotID,
 			Status:           cloud.mockDiskStatus,
+			Labels:           params.Labels,
 		}
 		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateGA.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
@@ -287,6 +288,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
 			SourceSnapshotId: snapshotID,
 			Status:           cloud.mockDiskStatus,
+			Labels:           params.Labels,
 		}
 		if params.DiskEncryptionKMSKey != "" {
 			diskToCreateV1.DiskEncryptionKey = &computev1.CustomerEncryptionKey{

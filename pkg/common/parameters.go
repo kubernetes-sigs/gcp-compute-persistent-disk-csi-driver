@@ -25,6 +25,7 @@ const (
 	ParameterKeyType                 = "type"
 	ParameterKeyReplicationType      = "replication-type"
 	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
+	ParameterKeyLabels               = "labels"
 
 	replicationTypeNone = "none"
 
@@ -54,6 +55,9 @@ type DiskParameters struct {
 	// Values: {map[string]string}
 	// Default: ""
 	Tags map[string]string
+	// Values: map with arbitrary keys and values
+	// Default: empty map
+	Labels map[string]string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
@@ -64,6 +68,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		ReplicationType:      replicationTypeNone,     // Default
 		DiskEncryptionKMSKey: "",                      // Default
 		Tags:                 make(map[string]string), // Default
+		Labels:               map[string]string{},     // Default
 	}
 
 	for k, v := range parameters {
@@ -89,6 +94,13 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.Tags[tagKeyCreatedForClaimNamespace] = v
 		case ParameterKeyPVName:
 			p.Tags[tagKeyCreatedForVolumeName] = v
+		case ParameterKeyLabels:
+			labels, err := ConvertLabelsStringToMap(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
+			}
+
+			p.Labels = labels
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}

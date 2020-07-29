@@ -36,31 +36,37 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 make(map[string]string),
+				Labels:               map[string]string{},
 			},
 		},
 		{
 			name:       "specified empties",
-			parameters: map[string]string{ParameterKeyType: "", ParameterKeyReplicationType: "", ParameterKeyDiskEncryptionKmsKey: ""},
+			parameters: map[string]string{ParameterKeyType: "", ParameterKeyReplicationType: "", ParameterKeyDiskEncryptionKmsKey: "", ParameterKeyLabels: ""},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 make(map[string]string),
+				Labels:               map[string]string{},
 			},
 		},
 		{
 			name:       "random keys",
-			parameters: map[string]string{ParameterKeyType: "", "foo": "", ParameterKeyDiskEncryptionKmsKey: ""},
+			parameters: map[string]string{ParameterKeyType: "", "foo": "", ParameterKeyDiskEncryptionKmsKey: "", ParameterKeyLabels: ""},
 			expectErr:  true,
 		},
 		{
 			name:       "real values",
-			parameters: map[string]string{ParameterKeyType: "pd-ssd", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key"},
+			parameters: map[string]string{ParameterKeyType: "pd-ssd", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2"},
 			expectParams: DiskParameters{
 				DiskType:             "pd-ssd",
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels: map[string]string{
+					"key1": "value1",
+					"key2": "value2",
+				},
 			},
 		},
 		{
@@ -71,6 +77,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels:               map[string]string{},
 			},
 		},
 		{
@@ -81,6 +88,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels:               map[string]string{},
 			},
 		},
 		{
@@ -91,6 +99,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
+				Labels:               map[string]string{},
 			},
 		},
 	}
