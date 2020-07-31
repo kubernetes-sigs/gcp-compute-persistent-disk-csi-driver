@@ -51,7 +51,7 @@ var (
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
-	storageClassFile   = flag.String("storageclass-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config")
+	storageClassFiles  = flag.String("storageclass-files", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
 	snapshotClassFile  = flag.String("snapshotclass-file", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
@@ -107,9 +107,9 @@ func main() {
 	}
 
 	if *migrationTest {
-		ensureVariable(storageClassFile, false, "storage-class-file and migration-test cannot both be set")
+		ensureVariable(storageClassFiles, false, "storage-class-file and migration-test cannot both be set")
 	} else {
-		ensureVariable(storageClassFile, true, "One of storageclass-file and migration-test must be set")
+		ensureVariable(storageClassFiles, true, "One of storageclass-file and migration-test must be set")
 	}
 
 	if !*bringupCluster {
@@ -367,8 +367,16 @@ func handle() error {
 	}
 
 	// Run the tests using the testDir kubernetes
-	if len(*storageClassFile) != 0 {
-		err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, *storageClassFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat)
+	if len(*storageClassFiles) != 0 {
+		storageClasses := strings.Split(*storageClassFiles, ",")
+		for _, scFile := range storageClasses {
+			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat, scFile); err != nil {
+				return fmt.Errorf("runCSITests failed: %w", err)
+			}
+		}
+		if err = mergeArtifacts(storageClasses); err != nil {
+			return fmt.Errorf("artifact merging failed: %w", err)
+		}
 	} else if *migrationTest {
 		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
 	} else {
@@ -376,7 +384,7 @@ func handle() error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to run tests: %v", err)
+		return fmt.Errorf("failed to run tests: %w", err)
 	}
 
 	return nil
@@ -434,19 +442,19 @@ func setEnvProject(project string) error {
 }
 
 func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProviderArgs []string) error {
-	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs)
+	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs, "")
 }
 
-func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat string) error {
+func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat, reportPrefix string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs)
+	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs, reportPrefix)
 }
 
-func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string) error {
+func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string, reportPrefix string) error {
 	err := os.Chdir(testDir)
 	if err != nil {
 		return err
@@ -461,7 +469,15 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
 	reportArg := ""
 	if ok {
-		reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
+		if len(reportPrefix) > 0 {
+			reportDir := filepath.Join(artifactsDir, reportPrefix)
+			if err := os.MkdirAll(reportDir, 0755); err != nil {
+				return err
+			}
+			reportArg = fmt.Sprintf("-report-dir=%s", reportDir)
+		} else {
+			reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
+		}
 	}
 	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testFocus, testSkip)
 	if *platform == "windows" {
