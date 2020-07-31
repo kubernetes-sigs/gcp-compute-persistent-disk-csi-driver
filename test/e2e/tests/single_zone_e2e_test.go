@@ -47,7 +47,6 @@ const (
 	defaultMwSizeGb    int64 = 200
 	readyState               = "READY"
 	standardDiskType         = "pd-standard"
-	ssdDiskType              = "pd-ssd"
 	defaultVolumeLimit int64 = 127
 
 	defaultEpsilon = 500000000 // 500M

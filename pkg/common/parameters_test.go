@@ -64,6 +64,15 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
+			name:       "real values, checking balanced pd",
+			parameters: map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-balanced",
+				ReplicationType:      "regional-pd",
+				DiskEncryptionKMSKey: "foo/key",
+			},
+		},
+		{
 			name:       "partial spec",
 			parameters: map[string]string{ParameterKeyDiskEncryptionKmsKey: "foo/key"},
 			expectParams: DiskParameters{

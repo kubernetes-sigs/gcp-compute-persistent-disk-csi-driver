@@ -53,9 +53,6 @@ const (
 	MinimumVolumeSizeInBytes int64 = 1 * 1024 * 1024 * 1024
 	MinimumDiskSizeInGb            = 1
 
-	DiskTypeSSD      = "pd-ssd"
-	DiskTypeStandard = "pd-standard"
-
 	attachableDiskTypePersistent = "PERSISTENT"
 
 	replicationTypeNone       = "none"

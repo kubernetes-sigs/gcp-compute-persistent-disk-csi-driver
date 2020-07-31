@@ -42,7 +42,7 @@ const (
 
 // DiskParameters contains normalized and defaulted disk parameters
 type DiskParameters struct {
-	// Values: pd-standard OR pd-ssd
+	// Values: pd-standard, pd-balanced, pd-ssd, or any other PD disk type. Not validated.
 	// Default: pd-standard
 	DiskType string
 	// Values: "none", regional-pd
