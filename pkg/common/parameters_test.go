@@ -35,6 +35,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
+				Tags:                 make(map[string]string),
 			},
 		},
 		{
@@ -44,6 +45,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
+				Tags:                 make(map[string]string),
 			},
 		},
 		{
@@ -58,6 +60,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskType:             "pd-ssd",
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 make(map[string]string),
 			},
 		},
 		{
@@ -67,13 +70,24 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 make(map[string]string),
+			},
+		},
+		{
+			name:       "tags",
+			parameters: map[string]string{ParameterKeyPVCName: "testPVCName", ParameterKeyPVCNamespace: "testPVCNamespace", ParameterKeyPVName: "testPVName"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters)
+			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver")
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
