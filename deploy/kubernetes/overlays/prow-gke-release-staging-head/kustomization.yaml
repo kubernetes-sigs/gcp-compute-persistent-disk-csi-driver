@@ -2,7 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
 - ../stable
-- ./csi-driver.yaml
 transformers:
 - ../../images/prow-gke-release-staging-head
 patchesJson6902:
