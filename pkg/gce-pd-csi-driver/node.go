@@ -461,6 +461,20 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting device path for %s: %v", volumeID, err))
 	}
 
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability != nil {
+		// VolumeCapability is optional, if specified, validate it
+		if err := validateVolumeCapability(volumeCapability); err != nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
+		}
+
+		if blk := volumeCapability.GetBlock(); blk != nil {
+			// Noop for Block NodeExpandVolume
+			klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+	}
+
 	// TODO(#328): Use requested size in resize if provided
 	resizer := resizefs.NewResizeFs(ns.Mounter)
 	_, err = resizer.Resize(devicePath, volumePath)
