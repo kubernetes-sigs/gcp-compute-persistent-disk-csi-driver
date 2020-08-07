@@ -1,4 +1,4 @@
-# Changelog Since v0.6.0
+# v0.7.0 - Changelog Since v0.6.0
 
 ## Changes with Action Required 
 

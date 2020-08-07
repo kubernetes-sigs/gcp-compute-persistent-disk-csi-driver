@@ -1,8 +1,8 @@
 # Google Compute Engine Persistent Disk CSI Driver
 
-WARNING: This driver is beta and should not be used in performance critical applications
+WARNING: Manual deployment of this driver to your GKE cluster is not recommended. Instead users should use GKE to automatically deploy and manage the GCE PD CSI Driver (see [GKE Docs](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/gce-pd-csi-driver)).
 
-DISCLAIMER: This is not an officially supported Google product
+DISCLAIMER: Manual deployment of the driver to your cluster is not officially supported by Google.
 
 The Google Compute Engine Persistent Disk CSI Driver is a
 [CSI](https://github.com/container-storage-interface/spec/blob/master/spec.md)
@@ -11,8 +11,8 @@ lifecycle of Google Compute Engine Persistent Disks.
 
 ## Project Status
 
-Status: Beta
-Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v0.7.0-gke.0`
+Status: GA
+Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:v1.0.0-gke.0`
 
 ### Test Status
 
@@ -28,20 +28,21 @@ Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:
 
 ### CSI Compatibility
 
-This plugin is compatible with CSI versions [v1.1.0](https://github.com/container-storage-interface/spec/blob/v1.1.0/spec.md) and [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
+This plugin is compatible with CSI versions [v1.2.0](https://github.com/container-storage-interface/spec/blob/v1.2.0/spec.md), [v1.1.0](https://github.com/container-storage-interface/spec/blob/v1.1.0/spec.md), and [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
 
 ### Kubernetes Compatibility
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15 | 1.16+ |
-|--------------------------------------|---------------|------|------|------|------|-------|
-| v0.1.x.alpha                         | yes           | no   | no   | no   | no   | no    |
-| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   | no    |
-| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
-| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   |
-| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
-| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   |
-| v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   |
-| dev                                  | no            | no   | no   | no   | no   | yes   |
+| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15 | 1.16+ | 1.17+ |
+|--------------------------------------|---------------|------|------|------|------|-------|-------|
+| v0.1.x.alpha                         | yes           | no   | no   | no   | no   | no    | no    |
+| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   | no    | no    |
+| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   | yes   |
+| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   | yes   |
+| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   | yes   |
+| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   | yes   |
+| v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   | yes   |
+| v1.0.x (ga)                          | no            | no   | no   | no   | no   | no    | yes   |
+| dev                                  | no            | no   | no   | no   | no   | yes   | yes   |
 
 ### Known Issues
 
@@ -55,22 +56,22 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 |------------------|---------------------------|---------------|----------------------------------------------------------------------------------------------------|
 | type             | `pd-ssd` OR `pd-standard` | `pd-standard` | Type allows you to choose between standard Persistent Disks  or Solid State Drive Persistent Disks |
 | replication-type | `none` OR `regional-pd`   | `none`        | Replication type allows you to choose between Zonal Persistent Disks or Regional Persistent Disks  |
+| disk-encryption-kms-key | Fully qualified resource identifier for the key to use to encrypt new disks. | Empty string. | Encrypt disk using Customer Managed Encryption Key (CMEK). See [GKE Docs](https://cloud.google.com/kubernetes-engine/docs/how-to/using-cmek#create_a_cmek_protected_attached_disk) for details. |
 
 ### Topology
 
 This driver supports only one topology key:
 `topology.gke.io/zone`
-that represents availability by zone.
+that represents availability by zone (e.g. `us-central1-c`, etc.).
 
 ### Features in Development
 
 | Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
-| Topology        | Beta  | 1.14                          | 1.14                         | v0.5.0             | Stable             |
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
+| Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | Stable             |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
 | Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
-| Snapshots       | Beta  | 1.17                          | Any                          | master             | Stable             |
 
 ### Future Features
 
