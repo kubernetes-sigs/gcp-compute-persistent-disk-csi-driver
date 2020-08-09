@@ -7,7 +7,6 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20190822182118-27a4ced34534
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/golang/protobuf v1.3.4
-	github.com/google/btree v1.0.0 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/go-multierror v1.0.0 // indirect
 	github.com/kubernetes-csi/csi-proxy/client v0.0.0-20200330215040-9eff16441b2a

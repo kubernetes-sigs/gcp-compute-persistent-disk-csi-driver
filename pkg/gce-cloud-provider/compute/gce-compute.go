@@ -372,8 +372,8 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	replicaZones []string,
 	snapshotID string,
 	description string,
-  multiWriter bool) error {
-  	var (
+	multiWriter bool) error {
+	var (
 		err           error
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
@@ -382,7 +382,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	if multiWriter {
 		gceAPIVersion = GCEAPIVersionAlpha
 	}
-  
+
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGb(capBytes),
@@ -465,8 +465,8 @@ func (cloud *CloudProvider) insertZonalDisk(
 	capacityRange *csi.CapacityRange,
 	snapshotID string,
 	description string,
-  multiWriter bool) error {
-  	var (
+	multiWriter bool) error {
+	var (
 		err           error
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1

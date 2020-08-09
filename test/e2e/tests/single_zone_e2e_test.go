@@ -676,7 +676,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
-  
+
 	// Pending while multi-writer feature is in Alpha
 	PIt("Should create and delete multi-writer disk", func() {
 		Expect(testContexts).ToNot(BeEmpty())
@@ -716,13 +716,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		defer func() {
 			// Delete Disk
 			err := client.DeleteVolume(volID)
-      Expect(err).To(BeNil(), "DeleteVolume failed")
+			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
 			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-    }()
-    
+		}()
+
 		// Attach Disk
 		testFileContents := "test"
 		writeFunc := func(a verifyArgs) error {
@@ -745,8 +745,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, writeFunc, verifyReadFunc)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
-  
-  It("Should successfully create disk with PVC/PV tags", func() {
+
+	It("Should successfully create disk with PVC/PV tags", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
@@ -775,12 +775,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		defer func() {
 			// Delete Disk
 			controllerClient.DeleteVolume(volID)
-            Expect(err).To(BeNil(), "DeleteVolume failed")
+			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
 			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-    }()
+		}()
 	})
 })
 
