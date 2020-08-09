@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 )
 
@@ -43,7 +45,7 @@ func clusterDownGKE(gceZone, gceRegion string) error {
 		return err
 	}
 
-	cmd := exec.Command("gcloud", "container", "clusters", "delete", gkeTestClusterName,
+	cmd := exec.Command("gcloud", "container", "clusters", "delete", *gkeTestClusterName,
 		locationArg, locationVal, "--quiet")
 	err = runCommand("Bringing Down E2E Cluster on GKE", cmd)
 	if err != nil {
@@ -140,13 +142,13 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 	}
 
 	out, err := exec.Command("gcloud", "container", "clusters", "list", locationArg, locationVal,
-		"--filter", fmt.Sprintf("name=%s", gkeTestClusterName)).CombinedOutput()
+		"--filter", fmt.Sprintf("name=%s", *gkeTestClusterName)).CombinedOutput()
 
 	if err != nil {
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
 	}
 	if len(out) > 0 {
-		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", gkeTestClusterName)
+		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", *gkeTestClusterName)
 		err = clusterDownGKE(gceZone, gceRegion)
 		if err != nil {
 			return err
@@ -154,7 +156,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 	}
 
 	var cmd *exec.Cmd
-	cmdParams := []string{"container", "clusters", "create", gkeTestClusterName,
+	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
 		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType}
 	if isVariableSet(gkeClusterVer) {
@@ -276,7 +278,7 @@ func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) 
 		"--deployment=gke",
 		fmt.Sprintf("--gcp-node-image=%s", imageType),
 		"--gcp-network=default",
-		fmt.Sprintf("--cluster=%s", gkeTestClusterName),
+		fmt.Sprintf("--cluster=%s", *gkeTestClusterName),
 		fmt.Sprintf("--gke-environment=%s", gkeEnv),
 		fmt.Sprintf("%s=%s", locationArg, locationVal),
 		fmt.Sprintf("--gcp-project=%s", project[:len(project)-1]),
@@ -335,4 +337,37 @@ func mustGetKubeClusterVersion() string {
 		klog.Fatalf("Error: %v", err)
 	}
 	return ver
+}
+
+// getKubeConfig returns the full path to the
+// kubeconfig file set in $KUBECONFIG env.
+// If unset, then it defaults to $HOME/.kube/config
+func getKubeConfig() (string, error) {
+	config, ok := os.LookupEnv("KUBECONFIG")
+	if ok {
+		return config, nil
+	}
+	homeDir, ok := os.LookupEnv("HOME")
+	if !ok {
+		return "", fmt.Errorf("HOME env not set")
+	}
+	return filepath.Join(homeDir, ".kube/config"), nil
+}
+
+// getKubeClient returns a Kubernetes client interface
+// for the test cluster
+func getKubeClient() (kubernetes.Interface, error) {
+	kubeConfig, err := getKubeConfig()
+	if err != nil {
+		return nil, err
+	}
+	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config: %v", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %v", err)
+	}
+	return kubeClient, nil
 }

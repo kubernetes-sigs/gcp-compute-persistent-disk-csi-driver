@@ -4,8 +4,8 @@ metadata:
   name: imagetag-gcepd-driver-alpha-win
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver-win
-  newName: gcr.io/jing-k8s-dev/gce-pd-windows-2019
-  newTag: "0.2.0"
+  newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver-amd64-windows-1909
+  newTag: "cca3c14"
 ---
 
 apiVersion: builtin

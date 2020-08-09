@@ -15,6 +15,7 @@ limitations under the License.
 package gcecloudprovider
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ const (
 	operationStatusDone            = "DONE"
 	waitForSnapshotCreationTimeOut = 2 * time.Minute
 	diskKind                       = "compute#disk"
+	cryptoKeyVerDelimiter          = "/cryptoKeyVersions"
 )
 
 type GCEAPIVersion string
@@ -299,7 +301,9 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), "regional-pd")
 	}
 
-	if disk.GetKMSKeyName() != params.DiskEncryptionKMSKey {
+	if !kmsKeyEqual(
+		disk.GetKMSKeyName(), /* fetchedKMSKey */
+		params.DiskEncryptionKMSKey /* storageClassKMSKey */) {
 		return fmt.Errorf("actual disk KMS key name %s did not match expected param %s", disk.GetKMSKeyName(), params.DiskEncryptionKMSKey)
 	}
 
@@ -308,11 +312,23 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 
 func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, multiWriter bool) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
+
+	description, err := encodeDiskTags(params.Tags)
+	if err != nil {
+		return err
+	}
+
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.insertZonalDisk(ctx, volKey, params, capBytes, capacityRange, snapshotID, multiWriter)
+		if description == "" {
+			description = "Disk created by GCE-PD CSI Driver"
+		}
+		return cloud.insertZonalDisk(ctx, volKey, params, capBytes, capacityRange, snapshotID, description, multiWriter)
 	case meta.Regional:
-		return cloud.insertRegionalDisk(ctx, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, multiWriter)
+		if description == "" {
+			description = "Regional disk created by GCE-PD CSI Driver"
+		}
+		return cloud.insertRegionalDisk(ctx, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, description, multiWriter)
 	default:
 		return fmt.Errorf("could not insert disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -347,8 +363,17 @@ func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk) *computealpha.Disk {
 	}
 }
 
-func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, multiWriter bool) error {
-	var (
+func (cloud *CloudProvider) insertRegionalDisk(
+	ctx context.Context,
+	volKey *meta.Key,
+	params common.DiskParameters,
+	capBytes int64,
+	capacityRange *csi.CapacityRange,
+	replicaZones []string,
+	snapshotID string,
+	description string,
+  multiWriter bool) error {
+  	var (
 		err           error
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
@@ -357,11 +382,11 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	if multiWriter {
 		gceAPIVersion = GCEAPIVersionAlpha
 	}
-
+  
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGb(capBytes),
-		Description: "Regional disk created by GCE-PD CSI Driver",
+		Description: description,
 		Type:        cloud.GetDiskTypeURI(volKey, params.DiskType),
 	}
 	if snapshotID != "" {
@@ -432,8 +457,16 @@ func (cloud *CloudProvider) insertRegionalDisk(ctx context.Context, volKey *meta
 	return nil
 }
 
-func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, snapshotID string, multiWriter bool) error {
-	var (
+func (cloud *CloudProvider) insertZonalDisk(
+	ctx context.Context,
+	volKey *meta.Key,
+	params common.DiskParameters,
+	capBytes int64,
+	capacityRange *csi.CapacityRange,
+	snapshotID string,
+	description string,
+  multiWriter bool) error {
+  	var (
 		err           error
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
@@ -446,7 +479,7 @@ func (cloud *CloudProvider) insertZonalDisk(ctx context.Context, volKey *meta.Ke
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGb(capBytes),
-		Description: "Disk created by GCE-PD CSI Driver",
+		Description: description,
 		Type:        cloud.GetDiskTypeURI(volKey, params.DiskType),
 	}
 
@@ -892,4 +925,37 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, snapsho
 			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
 		}
 	}
+}
+
+// kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.
+// fetchedKMSKey - key returned by the server
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}/cryptoKeyVersions/{4}
+// storageClassKMSKey - key as provided by the client
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
+// cryptoKeyVersions should be disregarded if the rest of the key is identical.
+func kmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
+	return removeCryptoKeyVersion(fetchedKMSKey) == removeCryptoKeyVersion(storageClassKMSKey)
+}
+
+func removeCryptoKeyVersion(kmsKey string) string {
+	i := strings.LastIndex(kmsKey, cryptoKeyVerDelimiter)
+	if i > 0 {
+		return kmsKey[:i]
+	}
+	return kmsKey
+}
+
+// encodeDiskTags encodes requested volume tags into JSON string, as GCE does
+// not support tags on GCE PDs and we use Description field as fallback.
+func encodeDiskTags(tags map[string]string) (string, error) {
+	if len(tags) == 0 {
+		// No tags -> empty JSON
+		return "", nil
+	}
+
+	enc, err := json.Marshal(tags)
+	if err != nil {
+		return "", fmt.Errorf("failed to encodeDiskTags %v: %v", tags, err)
+	}
+	return string(enc), nil
 }

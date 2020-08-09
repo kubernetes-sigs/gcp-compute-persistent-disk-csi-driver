@@ -676,7 +676,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
-
+  
 	// Pending while multi-writer feature is in Alpha
 	PIt("Should create and delete multi-writer disk", func() {
 		Expect(testContexts).ToNot(BeEmpty())
@@ -716,13 +716,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		defer func() {
 			// Delete Disk
 			err := client.DeleteVolume(volID)
-			Expect(err).To(BeNil(), "DeleteVolume failed")
+      Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
 			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-		}()
-
+    }()
+    
 		// Attach Disk
 		testFileContents := "test"
 		writeFunc := func(a verifyArgs) error {
@@ -744,6 +744,43 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, writeFunc, verifyReadFunc)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
+  
+  It("Should successfully create disk with PVC/PV tags", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyPVCName:      "test-pvc",
+			common.ParameterKeyPVCNamespace: "test-pvc-namespace",
+			common.ParameterKeyPVName:       "test-pv-name",
+		}, defaultSizeGb, nil /* topReq */)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(cloudDisk.Description).To(Equal("{\"kubernetes.io/created-for/pv/name\":\"test-pv-name\",\"kubernetes.io/created-for/pvc/name\":\"test-pvc\",\"kubernetes.io/created-for/pvc/namespace\":\"test-pvc-namespace\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volID)
+            Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+    }()
 	})
 })
 

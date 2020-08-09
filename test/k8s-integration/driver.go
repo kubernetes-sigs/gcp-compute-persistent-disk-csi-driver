@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"k8s.io/kubernetes/test/e2e/framework/podlogs"
 )
 
 func getOverlayDir(pkgDir, deployOverlayName string) string {
@@ -65,12 +68,11 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 
 	// TODO (#139): wait for driver to be running
 	time.Sleep(time.Minute)
-	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", "default")
+	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace)
 	err = runCommand("Checking driver pods", statusCmd)
 	if err != nil {
-		return fmt.Errorf("failed to check driver pods: %v", err)
+		return fmt.Errorf("failed to describe pods: %v", err)
 	}
-
 	return nil
 }
 
@@ -87,7 +89,7 @@ func deleteDriver(goPath, pkgDir, deployOverlayName string) error {
 	return nil
 }
 
-func pushImage(pkgDir, stagingImage, stagingVersion string) error {
+func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", stagingVersion)
 	if err != nil {
 		return err
@@ -96,9 +98,16 @@ func pushImage(pkgDir, stagingImage, stagingVersion string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("make", "-C", pkgDir, "push-container",
-		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	var cmd *exec.Cmd
+	if platform != "windows" {
+		cmd = exec.Command("make", "-C", pkgDir, "push-container",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	} else {
+		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-1909",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	}
 	err = runCommand("Pushing GCP Container", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to run make command: err: %v", err)
@@ -113,4 +122,30 @@ func deleteImage(stagingImage, stagingVersion string) error {
 		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
 	}
 	return nil
+}
+
+// dumpDriverLogs will watch all pods in the driver namespace
+// and copy its logs to the test artifacts directory, if set.
+// It returns a context.CancelFunc that needs to be invoked when
+// the test is finished.
+func dumpDriverLogs() (context.CancelFunc, error) {
+	// Dump all driver logs to the test artifacts
+	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
+	if ok {
+		client, err := getKubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get kubeclient: %v", err)
+		}
+		out := podlogs.LogOutput{
+			StatusWriter:  os.Stdout,
+			LogPathPrefix: filepath.Join(artifactsDir, "pd-csi-driver") + "/",
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		if err = podlogs.CopyAllLogs(ctx, client, driverNamespace, out); err != nil {
+			return cancel, fmt.Errorf("failed to start pod logger: %v", err)
+		}
+		return cancel, nil
+	}
+	return nil, nil
+
 }

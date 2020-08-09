@@ -24,14 +24,14 @@ STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 DRIVERBINARY=gce-pd-csi-driver
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
-all: gce-pd-driver
+all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
+	go build -mod=vendor -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/
 
 gce-pd-driver-windows:
 	mkdir -p bin
-	GOOS=windows go build -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/
+	GOOS=windows go build -mod=vendor -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/
 
 build-container:
 ifndef GCE_PD_CSI_STAGING_IMAGE
@@ -45,7 +45,7 @@ ifndef GCE_PD_CSI_STAGING_IMAGE
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
-	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=ltsc2019 --push .
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=ltsc2019 --build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-1909:
 ifndef GCE_PD_CSI_STAGING_IMAGE
@@ -53,14 +53,14 @@ ifndef GCE_PD_CSI_STAGING_IMAGE
 endif
 	@sh init-buildx.sh; \
 	DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --file=Dockerfile.Windows --platform=windows \
-	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=1909 --push .
+	-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore --build-arg BASE_IMAGE_TAG=1909 --build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 test-sanity: gce-pd-driver
-	go test -v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
+	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
 
 test-k8s-integration:
-	go build -o bin/k8s-integration-test ./test/k8s-integration
+	go build -mod=vendor -o bin/k8s-integration-test ./test/k8s-integration
 

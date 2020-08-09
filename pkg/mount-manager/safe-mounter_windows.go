@@ -77,6 +77,15 @@ func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 
 // Mount just creates a soft link at target pointing to source.
 func (mounter *CSIProxyMounter) Mount(source string, target string, fstype string, options []string) error {
+	return mounter.MountSensitive(source, target, fstype, options, nil /* sensitiveOptions */)
+}
+
+// MountSensitive is the same as Mount() but this method allows
+// sensitiveOptions to be passed in a separate parameter from the normal
+// mount options and ensures the sensitiveOptions are never logged.
+// Since Mount here is just create a synlink, so options and sensitiveOptions
+// are not used here
+func (mounter *CSIProxyMounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
 	// Mount is called after the format is done.
 	// TODO: Confirm that fstype is empty.
 	// Call the LinkPath CSI proxy from the source path to the target path

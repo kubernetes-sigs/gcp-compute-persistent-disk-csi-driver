@@ -14,11 +14,10 @@
 
 
 
-FROM golang:1.13.4-alpine3.10 as builder
+FROM golang:1.13.4 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-ARG TAG
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.vendorVersion='"${TAG:-latest}"' -extldflags "-static"' -o bin/gce-pd-csi-driver ./cmd/
+RUN make
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
 FROM gcr.io/google-containers/debian-base-amd64:v2.0.0 as base
