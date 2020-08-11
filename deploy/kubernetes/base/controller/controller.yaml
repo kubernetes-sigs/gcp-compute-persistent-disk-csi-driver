@@ -32,6 +32,7 @@ spec:
             - "--enable-leader-election"
             - "--leader-election-type=leases"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+            - "--timeout=250s"
           # - "--run-controller-service=false" # disable the controller service of the CSI driver
           # - "--run-node-service=false"       # disable the node service of the CSI driver
           env:
@@ -50,6 +51,7 @@ spec:
             - "--metrics-address=:22012"
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+            - "--timeout=250s"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
@@ -82,6 +84,7 @@ spec:
             - "--metrics-address=:22014"
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+            - "--timeout=300s"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
