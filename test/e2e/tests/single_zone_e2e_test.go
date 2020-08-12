@@ -44,6 +44,7 @@ const (
 
 	defaultSizeGb      int64 = 5
 	defaultRepdSizeGb  int64 = 200
+	defaultMwSizeGb    int64 = 200
 	readyState               = "READY"
 	standardDiskType         = "pd-standard"
 	ssdDiskType              = "pd-ssd"
@@ -676,6 +677,75 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
+	// Pending while multi-writer feature is in Alpha
+	PIt("Should create and delete multi-writer disk", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, _, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Hardcode to us-east1-a while feature is in alpha
+		zone := "us-east1-a"
+
+		// Create and Validate Disk
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeAlphaService.Disks.Get(p, zone, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	// Pending while multi-writer feature is in Alpha
+	PIt("Should complete entire disk lifecycle with multi-writer disk", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create and Validate Disk
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		testFileContents := "test"
+		writeFunc := func(a verifyArgs) error {
+			err := testutils.WriteBlock(instance, a.publishDir, testFileContents)
+			if err != nil {
+				return fmt.Errorf("Failed to write file: %v", err)
+			}
+			return nil
+		}
+		verifyReadFunc := func(a verifyArgs) error {
+			readContents, err := testutils.ReadBlock(instance, a.publishDir, len(testFileContents))
+			if err != nil {
+				return fmt.Errorf("ReadFile failed with error: %v", err)
+			}
+			if strings.TrimSpace(string(readContents)) != testFileContents {
+				return fmt.Errorf("wanted test file content: %s, got content: %s", testFileContents, readContents)
+			}
+			return nil
+		}
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, writeFunc, verifyReadFunc)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
+
 	It("Should successfully create disk with PVC/PV tags", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
@@ -755,4 +825,39 @@ func deleteVolumeOrError(client *remote.CsiClient, volID, project string) {
 	Expect(err).To(BeNil(), "Failed to conver volume ID To key")
 	_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
 	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+}
+
+func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string) (string, string) {
+	// Create Disk
+	volName := testNamePrefix + string(uuid.NewUUID())
+	volID, err := client.CreateVolumeWithCaps(volName, nil, defaultMwSizeGb,
+		&csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zone},
+				},
+			},
+		},
+		[]*csi.VolumeCapability{
+			{
+				AccessType: &csi.VolumeCapability_Block{
+					Block: &csi.VolumeCapability_BlockVolume{},
+				},
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+				},
+			},
+		})
+	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+	// Validate Disk Created
+	cloudDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
+	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+	Expect(cloudDisk.Status).To(Equal(readyState))
+	Expect(cloudDisk.SizeGb).To(Equal(defaultMwSizeGb))
+	Expect(cloudDisk.Name).To(Equal(volName))
+	Expect(cloudDisk.MultiWriter).To(Equal(true))
+
+	return volName, volID
 }

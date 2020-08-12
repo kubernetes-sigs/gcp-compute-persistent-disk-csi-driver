@@ -1,0 +1,50 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: podpvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Block
+  storageClassName: csi-gce-pd
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-server
+spec:
+  selector:
+    matchLabels:
+      app: web
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - web
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: web-server
+          image: nginx
+          volumeDevices:
+            - name: mypvc
+              devicePath: /dev/mypvc
+      volumes:
+        - name: mypvc
+          persistentVolumeClaim:
+            claimName: podpvc
+            readOnly: false

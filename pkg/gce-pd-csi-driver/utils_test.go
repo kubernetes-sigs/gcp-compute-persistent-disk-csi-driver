@@ -54,6 +54,23 @@ func createVolumeCapability(am csi.VolumeCapability_AccessMode_Mode) *csi.Volume
 	}
 }
 
+func createBlockVolumeCapabilities(am csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
+	return []*csi.VolumeCapability{
+		createBlockVolumeCapability(am),
+	}
+}
+
+func createBlockVolumeCapability(am csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability {
+	return &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Block{
+			Block: &csi.VolumeCapability_BlockVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: am,
+		},
+	}
+}
+
 func TestValidateVolumeCapabilities(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -127,16 +144,16 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 		},
 		{
 			name: "success with block capabilities",
-			vc: []*csi.VolumeCapability{
-				{
-					AccessType: &csi.VolumeCapability_Block{
-						Block: &csi.VolumeCapability_BlockVolume{},
-					},
-					AccessMode: &csi.VolumeCapability_AccessMode{
-						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-					},
-				},
-			},
+			vc:   createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+		},
+		{
+			name: "success with block/MULTI_NODE_MULTI_WRITER capabilities",
+			vc:   createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+		},
+		{
+			name:   "fail with block/MULTI_NODE_SINGLE_WRITER capabilities",
+			vc:     createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER),
+			expErr: true,
 		},
 		{
 			name: "success with reader + writer capabilities",
@@ -164,5 +181,56 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 			t.Fatalf("Did not expect error but got: %v", err)
 		}
 	}
+}
 
+func TestGetMultiWriterFromCapabilities(t *testing.T) {
+	testCases := []struct {
+		name   string
+		vc     []*csi.VolumeCapability
+		expVal bool
+		expErr bool
+	}{
+		{
+			name:   "false with empty capabilities",
+			vc:     []*csi.VolumeCapability{},
+			expVal: false,
+		},
+		{
+			name: "fail with capabilities no access mode",
+			vc: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+				},
+			},
+			expErr: true,
+		},
+		{
+			name:   "false with mount/SINGLE_NODE_WRITER capabilities",
+			vc:     createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			expVal: false,
+		},
+		{
+			name:   "true with block/MULTI_NODE_MULTI_WRITER capabilities",
+			vc:     createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+			expVal: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		val, err := getMultiWriterFromCapabilities(tc.vc)
+		if tc.expErr && err == nil {
+			t.Fatalf("Expected error but didn't get any")
+		}
+		if !tc.expErr && err != nil {
+			t.Fatalf("Did not expect error but got: %v", err)
+		}
+		if err != nil {
+			if tc.expVal != val {
+				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
+			}
+		}
+	}
 }

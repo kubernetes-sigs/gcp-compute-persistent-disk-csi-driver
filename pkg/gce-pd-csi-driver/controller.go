@@ -114,6 +114,12 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
 	}
+	// Determine multiWriter
+	gceAPIVersion := gce.GCEAPIVersionV1
+	multiWriter, _ := getMultiWriterFromCapabilities(volumeCapabilities)
+	if multiWriter {
+		gceAPIVersion = gce.GCEAPIVersionAlpha
+	}
 	// Determine the zone or zones+region of the disk
 	var zones []string
 	var volKey *meta.Key
@@ -152,7 +158,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	defer gceCS.volumeLocks.Release(volumeID)
 
 	// Validate if disk already exists
-	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
+	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, volKey, gceAPIVersion)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume unknown get disk error when validating: %v", err))
@@ -162,7 +168,8 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		// There was no error so we want to validate the disk that we find
 		err = gceCS.CloudProvider.ValidateExistingDisk(ctx, existingDisk, params,
 			int64(capacityRange.GetRequiredBytes()),
-			int64(capacityRange.GetLimitBytes()))
+			int64(capacityRange.GetLimitBytes()),
+			multiWriter)
 		if err != nil {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
 		}
@@ -205,7 +212,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if len(zones) != 1 {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
 		}
-		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID)
+		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, multiWriter)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create single zonal disk %#v: %v", name, err))
 		}
@@ -213,7 +220,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		if len(zones) != 2 {
 			return nil, status.Errorf(codes.Internal, fmt.Sprintf("CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones))
 		}
-		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID)
+		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, multiWriter)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create regional disk %#v: %v", name, err))
 		}
@@ -318,7 +325,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		PublishContext: nil,
 	}
 
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
@@ -452,7 +459,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 
-	disk, err := gceCS.CloudProvider.GetDisk(ctx, volKey)
+	disk, err := gceCS.CloudProvider.GetDisk(ctx, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.Name, err))
@@ -573,7 +580,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	defer gceCS.volumeLocks.Release(volumeID)
 
 	// Check if volume exists
-	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey)
+	_, err = gceCS.CloudProvider.GetDisk(ctx, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("CreateSnapshot could not find disk %v: %v", volKey.String(), err))
@@ -1006,10 +1013,11 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []s
 
 func cleanSelfLink(selfLink string) string {
 	temp := strings.TrimPrefix(selfLink, gce.GCEComputeAPIEndpoint)
-	return strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
+	temp = strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
+	return strings.TrimPrefix(temp, gce.GCEComputeAlphaAPIEndpoint)
 }
 
-func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string) (*gce.CloudDisk, error) {
+func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, multiWriter bool) (*gce.CloudDisk, error) {
 	region, err := common.GetRegionFromZones(zones)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get region from zones: %v", err)
@@ -1021,28 +1029,38 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 			fullyQualifiedReplicaZones, cloudProvider.GetReplicaZoneURI(replicaZone))
 	}
 
-	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID)
+	err = cloudProvider.InsertDisk(ctx, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, multiWriter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
 	}
 
-	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region))
+	gceAPIVersion := gce.GCEAPIVersionV1
+	if multiWriter {
+		gceAPIVersion = gce.GCEAPIVersionAlpha
+	}
+
+	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region), gceAPIVersion)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disk after creating regional disk: %v", err)
 	}
 	return disk, nil
 }
 
-func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string) (*gce.CloudDisk, error) {
+func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, multiWriter bool) (*gce.CloudDisk, error) {
 	if len(zones) != 1 {
 		return nil, fmt.Errorf("got wrong number of zones for zonal create volume: %v", len(zones))
 	}
 	diskZone := zones[0]
-	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID)
+	err := cloudProvider.InsertDisk(ctx, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID, multiWriter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
 	}
-	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone))
+
+	gceAPIVersion := gce.GCEAPIVersionV1
+	if multiWriter {
+		gceAPIVersion = gce.GCEAPIVersionAlpha
+	}
+	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone), gceAPIVersion)
 	if err != nil {
 		return nil, err
 	}

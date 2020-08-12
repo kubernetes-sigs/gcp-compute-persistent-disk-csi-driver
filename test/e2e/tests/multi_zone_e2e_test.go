@@ -257,7 +257,11 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 	if secondMountVerify != nil {
 		// Mount disk somewhere else
 		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
-		err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
+		if useBlock {
+			err = client.NodePublishBlockVolume(volID, stageDir, secondPublishDir)
+		} else {
+			err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
+		}
 		if err != nil {
 			return fmt.Errorf("NodePublishVolume failed with error: %v", err)
 		}
@@ -269,7 +273,10 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		b := verifyArgs{
 			publishDir: secondPublishDir,
 		}
-		secondMountVerify(b)
+		err = secondMountVerify(b)
+		if err != nil {
+			return fmt.Errorf("failed to verify after second mount to %s: %v", publishDir, err)
+		}
 
 		// Unmount Disk
 		err = client.NodeUnpublishVolume(volID, secondPublishDir)

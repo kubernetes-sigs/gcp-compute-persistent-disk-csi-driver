@@ -171,6 +171,23 @@ func ReadFile(instance *remote.InstanceInfo, filePath string) (string, error) {
 	return output, nil
 }
 
+func WriteBlock(instance *remote.InstanceInfo, path, fileContents string) error {
+	output, err := instance.SSHNoSudo("echo", fileContents, "|", "dd", "of="+path)
+	if err != nil {
+		return fmt.Errorf("failed to write test file %s. Output: %v, errror: %v", path, output, err)
+	}
+	return nil
+}
+
+func ReadBlock(instance *remote.InstanceInfo, path string, length int) (string, error) {
+	lengthStr := strconv.Itoa(length)
+	output, err := instance.SSHNoSudo("dd", "if="+path, "bs="+lengthStr, "count=1", "2>", "/dev/null")
+	if err != nil {
+		return "", fmt.Errorf("failed to read test file %s. Output: %v, errror: %v", path, output, err)
+	}
+	return output, nil
+}
+
 func GetFSSizeInGb(instance *remote.InstanceInfo, mountPath string) (int64, error) {
 	output, err := instance.SSH("df", "--output=size", "-BG", mountPath, "|", "awk", "'NR==2'")
 	if err != nil {
