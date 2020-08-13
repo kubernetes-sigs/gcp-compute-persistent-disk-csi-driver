@@ -33,6 +33,7 @@ spec:
             - "--leader-election-type=leases"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=250s"
+            - "--extra-create-metadata"
           # - "--run-controller-service=false" # disable the controller service of the CSI driver
           # - "--run-node-service=false"       # disable the node service of the CSI driver
           env:

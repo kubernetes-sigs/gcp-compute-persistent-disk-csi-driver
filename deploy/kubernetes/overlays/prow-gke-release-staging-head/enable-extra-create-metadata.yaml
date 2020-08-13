@@ -1,4 +1,0 @@
-# Enable extra-create-metadata flag for external-provisioner
-- op: add
-  path: /spec/template/spec/containers/0/args/-
-  value: "--extra-create-metadata"
