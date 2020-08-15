@@ -77,4 +77,20 @@ web-server                1/1       Running   0          1m
 
 The list of recognized StorageClass [`parameters`](https://kubernetes.io/docs/concepts/storage/storage-classes/#parameters) is the same as the list of [CSI CreateVolume parameters](../../../README.md#createvolume-parameters).
 
+Additional provisioning parameters are described
+[here](https://kubernetes-csi.github.io/docs/external-provisioner.html), for
+example the following `StorageClass` will format provisioned volumes as XFS.
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gce-pd-xfs
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-standard
+  csi.storage.k8s.io/fstype: xfs
+volumeBindingMode: WaitForFirstConsumer
+```
+
 The list of recognized topology keys in [`allowedTopologies`](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) is listed [here](../../../README.md#topology)
