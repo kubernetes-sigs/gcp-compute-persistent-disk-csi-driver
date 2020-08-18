@@ -74,11 +74,8 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 	// TODO: Support adding/removing capabilities based on Kubernetes version.
 	switch deploymentStrat {
 	case "gke":
+		fallthrough
 	case "gce":
-		// TODO: OSS K8S supports volume expansion for CSI by default in 1.16+;
-		// however, at time of writing GKE does not support K8S 1.16+. Add these
-		// capabilities for both deployment strategies when GKE Supports CSI
-		// Expansion by default.
 		caps = append(caps, "controllerExpansion", "nodeExpansion")
 	default:
 		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", deploymentStrat)
