@@ -412,6 +412,12 @@ func generateGKETestSkip(clusterVersion string, use_gke_managed_driver bool) str
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
 	}
 
+	// For GKE deployed PD CSI driver, resizer sidecar is enabled in 1.16.8-gke.3
+	if (use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.16.8-gke.3"))) ||
+		(!use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.16.0"))) {
+		skipString = skipString + "|allowExpansion"
+	}
+
 	// For GKE deployed PD CSI snapshot is enabled in 1.17.6-gke.4(and higher), 1.18.3-gke.0(and higher).
 	if (use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.17.6-gke.4"))) ||
 		(!use_gke_managed_driver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
