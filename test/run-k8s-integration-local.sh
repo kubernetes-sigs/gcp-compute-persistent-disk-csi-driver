@@ -10,8 +10,6 @@ readonly test_version=${TEST_VERSION:-master}
 
 source "${PKGDIR}/deploy/common.sh"
 
-ensure_var GCE_PD_SA_DIR
-
 make -C "${PKGDIR}" test-k8s-integration
 
 # This version of the command creates a GKE cluster. It also downloads and builds a k8s release
@@ -73,11 +71,29 @@ make -C "${PKGDIR}" test-k8s-integration
 # --gce-zone="us-central1-c" --num-nodes=${NUM_NODES:-3} --gke-release-channel="rapid" --deployment-strategy="gke" \
 # --use-gke-managed-driver=true --teardown-cluster=true
 
+# This version of the command does not build the driver or K8s, points to a local K8s repo to get 
+# the e2e.test binary, does not bring up or down the cluster, and uses application default
+# credentials instead of requiring a service account key.
+# 
+# Cluster nodes must have the proper GCP scopes set. This is done with kubetest by
+# NODE_SCOPES=https://www.googleapis.com/auth/cloud-platform \
+# KUBE_GCE_NODE_SERVICE_ACCOUNT=$SERVICE_ACCOUNT_NAME@$PROJECT.iam.gserviceaccount.com \
+# kubetest --up
+#
+# GCE_PD_SA_DIR is not used.
+#
+# As with all other methods local credentials must be set by running 
+#  gcloud auth application-default login
+"${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
+--deploy-overlay-name=noauth --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
+--storageclass-files=sc-standard.yaml --do-driver-build=false --test-focus='External.Storage' \
+--gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"
+
+
 # This version of the command does not build the driver or K8s, points to a
 # local K8s repo to get the e2e.test binary, and does not bring up or down the cluster
-
-"${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
---staging-image="${GCE_PD_CSI_STAGING_IMAGE}" --service-account-file="${GCE_PD_SA_DIR}/cloud-sa.json" \
---deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
---storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml --do-driver-build=false --test-focus='External.Storage' \
---gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"
+# "${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
+# --staging-image="${GCE_PD_CSI_STAGING_IMAGE}" --service-account-file="${GCE_PD_SA_DIR}/cloud-sa.json" \
+# --deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
+# --storageclass-files=sc-standard.yaml --do-driver-build=false --test-focus='External.Storage' \
+# --gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"

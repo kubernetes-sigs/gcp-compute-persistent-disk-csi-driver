@@ -96,7 +96,9 @@ func main() {
 		ensureVariable(deployOverlayName, false, "'deploy-overlay-name' must not be set when using GKE managed driver")
 	}
 
-	ensureVariable(saFile, true, "service-account-file is a required flag")
+	if *deployOverlayName != "noauth" {
+		ensureVariable(saFile, true, "service-account-file is a required flag")
+	}
 	if !*useGKEManagedDriver {
 		ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
 	}
