@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 )
 
 type driverConfig struct {
 	StorageClassFile  string
+	StorageClass      string
 	SnapshotClassFile string
 	Capabilities      []string
 	SupportedFsType   []string
@@ -91,6 +93,7 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 
 	params := driverConfig{
 		StorageClassFile:  filepath.Join(pkgDir, testConfigDir, storageClassFile),
+		StorageClass:      storageClassFile[:strings.LastIndex(storageClassFile, ".")],
 		SnapshotClassFile: absSnapshotClassFilePath,
 		SupportedFsType:   fsTypes,
 		Capabilities:      caps,

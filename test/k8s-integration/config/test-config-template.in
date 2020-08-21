@@ -5,7 +5,7 @@ SnapshotClass:
   FromFile: {{ .SnapshotClassFile }}
 {{end}}
 DriverInfo:
-  Name: csi-gcepd
+  Name: csi-gcepd-{{.StorageClass}}
   SupportedFsType:
   {{range .SupportedFsType}}  {{ . }}:
   {{end}}
