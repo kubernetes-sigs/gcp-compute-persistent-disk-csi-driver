@@ -11,11 +11,11 @@ readonly INSTALL_DIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-
 readonly KUSTOMIZE_PATH="${INSTALL_DIR}/kustomize"
 
 if [ ! -f "${INSTALL_DIR}" ]; then
-  mkdir -p ${INSTALL_DIR}
+  mkdir -p "${INSTALL_DIR}"
 fi
 if [ -f "kustomize" ]; then
   rm kustomize
 fi
 echo "installing latest version of kustomize"
 curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
-mv kustomize ${INSTALL_DIR}
+mv kustomize "${INSTALL_DIR}"

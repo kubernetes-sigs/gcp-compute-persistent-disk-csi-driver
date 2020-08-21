@@ -17,13 +17,13 @@ readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 
-make -C ${PKGDIR} test-k8s-integration
+make -C "${PKGDIR}" test-k8s-integration
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --platform=windows --bringup-cluster=false --teardown-cluster=false --teardown-driver=${teardown_driver}\
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --gce-zone=${gce_zone} --test-version=${test_version}\
-            --storageclass-files=sc-windows.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus="External.Storage" \
+            --storageclass-files=sc-windows.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus='External.Storage' \
             --deployment-strategy=${deployment_strategy}"
 
-eval $base_cmd
+eval "$base_cmd"

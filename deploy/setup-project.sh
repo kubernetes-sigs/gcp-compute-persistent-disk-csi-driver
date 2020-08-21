@@ -42,7 +42,7 @@ readonly IAM_NAME="${GCE_PD_SA_NAME}@${IAM_PROJECT}.iam.gserviceaccount.com"
 # Check if SA exists
 CREATE_SA=true
 SA_JSON=$(gcloud iam service-accounts list --filter="name:${IAM_NAME}" --format="json")
-if [ "[]" != "${SA_JSON}" ]; 
+if [ "[]" != "${SA_JSON}" ];
 then
 	CREATE_SA=false
 	echo "Service account ${IAM_NAME} exists. Would you like to create a new one (y) or reuse the existing one (n)"
@@ -54,7 +54,7 @@ then
     fi
 fi
 
-if [ "${CREATE_SA}" = true ]; 
+if [ "${CREATE_SA}" = true ];
 then
 	# Delete Service Account Key
 	if [ -f "${GCE_PD_SA_DIR}/cloud-sa.json" ];
@@ -88,7 +88,7 @@ fi
 # Bind service account to roles
 for role in ${BIND_ROLES}
 do
-  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role ${role}
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "${role}"
 done
 
 # Export key if needed
