@@ -20,7 +20,7 @@ set -o pipefail
 
 PKG_ROOT=$(git rev-parse --show-toplevel)
 
-${PKG_ROOT}/hack/verify-gofmt.sh
-${PKG_ROOT}/hack/verify-govet.sh
+"${PKG_ROOT}/hack/verify-gofmt.sh"
+"${PKG_ROOT}/hack/verify-govet.sh"
 
 make -C "${PKG_ROOT}" all

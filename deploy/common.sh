@@ -8,7 +8,7 @@ readonly KUBECTL="${GCE_PD_KUBECTL:-kubectl}"
 # Common functions
 
 function ensure_var(){
-    if [[ -z "${!1}" ]];
+    if [[ -z "${!1:-}" ]];
     then
         echo "${1} is unset"
         exit 1
@@ -26,5 +26,5 @@ function get_needed_roles()
 function ensure_kustomize()
 {
   ensure_var PKGDIR
-  ${PKGDIR}/deploy/kubernetes/install-kustomize.sh
+  "${PKGDIR}/deploy/kubernetes/install-kustomize.sh"
 }

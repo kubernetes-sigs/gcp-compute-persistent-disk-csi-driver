@@ -17,11 +17,11 @@ source "${PKGDIR}/deploy/common.sh"
 
 ensure_kustomize
 
-${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | ${KUBECTL} delete -v="${VERBOSITY}" --ignore-not-found -f -
+${KUSTOMIZE_PATH} build "${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION}" | ${KUBECTL} delete -v="${VERBOSITY}" --ignore-not-found -f -
 ${KUBECTL} delete secret cloud-sa -v="${VERBOSITY}" --ignore-not-found
 
-if [[ ${NAMESPACE} != "" && ${NAMESPACE} != "default" ]] && \
-  ${KUBECTL} get namespace ${NAMESPACE} -v="${VERBOSITY}";
+if [[ "${NAMESPACE}" != "" && "${NAMESPACE}" != "default" ]] && \
+  ${KUBECTL} get namespace "${NAMESPACE}" -v="${VERBOSITY}";
 then
-    ${KUBECTL} delete namespace ${NAMESPACE} -v="${VERBOSITY}"
+    ${KUBECTL} delete namespace "${NAMESPACE}" -v="${VERBOSITY}"
 fi

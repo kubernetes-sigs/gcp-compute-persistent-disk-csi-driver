@@ -12,7 +12,7 @@ source "${PKGDIR}/deploy/common.sh"
 
 ensure_var GCE_PD_SA_DIR
 
-make -C ${PKGDIR} test-k8s-integration
+make -C "${PKGDIR}" test-k8s-integration
 
 # This version of the command creates a GKE cluster. It also downloads and builds a k8s release
 # so that it can run the test specified
@@ -76,8 +76,8 @@ make -C ${PKGDIR} test-k8s-integration
 # This version of the command does not build the driver or K8s, points to a
 # local K8s repo to get the e2e.test binary, and does not bring up or down the cluster
 
-${PKGDIR}/bin/k8s-integration-test --run-in-prow=false \
---staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
---deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false --local-k8s-dir=$KTOP \
---storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml --do-driver-build=false --test-focus="External.Storage" \
---gce-zone="us-central1-b" --num-nodes=${NUM_NODES:-3}
+"${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
+--staging-image="${GCE_PD_CSI_STAGING_IMAGE}" --service-account-file="${GCE_PD_SA_DIR}/cloud-sa.json" \
+--deploy-overlay-name=dev --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
+--storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml --do-driver-build=false --test-focus='External.Storage' \
+--gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"

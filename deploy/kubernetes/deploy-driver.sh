@@ -23,13 +23,13 @@ source "${PKGDIR}/deploy/common.sh"
 
 print_usage()
 {
-    echo "deploy-driver.sh [--skip-sa-check]\n"
-    echo "\t--skip-sa-check: don't check the service account for required roles"
+    printf "deploy-driver.sh [--skip-sa-check]\n"
+    printf "\t--skip-sa-check: don't check the service account for required roles"
     echo
 }
 
 skip_sa_check=
-while [ ! -z "${1-}" ]; do
+while [ -n "${1-}" ]; do
   case $1 in
     --skip-sa-check ) shift
                       skip_sa_check=true
@@ -49,20 +49,20 @@ function check_service_account()
 {
 	# Using bash magic to parse JSON for IAM
 	# Grepping for a line with client email returning anything quoted after the colon
-	readonly IAM_NAME=$(grep -Po '"client_email": *\K"[^"]*"' ${GCE_PD_SA_DIR}/cloud-sa.json | tr -d '"')
-	readonly PROJECT=$(grep -Po '"project_id": *\K"[^"]*"' ${GCE_PD_SA_DIR}/cloud-sa.json | tr -d '"')
-	readonly GOTTEN_BIND_ROLES=$(gcloud projects get-iam-policy ${PROJECT} --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:${IAM_NAME}")
+	readonly IAM_NAME=$(grep -Po '"client_email": *\K"[^"]*"' "${GCE_PD_SA_DIR}/cloud-sa.json" | tr -d '"')
+	readonly PROJECT=$(grep -Po '"project_id": *\K"[^"]*"' "${GCE_PD_SA_DIR}/cloud-sa.json" | tr -d '"')
+	readonly GOTTEN_BIND_ROLES=$(gcloud projects get-iam-policy "${PROJECT}" --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:${IAM_NAME}")
 	readonly BIND_ROLES=$(get_needed_roles)
 	MISSING_ROLES=false
 	for role in ${BIND_ROLES}
 	do
-		if ! grep -q $role <<<${GOTTEN_BIND_ROLES} ; 
+		if ! grep -q "$role" <<<"${GOTTEN_BIND_ROLES}" ;
 		then
 			echo "Missing role: $role"
 			MISSING_ROLES=true
 		fi
 	done
-	if [ "${MISSING_ROLES}" = true ]; 
+	if [ "${MISSING_ROLES}" = true ];
 	then
 		echo "Cannot deploy with missing roles in service account, please run setup-project.sh to setup Service Account"
 		exit 1
@@ -75,25 +75,25 @@ if [ "$skip_sa_check" != true ]; then
   check_service_account
 fi
 
-if ! ${KUBECTL} get namespace ${NAMESPACE} -v="${VERBOSITY}";
+if ! ${KUBECTL} get namespace "${NAMESPACE}" -v="${VERBOSITY}";
 then
-  ${KUBECTL} create namespace ${NAMESPACE} -v="${VERBOSITY}"
+  ${KUBECTL} create namespace "${NAMESPACE}" -v="${VERBOSITY}"
 fi
 
-if ! ${KUBECTL} get secret cloud-sa -v="${VERBOSITY}" -n ${NAMESPACE};
+if ! ${KUBECTL} get secret cloud-sa -v="${VERBOSITY}" -n "${NAMESPACE}";
 then
-  ${KUBECTL} create secret generic cloud-sa -v="${VERBOSITY}" --from-file="${GCE_PD_SA_DIR}/cloud-sa.json" -n ${NAMESPACE}
+  ${KUBECTL} create secret generic cloud-sa -v="${VERBOSITY}" --from-file="${GCE_PD_SA_DIR}/cloud-sa.json" -n "${NAMESPACE}"
 fi
 
 # GKE Required Setup
 if ! ${KUBECTL} get clusterrolebinding -v="${VERBOSITY}" cluster-admin-binding;
 then
-  ${KUBECTL} create clusterrolebinding cluster-admin-binding -v="${VERBOSITY}" --clusterrole cluster-admin --user $(gcloud config get-value account)
+  ${KUBECTL} create clusterrolebinding cluster-admin-binding -v="${VERBOSITY}" --clusterrole cluster-admin --user "$(gcloud config get-value account)"
 fi
 
 # Debug log: print ${KUBECTL} version
 ${KUBECTL} version
 
 readonly tmp_spec=/tmp/gcp-compute-persistent-disk-csi-driver-specs-generated.yaml
-${KUSTOMIZE_PATH} build ${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION} | tee $tmp_spec
+${KUSTOMIZE_PATH} build "${PKGDIR}/deploy/kubernetes/overlays/${DEPLOY_VERSION}" | tee $tmp_spec
 ${KUBECTL} apply -v="${VERBOSITY}" -f $tmp_spec
