@@ -18,10 +18,13 @@ package main
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"k8s.io/klog"
 )
 
 /*
@@ -68,10 +71,13 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 
 	re := regexp.MustCompile(testFilter)
 
+	var mergeErrors []string
 	for _, dir := range sourceDirectories {
 		files, err := ioutil.ReadDir(dir)
 		if err != nil {
-			return err
+			klog.Errorf("Failed to read juint directory %s: %v", dir, err)
+			mergeErrors = append(mergeErrors, err.Error())
+			continue
 		}
 		for _, file := range files {
 			if !strings.HasSuffix(file.Name(), ".xml") {
@@ -112,6 +118,10 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 
 	if err = ioutil.WriteFile(destination, data, 0644); err != nil {
 		return err
+	}
+
+	if mergeErrors != nil {
+		return fmt.Errorf("Problems reading junit files; partial merge has been performed: %s", strings.Join(mergeErrors, " "))
 	}
 	return nil
 }
