@@ -369,13 +369,17 @@ func handle() error {
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFiles) != 0 {
 		storageClasses := strings.Split(*storageClassFiles, ",")
+		var ginkgoErrors []string
 		for _, scFile := range storageClasses {
 			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat, scFile); err != nil {
-				return fmt.Errorf("runCSITests failed: %w", err)
+				ginkgoErrors = append(ginkgoErrors, err.Error())
 			}
 		}
 		if err = mergeArtifacts(storageClasses); err != nil {
 			return fmt.Errorf("artifact merging failed: %w", err)
+		}
+		if ginkgoErrors != nil {
+			return fmt.Errorf("runCSITests failed: %v", strings.Join(ginkgoErrors, " "))
 		}
 	} else if *migrationTest {
 		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
