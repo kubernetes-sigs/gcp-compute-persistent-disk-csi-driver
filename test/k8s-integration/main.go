@@ -370,12 +370,15 @@ func handle() error {
 	if len(*storageClassFiles) != 0 {
 		storageClasses := strings.Split(*storageClassFiles, ",")
 		var ginkgoErrors []string
+		var testOutputDirs []string
 		for _, scFile := range storageClasses {
-			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat, scFile); err != nil {
+			outputDir := strings.TrimSuffix(scFile, ".yaml")
+			testOutputDirs = append(testOutputDirs, outputDir)
+			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat, outputDir); err != nil {
 				ginkgoErrors = append(ginkgoErrors, err.Error())
 			}
 		}
-		if err = mergeArtifacts(storageClasses); err != nil {
+		if err = mergeArtifacts(testOutputDirs); err != nil {
 			return fmt.Errorf("artifact merging failed: %w", err)
 		}
 		if ginkgoErrors != nil {
