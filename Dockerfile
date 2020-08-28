@@ -18,11 +18,11 @@ ADD . .
 RUN make
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM gcr.io/google-containers/debian-base-amd64:v2.0.0 as base
+FROM k8s.gcr.io/build-image/debian-base-amd64:v2.1.3 as base
 RUN clean-install udev
 
-# Start from Google Debian base
-FROM gcr.io/google-containers/debian-base-amd64:v2.0.0
+# Start from Kubernetes Debian base
+FROM k8s.gcr.io/build-image/debian-base-amd64:v2.1.3 
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
