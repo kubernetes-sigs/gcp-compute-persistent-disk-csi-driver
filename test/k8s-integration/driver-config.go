@@ -45,6 +45,7 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 
 	// Fill in template parameters. Capabilities can be found here:
 	// https://github.com/kubernetes/kubernetes/blob/b717be8269a4f381ab6c23e711e8924bc1f64c93/test/e2e/storage/testsuites/testdriver.go#L136
+
 	caps := []string{
 		"persistence",
 		"block",
@@ -56,6 +57,12 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 	var fsTypes []string
 	if platform == "windows" {
 		fsTypes = []string{"ntfs"}
+		caps = []string{
+			"persistence",
+			"exec",
+			"multipods",
+			"topology",
+		}
 	} else {
 		fsTypes = []string{
 			"ext2",

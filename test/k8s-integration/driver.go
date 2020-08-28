@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
 )
 
@@ -15,9 +16,10 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
 }
 
-func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
+func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
 	if doDriverBuild {
 		// Install kustomize
+		klog.Infof("Installing kustomize")
 		out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
@@ -40,6 +42,17 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, stagingVersion)).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+		}
+		if platform == "windows" {
+			out, err = exec.Command(
+				filepath.Join(pkgDir, "bin", "kustomize"),
+				"edit",
+				"set",
+				"image",
+				fmt.Sprintf("%s-win=%s-win:%s", pdImagePlaceholder, stagingImage, stagingVersion)).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+			}
 		}
 	}
 
@@ -65,11 +78,18 @@ func installDriver(goPath, pkgDir, stagingImage, stagingVersion, deployOverlayNa
 	if err != nil {
 		return fmt.Errorf("failed to deploy driver: %v", err)
 	}
-
+	klog.Infof("Deploying driver")
 	// TODO (#139): wait for driver to be running
-	time.Sleep(time.Minute)
-	statusCmd := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace)
-	err = runCommand("Checking driver pods", statusCmd)
+	if platform == "windows" {
+		klog.Infof("Waiting 15 minutes for the driver to start on Windows")
+		time.Sleep(15 * time.Minute)
+	} else {
+		klog.Infof("Waiting 5 minutes for the driver to start on Linux")
+		time.Sleep(5 * time.Minute)
+	}
+	out, err = exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+	klog.Infof("describe pods \n %s", string(out))
+
 	if err != nil {
 		return fmt.Errorf("failed to describe pods: %v", err)
 	}
@@ -99,18 +119,22 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 		return err
 	}
 	var cmd *exec.Cmd
-	if platform != "windows" {
-		cmd = exec.Command("make", "-C", pkgDir, "push-container",
-			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
-	} else {
-		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-1909",
-			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
-	}
-	err = runCommand("Pushing GCP Container", cmd)
+
+	cmd = exec.Command("make", "-C", pkgDir, "push-container",
+		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+	err = runCommand("Pushing GCP Container for Linux", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to run make command: err: %v", err)
+		return fmt.Errorf("failed to run make command for linux: err: %v", err)
+	}
+	if platform == "windows" {
+		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-ltsc2019",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s-win", stagingImage))
+		err = runCommand("Building and Pushing GCP Container for Windows", cmd)
+		if err != nil {
+			return fmt.Errorf("failed to run make command for windows: err: %v", err)
+		}
 	}
 	return nil
 }

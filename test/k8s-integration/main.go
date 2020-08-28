@@ -79,6 +79,8 @@ func init() {
 }
 
 func main() {
+	klog.InitFlags(nil)
+	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	if !*inProw && *doDriverBuild {
@@ -298,27 +300,41 @@ func handle() error {
 			}
 		}()
 	}
+
 	// For windows cluster, when cluster is up, all Windows nodes are tainted with NoSchedule to avoid linux pods
 	// being scheduled to Windows nodes. When running windows tests, we need to remove the taint.
 	if *platform == "windows" {
-		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "beta.kubernetes.io/os=windows", "-o", "name")
+		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=windows", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to get nodes: %v", err)
+			return fmt.Errorf("failed to get windows nodes: %v", err)
 		}
 		nodes := strings.Fields(string(out))
 		for _, node := range nodes {
 			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule-")
-			_, err = taintCmd.CombinedOutput()
+			out, err := taintCmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("failed to untaint windows node %v", err)
 			}
+			klog.Infof("untaint windows nodes: %s, output %s", node, string(out))
+		}
+
+		// It typically takes 5+ minutes to download Windows container image. To avoid tests being timed out,
+		// pre-pulling the test images as best effort.
+		klog.Infof("Prepulling test images.")
+		err = os.Setenv("PREPULL_IMAGE", filepath.Join(pkgDir, "test", "k8s-integration", "prepull.yaml"))
+		if err != nil {
+			return err
+		}
+		out, err = exec.Command(filepath.Join(pkgDir, "test", "k8s-integration", "prepull-image.sh")).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
 	}
 
 	if !*useGKEManagedDriver {
 		// Install the driver and defer its teardown
-		err := installDriver(goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+		err := installDriver(*platform, goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
 		if *teardownDriver {
 			defer func() {
 				if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
@@ -340,6 +356,30 @@ func handle() error {
 				cancel()
 			}
 		}()
+	}
+
+	// For windows cluster, it has both Windows nodes and Linux nodes. Before triggering the tests, taint Linux nodes
+	// with NoSchedule to avoid test pods being scheduled on Linux. Need to do this step after driver is deployed.
+	// Also the test framework will not proceed to run tests unless all nodes are ready
+	// AND schedulable. Allow not-ready nodes since we make Linux nodes
+	// unschedulable.
+	allowedNotReadyNodes := 0
+	if *platform == "windows" {
+		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=linux", "-o", "name")
+		out, err := nodesCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to get linux nodes: %v", err)
+		}
+		nodes := strings.Fields(string(out))
+		allowedNotReadyNodes = len(nodes)
+		for _, node := range nodes {
+			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule")
+			out, err := taintCmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to untaint windows node %v", err)
+			}
+			klog.Infof("taint linux nodes: %s, output %s", node, string(out))
+		}
 	}
 
 	var cloudProviderArgs []string
@@ -374,7 +414,8 @@ func handle() error {
 		for _, scFile := range storageClasses {
 			outputDir := strings.TrimSuffix(scFile, ".yaml")
 			testOutputDirs = append(testOutputDirs, outputDir)
-			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile, *snapshotClassFile, cloudProviderArgs, *deploymentStrat, outputDir); err != nil {
+			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile,
+				*snapshotClassFile, cloudProviderArgs, *deploymentStrat, outputDir, allowedNotReadyNodes); err != nil {
 				ginkgoErrors = append(ginkgoErrors, err.Error())
 			}
 		}
@@ -455,19 +496,20 @@ func setEnvProject(project string) error {
 }
 
 func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProviderArgs []string) error {
-	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs, "")
+	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs, "", 0)
 }
 
-func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string, cloudProviderArgs []string, deploymentStrat, reportPrefix string) error {
+func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string,
+	cloudProviderArgs []string, deploymentStrat, reportPrefix string, allowedNotReadyNodes int) error {
 	testDriverConfigFile, err := generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs, reportPrefix)
+	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs, reportPrefix, allowedNotReadyNodes)
 }
 
-func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string, reportPrefix string) error {
+func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string, reportPrefix string, allowedNotReadyNodes int) error {
 	err := os.Chdir(testDir)
 	if err != nil {
 		return err
@@ -494,7 +536,7 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 	}
 	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testFocus, testSkip)
 	if *platform == "windows" {
-		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s", *platform)
+		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s --allowed-not-ready-nodes=%d", *platform, allowedNotReadyNodes)
 	}
 	testArgs := fmt.Sprintf("%s %s %s",
 		ginkgoArgs,
