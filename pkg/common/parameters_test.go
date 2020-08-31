@@ -70,6 +70,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskType:             "pd-balanced",
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 make(map[string]string),
 			},
 		},
 		{
