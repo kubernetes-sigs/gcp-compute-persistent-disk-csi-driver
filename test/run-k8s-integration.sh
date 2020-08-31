@@ -23,6 +23,7 @@ readonly image_type=${IMAGE_TYPE:-cos}
 readonly use_gke_managed_driver=${USE_GKE_MANAGED_DRIVER:-false}
 readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
+readonly gke_node_version=${GKE_NODE_VERSION:-}
 
 export GCE_PD_VERBOSITY=9
 
@@ -57,4 +58,7 @@ else
   base_cmd="${base_cmd} --gce-region=${gce_region}"
 fi
 
+if [ -z "$gke_node_version" ]; then
+  base_cmd="${base_cmd} --gke-node-version=${gke_node_version}"
+fi
 eval "$base_cmd"

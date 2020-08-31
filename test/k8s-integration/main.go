@@ -48,6 +48,7 @@ var (
 	imageType          = flag.String("image-type", "cos", "the image type to use for the cluster")
 	gkeReleaseChannel  = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
 	gkeTestClusterName = flag.String("gke-cluster-name", "gcp-pd-csi-driver-test-cluster", "GKE cluster name")
+	gkeNodeVersion     = flag.String("gke-node-version", "", "GKE cluster worker node version")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
