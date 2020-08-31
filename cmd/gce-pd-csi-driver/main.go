@@ -35,7 +35,7 @@ var (
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
-	vendorVersion        string
+	version              string
 )
 
 const (
@@ -62,10 +62,10 @@ func main() {
 func handle() {
 	var err error
 
-	if vendorVersion == "" {
-		klog.Fatalf("vendorVersion must be set at compile time")
+	if version == "" {
+		klog.Fatalf("version must be set at compile time")
 	}
-	klog.V(2).Infof("Driver vendor version %v", vendorVersion)
+	klog.V(2).Infof("Driver vendor version %v", version)
 
 	gceDriver := driver.GetGCEDriver()
 
@@ -79,7 +79,7 @@ func handle() {
 	//Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
-		cloudProvider, err := gce.CreateCloudProvider(ctx, vendorVersion, *cloudConfigFilePath)
+		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath)
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err)
 		}
@@ -104,7 +104,7 @@ func handle() {
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(driverName, version, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

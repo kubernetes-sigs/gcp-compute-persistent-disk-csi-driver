@@ -29,11 +29,11 @@ DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -mod=vendor -ldflags "-X main.vendorVersion=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor -ldflags "-X main.version=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows:
 	mkdir -p bin
-	GOOS=windows go build -mod=vendor -ldflags -X=main.vendorVersion=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
+	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE
 	$(DOCKER) build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
