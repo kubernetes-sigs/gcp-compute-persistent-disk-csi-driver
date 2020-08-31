@@ -1,3 +1,22 @@
+# v1.0.1 - Changelog since v1.0.0
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- Update GCE PD CSI Driver Docker base image to `k8s.gcr.io/build-image/debian-base-amd64:v2.1.3` (previously `gcr.io/google-containers/debian-base-amd64:v2.0.0`) to address CVEs. ([#598](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/598), [@saad-ali](https://github.com/saad-ali))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.0.0 - Changelog since v0.7.0
 
 ## Changes by Kind
