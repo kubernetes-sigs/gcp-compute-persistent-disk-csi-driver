@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASE_IMAGE
 ARG BASE_IMAGE_TAG
 FROM --platform=$BUILDPLATFORM golang:1.13.4 AS builder
 
@@ -23,7 +22,7 @@ WORKDIR /code
 ADD . /code/
 RUN cd /code/ && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver-windows
 
-FROM mcr.microsoft.com/windows/${BASE_IMAGE}:${BASE_IMAGE_TAG}
+FROM mcr.microsoft.com/windows/servercore:${BASE_IMAGE_TAG}
 LABEL description="PD CSI driver"
 COPY --from=builder /code/bin/gce-pd-csi-driver.exe /gce-pd-csi-driver.exe
 

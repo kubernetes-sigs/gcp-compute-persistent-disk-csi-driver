@@ -36,17 +36,17 @@ gce-pd-driver-windows:
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE
-	$(DOCKER) build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
+	$(DOCKER) build -f cmd/gce-pd-csi-driver/Dockerfile --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
+	$(DOCKER) buildx build --file=cmd/gce-pd-csi-driver/Dockerfile.Windows --platform=windows \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
 		--build-arg BASE_IMAGE_TAG=ltsc2019 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-1909: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
+	$(DOCKER) buildx build --file=cmd/gce-pd-csi-driver/Dockerfile.Windows --platform=windows \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
 		--build-arg BASE_IMAGE_TAG=1909 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
