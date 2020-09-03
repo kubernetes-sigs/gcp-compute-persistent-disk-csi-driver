@@ -20,6 +20,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -65,6 +66,7 @@ func (s SkipReason) MarshalText() ([]byte, error) {
 }
 
 // MergeJUnit merges all junit xml files found in sourceDirectories into a single xml file at destination, using the filter.
+// The merging removes duplicate skipped tests. The original files are deleted.
 func MergeJUnit(testFilter string, sourceDirectories []string, destination string) error {
 	var junit TestSuite
 	var data []byte
@@ -72,6 +74,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 	re := regexp.MustCompile(testFilter)
 
 	var mergeErrors []string
+	var filesToDelete []string
 	for _, dir := range sourceDirectories {
 		files, err := ioutil.ReadDir(dir)
 		if err != nil {
@@ -83,7 +86,9 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			if !strings.HasSuffix(file.Name(), ".xml") {
 				continue
 			}
-			data, err := ioutil.ReadFile(filepath.Join(dir, file.Name()))
+			fullFilename := filepath.Join(dir, file.Name())
+			filesToDelete = append(filesToDelete, fullFilename)
+			data, err := ioutil.ReadFile(fullFilename)
 			if err != nil {
 				return err
 			}
@@ -122,6 +127,17 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 
 	if mergeErrors != nil {
 		return fmt.Errorf("Problems reading junit files; partial merge has been performed: %s", strings.Join(mergeErrors, " "))
+	} else {
+		// Only delete original files if everything went well.
+		var removeErrors []string
+		for _, filename := range filesToDelete {
+			if err := os.Remove(filename); err != nil {
+				removeErrors = append(removeErrors, err.Error())
+			}
+		}
+		if removeErrors != nil {
+			return fmt.Errorf("Problem removing original junit results: %s", strings.Join(removeErrors, " "))
+		}
 	}
 	return nil
 }
