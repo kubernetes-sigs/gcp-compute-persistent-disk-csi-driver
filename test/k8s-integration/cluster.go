@@ -167,6 +167,10 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 		cmdParams = append(cmdParams, "--enable-autorepair")
 	}
 
+	if isVariableSet(gkeNodeVersion) {
+		cmdParams = append(cmdParams, "--node-version", *gkeNodeVersion)
+	}
+
 	if useManagedDriver {
 		// PD CSI Driver add on is enabled only in gcloud beta.
 		cmdParams = append([]string{"beta"}, cmdParams...)
