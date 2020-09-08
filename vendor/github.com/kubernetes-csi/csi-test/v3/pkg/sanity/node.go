@@ -19,6 +19,7 @@ package sanity
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -768,7 +769,11 @@ var _ = DescribeSanity("Node Service", func(sc *TestContext) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(nodepubvol).NotTo(BeNil())
 
+		_, err = os.Stat(sc.TargetPath + "/target")
+		By("Jing " + sc.TargetPath)
+		fmt.Errorf("jing %s %v", sc.TargetPath, err)
 		// NodeGetVolumeStats
+		By("Jing Get node volume stats")
 		if nodeVolumeStatsSupported {
 			By("Get node volume stats")
 			statsResp, err := c.NodeGetVolumeStats(
