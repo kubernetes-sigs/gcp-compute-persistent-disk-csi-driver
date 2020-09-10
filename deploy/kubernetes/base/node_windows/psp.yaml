@@ -18,7 +18,7 @@ spec:
   - pathPrefix: \var\lib\kubelet
   - pathPrefix: \var\lib\kubelet\plugins_registry
   - pathPrefix: \var\lib\kubelet\plugins\pd.csi.storage.gke.io
-  - pathPrefix: \\.\pipe\csi-proxy-disk-v1alpha1
-  - pathPrefix: \\.\pipe\csi-proxy-volume-v1alpha1
+  - pathPrefix: \\.\pipe\csi-proxy-disk-v1beta1
+  - pathPrefix: \\.\pipe\csi-proxy-volume-v1beta1
   - pathPrefix: \\.\pipe\csi-proxy-filesystem-v1alpha1
 
