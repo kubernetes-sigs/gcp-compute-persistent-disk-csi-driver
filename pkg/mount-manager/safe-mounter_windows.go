@@ -27,8 +27,8 @@ import (
 	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta1"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta1"
 
-	fsapi "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1alpha1"
-	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1alpha1"
+	fsapi "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1"
+	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1"
 
 	volumeapi "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
 	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta1"
