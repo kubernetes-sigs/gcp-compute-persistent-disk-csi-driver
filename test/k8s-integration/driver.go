@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
@@ -77,19 +76,27 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 	deployEnv = append(deployEnv,
 		fmt.Sprintf("GOPATH=%s", goPath),
 		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName))
-	deployCmd.Env = append(os.Environ(), deployEnv...)
+	deployEnv = append(os.Environ(), deployEnv...)
+	deployCmd.Env = deployEnv
 	err := runCommand("Deploying driver", deployCmd)
 	if err != nil {
-		return fmt.Errorf("failed to deploy driver: %v", err)
+		return fmt.Errorf("failed to deploy driver: %w", err)
 	}
-	klog.Infof("Deploying driver")
-	// TODO (#139): wait for driver to be running
+
+	waitScript := filepath.Join(pkgDir, "deploy", "kubernetes", "wait-for-driver.sh")
+	waitCmd := exec.Command(waitScript)
+	waitCmd.Env = deployEnv
+	err = runCommand("Waiting for driver to start", waitCmd)
+	if err != nil {
+		return fmt.Errorf("driver failed to come up: %w", err)
+	}
 	if platform == "windows" {
-		klog.Infof("Waiting 15 minutes for the driver to start on Windows")
-		time.Sleep(15 * time.Minute)
-	} else {
-		klog.Infof("Waiting 5 minutes for the driver to start on Linux")
-		time.Sleep(5 * time.Minute)
+		waitCmd = exec.Command(waitScript, "--windows")
+		waitCmd.Env = deployEnv
+		err = runCommand("Waiting for windows deployment to start", waitCmd)
+		if err != nil {
+			return fmt.Errorf("Windows deployment failed to come up: %w", err)
+		}
 	}
 	out, err := exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
 	klog.Infof("describe pods \n %s", string(out))
