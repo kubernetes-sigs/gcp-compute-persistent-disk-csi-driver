@@ -5,3 +5,4 @@ includedPermissions:
 - compute.instances.get
 - compute.instances.attachDisk
 - compute.instances.detachDisk
+- compute.disks.get
