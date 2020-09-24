@@ -3,7 +3,7 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-gcepd-driver-alpha-win
 imageTag:
-  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver-win
+  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
   newTag: "v1.0.1-gke.9"
 ---

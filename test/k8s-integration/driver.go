@@ -42,17 +42,6 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		if err != nil {
 			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
 		}
-		if platform == "windows" {
-			out, err = exec.Command(
-				filepath.Join(pkgDir, "bin", "kustomize"),
-				"edit",
-				"set",
-				"image",
-				fmt.Sprintf("%s-win=%s-win:%s", pdImagePlaceholder, stagingImage, stagingVersion)).CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
-			}
-		}
 	}
 
 	var deployEnv []string
@@ -131,22 +120,15 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	}
 	var cmd *exec.Cmd
 
-	cmd = exec.Command("make", "-C", pkgDir, "push-container",
+	// build multi-arch image which can work for both Linux and Windows
+	cmd = exec.Command("make", "-C", pkgDir, "build-and-push-multi-arch",
 		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
 		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
-	err = runCommand("Pushing GCP Container for Linux", cmd)
+	err = runCommand("Building and Pushing GCP Container for Windows", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to run make command for linux: err: %v", err)
+		return fmt.Errorf("failed to run make command for windows: err: %v", err)
 	}
-	if platform == "windows" {
-		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-ltsc2019",
-			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s-win", stagingImage))
-		err = runCommand("Building and Pushing GCP Container for Windows", cmd)
-		if err != nil {
-			return fmt.Errorf("failed to run make command for windows: err: %v", err)
-		}
-	}
+
 	return nil
 }
 
