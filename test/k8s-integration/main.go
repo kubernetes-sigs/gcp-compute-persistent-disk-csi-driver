@@ -333,7 +333,7 @@ func handle() error {
 			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
 		time.Sleep(10 * time.Minute)
-		out, err = exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+		out, err = exec.Command("kubectl", "describe", "pods").CombinedOutput()
 		klog.Infof("describe pods \n %s", string(out))
 
 		if err != nil {
