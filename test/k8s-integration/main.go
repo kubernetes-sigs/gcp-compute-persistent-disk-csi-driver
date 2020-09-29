@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
@@ -333,6 +334,14 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
+		time.Sleep(10 * time.Minute)
+		out, err = exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+		klog.Infof("describe pods \n %s", string(out))
+
+		if err != nil {
+			return fmt.Errorf("failed to describe pods: %v", err)
+		}
+
 	}
 
 	if !*useGKEManagedDriver {
