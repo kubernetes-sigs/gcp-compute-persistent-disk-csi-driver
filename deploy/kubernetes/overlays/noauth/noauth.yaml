@@ -1,0 +1,25 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: gce-pd-driver
+          env:
+            - $patch: delete
+              name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/cloud-sa/cloud-sa.json"
+          volumeMounts:
+            - $patch: delete
+              name: cloud-sa-volume
+              readOnly: true
+              mountPath: "/etc/cloud-sa"
+      volumes:
+        - $patch: delete
+          name: cloud-sa-volume
+          secret:
+            secretName: cloud-sa
+
+

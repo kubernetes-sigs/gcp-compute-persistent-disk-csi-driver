@@ -56,25 +56,29 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		}
 	}
 
-	// setup service account file for secret creation
-	tmpSaFile := filepath.Join(generateUniqueTmpDir(), "cloud-sa.json")
-	defer removeDir(filepath.Dir(tmpSaFile))
+	var deployEnv []string
+	if deployOverlayName != "noauth" {
+		// setup service account file for secret creation
+		tmpSaFile := filepath.Join(generateUniqueTmpDir(), "cloud-sa.json")
+		defer removeDir(filepath.Dir(tmpSaFile))
 
-	// Need to copy it to name the file "cloud-sa.json"
-	out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error copying service account key: %s, err: %v", out, err)
+		// Need to copy it to name the file "cloud-sa.json"
+		out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error copying service account key: %s, err: %v", out, err)
+		}
+		defer shredFile(tmpSaFile)
+
+		deployEnv = append(deployEnv, fmt.Sprintf("GCE_PD_SA_DIR=%s", filepath.Dir(tmpSaFile)))
 	}
-	defer shredFile(tmpSaFile)
 
 	// deploy driver
 	deployCmd := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "deploy-driver.sh"), "--skip-sa-check")
-	deployCmd.Env = append(os.Environ(),
+	deployEnv = append(deployEnv,
 		fmt.Sprintf("GOPATH=%s", goPath),
-		fmt.Sprintf("GCE_PD_SA_DIR=%s", filepath.Dir(tmpSaFile)),
-		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName),
-	)
-	err = runCommand("Deploying driver", deployCmd)
+		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName))
+	deployCmd.Env = append(os.Environ(), deployEnv...)
+	err := runCommand("Deploying driver", deployCmd)
 	if err != nil {
 		return fmt.Errorf("failed to deploy driver: %v", err)
 	}
@@ -87,7 +91,7 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		klog.Infof("Waiting 5 minutes for the driver to start on Linux")
 		time.Sleep(5 * time.Minute)
 	}
-	out, err = exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+	out, err := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
 	klog.Infof("describe pods \n %s", string(out))
 
 	if err != nil {
