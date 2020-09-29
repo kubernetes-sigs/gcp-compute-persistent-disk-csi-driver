@@ -8,7 +8,7 @@ Kubernetes 1.14.
 
 See [instructions](driver-install.md)
 
-## Zonal PD example
+## Zonal PD example for Linux or Windows cluster
 This example provisions a zonal PD in both single-zone and regional clusters.
 
 1. Create example Zonal Storage Class
@@ -17,8 +17,14 @@ $ kubectl apply -f ./examples/kubernetes/demo-zonal-sc.yaml
 ```
 
 2. Create example PVC and Pod
+For Linux cluster,
 ```
 $ kubectl apply -f ./examples/kubernetes/demo-pod.yaml
+```
+
+For Windows cluster,
+```
+$ kubectl apply -f ./examples/kubernetes/demo-windows.yaml
 ```
 
 3. Verify PV is created and bound to PVC

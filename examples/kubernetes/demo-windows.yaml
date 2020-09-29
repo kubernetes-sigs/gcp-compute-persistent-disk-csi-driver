@@ -1,0 +1,34 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: podpvc-windows
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: csi-gce-pd-ntfs
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-windows
+spec:
+  tolerations:
+  - operator: Exists
+  nodeSelector:
+    kubernetes.io/os: windows
+  containers:
+  - name: web-server
+    image: k8s.gcr.io/e2e-test-images/agnhost:2.21
+    volumeMounts:
+    - mountPath: /www/html
+      name: mypvc
+  volumes:
+  - name: mypvc
+    persistentVolumeClaim:
+      claimName: podpvc-windows
+      readOnly: false
