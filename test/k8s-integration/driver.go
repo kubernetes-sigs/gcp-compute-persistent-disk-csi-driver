@@ -91,7 +91,7 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		klog.Infof("Waiting 5 minutes for the driver to start on Linux")
 		time.Sleep(5 * time.Minute)
 	}
-	out, err := exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+	out, err := exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
 	klog.Infof("describe pods \n %s", string(out))
 
 	if err != nil {
@@ -169,13 +169,12 @@ func dumpDriverLogs() (context.CancelFunc, error) {
 			LogPathPrefix: filepath.Join(artifactsDir, "pd-csi-driver") + "/",
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		if err = podlogs.CopyAllLogs(ctx, client, driverNamespace, out); err != nil {
+		if err = podlogs.CopyAllLogs(ctx, client, getDriverNamespace(), out); err != nil {
 			return cancel, fmt.Errorf("failed to start pod logger: %v", err)
 		}
 		return cancel, nil
 	}
 	return nil, nil
-
 }
 
 // mergeArtifacts merges the results of doing multiple gingko runs, taking all junit files
@@ -193,4 +192,11 @@ func mergeArtifacts(subdirectories []string) error {
 		sourceDirs = append(sourceDirs, filepath.Join(artifactsDir, subdir))
 	}
 	return MergeJUnit("External Storage", sourceDirs, filepath.Join(artifactsDir, "junit_pdcsi.xml"))
+}
+
+func getDriverNamespace() string {
+	if *useGKEManagedDriver {
+		return managedDriverNamespace
+	}
+	return externalDriverNamespace
 }
