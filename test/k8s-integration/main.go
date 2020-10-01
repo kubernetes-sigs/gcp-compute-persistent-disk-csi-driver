@@ -73,7 +73,8 @@ const (
 	pdImagePlaceholder        = "gke.gcr.io/gcp-compute-persistent-disk-csi-driver"
 	k8sInDockerBuildBinDir    = "_output/dockerized/bin/linux/amd64"
 	k8sOutOfDockerBuildBinDir = "_output/bin"
-	driverNamespace           = "gce-pd-csi-driver"
+	externalDriverNamespace   = "gce-pd-csi-driver"
+	managedDriverNamespace    = "kube-system"
 )
 
 func init() {
@@ -335,7 +336,7 @@ func handle() error {
 			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
 		time.Sleep(10 * time.Minute)
-		out, err = exec.Command("kubectl", "describe", "pods", "-n", driverNamespace).CombinedOutput()
+		out, err = exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
 		klog.Infof("describe pods \n %s", string(out))
 
 		if err != nil {
@@ -357,18 +358,18 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to install CSI Driver: %v", err)
 		}
-
-		// Dump all driver logs to the test artifacts
-		cancel, err := dumpDriverLogs()
-		if err != nil {
-			return fmt.Errorf("failed to start driver logging: %v", err)
-		}
-		defer func() {
-			if cancel != nil {
-				cancel()
-			}
-		}()
 	}
+
+	// Dump all driver logs to the test artifacts
+	cancel, err := dumpDriverLogs()
+	if err != nil {
+		return fmt.Errorf("failed to start driver logging: %v", err)
+	}
+	defer func() {
+		if cancel != nil {
+			cancel()
+		}
+	}()
 
 	// For windows cluster, it has both Windows nodes and Linux nodes. Before triggering the tests, taint Linux nodes
 	// with NoSchedule to avoid test pods being scheduled on Linux. Need to do this step after driver is deployed.
@@ -395,7 +396,6 @@ func handle() error {
 	}
 
 	var cloudProviderArgs []string
-	var err error
 	switch *deploymentStrat {
 	case "gke":
 		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, *imageType)
