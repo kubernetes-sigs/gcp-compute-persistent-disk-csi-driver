@@ -10,11 +10,13 @@ import (
 )
 
 type driverConfig struct {
-	StorageClassFile  string
-	StorageClass      string
-	SnapshotClassFile string
-	Capabilities      []string
-	SupportedFsType   []string
+	StorageClassFile     string
+	StorageClass         string
+	SnapshotClassFile    string
+	Capabilities         []string
+	SupportedFsType      []string
+	MinimumVolumeSize    string
+	NumAllowedTopologies int
 }
 
 const (
@@ -98,12 +100,20 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 		absSnapshotClassFilePath = filepath.Join(pkgDir, testConfigDir, snapshotClassFile)
 	}
 
+	minimumVolumeSize := "5Gi"
+	numAllowedTopologies := 1
+	if storageClassFile == regionalPDStorageClass {
+		minimumVolumeSize = "200Gi"
+		numAllowedTopologies = 2
+	}
 	params := driverConfig{
-		StorageClassFile:  filepath.Join(pkgDir, testConfigDir, storageClassFile),
-		StorageClass:      storageClassFile[:strings.LastIndex(storageClassFile, ".")],
-		SnapshotClassFile: absSnapshotClassFilePath,
-		SupportedFsType:   fsTypes,
-		Capabilities:      caps,
+		StorageClassFile:     filepath.Join(pkgDir, testConfigDir, storageClassFile),
+		StorageClass:         storageClassFile[:strings.LastIndex(storageClassFile, ".")],
+		SnapshotClassFile:    absSnapshotClassFilePath,
+		SupportedFsType:      fsTypes,
+		Capabilities:         caps,
+		MinimumVolumeSize:    minimumVolumeSize,
+		NumAllowedTopologies: numAllowedTopologies,
 	}
 
 	// Write config file

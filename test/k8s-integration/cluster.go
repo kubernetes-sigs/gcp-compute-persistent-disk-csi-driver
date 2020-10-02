@@ -30,6 +30,10 @@ func gkeLocationArgs(gceZone, gceRegion string) (locationArg, locationVal string
 	return
 }
 
+func isRegionalGKECluster(gceZone, gceRegion string) bool {
+	return len(gceRegion) > 0
+}
+
 func clusterDownGCE(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-down.sh"))
 	err := runCommand("Bringing Down E2E Cluster on GCE", cmd)

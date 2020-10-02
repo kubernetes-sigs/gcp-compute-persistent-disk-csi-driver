@@ -25,6 +25,13 @@ readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
+
+storage_classes=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml
+
+if [[ -n $gce_region ]] ; then
+  storage_classes="${storage_classes}",sc-regional
+fi
+
 export GCE_PD_VERBOSITY=9
 
 make -C "${PKGDIR}" test-k8s-integration
@@ -32,7 +39,7 @@ make -C "${PKGDIR}" test-k8s-integration
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml \
+            --storageclass-files="${storage_classes}" --snapshotclass-file=pd-volumesnapshotclass.yaml \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type}"
 

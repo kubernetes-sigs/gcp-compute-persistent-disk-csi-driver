@@ -49,6 +49,7 @@ var (
 	gkeReleaseChannel  = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
 	gkeTestClusterName = flag.String("gke-cluster-name", "gcp-pd-csi-driver-test-cluster", "GKE cluster name")
 	gkeNodeVersion     = flag.String("gke-node-version", "", "GKE cluster worker node version")
+	isRegionalCluster  = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -74,6 +75,7 @@ const (
 	k8sOutOfDockerBuildBinDir = "_output/bin"
 	externalDriverNamespace   = "gce-pd-csi-driver"
 	managedDriverNamespace    = "kube-system"
+	regionalPDStorageClass    = "sc-regional.yaml"
 )
 
 func init() {
@@ -97,11 +99,11 @@ func main() {
 		ensureVariable(deployOverlayName, false, "'deploy-overlay-name' must not be set when using GKE managed driver")
 	}
 
-	if *deployOverlayName != "noauth" {
-		ensureVariable(saFile, true, "service-account-file is a required flag")
-	}
 	if !*useGKEManagedDriver {
 		ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+		if *deployOverlayName != "noauth" {
+			ensureVariable(saFile, true, "service-account-file is a required flag")
+		}
 	}
 
 	ensureVariable(testFocus, true, "test-focus is a required flag")
@@ -122,6 +124,9 @@ func main() {
 		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	} else {
 		ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
+		if *isRegionalCluster {
+			klog.Error("is-regional-cluster can only be set when using an existing cluster")
+		}
 	}
 
 	if *platform == "windows" {
@@ -267,6 +272,14 @@ func handle() error {
 		}
 	} else {
 		testDir = k8sDir
+	}
+
+	if *deploymentStrat == "gke" {
+		gkeRegional := isRegionalGKECluster(*gceZone, *gceRegion)
+		if *isRegionalCluster && !gkeRegional {
+			return fmt.Errorf("--is-regional-cluster set but deployed GKE cluster would be zonal")
+		}
+		*isRegionalCluster = gkeRegional
 	}
 
 	// Create a cluster either through GKE or GCE
@@ -418,10 +431,24 @@ func handle() error {
 
 	// Run the tests using the testDir kubernetes
 	if len(*storageClassFiles) != 0 {
-		storageClasses := strings.Split(*storageClassFiles, ",")
+		applicableStorageClassFiles := []string{}
+		for _, rawScFile := range strings.Split(*storageClassFiles, ",") {
+			scFile := strings.TrimSpace(rawScFile)
+			if len(scFile) == 0 {
+				continue
+			}
+			if scFile == regionalPDStorageClass && !*isRegionalCluster {
+				klog.Warningf("Skipping regional StorageClass in zonal cluster")
+				continue
+			}
+			applicableStorageClassFiles = append(applicableStorageClassFiles, scFile)
+		}
+		if len(applicableStorageClassFiles) == 0 {
+			return fmt.Errorf("No applicable storage classes found")
+		}
 		var ginkgoErrors []string
 		var testOutputDirs []string
-		for _, scFile := range storageClasses {
+		for _, scFile := range applicableStorageClassFiles {
 			outputDir := strings.TrimSuffix(scFile, ".yaml")
 			testOutputDirs = append(testOutputDirs, outputDir)
 			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile,
