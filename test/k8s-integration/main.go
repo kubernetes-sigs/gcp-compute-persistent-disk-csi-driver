@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
@@ -327,7 +326,7 @@ func handle() error {
 		// It typically takes 5+ minutes to download Windows container image. To avoid tests being timed out,
 		// pre-pulling the test images as best effort.
 		klog.Infof("Prepulling test images.")
-		err = os.Setenv("PREPULL_IMAGE", filepath.Join(pkgDir, "test", "k8s-integration", "prepull.yaml"))
+		err = os.Setenv("PREPULL_YAML", filepath.Join(pkgDir, "test", "k8s-integration", "prepull.yaml"))
 		if err != nil {
 			return err
 		}
@@ -335,7 +334,6 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
-		time.Sleep(10 * time.Minute)
 		out, err = exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
 		klog.Infof("describe pods \n %s", string(out))
 
