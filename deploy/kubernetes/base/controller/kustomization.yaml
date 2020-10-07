@@ -6,3 +6,4 @@ resources:
 - cluster_setup.yaml
 - controller.yaml
 - csidriver_info.yaml
+- psp.yaml
