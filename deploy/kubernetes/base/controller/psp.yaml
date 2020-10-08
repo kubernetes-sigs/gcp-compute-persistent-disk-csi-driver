@@ -12,7 +12,6 @@ spec:
   fsGroup:
     rule: RunAsAny
   volumes:
-    - "configMap"
     - "emptyDir"
     - "secret"
   hostNetwork: true
