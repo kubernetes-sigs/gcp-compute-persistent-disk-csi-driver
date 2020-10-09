@@ -385,7 +385,7 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	_, err := os.Stat(req.VolumePath)
+	_, err := os.Lstat(req.VolumePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.VolumePath)
@@ -411,7 +411,6 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 			},
 		}, nil
 	}
-
 	available, capacity, used, inodesFree, inodes, inodesUsed, err := ns.VolumeStatter.StatFS(req.VolumePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", req.VolumePath, err)

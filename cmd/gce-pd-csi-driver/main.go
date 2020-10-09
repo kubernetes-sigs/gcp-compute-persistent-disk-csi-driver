@@ -96,7 +96,10 @@ func handle() {
 			klog.Fatalf("Failed to get safe mounter: %v", err)
 		}
 		deviceUtils := mountmanager.NewDeviceUtils()
-		statter := mountmanager.NewStatter()
+		statter, err := mountmanager.NewStatter()
+		if err != nil {
+			klog.Fatalf("Failed to set up Statter: %v", err)
+		}
 		meta, err := metadataservice.NewMetadataService()
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err)

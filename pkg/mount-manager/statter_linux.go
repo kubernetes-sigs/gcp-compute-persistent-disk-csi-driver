@@ -25,8 +25,8 @@ var _ Statter = realStatter{}
 type realStatter struct {
 }
 
-func NewStatter() realStatter {
-	return realStatter{}
+func NewStatter() (realStatter, error) {
+	return realStatter{}, nil
 }
 
 // IsBlock checks if the given path is a block device
