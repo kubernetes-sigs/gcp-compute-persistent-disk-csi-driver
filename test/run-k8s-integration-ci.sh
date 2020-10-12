@@ -37,9 +37,9 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --num-nodes=3 --image-type=${image_type}"
 
 if [ "$run_intree_plugin_tests" = true ]; then
-  base_cmd="${base_cmd} --test-focus='External.Storage|In-tree.*Driver.*gcepd"
+  base_cmd="${base_cmd} --test-focus='External.Storage|In-tree.*Driver.*gcepd'"
 else
-  base_cmd="${base_cmd} --test-focus='External.Storage"
+  base_cmd="${base_cmd} --test-focus='External.Storage'"
 fi
 
 if [ "$use_gke_managed_driver" = false ]; then
