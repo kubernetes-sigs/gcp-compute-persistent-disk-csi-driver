@@ -19,7 +19,8 @@ DriverInfo:
     debug:
     nouid32:
   SupportedSizeRange:
-    Min: 5Gi
+    Min: {{.MinimumVolumeSize}}
     Max: 64Ti
   TopologyKeys:
     - topology.gke.io/zone
+  NumAllowedTopologies: {{.NumAllowedTopologies}}
