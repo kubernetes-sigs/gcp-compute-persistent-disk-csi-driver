@@ -49,6 +49,13 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
+  # Access to volumeattachments is only needed when the CSI driver
+  # has the PUBLISH_UNPUBLISH_VOLUME controller capability.
+  # In that case, external-provisioner will watch volumeattachments
+  # to determine when it is safe to delete a volume.
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch"]
 ---
 
 kind: ClusterRoleBinding
@@ -139,6 +146,10 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
+  # If handle-volume-inuse-error=true, the pod specific rbac is needed
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding
