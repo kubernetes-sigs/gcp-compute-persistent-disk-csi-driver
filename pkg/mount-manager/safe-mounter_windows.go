@@ -124,15 +124,38 @@ func (mounter *CSIProxyMounter) RemovePodDir(target string) error {
 	return nil
 }
 
-// Delete the given directory with plugin context. CSI proxy does a check for path prefix
+// UnmountDevice uses target path to find the volume id first, and then
+// call DismountVolume through csi-proxy. If succeeded, it will delete the given path
+// at last step. CSI proxy does a check for path prefix
 // based on context
-func (mounter *CSIProxyMounter) RemovePluginDir(target string) error {
+func (mounter *CSIProxyMounter) UnmountDevice(target string) error {
+	target = mount.NormalizeWindowsPath(target)
+	if exists, err := mounter.ExistsPath(target); !exists {
+		return err
+	}
+	idRequest := &volumeapi.VolumeIDFromMountRequest{
+		Mount: target,
+	}
+	idResponse, err := mounter.VolumeClient.GetVolumeIDFromMount(context.Background(), idRequest)
+	if err != nil {
+		return err
+	}
+	volumeId := idResponse.GetVolumeId()
+
+	dismountRequest := &volumeapi.DismountVolumeRequest{
+		Path:     target,
+		VolumeId: volumeId,
+	}
+	_, err = mounter.VolumeClient.DismountVolume(context.Background(), dismountRequest)
+	if err != nil {
+		return err
+	}
 	rmdirRequest := &fsapi.RmdirRequest{
-		Path:    mount.NormalizeWindowsPath(target),
+		Path:    target,
 		Context: fsapi.PathContext_PLUGIN,
 		Force:   true,
 	}
-	_, err := mounter.FsClient.Rmdir(context.Background(), rmdirRequest)
+	_, err = mounter.FsClient.Rmdir(context.Background(), rmdirRequest)
 	if err != nil {
 		return err
 	}
@@ -249,5 +272,8 @@ func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 		&fsapi.PathExistsRequest{
 			Path: mount.NormalizeWindowsPath(path),
 		})
+	if err != nil {
+		return false, err
+	}
 	return isExistsResponse.Exists, err
 }
