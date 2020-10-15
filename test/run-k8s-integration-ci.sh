@@ -29,7 +29,7 @@ readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
 storage_classes=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml
 
 if [[ -n $gce_region ]] ; then
-  storage_classes="${storage_classes}",sc-regional
+  storage_classes="${storage_classes}",sc-regional.yaml
 fi
 
 export GCE_PD_VERBOSITY=9
