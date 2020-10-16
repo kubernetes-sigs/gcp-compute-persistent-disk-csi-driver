@@ -40,18 +40,29 @@ build-container: require-GCE_PD_CSI_STAGING_IMAGE
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
+		-t $(STAGINGIMAGE)-ltsc2019:$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
 		--build-arg BASE_IMAGE_TAG=ltsc2019 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-1909: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
+		-t $(STAGINGIMAGE)-1909:$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
 		--build-arg BASE_IMAGE_TAG=1909 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
+build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) ${STAGINGIMAGE}-linux:${STAGINGVERSION} ${STAGINGIMAGE}-1909:${STAGINGVERSION} ${STAGINGIMAGE}-ltsc2019:${STAGINGVERSION}
+	STAGINGIMAGE=${STAGINGIMAGE} STAGINGVERSION=${STAGINGVERSION} ./manifest_osversion.sh
+	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
+
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
+
+build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux \
+		-t $(STAGINGIMAGE)-linux:$(STAGINGVERSION) \
+		--build-arg TAG=$(STAGINGVERSION) --push .
+
 
 test-sanity: gce-pd-driver
 	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
