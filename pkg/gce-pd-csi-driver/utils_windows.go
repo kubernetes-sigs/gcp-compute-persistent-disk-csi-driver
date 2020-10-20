@@ -68,7 +68,7 @@ func cleanupStagePath(path string, m *mount.SafeFormatAndMount) error {
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
-	return proxy.RemovePluginDir(path)
+	return proxy.UnmountDevice(path)
 }
 
 // search Windows disk number by volumeID
