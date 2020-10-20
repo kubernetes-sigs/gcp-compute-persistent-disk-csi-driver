@@ -18,6 +18,8 @@ package gceGCEDriver
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,4 +65,17 @@ func cleanupPublishPath(path string, m *mount.SafeFormatAndMount) error {
 
 func cleanupStagePath(path string, m *mount.SafeFormatAndMount) error {
 	return cleanupPublishPath(path, m)
+}
+
+func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
+	output, err := m.Exec.Command("blockdev", "--getsize64", devicePath).CombinedOutput()
+	if err != nil {
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
+	}
+	strOut := strings.TrimSpace(string(output))
+	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse %s into an int size", strOut)
+	}
+	return gotSizeBytes, nil
 }

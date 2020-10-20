@@ -87,3 +87,12 @@ func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error
 	}
 	return proxy.GetDevicePath(deviceName, partition, volumeKey.Name)
 }
+
+func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
+	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	if !ok {
+		return 0, fmt.Errorf("could not cast to csi proxy class")
+	}
+
+	return proxy.GetBlockSizeBytes(devicePath)
+}
