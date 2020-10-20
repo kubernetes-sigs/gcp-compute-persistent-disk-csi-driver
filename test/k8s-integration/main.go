@@ -560,15 +560,15 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 
 	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
 	reportArg := ""
+	kubetestDumpDir := ""
 	if ok {
 		if len(reportPrefix) > 0 {
-			reportDir := filepath.Join(artifactsDir, reportPrefix)
-			if err := os.MkdirAll(reportDir, 0755); err != nil {
+			kubetestDumpDir = filepath.Join(artifactsDir, reportPrefix)
+			if err := os.MkdirAll(kubetestDumpDir, 0755); err != nil {
 				return err
 			}
-			reportArg = fmt.Sprintf("-report-dir=%s", reportDir)
 		} else {
-			reportArg = fmt.Sprintf("-report-dir=%s", artifactsDir)
+			kubetestDumpDir = artifactsDir
 		}
 	}
 	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testFocus, testSkip)
@@ -585,6 +585,9 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 		"--ginkgo-parallel",
 		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", testArgs),
+	}
+	if kubetestDumpDir != "" {
+		kubeTestArgs = append(kubeTestArgs, fmt.Sprintf("--dump=%s", kubetestDumpDir))
 	}
 	kubeTestArgs = append(kubeTestArgs, cloudProviderArgs...)
 
