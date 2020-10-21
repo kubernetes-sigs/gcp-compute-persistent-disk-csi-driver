@@ -120,13 +120,23 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	}
 	var cmd *exec.Cmd
 
-	// build multi-arch image which can work for both Linux and Windows
-	cmd = exec.Command("make", "-C", pkgDir, "build-and-push-multi-arch",
-		fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
-		fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
-	err = runCommand("Building and Pushing GCP Container for Windows", cmd)
-	if err != nil {
-		return fmt.Errorf("failed to run make command for windows: err: %v", err)
+	if platform == "windows" {
+		// build multi-arch image which can work for both Linux and Windows
+		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-multi-arch",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+		err = runCommand("Building and Pushing GCP Container for Windows", cmd)
+		if err != nil {
+			return fmt.Errorf("failed to run make command for windows: err: %v", err)
+		}
+	} else {
+		cmd = exec.Command("make", "-C", pkgDir, "push-container",
+			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
+			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
+		err = runCommand("Pushing GCP Container for Linux", cmd)
+		if err != nil {
+			return fmt.Errorf("failed to run make command for linux: err: %v", err)
+		}
 	}
 
 	return nil
