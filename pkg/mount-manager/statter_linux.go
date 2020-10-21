@@ -18,19 +18,20 @@ import (
 	"fmt"
 
 	"golang.org/x/sys/unix"
+	"k8s.io/utils/mount"
 )
 
-var _ Statter = realStatter{}
+var _ Statter = &realStatter{}
 
 type realStatter struct {
 }
 
-func NewStatter() (realStatter, error) {
-	return realStatter{}, nil
+func NewStatter(mounter *mount.SafeFormatAndMount) *realStatter {
+	return &realStatter{}
 }
 
 // IsBlock checks if the given path is a block device
-func (realStatter) IsBlockDevice(fullPath string) (bool, error) {
+func (r *realStatter) IsBlockDevice(fullPath string) (bool, error) {
 	var st unix.Stat_t
 	err := unix.Stat(fullPath, &st)
 	if err != nil {
@@ -40,7 +41,7 @@ func (realStatter) IsBlockDevice(fullPath string) (bool, error) {
 	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
 }
 
-func (realStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+func (*realStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
 	statfs := &unix.Statfs_t{}
 	err = unix.Statfs(path, statfs)
 	if err != nil {
@@ -62,15 +63,15 @@ func (realStatter) StatFS(path string) (available, capacity, used, inodesFree, i
 
 type fakeStatter struct{}
 
-func NewFakeStatter() fakeStatter {
-	return fakeStatter{}
+func NewFakeStatter(mounter *mount.SafeFormatAndMount) *fakeStatter {
+	return &fakeStatter{}
 }
 
-func (fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+func (*fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
 	// Assume the file exists and give some dummy values back
 	return 1, 1, 1, 1, 1, 1, nil
 }
 
-func (fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
+func (*fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
 	return false, nil
 }
