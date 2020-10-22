@@ -56,7 +56,7 @@ func TestSanity(t *testing.T) {
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
 	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider)
-	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter())
+	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)

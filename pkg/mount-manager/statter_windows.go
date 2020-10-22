@@ -17,40 +17,40 @@ package mountmanager
 
 import (
 	"context"
+	"fmt"
 
 	volumeapi "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
-	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta1"
+	"k8s.io/utils/mount"
 )
 
-var _ Statter = realStatter{}
+var _ Statter = &realStatter{}
 
 type realStatter struct {
-	VolumeClient *volumeclient.Client
+	mounter *mount.SafeFormatAndMount
 }
 
-func NewStatter() (realStatter, error) {
-	volumeClient, err := volumeclient.NewClient()
-	if err != nil {
-		return realStatter{}, err
-	}
-	return realStatter{
-		VolumeClient: volumeClient,
-	}, nil
+func NewStatter(mounter *mount.SafeFormatAndMount) *realStatter {
+	return &realStatter{mounter: mounter}
 }
 
 // IsBlock checks if the given path is a block device
-func (realStatter) IsBlockDevice(fullPath string) (bool, error) {
+func (r *realStatter) IsBlockDevice(fullPath string) (bool, error) {
 	return false, nil
 }
 
 // StatFS returns volume usage information
-func (r realStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+func (r *realStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
 	zero := int64(0)
+
+	proxy, ok := r.mounter.Interface.(*CSIProxyMounter)
+	if !ok {
+		return zero, zero, zero, zero, zero, zero, fmt.Errorf("could not cast to csi proxy class")
+	}
 
 	idRequest := &volumeapi.VolumeIDFromMountRequest{
 		Mount: path,
 	}
-	idResponse, err := r.VolumeClient.GetVolumeIDFromMount(context.Background(), idRequest)
+	idResponse, err := proxy.VolumeClient.GetVolumeIDFromMount(context.Background(), idRequest)
 	if err != nil {
 		return zero, zero, zero, zero, zero, zero, err
 	}
@@ -59,7 +59,7 @@ func (r realStatter) StatFS(path string) (available, capacity, used, inodesFree,
 	request := &volumeapi.VolumeStatsRequest{
 		VolumeId: volumeId,
 	}
-	response, err := r.VolumeClient.VolumeStats(context.Background(), request)
+	response, err := proxy.VolumeClient.VolumeStats(context.Background(), request)
 	if err != nil {
 		return zero, zero, zero, zero, zero, zero, err
 	}
@@ -71,15 +71,15 @@ func (r realStatter) StatFS(path string) (available, capacity, used, inodesFree,
 
 type fakeStatter struct{}
 
-func NewFakeStatter() fakeStatter {
-	return fakeStatter{}
+func NewFakeStatter(mounter *mount.SafeFormatAndMount) *fakeStatter {
+	return &fakeStatter{}
 }
 
-func (fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+func (*fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
 	// Assume the file exists and give some dummy values back
 	return 1, 1, 1, 1, 1, 1, nil
 }
 
-func (fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
+func (*fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
 	return false, nil
 }
