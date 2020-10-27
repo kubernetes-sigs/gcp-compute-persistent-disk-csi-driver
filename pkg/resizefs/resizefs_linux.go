@@ -25,18 +25,20 @@ import (
 	"k8s.io/utils/mount"
 )
 
+var _ Resizefs = &resizeFs{}
+
 // ResizeFs Provides support for resizing file systems
-type ResizeFs struct {
+type resizeFs struct {
 	mounter *mount.SafeFormatAndMount
 }
 
 // NewResizeFs returns new instance of resizer
-func NewResizeFs(mounter *mount.SafeFormatAndMount) *ResizeFs {
-	return &ResizeFs{mounter: mounter}
+func NewResizeFs(mounter *mount.SafeFormatAndMount) *resizeFs {
+	return &resizeFs{mounter: mounter}
 }
 
 // Resize perform resize of file system
-func (resizefs *ResizeFs) Resize(devicePath string, deviceMountPath string) (bool, error) {
+func (resizefs *resizeFs) Resize(devicePath, deviceMountPath string) (bool, error) {
 	format, err := resizefs.mounter.GetDiskFormat(devicePath)
 
 	if err != nil {
@@ -60,7 +62,7 @@ func (resizefs *ResizeFs) Resize(devicePath string, deviceMountPath string) (boo
 	return false, fmt.Errorf("ResizeFS.Resize - resize of format %s is not supported for device %s mounted at %s", format, devicePath, deviceMountPath)
 }
 
-func (resizefs *ResizeFs) extResize(devicePath string) (bool, error) {
+func (resizefs *resizeFs) extResize(devicePath string) (bool, error) {
 	output, err := resizefs.mounter.Exec.Command("resize2fs", devicePath).CombinedOutput()
 	if err == nil {
 		klog.V(2).Infof("Device %s resized successfully", devicePath)
@@ -72,7 +74,7 @@ func (resizefs *ResizeFs) extResize(devicePath string) (bool, error) {
 
 }
 
-func (resizefs *ResizeFs) xfsResize(deviceMountPath string) (bool, error) {
+func (resizefs *resizeFs) xfsResize(deviceMountPath string) (bool, error) {
 	args := []string{"-d", deviceMountPath}
 	output, err := resizefs.mounter.Exec.Command("xfs_growfs", args...).CombinedOutput()
 

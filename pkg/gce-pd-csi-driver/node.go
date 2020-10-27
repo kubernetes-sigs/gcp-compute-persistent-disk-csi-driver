@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
-	"strings"
 
 	"context"
 
@@ -398,7 +396,7 @@ func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGe
 		return nil, status.Errorf(codes.Internal, "failed to determine whether %s is block device: %v", req.VolumePath, err)
 	}
 	if isBlock {
-		bcap, err := ns.getBlockSizeBytes(req.VolumePath)
+		bcap, err := getBlockSizeBytes(req.VolumePath, ns.Mounter)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.VolumePath, err)
 		}
@@ -482,14 +480,10 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 
 	}
 
-	// Check the block size
-	gotBlockSizeBytes, err := ns.getBlockSizeBytes(devicePath)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error when getting size of block volume at path %s: %v", devicePath, err))
-	}
-	if gotBlockSizeBytes < reqBytes {
+	diskSizeBytes, err := getBlockSizeBytes(devicePath, ns.Mounter)
+	if diskSizeBytes < reqBytes {
 		// It's possible that the somewhere the volume size was rounded up, getting more size than requested is a success :)
-		return nil, status.Errorf(codes.Internal, "resize requested for %v but after resize volume was size %v", reqBytes, gotBlockSizeBytes)
+		return nil, status.Errorf(codes.Internal, "resize requested for %v but after resize volume was size %v", reqBytes, diskSizeBytes)
 	}
 
 	// TODO(dyzz) Some sort of formatted volume could also check the fs size.
@@ -530,17 +524,4 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 		}
 	}
 	return volumeLimitBig, nil
-}
-
-func (ns *GCENodeServer) getBlockSizeBytes(devicePath string) (int64, error) {
-	output, err := ns.Mounter.Exec.Command("blockdev", "--getsize64", devicePath).CombinedOutput()
-	if err != nil {
-		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(output), err)
-	}
-	strOut := strings.TrimSpace(string(output))
-	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
-	if err != nil {
-		return -1, fmt.Errorf("failed to parse %s into an int size", strOut)
-	}
-	return gotSizeBytes, nil
 }

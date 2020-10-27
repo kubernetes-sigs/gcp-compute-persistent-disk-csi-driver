@@ -277,3 +277,11 @@ func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 	}
 	return isExistsResponse.Exists, err
 }
+
+func (mounter *CSIProxyMounter) GetBlockSizeBytes(diskId string) (int64, error) {
+	DiskStatsResponse, err := mounter.DiskClient.DiskStats(context.Background(),
+		&diskapi.DiskStatsRequest{
+			DiskID: diskId,
+		})
+	return DiskStatsResponse.DiskSize, err
+}
