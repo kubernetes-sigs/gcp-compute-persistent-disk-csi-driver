@@ -17,6 +17,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"strings"
 
 	"k8s.io/utils/mount"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -24,6 +25,9 @@ import (
 )
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+	if !strings.EqualFold(fstype, defaultWindowsFsType) {
+		return fmt.Errorf("GCE PD CSI driver can only supports %s file system, it does not support %s", defaultWindowsFsType, fstype)
+	}
 	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
