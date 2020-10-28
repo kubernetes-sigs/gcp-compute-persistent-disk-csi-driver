@@ -115,7 +115,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	gceAPIVersion := gce.GCEAPIVersionV1
 	multiWriter, _ := getMultiWriterFromCapabilities(volumeCapabilities)
 	if multiWriter {
-		gceAPIVersion = gce.GCEAPIVersionAlpha
+		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 	// Determine the zone or zones+region of the disk
 	var zones []string
@@ -1033,7 +1033,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 
 	gceAPIVersion := gce.GCEAPIVersionV1
 	if multiWriter {
-		gceAPIVersion = gce.GCEAPIVersionAlpha
+		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 
 	disk, err := cloudProvider.GetDisk(ctx, meta.RegionalKey(name, region), gceAPIVersion)
@@ -1055,7 +1055,7 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 
 	gceAPIVersion := gce.GCEAPIVersionV1
 	if multiWriter {
-		gceAPIVersion = gce.GCEAPIVersionAlpha
+		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 	disk, err := cloudProvider.GetDisk(ctx, meta.ZonalKey(name, diskZone), gceAPIVersion)
 	if err != nil {

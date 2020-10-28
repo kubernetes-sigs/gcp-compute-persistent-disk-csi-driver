@@ -15,16 +15,15 @@ limitations under the License.
 package gcecloudprovider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	"context"
-
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	computealpha "google.golang.org/api/compute/v0.alpha"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,7 +45,7 @@ const (
 	// V1 key type
 	GCEAPIVersionV1 GCEAPIVersion = "v1"
 	// Alpha key type
-	GCEAPIVersionAlpha GCEAPIVersion = "alpha"
+	GCEAPIVersionBeta GCEAPIVersion = "beta"
 )
 
 type GCECompute interface {
@@ -193,20 +192,20 @@ func (cloud *CloudProvider) GetDisk(ctx context.Context, key *meta.Key, gceAPIVe
 	klog.V(5).Infof("Getting disk %v", key)
 	switch key.Type() {
 	case meta.Zonal:
-		if gceAPIVersion == GCEAPIVersionAlpha {
-			disk, err := cloud.getZonalAlphaDiskOrError(ctx, key.Zone, key.Name)
-			return ZonalAlphaCloudDisk(disk), err
+		if gceAPIVersion == GCEAPIVersionBeta {
+			disk, err := cloud.getZonalBetaDiskOrError(ctx, key.Zone, key.Name)
+			return CloudDiskFromBeta(disk), err
 		} else {
 			disk, err := cloud.getZonalDiskOrError(ctx, key.Zone, key.Name)
-			return ZonalCloudDisk(disk), err
+			return CloudDiskFromV1(disk), err
 		}
 	case meta.Regional:
-		if gceAPIVersion == GCEAPIVersionAlpha {
+		if gceAPIVersion == GCEAPIVersionBeta {
 			disk, err := cloud.getRegionalAlphaDiskOrError(ctx, key.Region, key.Name)
-			return RegionalAlphaCloudDisk(disk), err
+			return CloudDiskFromBeta(disk), err
 		} else {
 			disk, err := cloud.getRegionalDiskOrError(ctx, key.Region, key.Name)
-			return RegionalCloudDisk(disk), err
+			return CloudDiskFromV1(disk), err
 		}
 	default:
 		return nil, fmt.Errorf("key was neither zonal nor regional, got: %v", key.String())
@@ -233,18 +232,18 @@ func (cloud *CloudProvider) getRegionalDiskOrError(ctx context.Context, volumeRe
 	return disk, nil
 }
 
-func (cloud *CloudProvider) getZonalAlphaDiskOrError(ctx context.Context, volumeZone, volumeName string) (*computealpha.Disk, error) {
+func (cloud *CloudProvider) getZonalBetaDiskOrError(ctx context.Context, volumeZone, volumeName string) (*computebeta.Disk, error) {
 	project := cloud.project
-	disk, err := cloud.alphaService.Disks.Get(project, volumeZone, volumeName).Context(ctx).Do()
+	disk, err := cloud.betaService.Disks.Get(project, volumeZone, volumeName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
 	return disk, nil
 }
 
-func (cloud *CloudProvider) getRegionalAlphaDiskOrError(ctx context.Context, volumeRegion, volumeName string) (*computealpha.Disk, error) {
+func (cloud *CloudProvider) getRegionalAlphaDiskOrError(ctx context.Context, volumeRegion, volumeName string) (*computebeta.Disk, error) {
 	project := cloud.project
-	disk, err := cloud.alphaService.RegionDisks.Get(project, volumeRegion, volumeName).Context(ctx).Do()
+	disk, err := cloud.betaService.RegionDisks.Get(project, volumeRegion, volumeName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -293,12 +292,9 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 		return fmt.Errorf("actual pd type %s did not match the expected param %s", disk.GetPDType(), params.DiskType)
 	}
 
-	if params.ReplicationType == "none" && disk.Type() != Zonal && disk.Type() != ZonalAlpha {
-		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), params.ReplicationType)
-	}
-
-	if params.ReplicationType == "regional-pd" && disk.Type() != Regional && disk.Type() != RegionalAlpha {
-		return fmt.Errorf("actual disk replication type %v did not match expected param %s", disk.Type(), "regional-pd")
+	locationType := disk.LocationType()
+	if (params.ReplicationType == "none" && locationType != meta.Zonal) || (params.ReplicationType == "regional-pd" && locationType != meta.Regional) {
+		return fmt.Errorf("actual disk replication type %v did not match expected param %s", locationType, params.ReplicationType)
 	}
 
 	if !kmsKeyEqual(
@@ -334,8 +330,8 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, pa
 	}
 }
 
-func convertV1CustomerEncryptionKeyToAlpha(v1Key *computev1.CustomerEncryptionKey) *computealpha.CustomerEncryptionKey {
-	return &computealpha.CustomerEncryptionKey{
+func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey) *computebeta.CustomerEncryptionKey {
+	return &computebeta.CustomerEncryptionKey{
 		KmsKeyName:      v1Key.KmsKeyName,
 		RawKey:          v1Key.RawKey,
 		Sha256:          v1Key.Sha256,
@@ -344,15 +340,15 @@ func convertV1CustomerEncryptionKeyToAlpha(v1Key *computev1.CustomerEncryptionKe
 	}
 }
 
-func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk) *computealpha.Disk {
-	var dek *computealpha.CustomerEncryptionKey = nil
+func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
+	var dek *computebeta.CustomerEncryptionKey = nil
 
 	if v1Disk.DiskEncryptionKey != nil {
-		dek = convertV1CustomerEncryptionKeyToAlpha(v1Disk.DiskEncryptionKey)
+		dek = convertV1CustomerEncryptionKeyToBeta(v1Disk.DiskEncryptionKey)
 	}
 
 	// Note: this is an incomplete list. It only includes the fields we use for disk creation.
-	return &computealpha.Disk{
+	return &computebeta.Disk{
 		Name:              v1Disk.Name,
 		SizeGb:            v1Disk.SizeGb,
 		Description:       v1Disk.Description,
@@ -380,7 +376,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	)
 
 	if multiWriter {
-		gceAPIVersion = GCEAPIVersionAlpha
+		gceAPIVersion = GCEAPIVersionBeta
 	}
 
 	diskToCreate := &computev1.Disk{
@@ -401,11 +397,11 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		}
 	}
 
-	if gceAPIVersion == GCEAPIVersionAlpha {
-		var insertOp *computealpha.Operation
-		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
-		alphaDiskToCreate.MultiWriter = multiWriter
-		insertOp, err = cloud.alphaService.RegionDisks.Insert(cloud.project, volKey.Region, alphaDiskToCreate).Context(ctx).Do()
+	if gceAPIVersion == GCEAPIVersionBeta {
+		var insertOp *computebeta.Operation
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate.MultiWriter = multiWriter
+		insertOp, err = cloud.betaService.RegionDisks.Insert(cloud.project, volKey.Region, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
 			opName = insertOp.Name
 		}
@@ -473,7 +469,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 	)
 
 	if multiWriter {
-		gceAPIVersion = GCEAPIVersionAlpha
+		gceAPIVersion = GCEAPIVersionBeta
 	}
 
 	diskToCreate := &computev1.Disk{
@@ -493,11 +489,11 @@ func (cloud *CloudProvider) insertZonalDisk(
 		}
 	}
 
-	if gceAPIVersion == GCEAPIVersionAlpha {
-		var insertOp *computealpha.Operation
-		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate)
-		alphaDiskToCreate.MultiWriter = multiWriter
-		insertOp, err = cloud.alphaService.Disks.Insert(cloud.project, volKey.Zone, alphaDiskToCreate).Context(ctx).Do()
+	if gceAPIVersion == GCEAPIVersionBeta {
+		var insertOp *computebeta.Operation
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate.MultiWriter = multiWriter
+		insertOp, err = cloud.betaService.Disks.Insert(cloud.project, volKey.Zone, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
 			opName = insertOp.Name
 		}
@@ -637,9 +633,9 @@ func (cloud *CloudProvider) DetachDisk(ctx context.Context, deviceName, instance
 
 func (cloud *CloudProvider) GetDiskSourceURI(volKey *meta.Key) string {
 	switch volKey.Type() {
-	case Zonal:
+	case meta.Zonal:
 		return cloud.getZonalDiskSourceURI(volKey.Name, volKey.Zone)
-	case Regional:
+	case meta.Regional:
 		return cloud.getRegionalDiskSourceURI(volKey.Name, volKey.Region)
 	default:
 		return ""

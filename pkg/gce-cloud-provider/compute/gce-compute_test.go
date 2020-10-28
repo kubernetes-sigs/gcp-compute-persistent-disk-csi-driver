@@ -66,24 +66,22 @@ func TestValidateDiskParameters(t *testing.T) {
 
 	for i, tc := range testCases {
 		// Arrange
-		existingDisk := &CloudDisk{
-			ZonalDisk: &computev1.Disk{
-				Id:                546559531467326555,
-				CreationTimestamp: "2020-07-24T17:20:06.292-07:00",
-				Name:              "test-disk",
-				SizeGb:            500,
-				Zone:              "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c",
-				Status:            "READY",
-				SelfLink:          "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/disks/test-disk",
-				Type:              "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/diskTypes/pd-standard",
-				DiskEncryptionKey: &computev1.CustomerEncryptionKey{
-					KmsKeyName: tc.fetchedKMSKey,
-				},
-				LabelFingerprint:       "42WmSpB8rSM=",
-				PhysicalBlockSizeBytes: 4096,
-				Kind:                   "compute#disk",
+		existingDisk := CloudDiskFromV1(&computev1.Disk{
+			Id:                546559531467326555,
+			CreationTimestamp: "2020-07-24T17:20:06.292-07:00",
+			Name:              "test-disk",
+			SizeGb:            500,
+			Zone:              "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c",
+			Status:            "READY",
+			SelfLink:          "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/disks/test-disk",
+			Type:              "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/diskTypes/pd-standard",
+			DiskEncryptionKey: &computev1.CustomerEncryptionKey{
+				KmsKeyName: tc.fetchedKMSKey,
 			},
-		}
+			LabelFingerprint:       "42WmSpB8rSM=",
+			PhysicalBlockSizeBytes: 4096,
+			Kind:                   "compute#disk",
+		})
 
 		storageClassParams := common.DiskParameters{
 			DiskType:             "pd-standard",

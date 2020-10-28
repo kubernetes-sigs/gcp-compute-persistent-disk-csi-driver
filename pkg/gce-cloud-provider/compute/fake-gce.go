@@ -134,9 +134,9 @@ func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, maxEntries int64,
 	}
 
 	for name, cd := range cloud.disks {
-		// Only return zonal disks for simplicity
+		// Only return v1 disks for simplicity
 		if !seen.Has(name) {
-			d = append(d, cd.ZonalDisk)
+			d = append(d, cd.disk)
 			seen.Insert(name)
 			count++
 		}
@@ -260,45 +260,31 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 		}
 	}
 
-	var diskToCreate *CloudDisk
+	computeDisk := &computev1.Disk{
+		Name:             volKey.Name,
+		SizeGb:           common.BytesToGb(capBytes),
+		Description:      "Disk created by GCE-PD CSI Driver",
+		Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
+		SourceSnapshotId: snapshotID,
+		Status:           cloud.mockDiskStatus,
+	}
+	if params.DiskEncryptionKMSKey != "" {
+		computeDisk.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
+			KmsKeyName: params.DiskEncryptionKMSKey,
+		}
+	}
 	switch volKey.Type() {
 	case meta.Zonal:
-		diskToCreateGA := &computev1.Disk{
-			Name:             volKey.Name,
-			SizeGb:           common.BytesToGb(capBytes),
-			Description:      "Disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
-			SelfLink:         fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name),
-			SourceSnapshotId: snapshotID,
-			Status:           cloud.mockDiskStatus,
-		}
-		if params.DiskEncryptionKMSKey != "" {
-			diskToCreateGA.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: params.DiskEncryptionKMSKey,
-			}
-		}
-		diskToCreate = ZonalCloudDisk(diskToCreateGA)
+		computeDisk.Zone = volKey.Zone
+		computeDisk.SelfLink = fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name)
 	case meta.Regional:
-		diskToCreateV1 := &computev1.Disk{
-			Name:             volKey.Name,
-			SizeGb:           common.BytesToGb(capBytes),
-			Description:      "Regional disk created by GCE-PD CSI Driver",
-			Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
-			SelfLink:         fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name),
-			SourceSnapshotId: snapshotID,
-			Status:           cloud.mockDiskStatus,
-		}
-		if params.DiskEncryptionKMSKey != "" {
-			diskToCreateV1.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
-				KmsKeyName: params.DiskEncryptionKMSKey,
-			}
-		}
-		diskToCreate = RegionalCloudDisk(diskToCreateV1)
+		computeDisk.Region = volKey.Region
+		computeDisk.SelfLink = fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name)
 	default:
 		return fmt.Errorf("could not create disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
 
-	cloud.disks[volKey.Name] = diskToCreate
+	cloud.disks[volKey.Name] = CloudDiskFromV1(computeDisk)
 	return nil
 }
 
@@ -456,9 +442,9 @@ func (cloud *FakeCloudProvider) ValidateExistingSnapshot(resp *computev1.Snapsho
 
 func (cloud *FakeCloudProvider) GetDiskSourceURI(volKey *meta.Key) string {
 	switch volKey.Type() {
-	case Zonal:
+	case meta.Zonal:
 		return cloud.getZonalDiskSourceURI(volKey.Name, volKey.Zone)
-	case Regional:
+	case meta.Regional:
 		return cloud.getRegionalDiskSourceURI(volKey.Name, volKey.Region)
 	default:
 		return ""

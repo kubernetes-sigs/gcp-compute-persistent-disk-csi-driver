@@ -23,11 +23,12 @@ import (
 	"time"
 
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
-	alpha "google.golang.org/api/compute/v0.alpha"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -51,12 +52,12 @@ const (
 )
 
 type CloudProvider struct {
-	service      *compute.Service
-	alphaService *alpha.Service
-	project      string
-	zone         string
+	service     *compute.Service
+	betaService *computebeta.Service
+	project     string
+	zone        string
 
-	zonesCache map[string]([]string)
+	zonesCache map[string][]string
 }
 
 var _ GCECompute = &CloudProvider{}
@@ -92,7 +93,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource)
+	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource)
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +104,11 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	}
 
 	return &CloudProvider{
-		service:      svc,
-		alphaService: alphasvc,
-		project:      project,
-		zone:         zone,
-		zonesCache:   make(map[string]([]string)),
+		service:     svc,
+		betaService: betasvc,
+		project:     project,
+		zone:        zone,
+		zonesCache:  make(map[string]([]string)),
 	}, nil
 
 }
@@ -158,12 +159,12 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*alpha.Service, error) {
+func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*computebeta.Service, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
-	service, err := alpha.New(client)
+	service, err := computebeta.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}

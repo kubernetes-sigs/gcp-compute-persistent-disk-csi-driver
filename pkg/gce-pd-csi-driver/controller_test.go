@@ -751,10 +751,10 @@ func TestListVolumeArgs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup new driver each time so no interference
-			d := []*gce.CloudDisk{}
+			var d []*gce.CloudDisk
 			for i := 0; i < 600; i++ {
 				// Create 600 dummy disks
-				d = append(d, &gce.CloudDisk{ZonalDisk: &compute.Disk{Name: fmt.Sprintf("%v", i)}})
+				d = append(d, gce.CloudDiskFromV1(&compute.Disk{Name: fmt.Sprintf("%v", i)}))
 			}
 			gceDriver := initGCEDriver(t, d)
 			lvr := &csi.ListVolumesRequest{
@@ -890,7 +890,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 }
 
 func createZonalCloudDisk(name string) *gce.CloudDisk {
-	return gce.ZonalCloudDisk(&compute.Disk{
+	return gce.CloudDiskFromV1(&compute.Disk{
 		Name: name,
 	})
 }
