@@ -3,21 +3,22 @@ module sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 go 1.13
 
 require (
-	cloud.google.com/go v0.45.1
+	cloud.google.com/go v0.65.0
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20190822182118-27a4ced34534
 	github.com/container-storage-interface/spec v1.2.0
-	github.com/golang/protobuf v1.4.1
+	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/go-multierror v1.0.0 // indirect
 	github.com/kubernetes-csi/csi-proxy/client v0.2.1
 	github.com/kubernetes-csi/csi-test/v3 v3.0.0
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.7.1
-	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
-	golang.org/x/sys v0.0.0-20191113165036-4c7a9d0fe056
-	google.golang.org/api v0.10.0
-	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
-	google.golang.org/grpc v1.27.1
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
+	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
+	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
+	google.golang.org/api v0.34.0
+	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
+	google.golang.org/grpc v1.31.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	k8s.io/apimachinery v0.18.0
