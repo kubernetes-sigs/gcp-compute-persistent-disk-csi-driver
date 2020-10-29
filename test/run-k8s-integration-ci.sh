@@ -71,7 +71,7 @@ else
   base_cmd="${base_cmd} --gce-region=${gce_region}"
 fi
 
-if [ -z "$gke_node_version" ]; then
+if [ -n "$gke_node_version" ]; then
   base_cmd="${base_cmd} --gke-node-version=${gke_node_version}"
 fi
 
