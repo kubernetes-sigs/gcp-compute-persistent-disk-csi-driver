@@ -72,6 +72,9 @@ that represents availability by zone (e.g. `us-central1-c`, etc.).
 | Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | Stable             |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
 | Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
+| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | Stable             |
+
+* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+.
 
 ### Future Features
 
