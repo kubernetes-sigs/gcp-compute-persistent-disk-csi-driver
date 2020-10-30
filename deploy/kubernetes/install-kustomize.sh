@@ -41,7 +41,7 @@ pushd $tmpDir >& /dev/null
 
 opsys=windows
 if [[ "$OSTYPE" == linux* ]]; then
-  opsys=linux
+  opsys=linux_amd64
 elif [[ "$OSTYPE" == darwin* ]]; then
   opsys=darwin
 fi
@@ -50,11 +50,11 @@ curl -s https://api.github.com/repos/kubernetes-sigs/kustomize/releases |\
   grep browser_download |\
   grep $opsys |\
   cut -d '"' -f 4 |\
-  grep /kustomize/v3.8.0 |\
+  grep /kustomize/v3.8.6 |\
   sort | tail -n 1 |\
   xargs curl -s -O -L
 
-tar xzf ./kustomize_v*_${opsys}_amd64.tar.gz
+tar xzf ./kustomize_v*_${opsys}.tar.gz
 
 cp ./kustomize $where
 
