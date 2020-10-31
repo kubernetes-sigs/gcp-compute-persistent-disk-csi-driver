@@ -77,6 +77,8 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 	waitCmd.Env = deployEnv
 	err = runCommand("Waiting for driver to start", waitCmd)
 	if err != nil {
+		out, err := exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
+		klog.Infof("describe pods \n %s", string(out))
 		return fmt.Errorf("driver failed to come up: %w", err)
 	}
 	if platform == "windows" {
