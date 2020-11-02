@@ -86,7 +86,14 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 	switch testParams.deploymentStrategy {
 	case "gke":
 		if testParams.imageType == "cos" {
-			gkeVer := mustParseVersion(testParams.clusterVersion)
+			var gkeVer *version
+			// The node version is what matters for XFS support. If the node version is not given, we assume
+			// it's the same as the cluster master version.
+			if testParams.nodeVersion != "" {
+				gkeVer = mustParseVersion(testParams.nodeVersion)
+			} else {
+				gkeVer = mustParseVersion(testParams.clusterVersion)
+			}
 			if gkeVer.lessThan(mustParseVersion("1.18.0")) {
 				// XFS is not supported on COS before 1.18.0
 			} else {

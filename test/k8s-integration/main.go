@@ -94,6 +94,7 @@ type testParameters struct {
 	allowedNotReadyNodes int
 	useGKEManagedDriver  bool
 	clusterVersion       string
+	nodeVersion          string
 	imageType            string
 }
 
@@ -450,6 +451,7 @@ func handle() error {
 		testParams.testSkip = generateGCETestSkip(testParams)
 	case "gke":
 		testParams.testSkip = generateGKETestSkip(testParams)
+		testParams.nodeVersion = *gkeNodeVersion
 	default:
 		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
