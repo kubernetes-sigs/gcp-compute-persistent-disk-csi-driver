@@ -15,17 +15,17 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 	return filepath.Join(pkgDir, "deploy", "kubernetes", "overlays", deployOverlayName)
 }
 
-func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deployOverlayName string, doDriverBuild bool) error {
+func installDriver(testParams *testParameters, stagingImage, deployOverlayName string, doDriverBuild bool) error {
 	if doDriverBuild {
 		// Install kustomize
 		klog.Infof("Installing kustomize")
-		out, err := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
+		out, err := exec.Command(filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
 		}
 
 		// Edit ci kustomization to use given image tag
-		overlayDir := getOverlayDir(pkgDir, deployOverlayName)
+		overlayDir := getOverlayDir(testParams.pkgDir, deployOverlayName)
 		err = os.Chdir(overlayDir)
 		if err != nil {
 			return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err)
@@ -34,11 +34,11 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		// TODO (#138): in a local environment this is going to modify the actual kustomize files.
 		// maybe a copy should be made instead
 		out, err = exec.Command(
-			filepath.Join(pkgDir, "bin", "kustomize"),
+			filepath.Join(testParams.pkgDir, "bin", "kustomize"),
 			"edit",
 			"set",
 			"image",
-			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, stagingVersion)).CombinedOutput()
+			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, testParams.stagingVersion)).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
 		}
@@ -61,9 +61,9 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 	}
 
 	// deploy driver
-	deployCmd := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "deploy-driver.sh"), "--skip-sa-check")
+	deployCmd := exec.Command(filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "deploy-driver.sh"), "--skip-sa-check")
 	deployEnv = append(deployEnv,
-		fmt.Sprintf("GOPATH=%s", goPath),
+		fmt.Sprintf("GOPATH=%s", testParams.goPath),
 		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName))
 	deployEnv = append(os.Environ(), deployEnv...)
 	deployCmd.Env = deployEnv
@@ -72,14 +72,14 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 		return fmt.Errorf("failed to deploy driver: %w", err)
 	}
 
-	waitScript := filepath.Join(pkgDir, "deploy", "kubernetes", "wait-for-driver.sh")
+	waitScript := filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "wait-for-driver.sh")
 	waitCmd := exec.Command(waitScript)
 	waitCmd.Env = deployEnv
 	err = runCommand("Waiting for driver to start", waitCmd)
 	if err != nil {
 		return fmt.Errorf("driver failed to come up: %w", err)
 	}
-	if platform == "windows" {
+	if testParams.platform == "windows" {
 		waitCmd = exec.Command(waitScript, "--windows")
 		waitCmd.Env = deployEnv
 		err = runCommand("Waiting for windows deployment to start", waitCmd)
@@ -91,15 +91,15 @@ func installDriver(platform, goPath, pkgDir, stagingImage, stagingVersion, deplo
 	klog.Infof("describe pods \n %s", string(out))
 
 	if err != nil {
-		return fmt.Errorf("failed to describe pods: %v", err)
+		return fmt.Errorf("failed to describe pods: %w", err)
 	}
 	return nil
 }
 
-func deleteDriver(goPath, pkgDir, deployOverlayName string) error {
-	deleteCmd := exec.Command(filepath.Join(pkgDir, "deploy", "kubernetes", "delete-driver.sh"))
+func deleteDriver(testParams *testParameters, deployOverlayName string) error {
+	deleteCmd := exec.Command(filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "delete-driver.sh"))
 	deleteCmd.Env = append(os.Environ(),
-		fmt.Sprintf("GOPATH=%s", goPath),
+		fmt.Sprintf("GOPATH=%s", testParams.goPath),
 		fmt.Sprintf("GCE_PD_DRIVER_VERSION=%s", deployOverlayName),
 	)
 	err := runCommand("Deleting driver", deleteCmd)

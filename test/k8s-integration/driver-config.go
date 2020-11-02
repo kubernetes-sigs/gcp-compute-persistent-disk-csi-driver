@@ -27,15 +27,15 @@ const (
 
 // generateDriverConfigFile loads a testdriver config template and creates a file
 // with the test-specific configuration
-func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat string) (string, error) {
+func generateDriverConfigFile(testParams *testParameters, storageClassFile string) (string, error) {
 	// Load template
-	t, err := template.ParseFiles(filepath.Join(pkgDir, testConfigDir, configTemplateFile))
+	t, err := template.ParseFiles(filepath.Join(testParams.pkgDir, testConfigDir, configTemplateFile))
 	if err != nil {
 		return "", err
 	}
 
 	// Create destination
-	configFilePath := filepath.Join(pkgDir, testConfigDir, configFile)
+	configFilePath := filepath.Join(testParams.pkgDir, testConfigDir, configFile)
 	f, err := os.Create(configFilePath)
 	if err != nil {
 		return "", err
@@ -55,9 +55,11 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 		"exec",
 		"multipods",
 		"topology",
+		"controllerExpansion",
+		"nodeExpansion",
 	}
 	var fsTypes []string
-	if platform == "windows" {
+	if testParams.platform == "windows" {
 		fsTypes = []string{"ntfs"}
 		caps = []string{
 			"persistence",
@@ -70,7 +72,6 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 			"ext2",
 			"ext3",
 			"ext4",
-			"xfs",
 		}
 	}
 
@@ -82,22 +83,31 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 	   dataSource
 	*/
 
-	// TODO: Support adding/removing capabilities based on Kubernetes version.
-	switch deploymentStrat {
+	switch testParams.deploymentStrategy {
 	case "gke":
-		fallthrough
+		if testParams.imageType == "cos" {
+			gkeVer := mustParseVersion(testParams.clusterVersion)
+			if gkeVer.lessThan(mustParseVersion("1.18.0")) {
+				// XFS is not supported on COS before 1.18.0
+			} else {
+				fsTypes = append(fsTypes, "xfs")
+			}
+		} else {
+			// XFS is supported on all non-COS images.
+			fsTypes = append(fsTypes, "xfs")
+		}
 	case "gce":
-		caps = append(caps, "controllerExpansion", "nodeExpansion")
+		fsTypes = append(fsTypes, "xfs")
 	default:
-		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", deploymentStrat)
+		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", testParams.deploymentStrategy)
 	}
 
 	var absSnapshotClassFilePath string
 	// If snapshot class is passed in as argument, include snapshot specific driver capabiltiites.
-	if snapshotClassFile != "" {
+	if testParams.snapshotClassFile != "" {
 		caps = append(caps, "snapshotDataSource")
 		// Update the absolute file path pointing to the snapshot class file, if it is provided as an argument.
-		absSnapshotClassFilePath = filepath.Join(pkgDir, testConfigDir, snapshotClassFile)
+		absSnapshotClassFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.snapshotClassFile)
 	}
 
 	minimumVolumeSize := "5Gi"
@@ -107,7 +117,7 @@ func generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassF
 		numAllowedTopologies = 2
 	}
 	params := driverConfig{
-		StorageClassFile:     filepath.Join(pkgDir, testConfigDir, storageClassFile),
+		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, storageClassFile),
 		StorageClass:         storageClassFile[:strings.LastIndex(storageClassFile, ".")],
 		SnapshotClassFile:    absSnapshotClassFilePath,
 		SupportedFsType:      fsTypes,

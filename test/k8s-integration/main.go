@@ -78,6 +78,25 @@ const (
 	regionalPDStorageClass    = "sc-regional.yaml"
 )
 
+type testParameters struct {
+	platform             string
+	stagingVersion       string
+	goPath               string
+	pkgDir               string
+	testParentDir        string
+	testDir              string
+	testFocus            string
+	testSkip             string
+	snapshotClassFile    string
+	cloudProviderArgs    []string
+	deploymentStrategy   string
+	outputDir            string
+	allowedNotReadyNodes int
+	useGKEManagedDriver  bool
+	clusterVersion       string
+	imageType            string
+}
+
 func init() {
 	flag.Set("logtostderr", "true")
 }
@@ -166,14 +185,22 @@ func handle() error {
 	oldmask := syscall.Umask(0000)
 	defer syscall.Umask(oldmask)
 
-	stagingVersion := string(uuid.NewUUID())
+	testParams := &testParameters{
+		platform:            *platform,
+		testFocus:           *testFocus,
+		snapshotClassFile:   *snapshotClassFile,
+		stagingVersion:      string(uuid.NewUUID()),
+		deploymentStrategy:  *deploymentStrat,
+		useGKEManagedDriver: *useGKEManagedDriver,
+		imageType:           *imageType,
+	}
 
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
 		return fmt.Errorf("Could not find env variable GOPATH")
 	}
-
-	pkgDir := filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
+	testParams.goPath = goPath
+	testParams.pkgDir = filepath.Join(goPath, "src", "sigs.k8s.io", "gcp-compute-persistent-disk-csi-driver")
 
 	// If running in Prow, then acquire and set up a project through Boskos
 	if *inProw {
@@ -213,13 +240,13 @@ func handle() error {
 
 	// Build and push the driver, if required. Defer the driver image deletion.
 	if *doDriverBuild {
-		err := pushImage(pkgDir, *stagingImage, stagingVersion, *platform)
+		err := pushImage(testParams.pkgDir, *stagingImage, testParams.stagingVersion, testParams.platform)
 		if err != nil {
 			return fmt.Errorf("failed pushing image: %v", err)
 		}
 		defer func() {
 			if *teardownCluster {
-				err := deleteImage(*stagingImage, stagingVersion)
+				err := deleteImage(*stagingImage, testParams.stagingVersion)
 				if err != nil {
 					klog.Errorf("failed to delete image: %v", err)
 				}
@@ -230,15 +257,15 @@ func handle() error {
 	// Create temporary directories for kubernetes builds
 	k8sParentDir := generateUniqueTmpDir()
 	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
-	testParentDir := generateUniqueTmpDir()
-	testDir := filepath.Join(testParentDir, "kubernetes")
+	testParams.testParentDir = generateUniqueTmpDir()
+	testParams.testDir = filepath.Join(testParams.testParentDir, "kubernetes")
 	defer removeDir(k8sParentDir)
-	defer removeDir(testParentDir)
+	defer removeDir(testParams.testParentDir)
 
 	// If kube version is set, then download and build Kubernetes for cluster creation
 	// Otherwise, either GKE or a prebuild local K8s dir is being used
 	if len(*kubeVersion) != 0 {
-		err := downloadKubernetesSource(pkgDir, k8sParentDir, *kubeVersion)
+		err := downloadKubernetesSource(testParams.pkgDir, k8sParentDir, *kubeVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
@@ -253,25 +280,25 @@ func handle() error {
 	// If test version is set, then download and build Kubernetes to run K8s tests
 	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used
 	if len(*testVersion) != 0 && *testVersion != *kubeVersion {
-		err := downloadKubernetesSource(pkgDir, testParentDir, *testVersion)
+		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *testVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
-		err = buildKubernetes(testDir, "WHAT=test/e2e/e2e.test")
+		err = buildKubernetes(testParams.testDir, "WHAT=test/e2e/e2e.test")
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes e2e: %v", err)
 		}
 		// kubetest relies on ginkgo and kubectl already built in the test k8s directory
-		err = buildKubernetes(testDir, "ginkgo")
+		err = buildKubernetes(testParams.testDir, "ginkgo")
 		if err != nil {
 			return fmt.Errorf("failed to build gingko: %v", err)
 		}
-		err = buildKubernetes(testDir, "kubectl")
+		err = buildKubernetes(testParams.testDir, "kubectl")
 		if err != nil {
 			return fmt.Errorf("failed to build kubectl: %v", err)
 		}
 	} else {
-		testDir = k8sDir
+		testParams.testDir = k8sDir
 	}
 
 	if *deploymentStrat == "gke" {
@@ -287,11 +314,11 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, *imageType)
+			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, testParams.imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *imageType, *useGKEManagedDriver)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, testParams.imageType, testParams.useGKEManagedDriver)
 		default:
-			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
+			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to cluster up: %v", err)
@@ -301,7 +328,7 @@ func handle() error {
 	// Defer the tear down of the cluster through GKE or GCE
 	if *teardownCluster {
 		defer func() {
-			switch *deploymentStrat {
+			switch testParams.deploymentStrategy {
 			case "gce":
 				err := clusterDownGCE(k8sDir)
 				if err != nil {
@@ -313,14 +340,14 @@ func handle() error {
 					klog.Errorf("failed to cluster down: %v", err)
 				}
 			default:
-				klog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", *deploymentStrat)
+				klog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
 			}
 		}()
 	}
 
 	// For windows cluster, when cluster is up, all Windows nodes are tainted with NoSchedule to avoid linux pods
 	// being scheduled to Windows nodes. When running windows tests, we need to remove the taint.
-	if *platform == "windows" {
+	if testParams.platform == "windows" {
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=windows", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
@@ -339,11 +366,11 @@ func handle() error {
 		// It typically takes 5+ minutes to download Windows container image. To avoid tests being timed out,
 		// pre-pulling the test images as best effort.
 		klog.Infof("Prepulling test images.")
-		err = os.Setenv("PREPULL_YAML", filepath.Join(pkgDir, "test", "k8s-integration", "prepull.yaml"))
+		err = os.Setenv("PREPULL_YAML", filepath.Join(testParams.pkgDir, "test", "k8s-integration", "prepull.yaml"))
 		if err != nil {
 			return err
 		}
-		out, err = exec.Command(filepath.Join(pkgDir, "test", "k8s-integration", "prepull-image.sh")).CombinedOutput()
+		out, err = exec.Command(filepath.Join(testParams.pkgDir, "test", "k8s-integration", "prepull-image.sh")).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
 		}
@@ -356,12 +383,12 @@ func handle() error {
 
 	}
 
-	if !*useGKEManagedDriver {
+	if !testParams.useGKEManagedDriver {
 		// Install the driver and defer its teardown
-		err := installDriver(*platform, goPath, pkgDir, *stagingImage, stagingVersion, *deployOverlayName, *doDriverBuild)
+		err := installDriver(testParams, *stagingImage, *deployOverlayName, *doDriverBuild)
 		if *teardownDriver {
 			defer func() {
-				if teardownErr := deleteDriver(goPath, pkgDir, *deployOverlayName); teardownErr != nil {
+				if teardownErr := deleteDriver(testParams, *deployOverlayName); teardownErr != nil {
 					klog.Errorf("failed to delete driver: %v", teardownErr)
 				}
 			}()
@@ -387,7 +414,7 @@ func handle() error {
 	// Also the test framework will not proceed to run tests unless all nodes are ready
 	// AND schedulable. Allow not-ready nodes since we make Linux nodes
 	// unschedulable.
-	allowedNotReadyNodes := 0
+	testParams.allowedNotReadyNodes = 0
 	if *platform == "windows" {
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=linux", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
@@ -395,7 +422,7 @@ func handle() error {
 			return fmt.Errorf("failed to get linux nodes: %v", err)
 		}
 		nodes := strings.Fields(string(out))
-		allowedNotReadyNodes = len(nodes)
+		testParams.allowedNotReadyNodes = len(nodes)
 		for _, node := range nodes {
 			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule")
 			out, err := taintCmd.CombinedOutput()
@@ -406,10 +433,9 @@ func handle() error {
 		}
 	}
 
-	var cloudProviderArgs []string
-	switch *deploymentStrat {
+	switch testParams.deploymentStrategy {
 	case "gke":
-		cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, *imageType)
+		testParams.cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, testParams.imageType)
 		if err != nil {
 			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
 		}
@@ -418,15 +444,14 @@ func handle() error {
 	// Kubernetes version of GKE deployments are expected to be of the pattern x.y.z-gke.k,
 	// hence we use the main.Version utils to parse and compare GKE managed cluster versions.
 	// For clusters deployed on GCE, use the apimachinery version utils (which supports non-gke based semantic versioning).
-	clusterVersion := mustGetKubeClusterVersion()
-	var testSkip string
-	switch *deploymentStrat {
+	testParams.clusterVersion = mustGetKubeClusterVersion()
+	switch testParams.deploymentStrategy {
 	case "gce":
-		testSkip = generateGCETestSkip(clusterVersion, *platform)
+		testParams.testSkip = generateGCETestSkip(testParams)
 	case "gke":
-		testSkip = generateGKETestSkip(clusterVersion, *useGKEManagedDriver)
+		testParams.testSkip = generateGKETestSkip(testParams)
 	default:
-		return fmt.Errorf("Unknown deployment strategy %s", *deploymentStrat)
+		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
 
 	// Run the tests using the testDir kubernetes
@@ -451,8 +476,7 @@ func handle() error {
 		for _, scFile := range applicableStorageClassFiles {
 			outputDir := strings.TrimSuffix(scFile, ".yaml")
 			testOutputDirs = append(testOutputDirs, outputDir)
-			if err = runCSITests(*platform, pkgDir, testDir, *testFocus, testSkip, scFile,
-				*snapshotClassFile, cloudProviderArgs, *deploymentStrat, outputDir, allowedNotReadyNodes); err != nil {
+			if err = runCSITests(testParams, scFile, outputDir); err != nil {
 				ginkgoErrors = append(ginkgoErrors, err.Error())
 			}
 		}
@@ -463,7 +487,7 @@ func handle() error {
 			return fmt.Errorf("runCSITests failed: %v", strings.Join(ginkgoErrors, " "))
 		}
 	} else if *migrationTest {
-		err = runMigrationTests(pkgDir, testDir, *testFocus, testSkip, cloudProviderArgs)
+		err = runMigrationTests(testParams)
 	} else {
 		return fmt.Errorf("did not run either CSI or Migration test")
 	}
@@ -475,9 +499,9 @@ func handle() error {
 	return nil
 }
 
-func generateGCETestSkip(clusterVersion, platform string) string {
+func generateGCETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
-	v := apimachineryversion.MustParseSemantic(clusterVersion)
+	v := apimachineryversion.MustParseSemantic(testParams.clusterVersion)
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
@@ -488,15 +512,15 @@ func generateGCETestSkip(clusterVersion, platform string) string {
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.17.0")) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
-	if platform == "windows" {
+	if testParams.platform == "windows" {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
 	return skipString
 }
 
-func generateGKETestSkip(clusterVersion string, use_gke_managed_driver bool) string {
+func generateGKETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
-	curVer := mustParseVersion(clusterVersion)
+	curVer := mustParseVersion(testParams.clusterVersion)
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
@@ -506,14 +530,14 @@ func generateGKETestSkip(clusterVersion string, use_gke_managed_driver bool) str
 	}
 
 	// For GKE deployed PD CSI driver, resizer sidecar is enabled in 1.16.8-gke.3
-	if (use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.16.8-gke.3"))) ||
-		(!use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.16.0"))) {
+	if (testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.8-gke.3"))) ||
+		(!testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.0"))) {
 		skipString = skipString + "|allowExpansion"
 	}
 
 	// For GKE deployed PD CSI snapshot is enabled in 1.17.6-gke.4(and higher), 1.18.3-gke.0(and higher).
-	if (use_gke_managed_driver && curVer.lessThan(mustParseVersion("1.17.6-gke.4"))) ||
-		(!use_gke_managed_driver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
+	if (testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.17.6-gke.4"))) ||
+		(!testParams.useGKEManagedDriver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
 	return skipString
@@ -532,22 +556,21 @@ func setEnvProject(project string) error {
 	return nil
 }
 
-func runMigrationTests(pkgDir, testDir, testFocus, testSkip string, cloudProviderArgs []string) error {
-	return runTestsWithConfig(testDir, testFocus, testSkip, "--storage.migratedPlugins=kubernetes.io/gce-pd", cloudProviderArgs, "", 0)
+func runMigrationTests(testParams *testParameters) error {
+	return runTestsWithConfig(testParams, "--storage.migratedPlugins=kubernetes.io/gce-pd", "")
 }
 
-func runCSITests(platform, pkgDir, testDir, testFocus, testSkip, storageClassFile, snapshotClassFile string,
-	cloudProviderArgs []string, deploymentStrat, reportPrefix string, allowedNotReadyNodes int) error {
-	testDriverConfigFile, err := generateDriverConfigFile(platform, pkgDir, storageClassFile, snapshotClassFile, deploymentStrat)
+func runCSITests(testParams *testParameters, storageClassFile string, reportPrefix string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(testParams, storageClassFile)
 	if err != nil {
 		return err
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
-	return runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg, cloudProviderArgs, reportPrefix, allowedNotReadyNodes)
+	return runTestsWithConfig(testParams, testConfigArg, reportPrefix)
 }
 
-func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, cloudProviderArgs []string, reportPrefix string, allowedNotReadyNodes int) error {
-	err := os.Chdir(testDir)
+func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix string) error {
+	err := os.Chdir(testParams.testDir)
 	if err != nil {
 		return err
 	}
@@ -571,9 +594,9 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 			kubetestDumpDir = artifactsDir
 		}
 	}
-	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testFocus, testSkip)
-	if *platform == "windows" {
-		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s --allowed-not-ready-nodes=%d", *platform, allowedNotReadyNodes)
+	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testParams.testFocus, testParams.testSkip)
+	if testParams.platform == "windows" {
+		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s --allowed-not-ready-nodes=%d", testParams.platform, testParams.allowedNotReadyNodes)
 	}
 	testArgs := fmt.Sprintf("%s %s %s",
 		ginkgoArgs,
@@ -589,7 +612,7 @@ func runTestsWithConfig(testDir, testFocus, testSkip, testConfigArg string, clou
 	if kubetestDumpDir != "" {
 		kubeTestArgs = append(kubeTestArgs, fmt.Sprintf("--dump=%s", kubetestDumpDir))
 	}
-	kubeTestArgs = append(kubeTestArgs, cloudProviderArgs...)
+	kubeTestArgs = append(kubeTestArgs, testParams.cloudProviderArgs...)
 
 	err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
 	if err != nil {
