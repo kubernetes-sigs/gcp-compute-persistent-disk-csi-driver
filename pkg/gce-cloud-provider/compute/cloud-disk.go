@@ -17,126 +17,89 @@ package gcecloudprovider
 import (
 	"strings"
 
-	computealpha "google.golang.org/api/compute/v0.alpha"
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 )
 
 type CloudDisk struct {
-	ZonalDisk         *computev1.Disk
-	RegionalDisk      *computev1.Disk
-	ZonalAlphaDisk    *computealpha.Disk
-	RegionalAlphaDisk *computealpha.Disk
+	disk     *computev1.Disk
+	betaDisk *computebeta.Disk
 }
 
 type CloudDiskType string
 
-const (
-	// Zonal key type.
-	Zonal = "zonal"
-	// Regional key type.
-	Regional = "regional"
-	// ZonalAlpha key type.
-	ZonalAlpha = "zonalAlpha"
-	// RegionalAlpha key type.
-	RegionalAlpha = "regionalAlpha"
-	// Global key type.
-	Global = "global"
-)
-
-func ZonalCloudDisk(disk *computev1.Disk) *CloudDisk {
+func CloudDiskFromV1(disk *computev1.Disk) *CloudDisk {
 	return &CloudDisk{
-		ZonalDisk: disk,
+		disk: disk,
 	}
 }
 
-func RegionalCloudDisk(disk *computev1.Disk) *CloudDisk {
+func CloudDiskFromBeta(disk *computebeta.Disk) *CloudDisk {
 	return &CloudDisk{
-		RegionalDisk: disk,
+		betaDisk: disk,
 	}
 }
 
-func ZonalAlphaCloudDisk(disk *computealpha.Disk) *CloudDisk {
-	return &CloudDisk{
-		ZonalAlphaDisk: disk,
-	}
-}
-
-func RegionalAlphaCloudDisk(disk *computealpha.Disk) *CloudDisk {
-	return &CloudDisk{
-		RegionalAlphaDisk: disk,
-	}
-}
-
-func (d *CloudDisk) Type() CloudDiskType {
+func (d *CloudDisk) LocationType() meta.KeyType {
+	var zone, region string
 	switch {
-	case d.ZonalDisk != nil:
-		return Zonal
-	case d.RegionalDisk != nil:
-		return Regional
-	case d.ZonalAlphaDisk != nil:
-		return ZonalAlpha
-	case d.RegionalAlphaDisk != nil:
-		return RegionalAlpha
+	case d.disk != nil:
+		zone = d.disk.Zone
+		region = d.disk.Region
+	case d.betaDisk != nil:
+		zone = d.betaDisk.Zone
+		region = d.betaDisk.Region
+	}
+	switch {
+	case zone != "":
+		return meta.Zonal
+	case region != "":
+		return meta.Regional
 	default:
-		return Global
+		return meta.Global
 	}
 }
 
 func (d *CloudDisk) GetUsers() []string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.Users
-	case Regional:
-		return d.RegionalDisk.Users
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Users
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Users
+	switch {
+	case d.disk != nil:
+		return d.disk.Users
+	case d.betaDisk != nil:
+		return d.betaDisk.Users
 	default:
 		return nil
 	}
 }
 
 func (d *CloudDisk) GetName() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.Name
-	case Regional:
-		return d.RegionalDisk.Name
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Name
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Name
+	switch {
+	case d.disk != nil:
+		return d.disk.Name
+	case d.betaDisk != nil:
+		return d.betaDisk.Name
 	default:
 		return ""
 	}
 }
 
 func (d *CloudDisk) GetKind() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.Kind
-	case Regional:
-		return d.RegionalDisk.Kind
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Kind
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Kind
+	switch {
+	case d.disk != nil:
+		return d.disk.Kind
+	case d.betaDisk != nil:
+		return d.betaDisk.Kind
 	default:
 		return ""
 	}
 }
 
 func (d *CloudDisk) GetStatus() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.Status
-	case Regional:
-		return d.RegionalDisk.Status
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Status
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Status
+	switch {
+	case d.disk != nil:
+		return d.disk.Status
+	case d.betaDisk != nil:
+		return d.betaDisk.Status
 	default:
 		return "Unknown"
 	}
@@ -147,15 +110,11 @@ func (d *CloudDisk) GetStatus() string {
 // validated, it is just passed verbatium from GCP.
 func (d *CloudDisk) GetPDType() string {
 	var pdType string
-	switch d.Type() {
-	case Zonal:
-		pdType = d.ZonalDisk.Type
-	case Regional:
-		pdType = d.RegionalDisk.Type
-	case ZonalAlpha:
-		pdType = d.ZonalAlphaDisk.Type
-	case RegionalAlpha:
-		pdType = d.RegionalAlphaDisk.Type
+	switch {
+	case d.disk != nil:
+		pdType = d.disk.Type
+	case d.betaDisk != nil:
+		pdType = d.betaDisk.Type
 	default:
 		return ""
 	}
@@ -164,30 +123,22 @@ func (d *CloudDisk) GetPDType() string {
 }
 
 func (d *CloudDisk) GetSelfLink() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.SelfLink
-	case Regional:
-		return d.RegionalDisk.SelfLink
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.SelfLink
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.SelfLink
+	switch {
+	case d.disk != nil:
+		return d.disk.SelfLink
+	case d.betaDisk != nil:
+		return d.betaDisk.SelfLink
 	default:
 		return ""
 	}
 }
 
 func (d *CloudDisk) GetSizeGb() int64 {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.SizeGb
-	case Regional:
-		return d.RegionalDisk.SizeGb
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.SizeGb
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.SizeGb
+	switch {
+	case d.disk != nil:
+		return d.disk.SizeGb
+	case d.betaDisk != nil:
+		return d.betaDisk.SizeGb
 	default:
 		return -1
 	}
@@ -196,82 +147,56 @@ func (d *CloudDisk) GetSizeGb() int64 {
 // setSizeGb sets the size of the disk used ONLY
 // for testing purposes.
 func (d *CloudDisk) setSizeGb(size int64) {
-	switch d.Type() {
-	case Zonal:
-		d.ZonalDisk.SizeGb = size
-	case Regional:
-		d.RegionalDisk.SizeGb = size
-	case ZonalAlpha:
-		d.ZonalAlphaDisk.SizeGb = size
-	case RegionalAlpha:
-		d.RegionalAlphaDisk.SizeGb = size
+	switch {
+	case d.disk != nil:
+		d.disk.SizeGb = size
+	case d.betaDisk != nil:
+		d.betaDisk.SizeGb = size
 	}
 }
 
 func (d *CloudDisk) GetZone() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.Zone
-	case Regional:
-		return d.RegionalDisk.Zone
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.Zone
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.Zone
+	switch {
+	case d.disk != nil:
+		return d.disk.Zone
+	case d.betaDisk != nil:
+		return d.betaDisk.Zone
 	default:
 		return ""
 	}
 }
 
 func (d *CloudDisk) GetSnapshotId() string {
-	switch d.Type() {
-	case Zonal:
-		return d.ZonalDisk.SourceSnapshotId
-	case Regional:
-		return d.RegionalDisk.SourceSnapshotId
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.SourceSnapshotId
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.SourceSnapshotId
+	switch {
+	case d.disk != nil:
+		return d.disk.SourceSnapshotId
+	case d.betaDisk != nil:
+		return d.betaDisk.SourceSnapshotId
 	default:
 		return ""
 	}
 }
 
 func (d *CloudDisk) GetKMSKeyName() string {
-	var dek *computev1.CustomerEncryptionKey
-	var dekAlpha *computealpha.CustomerEncryptionKey
-	switch d.Type() {
-	case Zonal:
-		dek = d.ZonalDisk.DiskEncryptionKey
-	case Regional:
-		dek = d.RegionalDisk.DiskEncryptionKey
-	case ZonalAlpha:
-		dekAlpha = d.ZonalAlphaDisk.DiskEncryptionKey
-	case RegionalAlpha:
-		dekAlpha = d.RegionalAlphaDisk.DiskEncryptionKey
-	default:
-		return ""
-	}
-
-	if dek != nil {
-		return dek.KmsKeyName
-	} else if dekAlpha != nil {
-		return dekAlpha.KmsKeyName
+	switch {
+	case d.disk != nil:
+		if dek := d.disk.DiskEncryptionKey; dek != nil {
+			return dek.KmsKeyName
+		}
+	case d.betaDisk != nil:
+		if dek := d.betaDisk.DiskEncryptionKey; dek != nil {
+			return dek.KmsKeyName
+		}
 	}
 	return ""
 }
 
 func (d *CloudDisk) GetMultiWriter() bool {
-	switch d.Type() {
-	case Zonal:
+	switch {
+	case d.disk != nil:
 		return false
-	case Regional:
-		return false
-	case ZonalAlpha:
-		return d.ZonalAlphaDisk.MultiWriter
-	case RegionalAlpha:
-		return d.RegionalAlphaDisk.MultiWriter
+	case d.betaDisk != nil:
+		return d.betaDisk.MultiWriter
 	default:
 		return false
 	}
