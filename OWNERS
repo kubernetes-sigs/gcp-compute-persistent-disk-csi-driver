@@ -1,16 +1,3 @@
-reviewers:
-  - davidz627
-  - jingxu97
-  - mattcary
-  - msau42
-  - saad-ali
-  - saikat-royc
-  - verult
 approvers:
-  - davidz627
-  - jingxu97
-  - mattcary
-  - msau42
-  - saad-ali
-  - saikat-royc
-  - verult
+- openshift-storage-maintainers
+component: "Storage"
