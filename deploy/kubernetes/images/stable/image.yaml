@@ -3,8 +3,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-provisioner
 imageTag:
-  name: gke.gcr.io/csi-provisioner
-  newTag: "v1.6.0-gke.0"
+  name: k8s.gcr.io/sig-storage/csi-provisioner
+  newTag: "v2.0.4"
 
 ---
 apiVersion: builtin
@@ -12,8 +12,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-attacher
 imageTag:
-  name: gke.gcr.io/csi-attacher
-  newTag: "v2.2.0-gke.0"
+  name: k8s.gcr.io/sig-storage/csi-attacher
+  newTag: "v3.0.1"
 ---
 
 apiVersion: builtin
@@ -21,8 +21,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-resizer
 imageTag:
-  name: gke.gcr.io/csi-resizer
-  newTag: "v0.5.0-gke.0"
+  name: k8s.gcr.io/sig-storage/csi-resizer
+  newTag: "v1.0.1"
 ---
 
 apiVersion: builtin
@@ -30,8 +30,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-snapshotter
 imageTag:
-  name: gke.gcr.io/csi-snapshotter
-  newTag: "v2.1.1-gke.0"
+  name: k8s.gcr.io/sig-storage/csi-snapshotter
+  newTag: "v3.0.1"
 ---
 
 apiVersion: builtin
@@ -39,8 +39,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-node-registrar
 imageTag:
-  name: gke.gcr.io/csi-node-driver-registrar
-  newTag: "v1.3.0-gke.0"
+  name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+  newTag: "v2.0.1"
 ---
 
 apiVersion: builtin
@@ -51,5 +51,5 @@ imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
-  newTag: "v1.0.0-gke.0"
+  newTag: "v1.1.0-gke.0"
 ---

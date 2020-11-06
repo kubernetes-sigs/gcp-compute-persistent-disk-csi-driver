@@ -12,8 +12,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-provisioner-prow-head
 imageTag:
-  name: gke.gcr.io/csi-provisioner
-  newName: quay.io/k8scsi/csi-provisioner
+  name: k8s.gcr.io/sig-storage/csi-provisioner
+  newName: gcr.io/k8s-staging-sig-storage/csi-provisioner
   newTag: "canary"
 
 ---
@@ -22,8 +22,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-attacher-prow-head
 imageTag:
-  name: gke.gcr.io/csi-attacher
-  newName: quay.io/k8scsi/csi-attacher
+  name: k8s.gcr.io/sig-storage/csi-attacher
+  newName: gcr.io/k8s-staging-sig-storage/csi-attacher
   newTag: "canary"
 ---
 
@@ -32,8 +32,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-nodo-registrar-prow-head
 imageTag:
-  name: gke.gcr.io/csi-node-driver-registrar
-  newName: quay.io/k8scsi/csi-node-driver-registrar
+  name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+  newName: gcr.io/k8s-staging-sig-storage/csi-node-driver-registrar
   newTag: "canary"
 ---
 
@@ -42,8 +42,8 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-resizer-prow-head
 imageTag:
-  name: gke.gcr.io/csi-resizer
-  newName: quay.io/k8scsi/csi-resizer
+  name: k8s.gcr.io/sig-storage/csi-resizer
+  newName: gcr.io/k8s-staging-sig-storage/csi-resizer
   newTag: "canary"
 ---
 
@@ -52,6 +52,6 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-csi-snapshotter-prow-head
 imageTag:
-  name: gke.gcr.io/csi-snapshotter
-  newName: quay.io/k8scsi/csi-snapshotter
+  name: k8s.gcr.io/sig-storage/csi-snapshotter
+  newName: gcr.io/k8s-staging-sig-storage/csi-snapshotter
   newTag: "canary"
