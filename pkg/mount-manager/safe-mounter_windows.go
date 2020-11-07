@@ -22,10 +22,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
-	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta1"
-	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta1"
+	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2"
+	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2"
 
 	fsapi "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1"
 	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1"
@@ -159,6 +160,25 @@ func (mounter *CSIProxyMounter) UnmountDevice(target string) error {
 	if err != nil {
 		return err
 	}
+
+	// Set disk to offline mode to have a clean state
+	getDiskNumberRequest := &volumeapi.VolumeDiskNumberRequest{
+		VolumeId: volumeId,
+	}
+	id, err := mounter.VolumeClient.GetVolumeDiskNumber(context.Background(), getDiskNumberRequest)
+	if err != nil {
+		return err
+	}
+	diskId := id.GetDiskNumber()
+	klog.V(4).Infof("get disk number %d from volume %s", diskId, volumeId)
+	setDiskRequest := &diskapi.SetAttachStateRequest{
+		DiskID:   strconv.FormatInt(diskId, 10),
+		IsOnline: false,
+	}
+	if _, err = mounter.DiskClient.SetAttachState(context.Background(), setDiskRequest); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -203,6 +223,17 @@ func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fst
 	if err != nil {
 		return err
 	}
+
+	// make sure disk is online. if disk is already online, this call should also succeed.
+	setDiskRequest := &diskapi.SetAttachStateRequest{
+		DiskID:   source,
+		IsOnline: true,
+	}
+	_, err = mounter.DiskClient.SetAttachState(context.Background(), setDiskRequest)
+	if err != nil {
+		return err
+	}
+
 	volumeIDsRequest := &volumeapi.ListVolumesOnDiskRequest{
 		DiskId: source,
 	}
