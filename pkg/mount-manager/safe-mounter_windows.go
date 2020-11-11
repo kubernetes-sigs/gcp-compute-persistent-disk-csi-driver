@@ -252,7 +252,7 @@ func (mounter *CSIProxyMounter) IsLikelyNotMountPoint(file string) (bool, error)
 
 	isMountResponse, err := mounter.FsClient.IsMountPoint(context.Background(), isMountRequest)
 	if err != nil {
-		return false, err
+		return true, err
 	}
 
 	return !isMountResponse.IsMountPoint, nil
