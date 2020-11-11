@@ -69,6 +69,21 @@ func getDefaultFsType() string {
 		return defaultLinuxFsType
 	}
 }
+func (ns *GCENodeServer) isVolumePathMounted(path string) bool {
+	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(path)
+	klog.V(4).Infof("NodePublishVolume check volume path %s is mounted %t: error %v", path, !notMnt, err)
+	if err == nil && !notMnt {
+		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
+		/*
+			1) Target Path MUST be the vol referenced by vol ID
+			2) TODO(#253): Check volume capability matches for ALREADY_EXISTS
+			3) Readonly MUST match
+
+		*/
+		return true
+	}
+	return false
+}
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// Validate Arguments
@@ -99,18 +114,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapability is invalid: %v", err))
 	}
 
-	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", targetPath, err))
-	}
-	if !notMnt {
-		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
-		/*
-			1) Target Path MUST be the vol referenced by vol ID
-			2) TODO(#253): Check volume capability matches for ALREADY_EXISTS
-			3) Readonly MUST match
-
-		*/
+	if ns.isVolumePathMounted(targetPath) {
 		klog.V(4).Infof("NodePublishVolume succeeded on volume %v to %s, mount already exists.", volumeID, targetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
@@ -122,6 +126,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	if readOnly {
 		options = append(options, "ro")
 	}
+	var err error
 
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		if mnt.FsType != "" {
@@ -169,12 +174,16 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 
 	err = ns.Mounter.Interface.Mount(sourcePath, targetPath, fstype, options)
 	if err != nil {
+		klog.Errorf("Mount of disk %s failed: %v", targetPath, err)
 		notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 		if mntErr != nil {
 			klog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to check whether target path is a mount point: %v", err))
 		}
 		if !notMnt {
+			// TODO: check the logic here again. If mntErr == nil & notMnt == false, it means volume is actually mounted.
+			// Why need to unmount?
+			klog.Warningf("Although volume mount failed, but IsLikelyNotMountPoint returns volume %s is mounted already at %s", volumeID, targetPath)
 			if mntErr = ns.Mounter.Interface.Unmount(targetPath); mntErr != nil {
 				klog.Errorf("Failed to unmount: %v", mntErr)
 				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to unmount target path: %v", err))
@@ -190,8 +199,9 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume something is wrong with mounting: %v", err))
 			}
 		}
-		os.Remove(targetPath)
-		klog.Errorf("Mount of disk %s failed: %v", targetPath, err)
+		if err := os.Remove(targetPath); err != nil {
+			klog.Errorf("failed to remove targetPath %s: %v", targetPath, err)
+		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume mount of disk failed: %v", err))
 	}
 
@@ -280,22 +290,11 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
 	// Part 2: Check if mount already exists at stagingTargetPath
-	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(stagingTargetPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot validate mount point: %s %v", stagingTargetPath, err))
-	}
-	if !notMnt {
-		// TODO(#95): Check who is mounted here. No error if its us
-		/*
-			1) Target Path MUST be the vol referenced by vol ID
-			2) VolumeCapability MUST match
-			3) Readonly MUST match
-
-		*/
-		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, mount already exists.", volumeID, stagingTargetPath)
+	if ns.isVolumePathMounted(stagingTargetPath) {
+		klog.V(4).Infof("NodeStageVolume succeeded on volume %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
-
 	}
+
 	if err := prepareStagePath(stagingTargetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", stagingTargetPath, err))
 	}
