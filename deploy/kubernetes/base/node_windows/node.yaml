@@ -83,3 +83,5 @@ spec:
         hostPath:
           path: \var\lib\kubelet\plugins\pd.csi.storage.gke.io
           type: DirectoryOrCreate
+      tolerations:
+      - operator: Exists
