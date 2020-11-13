@@ -446,12 +446,14 @@ func handle() error {
 	// hence we use the main.Version utils to parse and compare GKE managed cluster versions.
 	// For clusters deployed on GCE, use the apimachinery version utils (which supports non-gke based semantic versioning).
 	testParams.clusterVersion = mustGetKubeClusterVersion()
+	klog.Infof("kubernetes cluster server version: %s", testParams.clusterVersion)
 	switch testParams.deploymentStrategy {
 	case "gce":
 		testParams.testSkip = generateGCETestSkip(testParams)
 	case "gke":
-		testParams.testSkip = generateGKETestSkip(testParams)
 		testParams.nodeVersion = *gkeNodeVersion
+		testParams.testSkip = generateGKETestSkip(testParams)
+
 	default:
 		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
@@ -514,6 +516,9 @@ func generateGCETestSkip(testParams *testParameters) string {
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.17.0")) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
+	if v.LessThan(apimachineryversion.MustParseSemantic("1.20.0")) {
+		skipString = skipString + "|fsgroupchangepolicy"
+	}
 	if testParams.platform == "windows" {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
@@ -523,12 +528,21 @@ func generateGCETestSkip(testParams *testParameters) string {
 func generateGKETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
 	curVer := mustParseVersion(testParams.clusterVersion)
+	var nodeVer *version
+	if testParams.nodeVersion != "" {
+		nodeVer = mustParseVersion(testParams.nodeVersion)
+	}
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
 	// bug-fix introduced in 1.16
 	if curVer.lessThan(mustParseVersion("1.16.0")) {
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
+	}
+
+	// Check master and node version to skip Pod FsgroupChangePolicy test suite.
+	if curVer.lessThan(mustParseVersion("1.20.0")) || (nodeVer != nil && nodeVer.lessThan(mustParseVersion("1.20.0"))) {
+		skipString = skipString + "|fsgroupchangepolicy"
 	}
 
 	// For GKE deployed PD CSI driver, resizer sidecar is enabled in 1.16.8-gke.3
@@ -542,6 +556,7 @@ func generateGKETestSkip(testParams *testParameters) string {
 		(!testParams.useGKEManagedDriver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
+
 	return skipString
 }
 
