@@ -23,19 +23,19 @@ spec:
       priorityClassName: csi-gce-pd-controller
       containers:
         - name: csi-provisioner
-          image: gke.gcr.io/csi-provisioner
+          image: k8s.gcr.io/sig-storage/csi-provisioner
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--feature-gates=Topology=true"
             - "--metrics-address=:22011"
-            - "--enable-leader-election"
-            - "--leader-election-type=leases"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=250s"
             - "--extra-create-metadata"
-          # - "--run-controller-service=false" # disable the controller service of the CSI driver
-          # - "--run-node-service=false"       # disable the node service of the CSI driver
+          # - "--run-controller-service=false"  # disable the controller service of the CSI driver
+          # - "--run-node-service=false"        # disable the node service of the CSI driver
+            - "--leader-election"
+            - "--default-fstype=ext4"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
@@ -45,7 +45,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-attacher
-          image: gke.gcr.io/csi-attacher
+          image: k8s.gcr.io/sig-storage/csi-attacher
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
@@ -62,13 +62,14 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-resizer
-          image: gke.gcr.io/csi-resizer
+          image: k8s.gcr.io/sig-storage/csi-resizer
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--metrics-address=:22013"
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+            - "--handle-volume-inuse-error=false"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
@@ -78,7 +79,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-snapshotter
-          image: gke.gcr.io/csi-snapshotter
+          image: k8s.gcr.io/sig-storage/csi-snapshotter
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"

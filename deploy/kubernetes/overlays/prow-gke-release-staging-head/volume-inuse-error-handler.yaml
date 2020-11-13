@@ -1,3 +1,0 @@
-- op: add
-  path: /spec/template/spec/containers/2/args/-
-  value: "--handle-volume-inuse-error=false"
