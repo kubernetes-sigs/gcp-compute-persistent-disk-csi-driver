@@ -74,7 +74,7 @@ that represents availability by zone (e.g. `us-central1-c`, etc.).
 | Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
 | Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | Stable             |
 
-* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+.
+* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+. The master version of driver requires disk v1beta2 group, which is only available in CSI proxy v0.2.2+
 
 ### Future Features
 
