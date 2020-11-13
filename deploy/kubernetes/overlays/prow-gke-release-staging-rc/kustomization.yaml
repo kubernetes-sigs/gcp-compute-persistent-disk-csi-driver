@@ -4,10 +4,3 @@ resources:
 - ../stable
 transformers:
 - ../../images/prow-gke-release-staging-rc
-patchesJson6902:
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: csi-gce-pd-controller
-  path: sidecar-upgrade.yaml
