@@ -52,22 +52,29 @@ spec:
               mountPropagation: "None"
             - name: plugin-dir
               mountPath: C:\csi
-            - name: csi-proxy-disk-pipe
+            # TODO: check overlay and remove v1beta1 if it is safe
+            - name: csi-proxy-disk-v1beta1
               mountPath: \\.\pipe\csi-proxy-disk-v1beta1
-            - name: csi-proxy-volume-pipe
+            - name: csi-proxy-volume-v1beta1
               mountPath: \\.\pipe\csi-proxy-volume-v1beta1
-            - name: csi-proxy-filesystem-pipe
+            - name: csi-proxy-filesystem-v1beta1
               mountPath: \\.\pipe\csi-proxy-filesystem-v1beta1
+            - name: csi-proxy-disk-v1beta2
+              mountPath: \\.\pipe\csi-proxy-disk-v1beta2
       volumes:
-      - name: csi-proxy-disk-pipe
+      - name: csi-proxy-disk-v1beta1
         hostPath:
           path: \\.\pipe\csi-proxy-disk-v1beta1
           type: ""
-      - name: csi-proxy-volume-pipe
+      - name: csi-proxy-disk-v1beta2
+        hostPath:
+          path: \\.\pipe\csi-proxy-disk-v1beta2
+          type: ""
+      - name: csi-proxy-volume-v1beta1
         hostPath:
           path: \\.\pipe\csi-proxy-volume-v1beta1
           type: ""
-      - name: csi-proxy-filesystem-pipe
+      - name: csi-proxy-filesystem-v1beta1
         hostPath:
           path: \\.\pipe\csi-proxy-filesystem-v1beta1
           type: ""
