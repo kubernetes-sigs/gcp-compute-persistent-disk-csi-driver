@@ -242,6 +242,9 @@ func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fst
 		return err
 	}
 	// TODO: consider partitions and choose the right partition.
+	if len(volumeIdResponse.VolumeIds) == 0 {
+		return fmt.Errorf("ListVolumesOnDisk does not return any volumes")
+	}
 	volumeID := volumeIdResponse.VolumeIds[0]
 	isVolumeFormattedRequest := &volumeapi.IsVolumeFormattedRequest{
 		VolumeId: volumeID,
