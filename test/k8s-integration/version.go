@@ -105,6 +105,7 @@ func parseVersion(vs string) (*version, error) {
 	return &v, nil
 }
 
+// mustParseVersion parses a GKE cluster version.
 func mustParseVersion(version string) *version {
 	v, err := parseVersion(version)
 	if err != nil {
@@ -133,4 +134,9 @@ func (v *version) compare(right *version) int {
 // Compare versions if left is strictly less than right.
 func (v *version) lessThan(right *version) bool {
 	return v.compare(right) < 0
+}
+
+// Compare versions if left is greater than or equal to right.
+func (v *version) atLeast(right *version) bool {
+	return v.compare(right) >= 0
 }

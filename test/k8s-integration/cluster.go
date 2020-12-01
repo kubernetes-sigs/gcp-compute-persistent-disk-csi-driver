@@ -182,9 +182,23 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 	}
 
 	cmd = exec.Command("gcloud", cmdParams...)
-	err = runCommand("Staring E2E Cluster on GKE", cmd)
+	err = runCommand("Starting E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
+	}
+
+	// Because gcloud cannot disable addons on cluster create, the deployment has
+	// to be disabled on update.
+	clusterVersion := mustGetKubeClusterVersion()
+	if !useManagedDriver && isGKEDeploymentInstalledByDefault(clusterVersion) {
+		cmd = exec.Command(
+			"gcloud", "beta", "container", "clusters", "update",
+			*gkeTestClusterName, locationArg, locationVal, "--quiet",
+			"--update-addons", "GcePersistentDiskCsiDriver=DISABLED")
+		err = runCommand("Updating E2E Cluster on GKE to disable driver deployment", cmd)
+		if err != nil {
+			return fmt.Errorf("failed to update kubernetes e2e cluster on gke: %v", err)
+		}
 	}
 
 	return nil
@@ -378,4 +392,11 @@ func getKubeClient() (kubernetes.Interface, error) {
 		return nil, fmt.Errorf("failed to create client: %v", err)
 	}
 	return kubeClient, nil
+}
+
+func isGKEDeploymentInstalledByDefault(clusterVersion string) bool {
+	cv := mustParseVersion(clusterVersion)
+	return cv.atLeast(mustParseVersion("1.18.10-gke.2101")) &&
+		cv.lessThan(mustParseVersion("1.19")) ||
+		cv.atLeast(mustParseVersion("1.19.3-gke.2100"))
 }
