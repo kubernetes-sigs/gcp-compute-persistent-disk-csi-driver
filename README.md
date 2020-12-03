@@ -64,6 +64,10 @@ This driver supports only one topology key:
 `topology.gke.io/zone`
 that represents availability by zone (e.g. `us-central1-c`, etc.).
 
+### CSI Windows Support
+
+GCE PD driver starts to support CSI Windows with [CSI Proxy] (https://github.com/kubernetes-csi/csi-proxy). It requires csi-proxy.exe to be installed on every Windows node. Please see more details in CSI Windows page (docs/kubernetes/user-guides/windows.md)
+
 ### Features in Development
 
 | Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
@@ -72,7 +76,7 @@ that represents availability by zone (e.g. `us-central1-c`, etc.).
 | Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | Stable             |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
 | Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
-| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | Stable             |
+| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | Alpha             |
 
 \* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+. The master version of driver requires disk v1beta2 group, which is only available in CSI proxy v0.2.2+
 
