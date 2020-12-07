@@ -38,5 +38,6 @@ while [[ $retries -ge 0 ]];do
     sleep 10s
 done
 echo "Timeout waiting for node daemonset $node_daemonset"
+kubectl describe pods -n gce-pd-csi-driver
 exit -1
 
