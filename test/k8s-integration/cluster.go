@@ -397,6 +397,6 @@ func getKubeClient() (kubernetes.Interface, error) {
 func isGKEDeploymentInstalledByDefault(clusterVersion string) bool {
 	cv := mustParseVersion(clusterVersion)
 	return cv.atLeast(mustParseVersion("1.18.10-gke.2101")) &&
-		cv.lessThan(mustParseVersion("1.19")) ||
+		cv.lessThan(mustParseVersion("1.19.0")) ||
 		cv.atLeast(mustParseVersion("1.19.3-gke.2100"))
 }
