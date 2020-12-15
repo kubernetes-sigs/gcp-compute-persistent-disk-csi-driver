@@ -381,7 +381,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
-		SizeGb:      common.BytesToGb(capBytes),
+		SizeGb:      common.BytesToGbRoundUp(capBytes),
 		Description: description,
 		Type:        cloud.GetDiskTypeURI(volKey, params.DiskType),
 	}
@@ -474,7 +474,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
-		SizeGb:      common.BytesToGb(capBytes),
+		SizeGb:      common.BytesToGbRoundUp(capBytes),
 		Description: description,
 		Type:        cloud.GetDiskTypeURI(volKey, params.DiskType),
 	}
@@ -815,7 +815,7 @@ func (cloud *CloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, re
 	}
 
 	sizeGb := cloudDisk.GetSizeGb()
-	requestGb := common.BytesToGb(requestBytes)
+	requestGb := common.BytesToGbRoundUp(requestBytes)
 
 	// If disk is already of size equal or greater than requested size, we
 	// simply return the found size
