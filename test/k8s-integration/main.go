@@ -513,6 +513,12 @@ func generateGCETestSkip(testParams *testParameters) string {
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.16.0")) {
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
 	}
+
+	// ExpandCSIVolumes feature is beta in k8s 1.16
+	if v.LessThan(apimachineryversion.MustParseSemantic("1.16.0")) {
+		skipString = skipString + "|allowExpansion"
+	}
+
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.17.0")) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
@@ -536,7 +542,7 @@ func generateGKETestSkip(testParams *testParameters) string {
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
 	// bug-fix introduced in 1.16
-	if curVer.lessThan(mustParseVersion("1.16.0")) {
+	if curVer.lessThan(mustParseVersion("1.16.0")) || (nodeVer != nil && nodeVer.lessThan(mustParseVersion("1.16.0"))) {
 		skipString = skipString + "|volumeMode\\sshould\\snot\\smount\\s/\\smap\\sunused\\svolumes\\sin\\sa\\spod"
 	}
 
@@ -545,9 +551,11 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|fsgroupchangepolicy"
 	}
 
+	// ExpandCSIVolumes feature is beta in k8s 1.16
 	// For GKE deployed PD CSI driver, resizer sidecar is enabled in 1.16.8-gke.3
 	if (testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.8-gke.3"))) ||
-		(!testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.0"))) {
+		(!testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.0")) ||
+			(nodeVer != nil && nodeVer.lessThan(mustParseVersion("1.16.0")))) {
 		skipString = skipString + "|allowExpansion"
 	}
 
