@@ -42,7 +42,7 @@ This plugin is compatible with CSI versions [v1.2.0](https://github.com/containe
 | v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   | yes   |
 | v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   | yes   |
 | v1.0.x (ga)                          | no            | no   | no   | no   | no   | no    | yes   |
-| dev                                  | no            | no   | no   | no   | no   | yes   | yes   |
+| dev                                  | no            | no   | no   | no   | no   | no    | yes   |
 
 ### Known Issues
 
