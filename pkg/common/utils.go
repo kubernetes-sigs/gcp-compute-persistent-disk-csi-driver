@@ -49,9 +49,17 @@ const (
 	regionalDeviceNameSuffix = "_regional"
 )
 
-func BytesToGb(bytes int64) int64 {
+func BytesToGbRoundDown(bytes int64) int64 {
 	// TODO: Throw an error when div to 0
 	return bytes / (1024 * 1024 * 1024)
+}
+
+func BytesToGbRoundUp(bytes int64) int64 {
+	re := bytes / (1024 * 1024 * 1024)
+	if (bytes % (1024 * 1024 * 1024)) != 0 {
+		re++
+	}
+	return re
 }
 
 func GbToBytes(Gb int64) int64 {

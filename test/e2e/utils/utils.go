@@ -210,7 +210,7 @@ func GetBlockSizeInGb(instance *remote.InstanceInfo, devicePath string) (int64, 
 	if err != nil {
 		return -1, fmt.Errorf("failed to parse size %s into int", output)
 	}
-	return utilcommon.BytesToGb(n), nil
+	return utilcommon.BytesToGbRoundDown(n), nil
 }
 
 func Symlink(instance *remote.InstanceInfo, src, dest string) error {

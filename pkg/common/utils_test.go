@@ -29,7 +29,7 @@ const (
 	volIDRegionFmt = "projects/%s/regions/%s/disks/%s"
 )
 
-func TestBytesToGb(t *testing.T) {
+func TestBytesToGbRoundDown(t *testing.T) {
 	testCases := []struct {
 		name  string
 		bytes int64
@@ -58,7 +58,50 @@ func TestBytesToGb(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotGB := BytesToGb(tc.bytes)
+		gotGB := BytesToGbRoundDown(tc.bytes)
+
+		if gotGB != tc.expGB {
+			t.Errorf("got GB %v, expected %v", gotGB, tc.expGB)
+		}
+
+	}
+}
+
+func TestBytesToGbRoundUp(t *testing.T) {
+	testCases := []struct {
+		name  string
+		bytes int64
+		expGB int64
+	}{
+		{
+			name:  "normal 5gb",
+			bytes: 5368709120,
+			expGB: 5,
+		},
+		{
+			name:  "slightly less than 5gb",
+			bytes: 5368709119,
+			expGB: 5,
+		},
+		{
+			name:  "slightly more than 5gb",
+			bytes: 5368709121,
+			expGB: 6,
+		},
+		{
+			name:  "1.5Gi",
+			bytes: 1610612736,
+			expGB: 2,
+		},
+		{
+			name:  "zero",
+			bytes: 0,
+			expGB: 0,
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotGB := BytesToGbRoundUp(tc.bytes)
 
 		if gotGB != tc.expGB {
 			t.Errorf("got GB %v, expected %v", gotGB, tc.expGB)
