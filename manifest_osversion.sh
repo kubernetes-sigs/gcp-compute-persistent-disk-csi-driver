@@ -6,26 +6,28 @@
 # replace the following with annotation approach. https://github.com/docker/cli/pull/2578
 
 export DOCKER_CLI_EXPERIMENTAL=enabled
-_WINDOWS_VERSIONS="1909 ltsc2019"
+_WINDOWS_VERSIONS="20H2 2004 1909 ltsc2019"
 BASE="mcr.microsoft.com/windows/servercore"
 
-IFS=', ' read -r -a osversions <<< "$_WINDOWS_VERSIONS"
+IFS=', ' read -r -a imagetags <<< "$WINDOWS_IMAGE_TAGS"
+IFS=', ' read -r -a baseimages <<< "$WINDOWS_BASE_IMAGES"
 MANIFEST_TAG=${STAGINGIMAGE}:${STAGINGVERSION}
 
 # translate from image tag to docker manifest foler format
 # e.g., gcr.io_k8s-staging-csi_gce-pd-windows-v2
 manifest_folder=$(echo "${MANIFEST_TAG}" | sed "s|/|_|g" | sed "s/:/-/")
 echo ${manifest_folder}
-echo ${#osversions[@]}
+echo ${#imagetags[@]}
+echo ${#baseimages[@]}
 
-for ((i=0;i<${#osversions[@]};++i)); do
-  BASEIMAGE="${BASE}:${osversions[i]}"
+for ((i=0;i<${#imagetags[@]};++i)); do
+  BASEIMAGE="${baseimages[i]}"
   echo $BASEIIMAGE
 
   full_version=$(docker manifest inspect ${BASEIMAGE} | grep "os.version" | head -n 1 | awk '{print $2}') || true
   echo $full_version
 
-  IMAGETAG=${STAGINGIMAGE}-${osversions[i]}:${STAGINGVERSION}
+  IMAGETAG=${STAGINGIMAGE}:${STAGINGVERSION}_${imagetags[i]}
   image_folder=$(echo "${IMAGETAG}" | sed "s|/|_|g" | sed "s/:/-/")
   echo ${manifest_folder}
 
