@@ -26,10 +26,19 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 
+BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2019
+BASE_IMAGE_1909=mcr.microsoft.com/windows/servercore:1909
+BASE_IMAGE_2004=mcr.microsoft.com/windows/servercore:2004
+BASE_IMAGE_20H2=mcr.microsoft.com/windows/servercore:20H2
+
+# Both arrays MUST be index aligned.
+WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
+WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
+
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -mod=vendor -ldflags "-X main.version=${STAGINGVERSION}" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows:
 	mkdir -p bin
@@ -40,19 +49,31 @@ build-container: require-GCE_PD_CSI_STAGING_IMAGE
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE)-ltsc2019:$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
-		--build-arg BASE_IMAGE_TAG=ltsc2019 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-1909: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE)-1909:$(STAGINGVERSION) --build-arg BASE_IMAGE=servercore \
-		--build-arg BASE_IMAGE_TAG=1909 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_1909 \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE_1909) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
-build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) ${STAGINGIMAGE}-linux:${STAGINGVERSION} ${STAGINGIMAGE}-1909:${STAGINGVERSION} ${STAGINGIMAGE}-ltsc2019:${STAGINGVERSION}
-	STAGINGIMAGE=${STAGINGIMAGE} STAGINGVERSION=${STAGINGVERSION} ./manifest_osversion.sh
+build-and-push-windows-container-2004: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_2004 \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE_2004) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+
+build-and-push-windows-container-20H2: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE_20H2) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+
+build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container
@@ -60,9 +81,8 @@ push-container: build-container
 
 build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux \
-		-t $(STAGINGIMAGE)-linux:$(STAGINGVERSION) \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
 		--build-arg TAG=$(STAGINGVERSION) --push .
-
 
 test-sanity: gce-pd-driver
 	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
