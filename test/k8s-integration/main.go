@@ -359,7 +359,7 @@ func handle() error {
 			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule-")
 			out, err := taintCmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to untaint windows node %v", err)
+				return fmt.Errorf("failed to untaint windows node %s: error %v. output %s", node, err, string(out))
 			}
 			klog.Infof("untaint windows nodes: %s, output %s", node, string(out))
 		}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
@@ -93,6 +94,24 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 	if err != nil {
 		return fmt.Errorf("failed to describe pods: %w", err)
 	}
+	// Print out Windows pod logs for debugging
+	if testParams.platform == "windows" {
+		podsCmd := exec.Command("kubectl", "get", "pods", "-l", "app=gcp-compute-persistent-disk-csi-driver-win", "-o", "name", "-n", getDriverNamespace())
+		out, err = podsCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to get pd csi pods: %v", err)
+		}
+		pods := strings.Fields(string(out))
+		for _, pod := range pods {
+			logCmd := exec.Command("kubectl", "logs", pod, "-n", getDriverNamespace(), "--all-containers=true")
+			out, err := logCmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to get logs from pod %s: %v", pod, err)
+			}
+			klog.Infof("kubectl logs pod: %s, output %s", pod, string(out))
+		}
+	}
+
 	return nil
 }
 
