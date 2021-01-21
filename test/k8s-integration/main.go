@@ -425,10 +425,10 @@ func handle() error {
 		nodes := strings.Fields(string(out))
 		testParams.allowedNotReadyNodes = len(nodes)
 		for _, node := range nodes {
-			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule")
+			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os=linux:NoSchedule", "--overwrite=true")
 			out, err := taintCmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to untaint windows node %v", err)
+				return fmt.Errorf("failed to untaint windows node %s, error %v, output %s", node, err, string(out))
 			}
 			klog.Infof("taint linux nodes: %s, output %s", node, string(out))
 		}
