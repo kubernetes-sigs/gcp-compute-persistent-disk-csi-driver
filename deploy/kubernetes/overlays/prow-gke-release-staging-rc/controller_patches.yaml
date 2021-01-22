@@ -1,0 +1,62 @@
+# for external-provisioner
+- op: replace
+  path: /spec/template/spec/containers/0/args/3
+  value: "--http-endpoint=:22011"
+- op: add
+  path: /spec/template/spec/containers/0/ports
+  value:
+  - containerPort: 22011
+    name: http-endpoint
+    protocol: TCP
+- op: add
+  path: /spec/template/spec/containers/0/livenessProbe
+  value:
+    failureThreshold: 1
+    httpGet:
+      path: /healthz/leader-election
+      port: http-endpoint
+    initialDelaySeconds: 10
+    timeoutSeconds: 10
+    periodSeconds: 20
+
+# for external-attacher
+- op: replace
+  path: /spec/template/spec/containers/1/args/2
+  value: "--http-endpoint=:22012"
+- op: add
+  path: /spec/template/spec/containers/1/ports
+  value:
+  - containerPort: 22012
+    name: http-endpoint
+    protocol: TCP
+- op: add
+  path: /spec/template/spec/containers/1/livenessProbe
+  value:
+    failureThreshold: 1
+    httpGet:
+      path: /healthz/leader-election
+      port: http-endpoint
+    initialDelaySeconds: 10
+    timeoutSeconds: 10
+    periodSeconds: 20
+
+# for external-resizer
+- op: replace
+  path: /spec/template/spec/containers/2/args/2
+  value: "--http-endpoint=:22013"
+- op: add
+  path: /spec/template/spec/containers/2/ports
+  value:
+  - containerPort: 22013
+    name: http-endpoint
+    protocol: TCP
+- op: add
+  path: /spec/template/spec/containers/2/livenessProbe
+  value:
+    failureThreshold: 1
+    httpGet:
+      path: /healthz/leader-election
+      port: http-endpoint
+    initialDelaySeconds: 10
+    timeoutSeconds: 10
+    periodSeconds: 20
