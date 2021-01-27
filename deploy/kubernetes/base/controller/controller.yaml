@@ -28,7 +28,7 @@ spec:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--feature-gates=Topology=true"
-            - "--metrics-address=:22011"
+            - "--http-endpoint=:22011"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=250s"
             - "--extra-create-metadata"
@@ -41,6 +41,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          ports:
+            - containerPort: 22011
+              name: http-endpoint
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: http-endpoint
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -49,7 +61,7 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
-            - "--metrics-address=:22012"
+            - "--http-endpoint=:22012"
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=250s"
@@ -58,6 +70,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          ports:
+            - containerPort: 22012
+              name: http-endpoint
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: http-endpoint
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -66,7 +90,7 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=/csi/csi.sock"
-            - "--metrics-address=:22013"
+            - "--http-endpoint=:22013"
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--handle-volume-inuse-error=false"
@@ -75,6 +99,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          ports:
+            - containerPort: 22013
+              name: http-endpoint
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: http-endpoint
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
