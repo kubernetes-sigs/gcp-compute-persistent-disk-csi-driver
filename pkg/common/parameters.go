@@ -54,16 +54,20 @@ type DiskParameters struct {
 	// Values: {map[string]string}
 	// Default: ""
 	Tags map[string]string
+	// Values: {map[string]string}
+	// Default: ""
+	Labels map[string]string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
 // put them into a well defined struct making sure to default unspecified fields
-func ExtractAndDefaultParameters(parameters map[string]string, driverName string) (DiskParameters, error) {
+func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string) (DiskParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
 		DiskEncryptionKMSKey: "",                      // Default
 		Tags:                 make(map[string]string), // Default
+		Labels:               make(map[string]string), // Default
 	}
 
 	for k, v := range parameters {
@@ -95,6 +99,9 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 	}
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
+	}
+	for k, v := range extraVolumeLabels {
+		p.Labels[k] = v
 	}
 	return p, nil
 }

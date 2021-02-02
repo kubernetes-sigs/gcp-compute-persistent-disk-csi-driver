@@ -23,6 +23,7 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	k8s.io/apimachinery v0.18.0
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
+	k8s.io/component-base v0.18.0
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.18.0
 	k8s.io/test-infra v0.0.0-20200115230622-70a5174aa78d

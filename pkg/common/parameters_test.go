@@ -25,79 +25,105 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 	tests := []struct {
 		name         string
 		parameters   map[string]string
+		labels       map[string]string
 		expectParams DiskParameters
 		expectErr    bool
 	}{
 		{
 			name:       "defaults",
 			parameters: map[string]string{},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 make(map[string]string),
+				Labels:               make(map[string]string),
 			},
 		},
 		{
 			name:       "specified empties",
 			parameters: map[string]string{ParameterKeyType: "", ParameterKeyReplicationType: "", ParameterKeyDiskEncryptionKmsKey: ""},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 make(map[string]string),
+				Labels:               make(map[string]string),
 			},
 		},
 		{
 			name:       "random keys",
 			parameters: map[string]string{ParameterKeyType: "", "foo": "", ParameterKeyDiskEncryptionKmsKey: ""},
+			labels:     map[string]string{},
 			expectErr:  true,
 		},
 		{
 			name:       "real values",
 			parameters: map[string]string{ParameterKeyType: "pd-ssd", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key"},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-ssd",
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels:               make(map[string]string),
 			},
 		},
 		{
 			name:       "real values, checking balanced pd",
 			parameters: map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key"},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-balanced",
 				ReplicationType:      "regional-pd",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels:               make(map[string]string),
 			},
 		},
 		{
 			name:       "partial spec",
 			parameters: map[string]string{ParameterKeyDiskEncryptionKmsKey: "foo/key"},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 make(map[string]string),
+				Labels:               make(map[string]string),
 			},
 		},
 		{
 			name:       "tags",
 			parameters: map[string]string{ParameterKeyPVCName: "testPVCName", ParameterKeyPVCNamespace: "testPVCNamespace", ParameterKeyPVName: "testPVName"},
+			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
+				Labels:               make(map[string]string),
+			},
+		},
+		{
+			name:       "labels",
+			parameters: map[string]string{},
+			labels:     map[string]string{"label-1": "label-value-1", "label-2": "label-value-2"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{"label-1": "label-value-1", "label-2": "label-value-2"},
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver")
+			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
