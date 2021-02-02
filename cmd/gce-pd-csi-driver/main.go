@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/klog"
 
+	cliflag "k8s.io/component-base/cli/flag"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
@@ -35,6 +36,7 @@ var (
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
+	extraVolumeLabels    map[string]string
 	version              string
 )
 
@@ -53,6 +55,7 @@ func init() {
 }
 
 func main() {
+	flag.Var(cliflag.NewMapStringString(&extraVolumeLabels), "extra-labels", "Extra labels to attach to each PD created. It is a comma separated list of key value pairs like '<key1>=<value1>,<key2>=<value2>'")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 	handle()
@@ -104,7 +107,7 @@ func handle() {
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}
