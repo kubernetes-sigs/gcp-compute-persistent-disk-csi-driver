@@ -45,6 +45,7 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
+            - "--run-controller-service=false"
           securityContext:
             privileged: true
           volumeMounts:

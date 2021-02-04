@@ -10,7 +10,7 @@ set -o nounset
 set -o errexit
 
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
-readonly overlay_name="${GCE_PD_OVERLAY_NAME:-alpha}"
+readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly test_version=${TEST_VERSION:-master}

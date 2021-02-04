@@ -4,8 +4,7 @@ metadata:
   name: imagetag-gcepd-driver-alpha-win
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.0.1-gke.9"
+  newTag: "v1.2.0-gke.8"
 ---
 
 apiVersion: builtin
@@ -13,6 +12,5 @@ kind: ImageTagTransformer
 metadata:
   name: imagetag-node-registrar-win
 imageTag:
-  name: gke.gcr.io/k8s-staging-csi/csi-node-driver-registrar-win
-  newName: gcr.io/k8s-staging-csi/csi-node-driver-registrar
-  newTag: "amd64-windows-canary"
+  name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+  newTag: "v2.1.0"
