@@ -29,7 +29,6 @@ spec:
             - --v=5
             - --csi-address=unix://C:\\csi\\csi.sock
             - --kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\pd.csi.storage.gke.io\\csi.sock
-            - --run-controller-service=false
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
