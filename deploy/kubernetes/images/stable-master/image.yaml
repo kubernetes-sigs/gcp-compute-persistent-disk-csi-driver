@@ -1,0 +1,55 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-provisioner
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-provisioner
+  newTag: "v2.1.0"
+
+---
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-attacher
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-attacher
+  newTag: "v3.1.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-resizer
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-resizer
+  newTag: "v1.1.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-snapshotter
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-snapshotter
+  newTag: "v3.0.3"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-node-registrar
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+  newTag: "v2.1.0"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-gcepd-driver
+imageTag:
+  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  # Don't change stable image without changing pdImagePlaceholder in
+  # test/k8s-integration/main.go
+  newTag: "v1.2.0-gke.0"
+---

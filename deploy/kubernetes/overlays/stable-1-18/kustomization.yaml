@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace:
+  gce-pd-csi-driver
+resources:
+- ../../base/controller
+- ../../base/node_linux
+patchesStrategicMerge:
+- no_win_roles.yaml
+transformers:
+- ../../images/stable-1-18

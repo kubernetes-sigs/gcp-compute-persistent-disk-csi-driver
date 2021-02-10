@@ -1,0 +1,10 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - $patch: delete
+          name: csi-snapshotter
