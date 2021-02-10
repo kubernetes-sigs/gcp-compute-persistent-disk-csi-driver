@@ -6,11 +6,11 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: gcp-compute-persistent-disk-csi-driver-win
+      app: gcp-compute-persistent-disk-csi-driver
   template:
     metadata:
       labels:
-        app: gcp-compute-persistent-disk-csi-driver-win
+        app: gcp-compute-persistent-disk-csi-driver
     spec:
       # Host network must be used for interaction with Workload Identity in GKE
       # since it replaces GCE Metadata Server with GKE Metadata Server. Remove
@@ -24,7 +24,7 @@ spec:
         kubernetes.io/os: windows
       containers:
         - name: csi-driver-registrar
-          image: gke.gcr.io/k8s-staging-csi/csi-node-driver-registrar-win
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar
           args:
             - --v=5
             - --csi-address=unix://C:\\csi\\csi.sock
@@ -47,15 +47,13 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
+            - "--run-controller-service=false"
           volumeMounts:
             - name: kubelet-dir
               mountPath: C:\var\lib\kubelet
               mountPropagation: "None"
             - name: plugin-dir
               mountPath: C:\csi
-            # TODO: check overlay and remove v1beta1 if it is safe
-            - name: csi-proxy-disk-v1beta1
-              mountPath: \\.\pipe\csi-proxy-disk-v1beta1
             - name: csi-proxy-volume-v1beta1
               mountPath: \\.\pipe\csi-proxy-volume-v1beta1
             - name: csi-proxy-filesystem-v1beta1
@@ -63,10 +61,6 @@ spec:
             - name: csi-proxy-disk-v1beta2
               mountPath: \\.\pipe\csi-proxy-disk-v1beta2
       volumes:
-      - name: csi-proxy-disk-v1beta1
-        hostPath:
-          path: \\.\pipe\csi-proxy-disk-v1beta1
-          type: ""
       - name: csi-proxy-disk-v1beta2
         hostPath:
           path: \\.\pipe\csi-proxy-disk-v1beta2
