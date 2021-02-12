@@ -58,17 +58,13 @@ github.com/json-iterator/go
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kubernetes-csi/csi-proxy/client v0.2.2
 github.com/kubernetes-csi/csi-proxy/client
-github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta1
 github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2
 github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1
 github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1
-github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta2
 github.com/kubernetes-csi/csi-proxy/client/apiversion
-github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta1
 github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2
 github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1
 github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta1
-github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta2
 # github.com/kubernetes-csi/csi-test/v3 v3.0.0
 github.com/kubernetes-csi/csi-test/v3/pkg/sanity
 github.com/kubernetes-csi/csi-test/v3/utils
@@ -466,6 +462,8 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/workqueue
+# k8s.io/component-base v0.18.0 => k8s.io/component-base v0.18.0
+k8s.io/component-base/cli/flag
 # k8s.io/klog v1.0.0
 k8s.io/klog
 # k8s.io/kubernetes v1.18.0
