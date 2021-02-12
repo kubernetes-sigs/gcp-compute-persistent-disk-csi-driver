@@ -140,7 +140,7 @@ func main() {
 		ensureVariable(storageClassFiles, true, "One of storageclass-file and migration-test must be set")
 	}
 
-	if !*bringupCluster {
+	if !*bringupCluster && *platform != "windows" {
 		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	} else {
 		ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
