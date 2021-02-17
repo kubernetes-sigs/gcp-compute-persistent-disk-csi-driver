@@ -3,6 +3,6 @@ kind: Kustomization
 namespace:
   gce-pd-csi-driver
 resources:
-- ../../base
+- ../stable-master
 transformers:
 - ../../images/prow-gke-release-staging-rc-master
