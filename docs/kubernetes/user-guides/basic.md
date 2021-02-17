@@ -1,8 +1,8 @@
 # Kubernetes Basic User Guide
 This guide gives a simple example on how to provision zonal and regional PDs in single-zone and regional clusters.
 
-**Note:** Regional cluster support only available in beta starting with
-Kubernetes 1.14.
+**Note:** Regional PD [support](https://kubernetes-csi.github.io/docs/topology.html) is available in beta starting with
+Kubernetes 1.14 and GA starting with 1.17.
 
 ## Install Driver
 
@@ -43,21 +43,20 @@ web-server                1/1       Running   0          1m
 
 ## Regional PD example
 
-**Note:** Regional cluster support only available in beta starting with
-Kubernetes 1.14.
+This example provisions a regional PD in either zonal or regional clusters.
 
-This example provisions a regional PD in regional clusters.
-
-1. Create example Regional Storage Class. Choose between:
-
-    * Unrestricted zones
-      ```
-      $ kubectl apply -f ./examples/kubernetes/demo-regional-sc.yaml
-      ```
+1. Create example Regional Storage Class. For zonal clusters, `allowedTopologies` must be specified with two zones where one of the zones must be the cluster's zone. For regional clusters this configuration can also be used to make sure that regional PD is provisioned in those two zones.
 
     * Restricted zones
       ```
       $ kubectl apply -f ./examples/kubernetes/demo-regional-restricted-sc.yaml
+      ```
+
+    For regional clusters it is also possible to not specify `allowedTopologies`, in which case two zones will be picked from the available zones in the cluster's region.
+
+    * Unrestricted zones
+      ```
+      $ kubectl apply -f ./examples/kubernetes/demo-regional-sc.yaml
       ```
 
 2. Create example PVC and Pod
