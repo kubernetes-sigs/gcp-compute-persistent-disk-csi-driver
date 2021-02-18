@@ -5,13 +5,13 @@
 #
 # Args:
 # GCE_PD_DRIVER_VERSION: The kustomize overlay to deploy (located under
-#   deploy/kubernetes/overlays). Can be one of {stable, dev}
+#   deploy/kubernetes/overlays).
 
 set -o nounset
 set -o errexit
 
 readonly NAMESPACE="${GCE_PD_DRIVER_NAMESPACE:-gce-pd-csi-driver}"
-readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable}"
+readonly DEPLOY_VERSION="${GCE_PD_DRIVER_VERSION:-stable-master}"
 readonly PKGDIR="${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
 source "${PKGDIR}/deploy/common.sh"
 
