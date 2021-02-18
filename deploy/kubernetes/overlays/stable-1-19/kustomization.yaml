@@ -3,9 +3,6 @@ kind: Kustomization
 namespace:
   gce-pd-csi-driver
 resources:
-- ../../base/controller
-- ../../base/node_linux
-patchesStrategicMerge:
-- no_win_roles.yaml
+- ../../base/
 transformers:
 - ../../images/stable-1-19
