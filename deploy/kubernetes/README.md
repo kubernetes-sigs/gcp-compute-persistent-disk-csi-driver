@@ -4,18 +4,21 @@
 
 The current structure for kustomization is as follows. Note that Windows support is currently an alpha feature.
 
-* `base`: it contains the setup that is common to different driver versions.
-  * `controller_setup`: includes cluster setup and controller yaml files.
+* `base`: It contains the setup that is common to different driver versions.
+  * `controller_setup`: Includes cluster setup and controller yaml files.
   * `node_setup`:
-    * Linux: includes node yaml file and related setting that is only applicable for Linux.
-    * Windows: includes node yaml file and related setting that is only applicable for Windows.
-* `images`: it has a list of images for different versions.
-  * `stable`: image list of a stable driver release. Currently only has image list for Linux stable version.
-  * `alpha`: image list containing features in development, in addition to images in stable. It also includes Windows images.
-  * `dev`: based on alpha, and also contains the developer's image for use in driver development.
-  * `prow-gke-release-xxx`: image list used for Prow tests. Currently only Linux is supported.
-* `overlays`: it has the version-specific setup. Each overlay corresponds to image lists with the matching name.
-  * `stable`: contains deployment specs of a stable driver release. Currently only Linux is supported.
-  * `alpha`: contains deployment specs for features in development. Both Linux and Windows are supported. 
-  * `dev`: based on alpha, and also contains the developer's specs for use in driver development.
-  * `prow-gke-release-xxx`: based on stable, and contains specs for Prow tests. Currently only Linux is supported.
+    * Linux: Includes node yaml file and related setting that is only applicable for Linux.
+    * Windows: Includes node yaml file and related setting that is only applicable for Windows.
+* `images`: It has a list of images for different versions.
+  * `stable-master`: Image list of a stable driver for latest k8s master.
+  * `alpha`: Image list containing features in development, in addition to images in `stable-master`. It also includes Windows images.
+  * `prow-gke-release-xxx`: Image list used for Prow tests.
+* `overlays`: It has the k8s minor version-specific driver manifest bundle.
+  * `stable-master`: Contains deployment specs of a stable driver for k8s master.
+  * `stable-{k8s-minor}`: Contains deployment specs of a stable driver for given k8s minor version release.
+  * `alpha`: Contains deployment specs for features in development. Both Linux and Windows are supported. 
+  * `dev`: Based on alpha, and also contains the developer's specs for use in driver development.
+  * `prow-gke-release-staging-rc-master`: Used for prow tests. Contains deployment specs of a driver for latest k8s master.
+  * `prow-gke-release-staging-rc-{k8s-minor}`: Used for prow tests. Contains deployment specs of a driver for given k8s    minor version release.
+  * `prow-gke-release-staging-rc-head`: Used for prow tests. Contains deployment specs of a driver with latest sidecar images, for latest k8s master.
+  * `stable`, `prow-gke-release-staging-rc`: Soon to be removed!
