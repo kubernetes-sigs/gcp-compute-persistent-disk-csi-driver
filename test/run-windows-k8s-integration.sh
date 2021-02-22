@@ -16,6 +16,15 @@ readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
+readonly use_kubetest2=${USE_KUBETEST2:-false}
+
+if [ "$use_kubetest2" = true ]; then
+    export GO111MODULE=on;
+    go get sigs.k8s.io/kubetest2@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+fi
 
 make -C "${PKGDIR}" test-k8s-integration
 
@@ -24,6 +33,6 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --gce-zone=${gce_zone} --test-version=${test_version}\
             --storageclass-files=sc-windows.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus='External.Storage' \
-            --deployment-strategy=${deployment_strategy}"
+            --deployment-strategy=${deployment_strategy} --use-kubetest2=${use_kubetest2}"
 
 eval "$base_cmd"

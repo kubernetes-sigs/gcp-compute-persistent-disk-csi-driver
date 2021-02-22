@@ -19,6 +19,15 @@ readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
+readonly use_kubetest2=${USE_KUBETEST2:-false}
+
+if [ "$use_kubetest2" = true ]; then
+    export GO111MODULE=on;
+    go get sigs.k8s.io/kubetest2@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+fi
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
@@ -31,4 +40,4 @@ make -C "${PKGDIR}" test-k8s-integration
 --do-driver-build="${do_driver_build}" --boskos-resource-type="${boskos_resource_type}" \
 --migration-test=true --test-focus="${GCE_PD_TEST_FOCUS}" \
 --gce-zone="us-central1-b" --deployment-strategy="${deployment_strategy}" --test-version="${test_version}" \
---num-nodes=3
+--num-nodes=3 --use-kubetest2=${use_kubetest2}
