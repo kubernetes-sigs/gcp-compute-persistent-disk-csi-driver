@@ -21,28 +21,39 @@ Latest stable image: `gcr.io/gke-release/gcp-compute-persistent-disk-csi-driver:
 | Driver Version | Kubernetes Version | Test Status |
 |----------------|--------------------|-------------|
 | HEAD Latest | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Latest) |
-| 0.5.x Stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.5/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.5) |
-| 0.4.x Stable | 1.13.5 | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20v1.13.5%20Driver%20Release%200.4/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20v1.13.5%20Driver%20Release%200.4) |
+| 0.7.x stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.7/tests_status" />](https://https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.7) |
 | HEAD Latest | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Latest) |
-| HEAD Stable | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Stable) |
+| HEAD stable-master | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Stable) |
 
 ### CSI Compatibility
 
 This plugin is compatible with CSI versions [v1.2.0](https://github.com/container-storage-interface/spec/blob/v1.2.0/spec.md), [v1.1.0](https://github.com/container-storage-interface/spec/blob/v1.1.0/spec.md), and [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
 
 ### Kubernetes Compatibility
+The following table captures the compatibility matrix of the core persistent disk driver binary
+`gke.gcr.io/gcp-compute-persistent-disk-csi-driver`
 
-| GCE PD CSI Driver\Kubernetes Version | 1.10.5 - 1.11 | 1.12 | 1.13 | 1.14 | 1.15 | 1.16+ | 1.17+ |
-|--------------------------------------|---------------|------|------|------|------|-------|-------|
-| v0.1.x.alpha                         | yes           | no   | no   | no   | no   | no    | no    |
-| v0.2.x (alpha)                       | no            | yes  | no   | no   | no   | no    | no    |
-| v0.3.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   | yes   |
-| v0.4.x (beta)                        | no            | no   | yes  | yes  | yes  | yes   | yes   |
-| v0.5.x (beta)                        | no            | no   | no   | yes  | yes  | yes   | yes   |
-| v0.6.x (beta)                        | no            | no   | no   | yes  | yes  | yes   | yes   |
-| v0.7.x (beta)                        | no            | no   | no   | no   | no   | yes   | yes   |
-| v1.0.x (ga)                          | no            | no   | no   | no   | no   | no    | yes   |
-| dev                                  | no            | no   | no   | no   | no   | no    | yes   |
+| GCE PD CSI Driver\Kubernetes Version | 1.15 | 1.16  | 1.17+ |
+|--------------------------------------|------|-------|-------|
+| v0.2.x (alpha)                       | no   | no    | no    |
+| v0.3.x (beta)                        | yes  | yes   | yes   |
+| v0.4.x (beta)                        | yes  | yes   | yes   |
+| v0.5.x (beta)                        | yes  | yes   | yes   |
+| v0.6.x (beta)                        | yes  | yes   | yes   |
+| v0.7.x (beta)                        | yes  | yes   | yes   |
+| v1.0.x (ga)                          | yes  | yes   | yes   |
+| dev                                  | yes  | yes   | yes   |
+
+The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
+csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. For example volume snapshots are supported 1.17+ kubernetes versions thus [stable-1-16](deploy/kubernetes/overlays/stable-1-16) driver manifests does not contain the snapshotter sidecar.
+
+Example:
+
+`stable-1-19` overlays bundle can be used to deploy all the components of the driver on kubernetes 1.19.
+
+`stable-master` overlays bundle can be used to deploy all the components of the driver on kubernetes master.
+
+For more details about per k8s minor version overlays, please check this [doc](docs/release/overlays.md)
 
 ### Known Issues
 
@@ -73,10 +84,10 @@ GCE PD driver starts to support CSI Windows with [CSI Proxy] (https://github.com
 | Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
 | Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
-| Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | Stable             |
+| Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | stable-1-17, stable-1-18, stable-1-19, stable-master |
 | Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
-| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | Stable             |
-| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | Alpha             |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | stable-1-16, stable-1-17, stable-1-18, stable-1-19, stable-master |
+| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | stable-1-18, stable-1-19, stable-master |
 
 \* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+. The master version of driver requires disk v1beta2 group, which is only available in CSI proxy v0.2.2+
 
