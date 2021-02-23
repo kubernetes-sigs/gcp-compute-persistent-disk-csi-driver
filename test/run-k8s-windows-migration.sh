@@ -20,6 +20,15 @@ readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly feature_gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true"
+readonly use_kubetest2=${USE_KUBETEST2:-false}
+
+if [ "$use_kubetest2" = true ]; then
+    export GO111MODULE=on;
+    go get sigs.k8s.io/kubetest2@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+fi
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\swindows-gcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
@@ -34,7 +43,8 @@ ${PKGDIR}/bin/k8s-integration-test \
         --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
         --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
         --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS} \
-        --gce-zone=${gce_zone} --deployment-strategy=${deployment_strategy} --test-version=${test_version}
+        --gce-zone=${gce_zone} --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
+        --use-kubetest2=${use_kubetest2}
 
 #eval "$base_cmd"
 

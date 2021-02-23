@@ -25,6 +25,7 @@ readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
+readonly use_kubetest2=${USE_KUBETEST2:-false}
 
 storage_classes=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml
 
@@ -36,12 +37,20 @@ export GCE_PD_VERBOSITY=9
 
 make -C "${PKGDIR}" test-k8s-integration
 
+if [ "$use_kubetest2" = true ]; then
+    export GO111MODULE=on;
+    go get sigs.k8s.io/kubetest2@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
+    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+fi
+
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
             --storageclass-files="${storage_classes}" --snapshotclass-file=pd-volumesnapshotclass.yaml \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
-            --num-nodes=3 --image-type=${image_type}"
+            --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
 if [ "$run_intree_plugin_tests" = true ]; then
   base_cmd="${base_cmd} --test-focus='External.Storage|In-tree.*Driver.*gcepd'"

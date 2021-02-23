@@ -67,6 +67,8 @@ var (
 	// Test flags
 	migrationTest = flag.Bool("migration-test", false, "sets the flag on the e2e binary signalling migration")
 	testFocus     = flag.String("test-focus", "", "test focus for Kubernetes e2e")
+
+	useKubeTest2 = flag.Bool("use-kubetest2", false, "use kubetest2 to run e2e tests")
 )
 
 const (
@@ -436,9 +438,19 @@ func handle() error {
 
 	switch testParams.deploymentStrategy {
 	case "gke":
-		testParams.cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, testParams.imageType)
+		testParams.cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, testParams.imageType, *useKubeTest2)
 		if err != nil {
 			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
+		}
+	case "gce":
+		if *useKubeTest2 {
+			testParams.cloudProviderArgs = []string{
+				// This flag tells kubetest2 what "repo-root" is.
+				// If --legacy-mode is set, kubernetes/kubernetes is used;
+				// otherwise kubernetes/cloud-provider-gcp is used.
+				"--legacy-mode",
+				fmt.Sprintf("--repo-root=%s", *localK8sDir),
+			}
 		}
 	}
 
@@ -634,12 +646,32 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", testArgs),
 	}
+
+	kubeTest2Args := []string{
+		*deploymentStrat,
+		"--test=ginkgo",
+	}
+	kubeTest2Args = append(kubeTest2Args, testParams.cloudProviderArgs...)
+	if kubetestDumpDir != "" {
+		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--log_dir=%s", kubetestDumpDir))
+	}
+	kubeTest2Args = append(kubeTest2Args, "--")
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
+	// kubetest uses 25 as default value for ginkgo parallelism (--nodes).
+	kubeTest2Args = append(kubeTest2Args, "--parallel=25")
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, reportArg))
+
 	if kubetestDumpDir != "" {
 		kubeTestArgs = append(kubeTestArgs, fmt.Sprintf("--dump=%s", kubetestDumpDir))
 	}
 	kubeTestArgs = append(kubeTestArgs, testParams.cloudProviderArgs...)
 
-	err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
+	if *useKubeTest2 {
+		err = runCommand("Running Tests", exec.Command("kubetest2", kubeTest2Args...))
+	} else {
+		err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
 	}

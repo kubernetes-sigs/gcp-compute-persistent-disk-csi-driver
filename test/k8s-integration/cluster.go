@@ -260,14 +260,16 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	return nil
 }
 
-func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) {
-	var locationArg, locationVal string
+func getGKEKubeTestArgs(gceZone, gceRegion, imageType string, useKubetest2 bool) ([]string, error) {
+	var locationArg, locationVal, locationArgK2 string
 	switch {
 	case len(gceZone) > 0:
 		locationArg = "--gcp-zone"
+		locationArgK2 = "--zone"
 		locationVal = gceZone
 	case len(gceRegion) > 0:
 		locationArg = "--gcp-region"
+		locationArgK2 = "--region"
 		locationVal = gceRegion
 	}
 
@@ -291,6 +293,7 @@ func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) 
 		return nil, fmt.Errorf("failed to get current project: %v", err)
 	}
 
+	// kubetest arguments
 	args := []string{
 		"--up=false",
 		"--down=false",
@@ -306,7 +309,21 @@ func getGKEKubeTestArgs(gceZone, gceRegion, imageType string) ([]string, error) 
 		fmt.Sprintf("--gcp-project=%s", project[:len(project)-1]),
 	}
 
-	return args, nil
+	// kubetest2 arguments
+	argsK2 := []string{
+		"--up=false",
+		"--down=false",
+		fmt.Sprintf("--cluster-name=%s", *gkeTestClusterName),
+		fmt.Sprintf("--environment=%s", gkeEnv),
+		fmt.Sprintf("%s=%s", locationArgK2, locationVal),
+		fmt.Sprintf("--project=%s", project[:len(project)-1]),
+	}
+
+	if useKubetest2 {
+		return argsK2, nil
+	} else {
+		return args, nil
+	}
 }
 
 func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
