@@ -30,7 +30,7 @@ if [ "$use_kubetest2" = true ]; then
     go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
 
-readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\swindows-gcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
+readonly GCE_PD_TEST_FOCUS="\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\swindows-gcepd\]"
 
 # TODO(#167): Enable reconstructions tests
 
