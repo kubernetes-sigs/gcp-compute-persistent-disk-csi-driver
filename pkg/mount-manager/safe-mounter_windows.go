@@ -28,6 +28,9 @@ import (
 	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2"
 
+	diskapiv1beta1 "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta1"
+	diskclientv1beta1 "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta1"
+
 	fsapi "github.com/kubernetes-csi/csi-proxy/client/api/filesystem/v1beta1"
 	fsclient "github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1"
 
@@ -40,11 +43,13 @@ import (
 )
 
 var _ mount.Interface = &CSIProxyMounter{}
+var version = 2
 
 type CSIProxyMounter struct {
-	FsClient     *fsclient.Client
-	DiskClient   *diskclient.Client
-	VolumeClient *volumeclient.Client
+	FsClient          *fsclient.Client
+	DiskClient        *diskclient.Client
+	DiskClientV1beta1 *diskclientv1beta1.Client
+	VolumeClient      *volumeclient.Client
 }
 
 func NewCSIProxyMounter() (*CSIProxyMounter, error) {
@@ -56,14 +61,28 @@ func NewCSIProxyMounter() (*CSIProxyMounter, error) {
 	if err != nil {
 		return nil, err
 	}
+	diskClientv1beta1, err := diskclientv1beta1.NewClient()
+	if err != nil {
+		return nil, err
+	}
+
+	klog.Infof("start disk client v1beta2")
+	listRequest := &diskapi.ListDiskIDsRequest{}
+	_, err = diskClient.ListDiskIDs(context.Background(), listRequest)
+	if err != nil {
+		klog.Errorf("disk v1beta2 api failed %v", err)
+		version = 1
+	}
+
 	volumeClient, err := volumeclient.NewClient()
 	if err != nil {
 		return nil, err
 	}
 	return &CSIProxyMounter{
-		FsClient:     fsClient,
-		DiskClient:   diskClient,
-		VolumeClient: volumeClient,
+		FsClient:          fsClient,
+		DiskClient:        diskClient,
+		VolumeClient:      volumeClient,
+		DiskClientV1beta1: diskClientv1beta1,
 	}, nil
 }
 
@@ -175,6 +194,11 @@ func (mounter *CSIProxyMounter) UnmountDevice(target string) error {
 		DiskID:   strconv.FormatInt(diskId, 10),
 		IsOnline: false,
 	}
+	if version == 1 {
+		klog.Infof("skip online")
+		return nil
+	}
+	klog.Infof("set onlin")
 	if _, err = mounter.DiskClient.SetAttachState(context.Background(), setDiskRequest); err != nil {
 		return err
 	}
@@ -188,6 +212,31 @@ func (mounter *CSIProxyMounter) Unmount(target string) error {
 
 func (mounter *CSIProxyMounter) GetDevicePath(deviceName string, partition string, volumeKey string) (string, error) {
 	id := "page83"
+
+	if version == 1 {
+		listRequest := &diskapiv1beta1.ListDiskIDsRequest{}
+		diskIDsResponse, err := mounter.DiskClientV1beta1.ListDiskIDs(context.Background(), listRequest)
+		if err != nil {
+			return "", err
+		}
+		diskIDsMap := diskIDsResponse.GetDiskIDs()
+		for diskNum, diskInfo := range diskIDsMap {
+			klog.V(4).Infof("found disk number %s, disk info %v", diskNum, diskInfo)
+			idValue, found := diskInfo.Identifiers[id]
+			// The page83 id for gce pd has format of "Google pvc-xxxxxxx(the device name passed in here)"
+			if !found || idValue == "" {
+				continue
+			}
+			names := strings.Fields(idValue)
+			klog.V(4).Infof("get page83 id %s", idValue)
+			if names[len(names)-1] == deviceName {
+				return diskNum, nil
+			}
+		}
+		return "", fmt.Errorf("could not find disk number for device %s", deviceName)
+
+	}
+
 	listRequest := &diskapi.ListDiskIDsRequest{}
 	diskIDsResponse, err := mounter.DiskClient.ListDiskIDs(context.Background(), listRequest)
 	if err != nil {
@@ -215,25 +264,38 @@ func (mounter *CSIProxyMounter) GetDevicePath(deviceName string, partition strin
 // After formatting, it will mount the disk to target path on the host
 func (mounter *CSIProxyMounter) FormatAndMount(source string, target string, fstype string, options []string) error {
 	// Call PartitionDisk CSI proxy call to partition the disk and return the volume id
-	partionDiskRequest := &diskapi.PartitionDiskRequest{
-		DiskID: source,
-	}
 
-	_, err := mounter.DiskClient.PartitionDisk(context.Background(), partionDiskRequest)
-	if err != nil {
-		return err
-	}
+	if version == 1 {
+		partionDiskRequest := &diskapiv1beta1.PartitionDiskRequest{
+			DiskID: source,
+		}
 
-	// make sure disk is online. if disk is already online, this call should also succeed.
-	setDiskRequest := &diskapi.SetAttachStateRequest{
-		DiskID:   source,
-		IsOnline: true,
-	}
-	_, err = mounter.DiskClient.SetAttachState(context.Background(), setDiskRequest)
-	if err != nil {
-		return err
-	}
+		_, err := mounter.DiskClientV1beta1.PartitionDisk(context.Background(), partionDiskRequest)
+		if err != nil {
+			return err
+		}
 
+	} else {
+		partionDiskRequest := &diskapi.PartitionDiskRequest{
+			DiskID: source,
+		}
+
+		_, err := mounter.DiskClient.PartitionDisk(context.Background(), partionDiskRequest)
+		if err != nil {
+			return err
+		}
+	}
+	if version == 2 {
+		// make sure disk is online. if disk is already online, this call should also succeed.
+		setDiskRequest := &diskapi.SetAttachStateRequest{
+			DiskID:   source,
+			IsOnline: true,
+		}
+		_, err := mounter.DiskClient.SetAttachState(context.Background(), setDiskRequest)
+		if err != nil {
+			return err
+		}
+	}
 	volumeIDsRequest := &volumeapi.ListVolumesOnDiskRequest{
 		DiskId: source,
 	}
@@ -313,6 +375,14 @@ func (mounter *CSIProxyMounter) ExistsPath(path string) (bool, error) {
 }
 
 func (mounter *CSIProxyMounter) GetBlockSizeBytes(diskId string) (int64, error) {
+	if version == 1 {
+		DiskStatsResponse, err := mounter.DiskClientV1beta1.DiskStats(context.Background(),
+			&diskapiv1beta1.DiskStatsRequest{
+				DiskID: diskId,
+			})
+		return DiskStatsResponse.DiskSize, err
+	}
+
 	DiskStatsResponse, err := mounter.DiskClient.DiskStats(context.Background(),
 		&diskapi.DiskStatsRequest{
 			DiskID: diskId,
