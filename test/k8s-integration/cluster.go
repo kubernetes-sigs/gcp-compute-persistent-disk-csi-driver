@@ -145,8 +145,9 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 		return err
 	}
 
-	out, err := exec.Command("gcloud", "container", "clusters", "list", locationArg, locationVal,
-		"--filter", fmt.Sprintf("name=%s", *gkeTestClusterName)).CombinedOutput()
+	out, err := exec.Command("gcloud", "container", "clusters", "list",
+		locationArg, locationVal, "--verbosity", "none", "--filter",
+		fmt.Sprintf("name=%s", *gkeTestClusterName)).CombinedOutput()
 
 	if err != nil {
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
