@@ -1,0 +1,26 @@
+# See https://cloud.google.com/cloud-build/docs/build-config
+# For more information about Image pushing refer to https://github.com/kubernetes/test-infra/blob/master/config/jobs/image-pushing/README.md
+timeout: 3600s
+
+options:
+  substitution_option: ALLOW_LOOSE
+
+steps:
+  - name: 'gcr.io/k8s-testimages/gcb-docker-gcloud:v20201130-750d12f'
+    entrypoint: make
+    env:
+    - GCE_PD_CSI_STAGING_IMAGE=gcr.io/${_STAGING_PROJECT}/gcp-compute-persistent-disk-csi-driver
+    - GCE_PD_CSI_STAGING_VERSION=${_PULL_BASE_REF}
+    # default cloudbuild has HOME=/builder/home and docker buildx is in /root/.docker/cli-plugins/docker-buildx
+    # set the home to /root explicitly to if using docker buildx
+    - HOME=/root
+    args:
+      - build-and-push-multi-arch
+
+substitutions:
+  _STAGING_PROJECT: 'k8s-staging-cloud-provider-gcp'
+  _PULL_BASE_REF: 'master'
+
+tags:
+- 'gcp-compute-persistent-disk-csi-driver'
+- ${_PULL_BASE_REF}
