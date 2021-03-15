@@ -49,12 +49,14 @@ func clusterDownGKE(gceZone, gceRegion string) error {
 		return err
 	}
 
-	cmd := exec.Command("gcloud", "container", "clusters", "delete", *gkeTestClusterName,
-		locationArg, locationVal, "--quiet")
-	err = runCommand("Bringing Down E2E Cluster on GKE", cmd)
-	if err != nil {
+	klog.Infof("Bringing down GKE cluster %v, location arg %v, location val %v", *gkeTestClusterName, locationArg, locationVal)
+	out, err := exec.Command("gcloud", "container", "clusters", "delete", *gkeTestClusterName,
+		locationArg, locationVal, "--quiet").CombinedOutput()
+	klog.Infof("cluster delete output:\n%v", string(out))
+	if err != nil && !isNotFoundError(string(out)) {
 		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err)
 	}
+
 	return nil
 }
 
@@ -152,6 +154,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
 	}
 	if len(out) > 0 {
+		klog.Infof("cluster list output: %v", string(out))
 		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", *gkeTestClusterName)
 		err = clusterDownGKE(gceZone, gceRegion)
 		if err != nil {
@@ -405,4 +408,8 @@ func isGKEDeploymentInstalledByDefault(clusterVersion string) bool {
 	return cv.atLeast(mustParseVersion("1.18.10-gke.2101")) &&
 		cv.lessThan(mustParseVersion("1.19.0")) ||
 		cv.atLeast(mustParseVersion("1.19.3-gke.2100"))
+}
+
+func isNotFoundError(errstr string) bool {
+	return strings.Contains(strings.ToLower(errstr), "code=404")
 }
