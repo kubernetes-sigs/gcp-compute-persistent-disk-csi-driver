@@ -47,7 +47,7 @@ var (
 	numNodes           = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
 	imageType          = flag.String("image-type", "cos", "the image type to use for the cluster")
 	gkeReleaseChannel  = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
-	gkeTestClusterName = flag.String("gke-cluster-name", "gcp-pd-csi-cluster", "GKE cluster name")
+	gkeTestClusterName = flag.String("gke-cluster-name", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
 	gkeNodeVersion     = flag.String("gke-node-version", "", "GKE cluster worker node version")
 	isRegionalCluster  = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
 
@@ -164,6 +164,8 @@ func main() {
 		if len(*localK8sDir) == 0 {
 			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
 		}
+		randSuffix := string(uuid.NewUUID())[0:4]
+		*gkeTestClusterName += randSuffix
 	} else if *deploymentStrat == "gce" {
 		ensureVariable(gceRegion, false, "regional clusters not supported for 'gce' deployment")
 		ensureVariable(gceZone, true, "gce-zone required for 'gce' deployment")
