@@ -26,8 +26,15 @@ readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
 readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly test_pd_labels=${TEST_PD_LABELS:-true}
 
-storage_classes=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml
+storage_classes=sc-balanced.yaml,sc-ssd.yaml
+
+if [[ $test_pd_labels = true ]] ; then
+  storage_classes=${storage_classes},sc-standard.yaml
+else
+  storage_classes=${storage_classes},sc-standard-no-labels.yaml
+fi
 
 if [[ -n $gce_region ]] ; then
   storage_classes="${storage_classes}",sc-regional.yaml
