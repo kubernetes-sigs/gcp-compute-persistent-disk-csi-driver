@@ -1,0 +1,10 @@
+# Example StorageClass that adds labels to the GCP PD.
+# This requires v1.2.1 or higher.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gce-pd
+provisioner: pd.csi.storage.gke.io
+parameters:
+  labels: key1=value1,key2=value2
+volumeBindingMode: WaitForFirstConsumer

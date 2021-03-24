@@ -107,7 +107,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name)
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
 	}
@@ -182,7 +182,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 		// If there is no validation error, immediately return success
 		klog.V(4).Infof("CreateVolume succeeded for disk %v, it already exists and was compatible", volKey)
-		return generateCreateVolumeResponse(existingDisk, capBytes, zones), nil
+		return generateCreateVolumeResponse(existingDisk, zones), nil
 	}
 
 	snapshotID := ""
@@ -234,7 +234,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	}
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
-	return generateCreateVolumeResponse(disk, capBytes, zones), nil
+	return generateCreateVolumeResponse(disk, zones), nil
 
 }
 
@@ -475,7 +475,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 
 	// Validate the disk parameters match the disk we GET
-	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name)
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
 	}
@@ -979,16 +979,17 @@ func getDefaultZonesInRegion(ctx context.Context, gceCS *GCEControllerServer, ex
 	return ret, nil
 }
 
-func generateCreateVolumeResponse(disk *gce.CloudDisk, capBytes int64, zones []string) *csi.CreateVolumeResponse {
+func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
 			Segments: map[string]string{common.TopologyKeyZone: zone},
 		})
 	}
+	realDiskSizeBytes := common.GbToBytes(disk.GetSizeGb())
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			CapacityBytes:      capBytes,
+			CapacityBytes:      realDiskSizeBytes,
 			VolumeId:           cleanSelfLink(disk.GetSelfLink()),
 			VolumeContext:      nil,
 			AccessibleTopology: tops,

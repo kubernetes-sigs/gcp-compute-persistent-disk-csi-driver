@@ -262,11 +262,12 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 
 	computeDisk := &computev1.Disk{
 		Name:             volKey.Name,
-		SizeGb:           common.BytesToGb(capBytes),
+		SizeGb:           common.BytesToGbRoundUp(capBytes),
 		Description:      "Disk created by GCE-PD CSI Driver",
 		Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
 		SourceSnapshotId: snapshotID,
 		Status:           cloud.mockDiskStatus,
+		Labels:           params.Labels,
 	}
 	if params.DiskEncryptionKMSKey != "" {
 		computeDisk.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
@@ -414,9 +415,11 @@ func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key
 		return -1, notFoundError()
 	}
 
-	disk.setSizeGb(common.BytesToGb(requestBytes))
+	requestSizGb := common.BytesToGbRoundUp(requestBytes)
 
-	return common.BytesToGb(requestBytes), nil
+	disk.setSizeGb(requestSizGb)
+
+	return requestSizGb, nil
 
 }
 

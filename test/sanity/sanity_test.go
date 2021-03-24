@@ -39,6 +39,7 @@ func TestSanity(t *testing.T) {
 	zone := "country-region-zone"
 	vendorVersion := "test-version"
 	tmpDir := "/tmp/csi"
+	extraLabels := map[string]string{"test-label": "test-label-value"}
 	endpoint := fmt.Sprintf("unix:%s/csi.sock", tmpDir)
 	mountPath := path.Join(tmpDir, "mount")
 	stagePath := path.Join(tmpDir, "stage")
@@ -57,7 +58,7 @@ func TestSanity(t *testing.T) {
 	identityServer := driver.NewIdentityServer(gceDriver)
 	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider)
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
-	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
 	}

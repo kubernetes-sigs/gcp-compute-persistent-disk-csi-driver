@@ -27,6 +27,8 @@ import (
 	"k8s.io/klog"
 )
 
+var ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
+
 func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability_AccessMode {
 	return &csi.VolumeCapability_AccessMode{Mode: mode}
 }
@@ -52,6 +54,9 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if info.FullMethod == ProbeCSIFullMethod {
+		return handler(ctx, req)
+	}
 	klog.V(4).Infof("%s called with request: %+v", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
