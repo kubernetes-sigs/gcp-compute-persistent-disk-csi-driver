@@ -32,24 +32,25 @@ import (
 
 var (
 	// Kubernetes cluster flags
-	teardownCluster    = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
-	teardownDriver     = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
-	bringupCluster     = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	platform           = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
-	gceZone            = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
-	gceRegion          = flag.String("gce-region", "", "region that gke regional cluster should be created in")
-	kubeVersion        = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
-	testVersion        = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
-	kubeFeatureGates   = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
-	localK8sDir        = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
-	deploymentStrat    = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
-	gkeClusterVer      = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
-	numNodes           = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
-	imageType          = flag.String("image-type", "cos", "the image type to use for the cluster")
-	gkeReleaseChannel  = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
-	gkeTestClusterName = flag.String("gke-cluster-name", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
-	gkeNodeVersion     = flag.String("gke-node-version", "", "GKE cluster worker node version")
-	isRegionalCluster  = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
+	teardownCluster      = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
+	teardownDriver       = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
+	bringupCluster       = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
+	platform             = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
+	gceZone              = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
+	gceRegion            = flag.String("gce-region", "", "region that gke regional cluster should be created in")
+	kubeVersion          = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
+	testVersion          = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
+	kubeFeatureGates     = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	localK8sDir          = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
+	deploymentStrat      = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
+	gkeClusterVer        = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
+	numNodes             = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	imageType            = flag.String("image-type", "cos", "the image type to use for the cluster")
+	gkeReleaseChannel    = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
+	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
+	gkeTestClusterName   = flag.String("gke-cluster-name", "", "Name of existing cluster")
+	gkeNodeVersion       = flag.String("gke-node-version", "", "GKE cluster worker node version")
+	isRegionalCluster    = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
 
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
@@ -164,8 +165,10 @@ func main() {
 		if len(*localK8sDir) == 0 {
 			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
 		}
-		randSuffix := string(uuid.NewUUID())[0:4]
-		*gkeTestClusterName += randSuffix
+		if len(*gkeTestClusterName) == 0 {
+			randSuffix := string(uuid.NewUUID())[0:4]
+			*gkeTestClusterName = *gkeTestClusterPrefix + randSuffix
+		}
 	} else if *deploymentStrat == "gce" {
 		ensureVariable(gceRegion, false, "regional clusters not supported for 'gce' deployment")
 		ensureVariable(gceZone, true, "gce-zone required for 'gce' deployment")
