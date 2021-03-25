@@ -157,7 +157,6 @@ func main() {
 	}
 
 	if *deploymentStrat == "gke" {
-		ensureFlag(migrationTest, false, "Cannot set deployment strategy to 'gke' for migration tests.")
 		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
 		ensureExactlyOneVariableSet([]*string{gkeClusterVer, gkeReleaseChannel},
 			"For GKE cluster deployment, exactly one of 'gke-cluster-version' or 'gke-release-channel' must be set")
