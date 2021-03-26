@@ -23,7 +23,7 @@ metadata:
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.2.0"
+  newTag: "v1.2.1-rc1"
 ---
 
 apiVersion: builtin
