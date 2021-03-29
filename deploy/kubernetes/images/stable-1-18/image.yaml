@@ -51,5 +51,5 @@ imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
-  newTag: "v1.2.0-gke.8"
+  newTag: "v1.2.1-gke.0"
 ---
