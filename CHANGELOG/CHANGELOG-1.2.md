@@ -1,3 +1,20 @@
+# v1.2.1 - Changelog since v1.2.0
+
+
+## Tests
+
+- Update kustomize to 3.9.4 ([703](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/703), [@saikat-royc](https://github.com/saikat-royc))
+- Fix cluster list parsing for latest gcloud version ([720](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/720), [@verult](https://github.com/verult))
+
+## Other
+
+- Remove Probe logging ([682](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/682), [@Jiawei0227](https://github.com/Jiawei0227))
+- Round up pdcsi driver size in CreateVolume ([684](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/684), [@Jiawei0227](https://github.com/Jiawei0227))
+- Add gce disk labels support via create volume parameters ([718](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/718), [@mattcary](https://github.com/mattcary))
+- Emit GKE PDCSI component version metric ([719](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/719), [@saikat-royc](https://github.com/saikat-royc))
+- Add cloudbuild configuration to build the image gcp-compute-persistent-disk-csi-driver ([734](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/734), [@cpanato](https://github.com/cpanato))
+- Bump go to the latest 1.13 available in Dockerfile ([734](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/734), [@cpanato](https://github.com/cpanato))
+
 # v1.2.0 - Changelog since v1.1.0
 
 ## Features
