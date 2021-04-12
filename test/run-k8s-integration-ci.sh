@@ -25,7 +25,7 @@ readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
-readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
 
 storage_classes=sc-balanced.yaml,sc-ssd.yaml

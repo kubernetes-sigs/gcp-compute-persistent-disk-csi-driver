@@ -20,7 +20,7 @@ readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly feature_gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true"
-readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly use_kubetest2=${USE_KUBETEST2:-true}
 
 if [ "$use_kubetest2" = true ]; then
     export GO111MODULE=on;

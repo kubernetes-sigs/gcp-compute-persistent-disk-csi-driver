@@ -24,7 +24,7 @@ readonly use_gke_managed_driver=${USE_GKE_MANAGED_DRIVER:-false}
 readonly gke_release_channel=${GKE_RELEASE_CHANNEL:-""}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
-readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly use_kubetest2=${USE_KUBETEST2:-true}
 
 export GCE_PD_VERBOSITY=9
 
