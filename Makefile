@@ -80,7 +80,7 @@ push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux \
+	$(DOCKER) buildx build --platform=linux/amd64,linux/arm64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
 		--build-arg TAG=$(STAGINGVERSION) --push .
 
@@ -97,8 +97,8 @@ endif
 
 init-buildx:
 	# Ensure we use a builder that can leverage it (the default on linux will not)
-	-$(DOCKER) buildx rm windows-builder
-	$(DOCKER) buildx create --use --name=windows-builder
+	-$(DOCKER) buildx rm multiarch-multiplatform-builder
+	$(DOCKER) buildx create --use --name=multiarch-multiplatform-builder
 	# Register gcloud as a Docker credential helper.
 	# Required for "docker buildx build --push".
 	gcloud auth configure-docker --quiet
