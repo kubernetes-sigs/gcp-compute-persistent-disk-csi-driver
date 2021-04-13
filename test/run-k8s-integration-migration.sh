@@ -19,7 +19,7 @@ readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
-readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly use_kubetest2=${USE_KUBETEST2:-true}
 
 if [ "$use_kubetest2" = true ]; then
     export GO111MODULE=on;
