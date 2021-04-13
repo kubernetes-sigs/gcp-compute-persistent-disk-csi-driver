@@ -20,6 +20,12 @@ ifdef GCE_PD_CSI_STAGING_VERSION
 else
 	STAGINGVERSION=${REV}
 endif
+
+GCFLAGS=""
+ifdef GCE_PD_CSI_DEBUG
+	GCFLAGS=-gcflags="all=-N -L"
+endif
+
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 DRIVERBINARY=gce-pd-csi-driver
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
@@ -38,7 +44,7 @@ WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004)
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -mod=vendor -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor -gcflags="all=-N -l" -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows:
 	mkdir -p bin
@@ -76,11 +82,21 @@ build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
+build-and-push-multi-arch-dev: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS_DEV)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES_DEV)" ./manifest_osversion.sh
+	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
+
 push-container: build-container
 	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
 build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
+		--build-arg TAG=$(STAGINGVERSION) --push .
+
+build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
 		--build-arg TAG=$(STAGINGVERSION) --push .
 

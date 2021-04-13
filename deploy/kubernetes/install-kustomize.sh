@@ -48,7 +48,7 @@ elif [[ "$OSTYPE" == darwin* ]]; then
 fi
 
 # As github has a limit on what stored in releases/, and kustomize has many different package
-# versions, we just point directly at the version we want. See 
+# versions, we just point directly at the version we want. See
 # github.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh.
 
 version=v3.9.4
