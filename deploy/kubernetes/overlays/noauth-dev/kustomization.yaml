@@ -10,7 +10,7 @@ patchesStrategicMerge:
 - controller-overlay.yaml
 namespace: gce-pd-csi-driver
 # To change the dev image, add something like the following.
-images:
-- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/mauriciopoppe-gke-dev/gcp-compute-persistent-disk-csi-driver
-  newTag: latest
+# images:
+# - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+#   newName: gcr.io/mauriciopoppe-gke-dev/gcp-compute-persistent-disk-csi-driver
+#   newTag: latest

@@ -44,7 +44,7 @@ WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004)
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -mod=vendor -gcflags="all=-N -l" -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor $(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows:
 	mkdir -p bin
