@@ -40,21 +40,26 @@ trap cleanup EXIT
 pushd $tmpDir >& /dev/null
 
 opsys=windows
+arch=amd64
 if [[ "$OSTYPE" == linux* ]]; then
-  opsys=linux_amd64
+  opsys=linux
 elif [[ "$OSTYPE" == darwin* ]]; then
   opsys=darwin
 fi
 
-curl -s https://api.github.com/repos/kubernetes-sigs/kustomize/releases |\
-  grep browser_download |\
-  grep $opsys |\
+# As github has a limit on what stored in releases/, and kustomize has many different package
+# versions, we just point directly at the version we want. See 
+# github.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh.
+
+version=v3.9.4
+url_base=https://api.github.com/repos/kubernetes-sigs/kustomize/releases/tags/kustomize%2F
+curl -s ${url_base}${version} |\
+  grep browser_download.*${opsys}_${arch} |\
   cut -d '"' -f 4 |\
-  grep /kustomize/v3.9.4 |\
-  sort | tail -n 1 |\
+  sort -V | tail -n 1 |\
   xargs curl -s -O -L
 
-tar xzf ./kustomize_v*_${opsys}.tar.gz
+tar xzf ./kustomize_v*_${opsys}_${arch}.tar.gz
 
 cp ./kustomize $where
 
