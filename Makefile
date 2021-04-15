@@ -40,6 +40,9 @@ BASE_IMAGE_20H2=mcr.microsoft.com/windows/servercore:20H2
 # Both arrays MUST be index aligned.
 WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
 WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
+# Development only
+WINDOWS_IMAGE_TAGS_DEV=ltsc2019
+WINDOWS_BASE_IMAGES_DEV=$(BASE_IMAGE_LTSC2019)
 
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
