@@ -207,7 +207,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 
 func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
-	klog.V(4).Infof("Downloading Kubernetes source")
+	klog.Infof("Downloading Kubernetes source for %s", kubeVersion)
 
 	if err := os.MkdirAll(k8sIoDir, 0777); err != nil {
 		return err
@@ -222,6 +222,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		// use a shallow clone, because in order to find the revision git searches through the tags,
 		// and tags are not fetched in a shallow clone. Not using a shallow clone adds about 700M to the
 		// ~5G archive directory, after make quick-release, so this is not disastrous.
+		klog.Info("cloning k8s master")
 		out, err := exec.Command("git", "clone", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to clone kubernetes master: %s, err: %v", out, err)
@@ -230,6 +231,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		// Download from the release archives rather than cloning the repo.
 		vKubeVersion := "v" + kubeVersion
 		kubeTarDir := filepath.Join(k8sIoDir, fmt.Sprintf("kubernetes-%s.tar.gz", kubeVersion))
+		klog.Infof("Pulling archive for %s", vKubeVersion)
 		out, err := exec.Command("curl", "-L", fmt.Sprintf("https://github.com/kubernetes/kubernetes/archive/%s.tar.gz", vKubeVersion), "-o", kubeTarDir).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to curl kubernetes version %s: %s, err: %v", kubeVersion, out, err)
@@ -245,7 +247,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 			return err
 		}
 
-		klog.V(4).Infof("Successfully downloaded Kubernetes v%s to %s", kubeVersion, k8sDir)
+		klog.Infof("Successfully downloaded Kubernetes v%s to %s", kubeVersion, k8sDir)
 	}
 	return nil
 }

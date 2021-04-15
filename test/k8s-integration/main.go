@@ -263,26 +263,23 @@ func handle() error {
 	}
 
 	// Create temporary directories for kubernetes builds
-	k8sParentDir := generateUniqueTmpDir()
-	k8sDir := filepath.Join(k8sParentDir, "kubernetes")
 	testParams.testParentDir = generateUniqueTmpDir()
 	testParams.testDir = filepath.Join(testParams.testParentDir, "kubernetes")
-	defer removeDir(k8sParentDir)
 	defer removeDir(testParams.testParentDir)
 
 	// If kube version is set, then download and build Kubernetes for cluster creation
 	// Otherwise, either GKE or a prebuild local K8s dir is being used
 	if len(*kubeVersion) != 0 {
-		err := downloadKubernetesSource(testParams.pkgDir, k8sParentDir, *kubeVersion)
+		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *kubeVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
-		err = buildKubernetes(k8sDir, "quick-release")
+		err = buildKubernetes(testParams.testDir, "quick-release")
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
 	} else {
-		k8sDir = *localK8sDir
+		testParams.testDir = *localK8sDir
 	}
 
 	// If test version is set, then download and build Kubernetes to run K8s tests
@@ -305,8 +302,6 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to build kubectl: %v", err)
 		}
-	} else {
-		testParams.testDir = k8sDir
 	}
 
 	if *deploymentStrat == "gke" {
@@ -322,7 +317,7 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(k8sDir, *gceZone, *numNodes, testParams.imageType)
+			err = clusterUpGCE(testParams.testDir, *gceZone, *numNodes, testParams.imageType)
 		case "gke":
 			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, testParams.imageType, testParams.useGKEManagedDriver)
 		default:
@@ -338,7 +333,7 @@ func handle() error {
 		defer func() {
 			switch testParams.deploymentStrategy {
 			case "gce":
-				err := clusterDownGCE(k8sDir)
+				err := clusterDownGCE(testParams.testDir)
 				if err != nil {
 					klog.Errorf("failed to cluster down: %v", err)
 				}
