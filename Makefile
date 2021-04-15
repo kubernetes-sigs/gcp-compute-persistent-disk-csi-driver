@@ -23,7 +23,7 @@ endif
 
 GCFLAGS=""
 ifdef GCE_PD_CSI_DEBUG
-	GCFLAGS=-gcflags="all=-N -L"
+	GCFLAGS="all=-N -l"
 endif
 
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
@@ -44,7 +44,7 @@ WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004)
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
 	mkdir -p bin
-	go build -mod=vendor $(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows:
 	mkdir -p bin
