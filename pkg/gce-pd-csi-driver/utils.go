@@ -23,7 +23,6 @@ import (
 	"context"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
 )
@@ -58,12 +57,15 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 	if info.FullMethod == ProbeCSIFullMethod {
 		return handler(ctx, req)
 	}
-	klog.V(4).Infof("%s called with request: %s", info.FullMethod, protosanitizer.StripSecrets(req))
+	// Note that secrets are not included in any RPC message. In the past protosanitizer and other log
+	// stripping was shown to cause a significant increase of CPU usage (see
+	// https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/356#issuecomment-550529004).
+	klog.V(4).Infof("%s called with request: %s", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
 		klog.Errorf("%s returned with error: %v", info.FullMethod, err)
 	} else {
-		klog.V(4).Infof("%s returned with response: %s", info.FullMethod, protosanitizer.StripSecrets(resp))
+		klog.V(4).Infof("%s returned with response: %s", info.FullMethod, resp)
 	}
 	return resp, err
 }

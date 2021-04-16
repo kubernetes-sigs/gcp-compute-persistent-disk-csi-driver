@@ -9,11 +9,11 @@ require (
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/go-multierror v1.0.0 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.9.1
 	github.com/kubernetes-csi/csi-proxy/client v0.2.2
 	github.com/kubernetes-csi/csi-test/v3 v3.0.0
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.7.1
+	github.com/stretchr/testify v1.5.1 // indirect
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
 	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
@@ -22,6 +22,7 @@ require (
 	google.golang.org/grpc v1.31.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	k8s.io/api v0.19.0 // indirect
 	k8s.io/apimachinery v0.18.0
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/component-base v0.19.0
