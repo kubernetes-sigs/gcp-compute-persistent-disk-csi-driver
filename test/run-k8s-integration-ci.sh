@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # Optional environment variables
 # GCE_PD_OVERLAY_NAME: which Kustomize overlay to deploy with
