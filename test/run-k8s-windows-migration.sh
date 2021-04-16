@@ -22,6 +22,8 @@ readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly feature_gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true"
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 
+make -C "${PKGDIR}" test-k8s-integration
+
 if [ "$use_kubetest2" = true ]; then
     export GO111MODULE=on;
     go get sigs.k8s.io/kubetest2@latest;
@@ -33,8 +35,6 @@ fi
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\swindows-gcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
 # TODO(#167): Enable reconstructions tests
-
-make -C "${PKGDIR}" test-k8s-integration
 
 ${PKGDIR}/bin/k8s-integration-test \
         --platform=windows --bringup-cluster=false  --teardown-cluster=false \

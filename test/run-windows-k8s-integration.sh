@@ -18,6 +18,8 @@ readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 
+make -C "${PKGDIR}" test-k8s-integration
+
 if [ "$use_kubetest2" = true ]; then
     export GO111MODULE=on;
     go get sigs.k8s.io/kubetest2@latest;
@@ -25,8 +27,6 @@ if [ "$use_kubetest2" = true ]; then
     go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
     go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
-
-make -C "${PKGDIR}" test-k8s-integration
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --platform=windows --bringup-cluster=false --teardown-cluster=false --teardown-driver=${teardown_driver}\
