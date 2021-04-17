@@ -87,7 +87,7 @@ type testParameters struct {
 	goPath               string
 	pkgDir               string
 	testParentDir        string
-	testDir              string
+	k8sSourceDir         string
 	testFocus            string
 	testSkip             string
 	snapshotClassFile    string
@@ -264,41 +264,42 @@ func handle() error {
 
 	// Create temporary directories for kubernetes builds
 	testParams.testParentDir = generateUniqueTmpDir()
-	testParams.testDir = filepath.Join(testParams.testParentDir, "kubernetes")
 	defer removeDir(testParams.testParentDir)
 
 	// If kube version is set, then download and build Kubernetes for cluster creation
 	// Otherwise, either GKE or a prebuild local K8s dir is being used
 	if len(*kubeVersion) != 0 {
+		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *kubeVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
-		err = buildKubernetes(testParams.testDir, "quick-release")
+		err = buildKubernetes(testParams.k8sSourceDir, "quick-release")
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes: %v", err)
 		}
 	} else {
-		testParams.testDir = *localK8sDir
+		testParams.k8sSourceDir = *localK8sDir
 	}
 
 	// If test version is set, then download and build Kubernetes to run K8s tests
 	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used
 	if len(*testVersion) != 0 && *testVersion != *kubeVersion {
+		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *testVersion)
 		if err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err)
 		}
-		err = buildKubernetes(testParams.testDir, "WHAT=test/e2e/e2e.test")
+		err = buildKubernetes(testParams.k8sSourceDir, "WHAT=test/e2e/e2e.test")
 		if err != nil {
 			return fmt.Errorf("failed to build Kubernetes e2e: %v", err)
 		}
 		// kubetest relies on ginkgo and kubectl already built in the test k8s directory
-		err = buildKubernetes(testParams.testDir, "ginkgo")
+		err = buildKubernetes(testParams.k8sSourceDir, "ginkgo")
 		if err != nil {
 			return fmt.Errorf("failed to build gingko: %v", err)
 		}
-		err = buildKubernetes(testParams.testDir, "kubectl")
+		err = buildKubernetes(testParams.k8sSourceDir, "kubectl")
 		if err != nil {
 			return fmt.Errorf("failed to build kubectl: %v", err)
 		}
@@ -317,7 +318,7 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(testParams.testDir, *gceZone, *numNodes, testParams.imageType)
+			err = clusterUpGCE(testParams.k8sSourceDir, *gceZone, *numNodes, testParams.imageType)
 		case "gke":
 			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, testParams.imageType, testParams.useGKEManagedDriver)
 		default:
@@ -333,7 +334,7 @@ func handle() error {
 		defer func() {
 			switch testParams.deploymentStrategy {
 			case "gce":
-				err := clusterDownGCE(testParams.testDir)
+				err := clusterDownGCE(testParams.k8sSourceDir)
 				if err != nil {
 					klog.Errorf("failed to cluster down: %v", err)
 				}
@@ -449,7 +450,7 @@ func handle() error {
 				// If --legacy-mode is set, kubernetes/kubernetes is used;
 				// otherwise kubernetes/cloud-provider-gcp is used.
 				"--legacy-mode",
-				fmt.Sprintf("--repo-root=%s", *localK8sDir),
+				fmt.Sprintf("--repo-root=%s", testParams.k8sSourceDir),
 			}
 		}
 	}
@@ -470,7 +471,7 @@ func handle() error {
 		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
 
-	// Run the tests using the testDir kubernetes
+	// Run the tests using the k8sSourceDir kubernetes
 	if len(*storageClassFiles) != 0 {
 		applicableStorageClassFiles := []string{}
 		for _, rawScFile := range strings.Split(*storageClassFiles, ",") {
@@ -607,7 +608,7 @@ func runCSITests(testParams *testParameters, storageClassFile string, reportPref
 }
 
 func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix string) error {
-	err := os.Chdir(testParams.testDir)
+	err := os.Chdir(testParams.k8sSourceDir)
 	if err != nil {
 		return err
 	}
