@@ -21,6 +21,8 @@ readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 
+make -C "${PKGDIR}" test-k8s-integration
+
 if [ "$use_kubetest2" = true ]; then
     export GO111MODULE=on;
     go get sigs.k8s.io/kubetest2@latest;
@@ -33,7 +35,6 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 
 # TODO(#167): Enable reconstructions tests
 
-make -C "${PKGDIR}" test-k8s-integration
 "${PKGDIR}/bin/k8s-integration-test" --kube-version="${kube_version}" \
 --kube-feature-gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true" --run-in-prow=true \
 --deploy-overlay-name="${overlay_name}" --service-account-file="${E2E_GOOGLE_APPLICATION_CREDENTIALS}" \
