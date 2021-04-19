@@ -21,8 +21,8 @@ $ ./deploy/kubernetes/delete-driver.sh
 
 ## Debugging
 
-We use https://github.com/go-delve/delve and its remote debugging feature for debugging, this feature
-is only available in the PD CSI Controller (which runs in a linux node)
+We use https://github.com/go-delve/delve and its feature for remote debugging. This feature
+is only available in the PD CSI Controller (which runs in a linux node).
 
 Requirements:
 
@@ -30,15 +30,15 @@ Requirements:
 
 Steps:
 
-- Build the PD CSI driver with additional compiler flags
+- Build the PD CSI driver with additional compiler flags.
 
 ```
 export GCE_PD_CSI_STAGING_VERSION=latest
 export GCE_PD_CSI_STAGING_IMAGE=image/repo/gcp-compute-persistent-disk-csi-driver
-make build-and-push-multi-arch-dev
+make build-and-push-multi-arch-debug
 ```
 
-- Update `deploy/kubernetes/overlays/noauth-dev/kustomization.yaml` to match the repo you wrote above e.g.
+- Update `deploy/kubernetes/overlays/noauth-debug/kustomization.yaml` to match the repo you wrote above e.g.
 
 ```yaml
 images:
@@ -51,7 +51,7 @@ images:
 
 ```sh
 ./deploy/kubernetes/delete-driver.sh && \
-  GCE_PD_DRIVER_VERSION=noauth-dev ./deploy/kubernetes/deploy-driver.sh
+  GCE_PD_DRIVER_VERSION=noauth-debug ./deploy/kubernetes/deploy-driver.sh
 ```
 
 At this point you could verify that delve is running in the controller logs:

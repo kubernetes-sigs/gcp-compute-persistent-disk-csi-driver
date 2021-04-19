@@ -40,9 +40,6 @@ BASE_IMAGE_20H2=mcr.microsoft.com/windows/servercore:20H2
 # Both arrays MUST be index aligned.
 WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
 WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
-# Development only
-WINDOWS_IMAGE_TAGS_DEV=ltsc2019
-WINDOWS_BASE_IMAGES_DEV=$(BASE_IMAGE_LTSC2019)
 
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver:
@@ -85,9 +82,9 @@ build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
-build-and-push-multi-arch-dev: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019
+build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019
 	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
-	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS_DEV)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES_DEV)" ./manifest_osversion.sh
+	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container
