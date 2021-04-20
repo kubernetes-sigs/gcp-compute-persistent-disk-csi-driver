@@ -66,6 +66,7 @@ func (mm *metricsManager) recordComponentVersionMetric() error {
 	}
 
 	gkeComponentVersion.WithLabelValues(v).Set(1.0)
+	klog.Infof("Recorded GKE component version : %v", v)
 	return nil
 }
 
