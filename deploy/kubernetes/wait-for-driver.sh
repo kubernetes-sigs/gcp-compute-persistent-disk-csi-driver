@@ -24,10 +24,10 @@ while [[ -n "${1-}" ]]; do
   esac
 done
 
-kubectl wait -n gce-pd-csi-driver deployment csi-gce-pd-controller --for condition=available
+kubectl wait -n gce-pd-csi-driver deployment csi-gce-pd-controller --for condition=available || exit -1
 
 retries=90
-while [[ $retries -ge 0 ]];do
+while [[ $retries -ge 0 ]]; do
     ready=$(kubectl -n gce-pd-csi-driver get daemonset "${node_daemonset}" -o jsonpath="{.status.numberReady}")
     required=$(kubectl -n gce-pd-csi-driver get daemonset "${node_daemonset}" -o jsonpath="{.status.desiredNumberScheduled}")
     if [[ $ready -eq $required ]];then
