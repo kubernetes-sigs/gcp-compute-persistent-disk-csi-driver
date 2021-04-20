@@ -34,6 +34,7 @@ _Nothing has changed._
 - Emit GKE PDCSI component version metric ([719](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/719), [@saikat-royc](https://github.com/saikat-royc))
 - Add cloudbuild configuration to build the image gcp-compute-persistent-disk-csi-driver ([734](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/734), [@cpanato](https://github.com/cpanato))
 - Bump go to the latest 1.13 available in Dockerfile ([734](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/734), [@cpanato](https://github.com/cpanato))
+- Log GKE component version for the PD CSI driver ([757](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/757), [@saikat-royc](https://github.com/saikat-royc))
 
 # v1.2.0 - Changelog since v1.1.0
 
