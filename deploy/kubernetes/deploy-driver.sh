@@ -8,7 +8,7 @@
 # which are in Kubernetes version 1.10.5+
 
 # Args:
-# GCE_PD_SA_DIR: Directory the service account key has been saved in (generated 
+# GCE_PD_SA_DIR: Directory the service account key has been saved in (generated
 #   by setup-project.sh). Ignored if GCE_PD_DRIVER_VERSION == noauth.
 # GCE_PD_DRIVER_VERSION: The kustomize overlay (located in
 #   deploy/kubernetes/overlays) to deploy. Can be one of {stable, dev}
@@ -44,7 +44,7 @@ while [ -n "${1-}" ]; do
   esac
 done
 
-if [ "${DEPLOY_VERSION}" != noauth ]; then
+if [[ ! "${DEPLOY_VERSION}" == *noauth* ]]; then
   ensure_var GCE_PD_SA_DIR
 fi
 
@@ -74,7 +74,7 @@ function check_service_account()
 
 ensure_kustomize
 
-if [ "$skip_sa_check" != true -a "${DEPLOY_VERSION}" != noauth ]; then
+if [[ "$skip_sa_check" != true ]] && [[ ! "${DEPLOY_VERSION}" == *noauth* ]]; then
   check_service_account
 fi
 
@@ -83,7 +83,7 @@ then
   ${KUBECTL} create namespace "${NAMESPACE}" -v="${VERBOSITY}"
 fi
 
-if [ "${DEPLOY_VERSION}" != noauth ]; then
+if [[ ! "${DEPLOY_VERSION}" == *noauth* ]]; then
   if ! ${KUBECTL} get secret cloud-sa -v="${VERBOSITY}" -n "${NAMESPACE}";
   then
     ${KUBECTL} create secret generic cloud-sa -v="${VERBOSITY}" --from-file="${GCE_PD_SA_DIR}/cloud-sa.json" -n "${NAMESPACE}"

@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base/
+# Here noauth overlay is using the same image as alpha
+transformers:
+- ../../images/alpha
+patchesStrategicMerge:
+- noauth.yaml
+- controller-overlay.yaml
+namespace: gce-pd-csi-driver
+# To change the dev image, add something like the following.
+# images:
+# - name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+#   newName: gcr.io/mauriciopoppe-gke-dev/gcp-compute-persistent-disk-csi-driver
+#   newTag: latest

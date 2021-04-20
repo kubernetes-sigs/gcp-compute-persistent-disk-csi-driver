@@ -16,8 +16,9 @@ The current structure for kustomization is as follows. Note that Windows support
 * `overlays`: It has the k8s minor version-specific driver manifest bundle.
   * `stable-master`: Contains deployment specs of a stable driver for k8s master.
   * `stable-{k8s-minor}`: Contains deployment specs of a stable driver for given k8s minor version release.
-  * `alpha`: Contains deployment specs for features in development. Both Linux and Windows are supported. 
+  * `alpha`: Contains deployment specs for features in development. Both Linux and Windows are supported.
   * `dev`: Based on alpha, and also contains the developer's specs for use in driver development.
+  * `noauth-debug`: Based on alpha, used for debugging purposes only, see docs/kubernetes/development.md.
   * `prow-gke-release-staging-rc-master`: Used for prow tests. Contains deployment specs of a driver for latest k8s master.
   * `prow-gke-release-staging-rc-{k8s-minor}`: Used for prow tests. Contains deployment specs of a driver for given k8s    minor version release.
   * `prow-gke-release-staging-rc-head`: Used for prow tests. Contains deployment specs of a driver with latest sidecar images, for latest k8s master.
