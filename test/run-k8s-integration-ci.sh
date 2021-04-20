@@ -27,6 +27,9 @@ readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
+readonly migration_test=${MIGRATION_TEST:-false}
+
+readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
 storage_classes=sc-balanced.yaml,sc-ssd.yaml
 
@@ -59,7 +62,9 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
-if [ "$run_intree_plugin_tests" = true ]; then
+if [ "$migration_test" = true ]; then
+  base_cmd="${base_cmd} --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS}"
+elif [ "$run_intree_plugin_tests" = true ]; then
   base_cmd="${base_cmd} --test-focus='External.Storage|In-tree.*Driver.*gcepd'"
 else
   base_cmd="${base_cmd} --test-focus='External.Storage'"
