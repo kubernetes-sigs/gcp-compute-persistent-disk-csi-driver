@@ -15,17 +15,8 @@
 # Args:
 # GCE_PD_CSI_STAGING_IMAGE: Staging image repository
 REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git rev-list -n1 HEAD)
-ifdef GCE_PD_CSI_STAGING_VERSION
-	STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
-else
-	STAGINGVERSION=${REV}
-endif
-
-GCFLAGS=""
-ifdef GCE_PD_CSI_DEBUG
-	GCFLAGS="all=-N -l"
-endif
-
+GCE_PD_CSI_STAGING_VERSION ?= ${REV}
+STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 DRIVERBINARY=gce-pd-csi-driver
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
@@ -51,7 +42,7 @@ gce-pd-driver-windows:
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE
-	$(DOCKER) build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
+	$(DOCKER) build --build-arg STAGINGVERSION=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
@@ -93,12 +84,12 @@ push-container: build-container
 build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/amd64,linux/arm64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
-		--build-arg TAG=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
-		--build-arg TAG=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 test-sanity: gce-pd-driver
 	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
