@@ -63,7 +63,7 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
 if [ "$migration_test" = true ]; then
-  base_cmd="${base_cmd} --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS}"
+  base_cmd="${base_cmd} --migration-test=true --test-focus='${GCE_PD_TEST_FOCUS}'"
 elif [ "$run_intree_plugin_tests" = true ]; then
   base_cmd="${base_cmd} --test-focus='External.Storage|In-tree.*Driver.*gcepd'"
 else

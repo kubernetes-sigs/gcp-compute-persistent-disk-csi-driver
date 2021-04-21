@@ -75,7 +75,7 @@ if [ -z "$gke_node_version" ]; then
 fi
 
 if [ "$migration_test" = "true" ]; then
-  base_cmd="${base_cmd} --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS}"
+  base_cmd="${base_cmd} --migration-test=true --test-focus='${GCE_PD_TEST_FOCUS}'"
 else
   base_cmd="${base_cmd} --test-focus='External.Storage'"
 fi
