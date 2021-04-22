@@ -98,6 +98,16 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error 
 		return err
 	}
 
+	// The default master size with few nodes is too small; the tests must hit the API server
+	// more than usual. The main issue seems to be memory, to reduce GC times that stall the
+	// api server. For defaults, get-master-size in k/k/cluster/gce/config-common.sh.
+	if numNodes < 20 {
+		err = os.Setenv("MASTER_SIZE", "n1-standard-4")
+		if err != nil {
+			return err
+		}
+	}
+
 	err = os.Setenv("KUBE_GCE_ZONE", gceZone)
 	if err != nil {
 		return err
@@ -112,8 +122,6 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error 
 }
 
 func setImageTypeEnvs(imageType string) error {
-	//const image = "ubuntu-1804-bionic-v20191211"
-	//const imageProject = "ubuntu-os-cloud"
 	switch strings.ToLower(imageType) {
 	case "cos":
 	case "gci": // GCI/COS is default type and does not need env vars set

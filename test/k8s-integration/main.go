@@ -281,9 +281,9 @@ func handle() error {
 		testParams.k8sSourceDir = *localK8sDir
 	}
 
-	// If test version is set, then download and build Kubernetes to run K8s tests
-	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used
-	if len(*testVersion) != 0 && *testVersion != *kubeVersion {
+	// If using kubetest and test version is set, then download and build Kubernetes to run K8s tests
+	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used.
+	if !*useKubeTest2 && len(*testVersion) != 0 && *testVersion != *kubeVersion {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *testVersion)
 		if err != nil {
@@ -600,21 +600,23 @@ func runMigrationTests(testParams *testParameters) error {
 func runCSITests(testParams *testParameters, storageClassFile string, reportPrefix string) error {
 	testDriverConfigFile, err := generateDriverConfigFile(testParams, storageClassFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generated driver config: %w", err)
 	}
 	testConfigArg := fmt.Sprintf("--storage.testdriver=%s", testDriverConfigFile)
 	return runTestsWithConfig(testParams, testConfigArg, reportPrefix)
 }
 
 func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix string) error {
-	err := os.Chdir(testParams.k8sSourceDir)
-	if err != nil {
-		return err
+	if !*useKubeTest2 && len(testParams.k8sSourceDir) > 0 {
+		err := os.Chdir(testParams.k8sSourceDir)
+		if err != nil {
+			return fmt.Errorf("Failed to chdir to k8sSourceDir %s: %w", testParams.k8sSourceDir, err)
+		}
 	}
 
 	kubeconfig, err := getKubeConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get kubeconfig: %w", err)
 	}
 	os.Setenv("KUBECONFIG", kubeconfig)
 
@@ -625,7 +627,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		if len(reportPrefix) > 0 {
 			kubetestDumpDir = filepath.Join(artifactsDir, reportPrefix)
 			if err := os.MkdirAll(kubetestDumpDir, 0755); err != nil {
-				return err
+				return fmt.Errorf("failed to make dump dir %s: %w", kubetestDumpDir, err)
 			}
 		} else {
 			kubetestDumpDir = artifactsDir
@@ -656,6 +658,9 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--log_dir=%s", kubetestDumpDir))
 	}
 	kubeTest2Args = append(kubeTest2Args, "--")
+	if len(*testVersion) != 0 && *testVersion != "master" {
+		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-version=v%s", *testVersion))
+	}
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
 	// kubetest uses 25 as default value for ginkgo parallelism (--nodes).
