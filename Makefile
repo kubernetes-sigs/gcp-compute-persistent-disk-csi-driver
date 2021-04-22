@@ -41,8 +41,10 @@ gce-pd-driver-windows:
 	mkdir -p bin
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
-build-container: require-GCE_PD_CSI_STAGING_IMAGE
-	$(DOCKER) build --build-arg STAGINGVERSION=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
+build-container: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
@@ -68,8 +70,8 @@ build-and-push-windows-container-20H2: require-GCE_PD_CSI_STAGING_IMAGE init-bui
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_20H2) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
-build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
@@ -79,11 +81,15 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container
-	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
-build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux/amd64,linux/arm64 \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
+build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux/amd64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+
+build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux/arm64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx

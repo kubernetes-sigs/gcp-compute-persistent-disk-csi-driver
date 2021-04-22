@@ -12,23 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.13.15 as builder
+FROM --platform=$BUILDPLATFORM golang:1.13.15 as builder
 
 ARG STAGINGVERSION
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
 
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-RUN GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver
+# RUN mkdir -p bin \
+#   && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') go build -mod=vendor -ldflags "-X main.version=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/gce-pd-csi-driver/
+RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.5.0 as mad-hack
-RUN clean-install udev
+FROM k8s.gcr.io/build-image/debian-base:buster-v1.6.0 as mad-hack
+RUN ln -s /bin/rm /usr/sbin/rm \
+  && clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.5.0
+FROM k8s.gcr.io/build-image/debian-base:buster-v1.6.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+RUN ln -s /bin/rm /usr/sbin/rm \
+  && clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
 COPY --from=mad-hack /lib/udev/scsi_id /lib/udev_containerized/scsi_id
 
 ENTRYPOINT ["/gce-pd-csi-driver"]
