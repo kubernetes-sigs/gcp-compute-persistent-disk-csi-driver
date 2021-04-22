@@ -15,17 +15,8 @@
 # Args:
 # GCE_PD_CSI_STAGING_IMAGE: Staging image repository
 REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git rev-list -n1 HEAD)
-ifdef GCE_PD_CSI_STAGING_VERSION
-	STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
-else
-	STAGINGVERSION=${REV}
-endif
-
-GCFLAGS=""
-ifdef GCE_PD_CSI_DEBUG
-	GCFLAGS="all=-N -l"
-endif
-
+GCE_PD_CSI_STAGING_VERSION ?= ${REV}
+STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 DRIVERBINARY=gce-pd-csi-driver
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
@@ -50,8 +41,10 @@ gce-pd-driver-windows:
 	mkdir -p bin
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
-build-container: require-GCE_PD_CSI_STAGING_IMAGE
-	$(DOCKER) build --build-arg TAG=$(STAGINGVERSION) -t $(STAGINGIMAGE):$(STAGINGVERSION) .
+build-container: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
@@ -77,8 +70,8 @@ build-and-push-windows-container-20H2: require-GCE_PD_CSI_STAGING_IMAGE init-bui
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_20H2) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
-build-and-push-multi-arch: build-and-push-container-linux build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
@@ -88,17 +81,21 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container
-	gcloud docker -- push $(STAGINGIMAGE):$(STAGINGVERSION)
 
-build-and-push-container-linux: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux/amd64,linux/arm64 \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
-		--build-arg TAG=$(STAGINGVERSION) --push .
+build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux/amd64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+
+build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux/arm64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
-		--build-arg TAG=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 test-sanity: gce-pd-driver
 	go test -mod=vendor --v -timeout 30s sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/sanity -run ^TestSanity$
