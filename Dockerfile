@@ -20,8 +20,6 @@ ARG TARGETPLATFORM
 
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-# RUN mkdir -p bin \
-#   && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') go build -mod=vendor -ldflags "-X main.version=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/gce-pd-csi-driver/
 RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
