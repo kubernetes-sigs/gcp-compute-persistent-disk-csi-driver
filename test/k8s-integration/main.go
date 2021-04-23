@@ -655,7 +655,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	}
 	kubeTest2Args = append(kubeTest2Args, testParams.cloudProviderArgs...)
 	if kubetestDumpDir != "" {
-		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--log_dir=%s", kubetestDumpDir))
+		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--artifacts=%s", kubetestDumpDir))
 	}
 	kubeTest2Args = append(kubeTest2Args, "--")
 	if len(*testVersion) != 0 && *testVersion != "master" {
