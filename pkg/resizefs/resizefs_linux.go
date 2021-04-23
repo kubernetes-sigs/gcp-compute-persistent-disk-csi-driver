@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	"k8s.io/klog"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 var _ Resizefs = &resizeFs{}

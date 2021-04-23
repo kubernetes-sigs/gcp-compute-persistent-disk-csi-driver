@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	volumeapi "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 var _ Statter = &realStatter{}
