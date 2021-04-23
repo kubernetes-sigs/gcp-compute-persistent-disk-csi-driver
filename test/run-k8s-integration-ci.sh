@@ -43,6 +43,10 @@ if [[ -n $gce_region ]] ; then
   storage_classes="${storage_classes}",sc-regional.yaml
 fi
 
+if [[ $migration_test = true ]]; then
+    storage_classes=""
+fi
+
 export GCE_PD_VERBOSITY=9
 
 make -C "${PKGDIR}" test-k8s-integration
