@@ -621,7 +621,6 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	os.Setenv("KUBECONFIG", kubeconfig)
 
 	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
-	reportArg := ""
 	kubetestDumpDir := ""
 	if ok {
 		if len(reportPrefix) > 0 {
@@ -634,13 +633,14 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		}
 	}
 	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testParams.testFocus, testParams.testSkip)
+
+	windowsArgs := ""
 	if testParams.platform == "windows" {
-		ginkgoArgs = ginkgoArgs + fmt.Sprintf(" --node-os-distro=%s --allowed-not-ready-nodes=%d", testParams.platform, testParams.allowedNotReadyNodes)
+		windowsArgs = fmt.Sprintf(" --node-os-distro=%s --allowed-not-ready-nodes=%d", testParams.platform, testParams.allowedNotReadyNodes)
 	}
-	testArgs := fmt.Sprintf("%s %s %s",
-		ginkgoArgs,
-		testConfigArg,
-		reportArg)
+	ginkgoArgs = ginkgoArgs + windowsArgs
+
+	testArgs := fmt.Sprintf("%s %s", ginkgoArgs, testConfigArg)
 
 	kubeTestArgs := []string{
 		"--test",
@@ -665,7 +665,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
 	// kubetest uses 25 as default value for ginkgo parallelism (--nodes).
 	kubeTest2Args = append(kubeTest2Args, "--parallel=25")
-	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, reportArg))
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, windowsArgs))
 
 	if kubetestDumpDir != "" {
 		kubeTestArgs = append(kubeTestArgs, fmt.Sprintf("--dump=%s", kubetestDumpDir))
