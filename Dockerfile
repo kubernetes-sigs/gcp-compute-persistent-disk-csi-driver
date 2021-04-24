@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=$BUILDPLATFORM golang:1.13.15 as builder
-
 ARG STAGINGVERSION
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
+
+FROM --platform=$BUILDPLATFORM golang:1.13.15 as builder
 
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .

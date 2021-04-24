@@ -42,9 +42,9 @@ gce-pd-driver-windows:
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux \
+	$(DOCKER) buildx build --platform=linux --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --build-arg BUILDPLATFORM=linux/amd64 --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
