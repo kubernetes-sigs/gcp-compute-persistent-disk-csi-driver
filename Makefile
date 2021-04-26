@@ -33,18 +33,20 @@ WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
 WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
 
 all: gce-pd-driver gce-pd-driver-windows
-gce-pd-driver:
+gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
 	go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
-gce-pd-driver-windows:
+gce-pd-driver-windows: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
 	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 
-build-container: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux \
+build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
+	$(DOCKER) buildx build --platform=linux --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) \
+	  --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
@@ -106,6 +108,11 @@ test-k8s-integration:
 require-GCE_PD_CSI_STAGING_IMAGE:
 ifndef GCE_PD_CSI_STAGING_IMAGE
 	$(error "Must set environment variable GCE_PD_CSI_STAGING_IMAGE to staging image repository")
+endif
+
+require-GCE_PD_CSI_STAGING_VERSION:
+ifndef GCE_PD_CSI_STAGING_VERSION
+	$(error "Must set environment variable GCE_PD_CSI_STAGING_VERSION to build a runnable driver")
 endif
 
 init-buildx:

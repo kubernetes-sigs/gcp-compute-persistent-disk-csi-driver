@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ARG BUILDPLATFORM
+
 FROM --platform=$BUILDPLATFORM golang:1.13.15 as builder
 
 ARG STAGINGVERSION
-ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-# RUN mkdir -p bin \
-#   && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') go build -mod=vendor -ldflags "-X main.version=${STAGINGVERSION}" -o bin/gce-pd-csi-driver ./cmd/gce-pd-csi-driver/
-RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver
+RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
 FROM k8s.gcr.io/build-image/debian-base:buster-v1.6.0 as mad-hack
