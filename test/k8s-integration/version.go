@@ -15,6 +15,7 @@ var (
 	internalPatchVersion = `(\-[a-zA-Z0-9_.+-]+)`
 
 	versionRegex         = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + internalPatchVersion + "?$")
+	minorVersionRegex    = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `$`)
 	gkeExtraVersionRegex = regexp.MustCompile(`^(?:gke)\.(0|[1-9][0-9]*)$`)
 )
 
@@ -73,18 +74,33 @@ func parseVersion(vs string) (*version, error) {
 		vs = vs[1:]
 	}
 
-	submatches := versionRegex.FindStringSubmatch(vs)
-	if submatches == nil {
+	var submatches []string
+	var v version
+	var lastIndex int
+
+	switch {
+	case versionRegex.MatchString(vs):
+		submatches = versionRegex.FindStringSubmatch(vs)
+		lastIndex = 4
+	case minorVersionRegex.MatchString(vs):
+		submatches = minorVersionRegex.FindStringSubmatch(vs)
+		v.version[2] = -1
+		v.version[3] = -1
+		lastIndex = 3
+	default:
 		return nil, fmt.Errorf("version %q is invalid", vs)
 	}
 
-	var v version
 	// submatches[0] is the whole match, [1]..[3] are the version bits, [4] is the extra
-	for i, sm := range submatches[1:4] {
+	for i, sm := range submatches[1:lastIndex] {
 		var err error
 		if v.version[i], err = strconv.Atoi(sm); err != nil {
 			return nil, fmt.Errorf("submatch %q failed atoi conversion", sm)
 		}
+	}
+
+	if minorVersionRegex.MatchString(vs) {
+		return &v, nil
 	}
 
 	// Ensure 1.X.Y < 1.X.Y-gke.0

@@ -66,6 +66,12 @@ func TestParseVersion(t *testing.T) {
 				version: [4]int{100, 101, 102, 103},
 			},
 		},
+		{
+			version: "1.20",
+			expectedV: version{
+				version: [4]int{1, 20, -1, -1},
+			},
+		},
 		// Negative test cases
 		{
 			version:   "1",
@@ -85,14 +91,6 @@ func TestParseVersion(t *testing.T) {
 		},
 		{
 			version:   "1.18.9-gke.-1",
-			expectErr: true,
-		},
-		{
-			version:   "1.1",
-			expectErr: true,
-		},
-		{
-			version:   "1.18",
 			expectErr: true,
 		},
 		{
