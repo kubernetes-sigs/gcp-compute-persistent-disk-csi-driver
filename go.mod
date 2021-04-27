@@ -13,7 +13,6 @@ require (
 	github.com/kubernetes-csi/csi-test/v3 v3.0.0
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.7.1
-	github.com/stretchr/testify v1.5.1 // indirect
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
 	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
@@ -28,8 +27,9 @@ require (
 	k8s.io/component-base v0.19.0
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.18.0
+	k8s.io/mount-utils v0.20.6
 	k8s.io/test-infra v0.0.0-20200115230622-70a5174aa78d
-	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
+	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 )
 
 replace k8s.io/api => k8s.io/api v0.18.0

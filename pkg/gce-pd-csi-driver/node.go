@@ -27,7 +27,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
 	"k8s.io/klog"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"

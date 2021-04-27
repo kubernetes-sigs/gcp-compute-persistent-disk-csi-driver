@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	mounter "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )

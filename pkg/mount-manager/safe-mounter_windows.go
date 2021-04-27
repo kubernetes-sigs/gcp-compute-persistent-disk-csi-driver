@@ -35,8 +35,8 @@ import (
 	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta1"
 
 	"k8s.io/klog"
+	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
-	"k8s.io/utils/mount"
 )
 
 var _ mount.Interface = &CSIProxyMounter{}
@@ -108,6 +108,11 @@ func (mounter *CSIProxyMounter) MountSensitive(source string, target string, fst
 		return errors.New(response.Error)
 	}
 	return nil
+}
+
+// MountSensitiveWithoutSystemd is the same as MountSensitive for Windows
+func (mounter *CSIProxyMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return mounter.MountSensitive(source, target, fstype, options, sensitiveOptions)
 }
 
 // Delete the given directory with Pod context. CSI proxy does a check for path prefix
