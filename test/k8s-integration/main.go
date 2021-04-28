@@ -70,6 +70,7 @@ var (
 	testFocus     = flag.String("test-focus", "", "test focus for Kubernetes e2e")
 
 	useKubeTest2 = flag.Bool("use-kubetest2", false, "use kubetest2 to run e2e tests")
+	parallel     = flag.Int("parallel", 10, "the number of parallel tests setting for ginkgo parallelism")
 )
 
 const (
@@ -99,6 +100,7 @@ type testParameters struct {
 	clusterVersion       string
 	nodeVersion          string
 	imageType            string
+	parallel             int
 }
 
 func init() {
@@ -200,6 +202,7 @@ func handle() error {
 		deploymentStrategy:  *deploymentStrat,
 		useGKEManagedDriver: *useGKEManagedDriver,
 		imageType:           *imageType,
+		parallel:            *parallel,
 	}
 
 	goPath, ok := os.LookupEnv("GOPATH")
@@ -663,8 +666,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	}
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
-	// kubetest uses 25 as default value for ginkgo parallelism (--nodes).
-	kubeTest2Args = append(kubeTest2Args, "--parallel=25")
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--parallel=%d", testParams.parallel))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, windowsArgs))
 
 	if kubetestDumpDir != "" {
