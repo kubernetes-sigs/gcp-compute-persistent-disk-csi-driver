@@ -87,16 +87,19 @@ push-container: build-container
 build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/amd64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/arm64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
+		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
+		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 test-sanity: gce-pd-driver
