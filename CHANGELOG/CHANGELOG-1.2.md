@@ -1,5 +1,25 @@
-# v1.2.1 - Changelog since v1.2.0
+# v1.2.2 - Changelog since v1.2.1
 
+## Changes by Kind
+
+### Feature
+
+- Update base image to buster-1.6.0 ([#760](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/760), [@cpanato](https://github.com/cpanato))
+
+- Update base image to buster-1.5.0. ([#755](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/755), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# v1.2.1 - Changelog since v1.2.0
 
 ## Tests
 
