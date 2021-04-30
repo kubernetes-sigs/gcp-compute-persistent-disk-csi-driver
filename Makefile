@@ -32,6 +32,11 @@ BASE_IMAGE_20H2=mcr.microsoft.com/windows/servercore:20H2
 WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
 WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
 
+GCFLAGS=""
+ifdef GCE_PD_CSI_DEBUG
+	GCFLAGS="all=-N -l"
+endif
+
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
