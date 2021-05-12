@@ -4,7 +4,7 @@ metadata:
   name: imagetag-csi-provisioner
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-provisioner
-  newTag: "v2.1.0"
+  newTag: "v2.2.1"
 
 ---
 apiVersion: builtin
@@ -13,7 +13,7 @@ metadata:
   name: imagetag-csi-attacher
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-attacher
-  newTag: "v3.1.0"
+  newTag: "v3.2.1"
 ---
 
 apiVersion: builtin
@@ -22,7 +22,7 @@ metadata:
   name: imagetag-csi-resizer
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-resizer
-  newTag: "v1.1.0"
+  newTag: "v1.2.0"
 ---
 
 apiVersion: builtin
