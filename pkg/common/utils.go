@@ -100,15 +100,15 @@ func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
 	return fmt.Sprintf(volIDRegionalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
 }
 
-func SnapshotIDToKey(id string) (string, error) {
+func SnapshotIDToProjectKey(id string) (string, string, error) {
 	splitId := strings.Split(id, "/")
 	if len(splitId) != snapshotTotalElements {
-		return "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
+		return "", "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
 	}
 	if splitId[snapshotTopologyKey] == "global" {
-		return splitId[snapshotTotalElements-1], nil
+		return splitId[1], splitId[snapshotTotalElements-1], nil
 	} else {
-		return "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
+		return "", "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
 	}
 }
 

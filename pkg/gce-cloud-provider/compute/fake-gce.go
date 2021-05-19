@@ -375,7 +375,7 @@ func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, instance
 }
 
 // Snapshot Methods
-func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
 	snapshot, ok := cloud.snapshots[snapshotName]
 	if !ok {
 		return nil, notFoundError()

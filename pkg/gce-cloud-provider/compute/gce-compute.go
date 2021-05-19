@@ -72,7 +72,7 @@ type GCECompute interface {
 	// Zone Methods
 	ListZones(ctx context.Context, region string) ([]string, error)
 	ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*computev1.Snapshot, string, error)
-	GetSnapshot(ctx context.Context, snapshotName string) (*computev1.Snapshot, error)
+	GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error)
 	CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error)
 	DeleteSnapshot(ctx context.Context, snapshotName string) error
 }
@@ -765,10 +765,12 @@ func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone
 	return instance, nil
 }
 
-func (cloud *CloudProvider) GetSnapshot(ctx context.Context, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Getting snapshot %v", snapshotName)
 	svc := cloud.service
-	project := cloud.project
+	if project == "" {
+		project = cloud.project
+	}
 	snapshot, err := svc.Snapshots.Get(project, snapshotName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
@@ -908,7 +910,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, snapsho
 		select {
 		case <-ticker.C:
 			klog.V(6).Infof("Checking GCE Snapshot %s.", snapshotName)
-			snapshot, err := cloud.GetSnapshot(ctx, snapshotName)
+			snapshot, err := cloud.GetSnapshot(ctx, "", snapshotName)
 			if err != nil {
 				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
 			} else if snapshot != nil {
