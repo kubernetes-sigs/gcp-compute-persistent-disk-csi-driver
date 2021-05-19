@@ -39,6 +39,7 @@ const (
 	// Snapshot ID
 	snapshotTotalElements = 5
 	snapshotTopologyKey   = 2
+	snapshotProjectKey    = 1
 
 	// Node ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
@@ -106,7 +107,7 @@ func SnapshotIDToProjectKey(id string) (string, string, error) {
 		return "", "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
 	}
 	if splitId[snapshotTopologyKey] == "global" {
-		return splitId[1], splitId[snapshotTotalElements-1], nil
+		return splitId[snapshotProjectKey], splitId[snapshotTotalElements-1], nil
 	} else {
 		return "", "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
 	}
