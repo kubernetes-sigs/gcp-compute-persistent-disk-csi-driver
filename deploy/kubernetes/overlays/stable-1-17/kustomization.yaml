@@ -5,7 +5,9 @@ namespace:
 resources:
 - ../../base/controller
 - ../../base/node_linux
+- v1beta1_csidriver.yaml
 patchesStrategicMerge:
 - no_win_roles.yaml
+- no_v1_csidriver.yaml
 transformers:
 - ../../images/stable-1-17
