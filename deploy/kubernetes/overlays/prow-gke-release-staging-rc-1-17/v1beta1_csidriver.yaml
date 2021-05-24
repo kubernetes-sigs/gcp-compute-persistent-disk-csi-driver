@@ -1,4 +1,3 @@
-#### TODO: This need to be updated to v1 once we official support 1.18+
 apiVersion: storage.k8s.io/v1beta1
 kind: CSIDriver
 metadata:

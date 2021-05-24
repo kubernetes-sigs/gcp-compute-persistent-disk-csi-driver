@@ -33,19 +33,14 @@ This plugin is compatible with CSI versions [v1.2.0](https://github.com/containe
 The following table captures the compatibility matrix of the core persistent disk driver binary
 `gke.gcr.io/gcp-compute-persistent-disk-csi-driver`
 
-| GCE PD CSI Driver\Kubernetes Version | 1.15 | 1.16  | 1.17+ |
-|--------------------------------------|------|-------|-------|
-| v0.2.x (alpha)                       | no   | no    | no    |
-| v0.3.x (beta)                        | yes  | yes   | yes   |
-| v0.4.x (beta)                        | yes  | yes   | yes   |
-| v0.5.x (beta)                        | yes  | yes   | yes   |
-| v0.6.x (beta)                        | yes  | yes   | yes   |
-| v0.7.x (beta)                        | yes  | yes   | yes   |
-| v1.0.x (ga)                          | yes  | yes   | yes   |
-| dev                                  | yes  | yes   | yes   |
+| GCE PD CSI Driver\Kubernetes Version | 1.17+ |
+|--------------------------------------|-------|
+| v0.7.x (beta)                        | yes   |
+| v1.0.x (ga)                          | yes   |
+| dev                                  | yes   |
 
 The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
-csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. For example volume snapshots are supported 1.17+ kubernetes versions thus [stable-1-16](deploy/kubernetes/overlays/stable-1-16) driver manifests does not contain the snapshotter sidecar.
+csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. For example, v1 CSIDriver resources are supported in 1.18+ only, so [stable-1-17](deploy/kubernetes/overlays/stable-1-17) driver manifests use the v1beta1 version.
 
 Example:
 
@@ -84,10 +79,8 @@ GCE PD driver starts to support CSI Windows with [CSI Proxy] (https://github.com
 
 | Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
-| Snapshots       | Alpha | 1.13                          | Any                          | v0.3.0             | Alpha              |
 | Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | stable-1-17, stable-1-18, stable-1-19, stable-master |
-| Resize (Expand) | Alpha | 1.14                          | 1.14                         | v0.6.0             | Alpha              |
-| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | stable-1-16, stable-1-17, stable-1-18, stable-1-19, stable-master |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | stable-1-17, stable-1-18, stable-1-19, stable-master |
 | Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | stable-1-18, stable-1-19, stable-master |
 
 \* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+. The master version of driver requires disk v1beta2 group, which is only available in CSI proxy v0.2.2+
