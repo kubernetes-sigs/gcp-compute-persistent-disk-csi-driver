@@ -80,31 +80,34 @@ func (cloud *FakeCloudProvider) GetDefaultZone() string {
 	return cloud.zone
 }
 
-func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (*meta.Key, error) {
+func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
+	if project == common.UnspecifiedValue {
+		project = cloud.project
+	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
 		if volumeKey.Zone != common.UnspecifiedValue {
-			return volumeKey, nil
+			return project, volumeKey, nil
 		}
 		for name, d := range cloud.disks {
 			if name == volumeKey.Name {
 				volumeKey.Zone = d.GetZone()
-				return volumeKey, nil
+				return project, volumeKey, nil
 			}
 		}
-		return nil, notFoundError()
+		return "", nil, notFoundError()
 	case meta.Regional:
 		if volumeKey.Region != common.UnspecifiedValue {
-			return volumeKey, nil
+			return project, volumeKey, nil
 		}
 		r, err := common.GetRegionFromZones([]string{cloud.zone})
 		if err != nil {
-			return nil, fmt.Errorf("failed to get region from zones: %v", err)
+			return "", nil, fmt.Errorf("failed to get region from zones: %v", err)
 		}
 		volumeKey.Region = r
-		return volumeKey, nil
+		return project, volumeKey, nil
 	default:
-		return nil, fmt.Errorf("Volume key %v not zonal nor regional", volumeKey.Name)
+		return "", nil, fmt.Errorf("Volume key %v not zonal nor regional", volumeKey.Name)
 	}
 }
 
