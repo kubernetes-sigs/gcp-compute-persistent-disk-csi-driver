@@ -587,7 +587,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 
 	// Check if snapshot already exists
 	var snapshot *compute.Snapshot
-	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, gceCS.CloudProvider.GetDefaultProject(), req.Name)
+	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, req.Name)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get snapshot error: %v", err))
@@ -673,7 +673,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 		return nil, status.Error(codes.InvalidArgument, "DeleteSnapshot Snapshot ID must be provided")
 	}
 
-	_, key, err := common.SnapshotIDToProjectKey(snapshotID)
+	project, key, err := common.SnapshotIDToProjectKey(snapshotID)
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		// This is a success according to the spec
@@ -681,7 +681,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
-	err = gceCS.CloudProvider.DeleteSnapshot(ctx, gceCS.CloudProvider.GetDefaultProject(), key)
+	err = gceCS.CloudProvider.DeleteSnapshot(ctx, project, key)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete snapshot error: %v", err))
 	}
