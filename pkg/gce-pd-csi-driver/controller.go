@@ -394,6 +394,14 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerUnpublishVolume Volume ID is invalid: %v", err))
 	}
 
+	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
+	if err != nil {
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "ControllerUnpublishVolume error repairing underspecified volume key: %v", err)
+	}
+
 	// Acquires the lock for the volume on that node only, because we need to support the ability
 	// to unpublish the same volume from different nodes concurrently
 	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
@@ -449,6 +457,14 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Volume ID is invalid: %v", err))
+	}
+
+	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
+	if err != nil {
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Errorf(codes.NotFound, "ValidateVolumeCapabilities could not find volume with ID %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "ValidateVolumeCapabilities error repairing underspecified volume key: %v", err)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -713,6 +729,14 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
+	}
+
+	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
+	if err != nil {
+		if gce.IsGCENotFoundError(err) {
+			return nil, status.Errorf(codes.NotFound, "ControllerExpandVolume could not find volume with ID %v: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Internal, "ControllerExpandVolume error repairing underspecified volume key: %v", err)
 	}
 
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
