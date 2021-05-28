@@ -807,17 +807,20 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 	// Define test cases
 	testCases := []struct {
 		name            string
+		project         string
 		volKey          *meta.Key
 		snapshotOnCloud bool
 		expErrCode      codes.Code
 	}{
 		{
 			name:            "success with data source of snapshot type",
+			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
+			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
@@ -845,7 +848,7 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 		}
 
 		if tc.snapshotOnCloud {
-			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.volKey, name)
+			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name)
 		}
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
 		//check response

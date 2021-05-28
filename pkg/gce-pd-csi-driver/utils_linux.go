@@ -28,7 +28,7 @@ import (
 )
 
 func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error) {
-	volumeKey, err := common.VolumeIDToKey(volumeID)
+	_, volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return "", err
 	}

@@ -146,23 +146,33 @@ func TestVolumeIDToKey(t *testing.T) {
 	testName := "test-name"
 	testZone := "test-zone"
 	testProject := "test-project"
+	testCrossProject := "test-cross-project"
 	testRegion := "test-region"
 
 	testCases := []struct {
-		name   string
-		volID  string
-		expKey *meta.Key
-		expErr bool
+		name       string
+		volID      string
+		expProject string
+		expKey     *meta.Key
+		expErr     bool
 	}{
 		{
-			name:   "normal zonal",
-			volID:  fmt.Sprintf(volIDZoneFmt, testProject, testZone, testName),
-			expKey: meta.ZonalKey(testName, testZone),
+			name:       "normal zonal",
+			volID:      fmt.Sprintf(volIDZoneFmt, testProject, testZone, testName),
+			expKey:     meta.ZonalKey(testName, testZone),
+			expProject: testProject,
 		},
 		{
-			name:   "normal regional",
-			volID:  fmt.Sprintf(volIDRegionFmt, testProject, testRegion, testName),
-			expKey: meta.RegionalKey(testName, testRegion),
+			name:       "cross project",
+			volID:      fmt.Sprintf(volIDZoneFmt, testCrossProject, testZone, testName),
+			expKey:     meta.ZonalKey(testName, testZone),
+			expProject: testCrossProject,
+		},
+		{
+			name:       "normal regional",
+			volID:      fmt.Sprintf(volIDRegionFmt, testProject, testRegion, testName),
+			expKey:     meta.RegionalKey(testName, testRegion),
+			expProject: testProject,
 		},
 		{
 			name:   "malformed",
@@ -177,7 +187,7 @@ func TestVolumeIDToKey(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotKey, err := VolumeIDToKey(tc.volID)
+		project, gotKey, err := VolumeIDToKey(tc.volID)
 		if err == nil && tc.expErr {
 			t.Errorf("Expected error but got none")
 		}
@@ -190,6 +200,10 @@ func TestVolumeIDToKey(t *testing.T) {
 
 		if !reflect.DeepEqual(gotKey, tc.expKey) {
 			t.Errorf("Got key %v, but expected %v, from volume ID %v", gotKey, tc.expKey, tc.volID)
+		}
+
+		if project != tc.expProject {
+			t.Errorf("Got project %v, but expected %v, from volume ID %v", project, tc.expProject, tc.volID)
 		}
 	}
 

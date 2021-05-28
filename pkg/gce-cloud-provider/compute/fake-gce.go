@@ -80,7 +80,7 @@ func (cloud *FakeCloudProvider) GetDefaultZone() string {
 	return cloud.zone
 }
 
-func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, volumeKey *meta.Key) (*meta.Key, error) {
+func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (*meta.Key, error) {
 	switch volumeKey.Type() {
 	case meta.Zonal:
 		if volumeKey.Zone != common.UnspecifiedValue {
@@ -212,7 +212,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 }
 
 // Disk Methods
-func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
+func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
 	disk, ok := cloud.disks[volKey.Name]
 	if !ok {
 		return nil, notFoundError()
@@ -249,7 +249,7 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	return ValidateDiskParameters(resp, params)
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, multiWriter bool) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, multiWriter bool) error {
 	if disk, ok := cloud.disks[volKey.Name]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
@@ -264,7 +264,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 		Name:             volKey.Name,
 		SizeGb:           common.BytesToGbRoundUp(capBytes),
 		Description:      "Disk created by GCE-PD CSI Driver",
-		Type:             cloud.GetDiskTypeURI(volKey, params.DiskType),
+		Type:             cloud.GetDiskTypeURI(project, volKey, params.DiskType),
 		SourceSnapshotId: snapshotID,
 		Status:           cloud.mockDiskStatus,
 		Labels:           params.Labels,
@@ -277,10 +277,10 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 	switch volKey.Type() {
 	case meta.Zonal:
 		computeDisk.Zone = volKey.Zone
-		computeDisk.SelfLink = fmt.Sprintf("projects/%s/zones/%s/disks/%s", cloud.project, volKey.Zone, volKey.Name)
+		computeDisk.SelfLink = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, volKey.Zone, volKey.Name)
 	case meta.Regional:
 		computeDisk.Region = volKey.Region
-		computeDisk.SelfLink = fmt.Sprintf("projects/%s/regions/%s/disks/%s", cloud.project, volKey.Region, volKey.Name)
+		computeDisk.SelfLink = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, volKey.Region, volKey.Name)
 	default:
 		return fmt.Errorf("could not create disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -289,7 +289,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, volKey *meta.Key
 	return nil
 }
 
-func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, volKey *meta.Key) error {
+func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, volKey *meta.Key) error {
 	if _, ok := cloud.disks[volKey.Name]; !ok {
 		return notFoundError()
 	}
@@ -297,8 +297,8 @@ func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, volKey *meta.Key
 	return nil
 }
 
-func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
-	source := cloud.GetDiskSourceURI(volKey)
+func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+	source := cloud.GetDiskSourceURI(project, volKey)
 
 	attachedDiskV1 := &computev1.AttachedDisk{
 		DeviceName: volKey.Name,
@@ -315,7 +315,7 @@ func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, volKey *meta.Key
 	return nil
 }
 
-func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, deviceName, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error {
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
 		return fmt.Errorf("Failed to get instance %v", instanceName)
@@ -332,31 +332,31 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, deviceName, inst
 	return nil
 }
 
-func (cloud *FakeCloudProvider) GetDiskTypeURI(volKey *meta.Key, diskType string) string {
+func (cloud *FakeCloudProvider) GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string {
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.getZonalDiskTypeURI(volKey.Zone, diskType)
+		return cloud.getZonalDiskTypeURI(project, volKey.Zone, diskType)
 	case meta.Regional:
-		return cloud.getRegionalDiskTypeURI(volKey.Region, diskType)
+		return cloud.getRegionalDiskTypeURI(project, volKey.Region, diskType)
 	default:
 		return fmt.Sprintf("could not get disk type uri, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
 }
 
-func (cloud *FakeCloudProvider) getZonalDiskTypeURI(zone, diskType string) string {
-	return fmt.Sprintf(diskTypeURITemplateSingleZone, cloud.project, zone, diskType)
+func (cloud *FakeCloudProvider) getZonalDiskTypeURI(project, zone, diskType string) string {
+	return fmt.Sprintf(diskTypeURITemplateSingleZone, project, zone, diskType)
 }
 
-func (cloud *FakeCloudProvider) getRegionalDiskTypeURI(region, diskType string) string {
-	return fmt.Sprintf(diskTypeURITemplateRegional, cloud.project, region, diskType)
+func (cloud *FakeCloudProvider) getRegionalDiskTypeURI(project, region, diskType string) string {
+	return fmt.Sprintf(diskTypeURITemplateRegional, project, region, diskType)
 }
 
-func (cloud *FakeCloudProvider) WaitForAttach(ctx context.Context, volKey *meta.Key, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
 	return nil
 }
 
 // Regional Disk Methods
-func (cloud *FakeCloudProvider) GetReplicaZoneURI(zone string) string {
+func (cloud *FakeCloudProvider) GetReplicaZoneURI(project, zone string) string {
 	return ""
 }
 
@@ -384,7 +384,7 @@ func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, project, snapsh
 	return snapshot, nil
 }
 
-func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
 	if snapshot, ok := cloud.snapshots[snapshotName]; ok {
 		return snapshot, nil
 	}
@@ -394,13 +394,13 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta
 		DiskSizeGb:        int64(DiskSizeGb),
 		CreationTimestamp: Timestamp,
 		Status:            "UPLOADING",
-		SelfLink:          cloud.getGlobalSnapshotURI(snapshotName),
+		SelfLink:          cloud.getGlobalSnapshotURI(project, snapshotName),
 	}
 	switch volKey.Type() {
 	case meta.Zonal:
-		snapshotToCreate.SourceDisk = cloud.getZonalDiskSourceURI(volKey.Name, volKey.Zone)
+		snapshotToCreate.SourceDisk = cloud.getZonalDiskSourceURI(project, volKey.Name, volKey.Zone)
 	case meta.Regional:
-		snapshotToCreate.SourceDisk = cloud.getRegionalDiskSourceURI(volKey.Name, volKey.Region)
+		snapshotToCreate.SourceDisk = cloud.getRegionalDiskSourceURI(project, volKey.Name, volKey.Region)
 	default:
 		return nil, fmt.Errorf("could not create snapshot, disk key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -409,7 +409,7 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta
 	return snapshotToCreate, nil
 }
 
-func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key, requestBytes int64) (int64, error) {
+func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error) {
 	disk, ok := cloud.disks[volKey.Name]
 	if !ok {
 		return -1, notFoundError()
@@ -424,7 +424,7 @@ func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, volKey *meta.Key
 }
 
 // Snapshot Methods
-func (cloud *FakeCloudProvider) DeleteSnapshot(ctx context.Context, snapshotName string) error {
+func (cloud *FakeCloudProvider) DeleteSnapshot(ctx context.Context, project, snapshotName string) error {
 	delete(cloud.snapshots, snapshotName)
 	return nil
 }
@@ -434,7 +434,7 @@ func (cloud *FakeCloudProvider) ValidateExistingSnapshot(resp *computev1.Snapsho
 		return fmt.Errorf("disk does not exist")
 	}
 
-	diskSource := cloud.GetDiskSourceURI(volKey)
+	diskSource := cloud.GetDiskSourceURI(cloud.project, volKey)
 	if resp.SourceDisk != diskSource {
 		return status.Error(codes.AlreadyExists, fmt.Sprintf("snapshot already exists with same name but with a different disk source %s, expected disk source %s", diskSource, resp.SourceDisk))
 	}
@@ -443,37 +443,37 @@ func (cloud *FakeCloudProvider) ValidateExistingSnapshot(resp *computev1.Snapsho
 	return nil
 }
 
-func (cloud *FakeCloudProvider) GetDiskSourceURI(volKey *meta.Key) string {
+func (cloud *FakeCloudProvider) GetDiskSourceURI(project string, volKey *meta.Key) string {
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.getZonalDiskSourceURI(volKey.Name, volKey.Zone)
+		return cloud.getZonalDiskSourceURI(project, volKey.Name, volKey.Zone)
 	case meta.Regional:
-		return cloud.getRegionalDiskSourceURI(volKey.Name, volKey.Region)
+		return cloud.getRegionalDiskSourceURI(project, volKey.Name, volKey.Region)
 	default:
 		return ""
 	}
 }
 
-func (cloud *FakeCloudProvider) getZonalDiskSourceURI(diskName, zone string) string {
+func (cloud *FakeCloudProvider) getZonalDiskSourceURI(project, diskName, zone string) string {
 	return BasePath + fmt.Sprintf(
 		diskSourceURITemplateSingleZone,
-		cloud.project,
+		project,
 		zone,
 		diskName)
 }
 
-func (cloud *FakeCloudProvider) getRegionalDiskSourceURI(diskName, region string) string {
+func (cloud *FakeCloudProvider) getRegionalDiskSourceURI(project, diskName, region string) string {
 	return BasePath + fmt.Sprintf(
 		diskSourceURITemplateRegional,
-		cloud.project,
+		project,
 		region,
 		diskName)
 }
 
-func (cloud *FakeCloudProvider) getGlobalSnapshotURI(snapshotName string) string {
+func (cloud *FakeCloudProvider) getGlobalSnapshotURI(project, snapshotName string) string {
 	return BasePath + fmt.Sprintf(
 		snapshotURITemplateGlobal,
-		cloud.project,
+		project,
 		snapshotName)
 }
 
@@ -490,11 +490,11 @@ type FakeBlockingCloudProvider struct {
 // Upon starting a CreateSnapshot, it passes a chan 'executeCreateSnapshot' into readyToExecute, then blocks on executeCreateSnapshot.
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
-func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
 	executeCreateSnapshot := make(chan struct{})
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
-	return cloud.FakeCloudProvider.CreateSnapshot(ctx, volKey, snapshotName)
+	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName)
 }
 
 func notFoundError() *googleapi.Error {

@@ -548,10 +548,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		nodeID := testContext.Instance.GetNodeID()
 
 		_, volID := createAndValidateUniqueZonalDisk(client, p, z)
-		defer deleteVolumeOrError(client, volID, p)
+		defer deleteVolumeOrError(client, volID)
 
 		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z)
-		defer deleteVolumeOrError(client, secondVolID, p)
+		defer deleteVolumeOrError(client, secondVolID)
 
 		// Attach volID to current instance
 		err := client.ControllerPublishVolume(volID, nodeID)
@@ -854,13 +854,13 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	return
 }
 
-func deleteVolumeOrError(client *remote.CsiClient, volID, project string) {
+func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 	// Delete Disk
 	err := client.DeleteVolume(volID)
 	Expect(err).To(BeNil(), "DeleteVolume failed")
 
 	// Validate Disk Deleted
-	key, err := common.VolumeIDToKey(volID)
+	project, key, err := common.VolumeIDToKey(volID)
 	Expect(err).To(BeNil(), "Failed to conver volume ID To key")
 	_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
 	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
