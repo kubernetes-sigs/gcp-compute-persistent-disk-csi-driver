@@ -77,7 +77,7 @@ func cleanupStagePath(path string, m *mount.SafeFormatAndMount) error {
 
 // search Windows disk number by volumeID
 func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error) {
-	volumeKey, err := common.VolumeIDToKey(volumeID)
+	_, volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return "", err
 	}

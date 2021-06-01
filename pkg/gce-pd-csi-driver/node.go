@@ -270,7 +270,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 
-	volumeKey, err := common.VolumeIDToKey(volumeID)
+	_, volumeKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodeStageVolume Volume ID is invalid: %v", err))
 	}
@@ -447,7 +447,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	volKey, err := common.VolumeIDToKey(volumeID)
+	_, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("volume ID is invalid: %v", err))
 	}

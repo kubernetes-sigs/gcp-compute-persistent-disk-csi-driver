@@ -39,10 +39,12 @@ const (
 	// Snapshot ID
 	snapshotTotalElements = 5
 	snapshotTopologyKey   = 2
+	snapshotProjectKey    = 1
 
 	// Node ID Expected Format
 	// "projects/{projectName}/zones/{zoneName}/disks/{diskName}"
 	nodeIDFmt           = "projects/%s/zones/%s/instances/%s"
+	nodeIDProjectValue  = 1
 	nodeIDZoneValue     = 3
 	nodeIDNameValue     = 5
 	nodeIDTotalElements = 6
@@ -68,17 +70,17 @@ func GbToBytes(Gb int64) int64 {
 	return Gb * 1024 * 1024 * 1024
 }
 
-func VolumeIDToKey(id string) (*meta.Key, error) {
+func VolumeIDToKey(id string) (string, *meta.Key, error) {
 	splitId := strings.Split(id, "/")
 	if len(splitId) != volIDTotalElements {
-		return nil, fmt.Errorf("failed to get id components. Expected projects/{project}/zones/{zone}/disks/{name}. Got: %s", id)
+		return "", nil, fmt.Errorf("failed to get id components. Expected projects/{project}/zones/{zone}/disks/{name}. Got: %s", id)
 	}
 	if splitId[volIDToplogyKey] == "zones" {
-		return meta.ZonalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
+		return splitId[nodeIDProjectValue], meta.ZonalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
 	} else if splitId[volIDToplogyKey] == "regions" {
-		return meta.RegionalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
+		return splitId[nodeIDProjectValue], meta.RegionalKey(splitId[volIDDiskNameValue], splitId[volIDToplogyValue]), nil
 	} else {
-		return nil, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitId[volIDToplogyKey])
+		return "", nil, fmt.Errorf("could not get id components, expected either zones or regions, got: %v", splitId[volIDToplogyKey])
 	}
 }
 
@@ -100,15 +102,15 @@ func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
 	return fmt.Sprintf(volIDRegionalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
 }
 
-func SnapshotIDToKey(id string) (string, error) {
+func SnapshotIDToProjectKey(id string) (string, string, error) {
 	splitId := strings.Split(id, "/")
 	if len(splitId) != snapshotTotalElements {
-		return "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
+		return "", "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
 	}
 	if splitId[snapshotTopologyKey] == "global" {
-		return splitId[snapshotTotalElements-1], nil
+		return splitId[snapshotProjectKey], splitId[snapshotTotalElements-1], nil
 	} else {
-		return "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
+		return "", "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
 	}
 }
 
