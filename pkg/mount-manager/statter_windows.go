@@ -19,7 +19,8 @@ import (
 	"context"
 	"fmt"
 
-	volumeapi "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
+	volumeapiv1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
+	volumeapiv1beta1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
 	"k8s.io/mount-utils"
 )
 
@@ -40,24 +41,58 @@ func (r *realStatter) IsBlockDevice(fullPath string) (bool, error) {
 
 // StatFS returns volume usage information
 func (r *realStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
-	zero := int64(0)
-
-	proxy, ok := r.mounter.Interface.(*CSIProxyMounter)
-	if !ok {
-		return zero, zero, zero, zero, zero, zero, fmt.Errorf("could not cast to csi proxy class")
+	switch r.mounter.Interface.(type) {
+	case *CSIProxyMounterV1:
+		return r.StatFSV1(path)
+	case *CSIProxyMounterV1Beta:
+		return r.StatFSV1Beta(path)
 	}
 
-	idRequest := &volumeapi.VolumeIDFromMountRequest{
+	return 0, 0, 0, 0, 0, 0, fmt.Errorf("Invalid interface type=%v", r.mounter.Interface)
+}
+
+func (r *realStatter) StatFSV1(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+	zero := int64(0)
+
+	proxy := r.mounter.Interface.(*CSIProxyMounterV1)
+	idRequest := &volumeapiv1.GetVolumeIDFromTargetPathRequest{
+		TargetPath: path,
+	}
+	idResponse, err := proxy.VolumeClient.GetVolumeIDFromTargetPath(context.Background(), idRequest)
+	if err != nil {
+		return zero, zero, zero, zero, zero, zero, err
+	}
+	volumeID := idResponse.GetVolumeId()
+
+	request := &volumeapiv1.GetVolumeStatsRequest{
+		VolumeId: volumeID,
+	}
+	response, err := proxy.VolumeClient.GetVolumeStats(context.Background(), request)
+	if err != nil {
+		return zero, zero, zero, zero, zero, zero, err
+	}
+	capacity = response.GetTotalBytes()
+	used = response.GetUsedBytes()
+	available = capacity - used
+	return available, capacity, used, zero, zero, zero, nil
+}
+
+func (r *realStatter) StatFSV1Beta(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
+	zero := int64(0)
+
+	proxy := r.mounter.Interface.(*CSIProxyMounterV1Beta)
+
+	idRequest := &volumeapiv1beta1.VolumeIDFromMountRequest{
 		Mount: path,
 	}
 	idResponse, err := proxy.VolumeClient.GetVolumeIDFromMount(context.Background(), idRequest)
 	if err != nil {
 		return zero, zero, zero, zero, zero, zero, err
 	}
-	volumeId := idResponse.GetVolumeId()
+	volumeID := idResponse.GetVolumeId()
 
-	request := &volumeapi.VolumeStatsRequest{
-		VolumeId: volumeId,
+	request := &volumeapiv1beta1.VolumeStatsRequest{
+		VolumeId: volumeID,
 	}
 	response, err := proxy.VolumeClient.VolumeStats(context.Background(), request)
 	if err != nil {

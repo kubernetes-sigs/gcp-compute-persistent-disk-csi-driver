@@ -28,7 +28,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 	if !strings.EqualFold(fstype, defaultWindowsFsType) {
 		return fmt.Errorf("GCE PD CSI driver can only supports %s file system, it does not support %s", defaultWindowsFsType, fstype)
 	}
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -39,7 +39,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 // not exist. Currently kubelet creates the path beforehand, this is a workaround to
 // remove the path first.
 func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -60,7 +60,7 @@ func prepareStagePath(path string, m *mount.SafeFormatAndMount) error {
 }
 
 func cleanupPublishPath(path string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -68,7 +68,7 @@ func cleanupPublishPath(path string, m *mount.SafeFormatAndMount) error {
 }
 
 func cleanupStagePath(path string, m *mount.SafeFormatAndMount) error {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return fmt.Errorf("could not cast to csi proxy class")
 	}
@@ -85,18 +85,18 @@ func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("error getting device name: %v", err)
 	}
-	proxy, ok := ns.Mounter.Interface.(*mounter.CSIProxyMounter)
+
+	proxy, ok := ns.Mounter.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return "", fmt.Errorf("could not cast to csi proxy class")
 	}
-	return proxy.GetDevicePath(deviceName, partition, volumeKey.Name)
+	return proxy.GetDiskNumber(deviceName, partition, volumeKey.Name)
 }
 
 func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
-	proxy, ok := m.Interface.(*mounter.CSIProxyMounter)
+	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
 		return 0, fmt.Errorf("could not cast to csi proxy class")
 	}
-
-	return proxy.GetBlockSizeBytes(devicePath)
+	return proxy.GetDiskTotalBytes(devicePath)
 }
