@@ -70,7 +70,7 @@ var (
 	testFocus     = flag.String("test-focus", "", "test focus for Kubernetes e2e")
 
 	useKubeTest2 = flag.Bool("use-kubetest2", false, "use kubetest2 to run e2e tests")
-	parallel     = flag.Int("parallel", 10, "the number of parallel tests setting for ginkgo parallelism")
+	parallel     = flag.Int("parallel", 4, "the number of parallel tests setting for ginkgo parallelism")
 )
 
 const (
