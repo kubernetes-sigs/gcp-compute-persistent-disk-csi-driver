@@ -22,10 +22,14 @@ import (
 )
 
 const (
+	// Parameters for StorageClass
 	ParameterKeyType                 = "type"
 	ParameterKeyReplicationType      = "replication-type"
 	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
 	ParameterKeyLabels               = "labels"
+
+	// Parameters for VolumeSnapshotClass
+	ParameterKeyStorageLocations = "storage-locations"
 
 	replicationTypeNone = "none"
 
@@ -58,6 +62,11 @@ type DiskParameters struct {
 	// Values: {map[string]string}
 	// Default: ""
 	Labels map[string]string
+}
+
+// SnapshotParameters contains normalized and defaulted parameters for snapshots
+type SnapshotParameters struct {
+	StorageLocations []string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
@@ -115,6 +124,25 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 	}
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
+	}
+	return p, nil
+}
+
+func ExtractAndDefaultSnapshotParameters(parameters map[string]string) (SnapshotParameters, error) {
+	p := SnapshotParameters{
+		StorageLocations: []string{},
+	}
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case ParameterKeyStorageLocations:
+			normalizedStorageLocations, err := ProcessStorageLocations(v)
+			if err != nil {
+				return p, err
+			}
+			p.StorageLocations = normalizedStorageLocations
+		default:
+			return p, fmt.Errorf("parameters contains invalid option %q", k)
+		}
 	}
 	return p, nil
 }

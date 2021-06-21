@@ -1,0 +1,8 @@
+apiVersion: snapshot.storage.k8s.io/v1beta1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-gce-pd-snapshot-class-with-storage-locations
+parameters:
+  storage-locations: us-east2
+driver: pd.csi.storage.gke.io
+deletionPolicy: Delete

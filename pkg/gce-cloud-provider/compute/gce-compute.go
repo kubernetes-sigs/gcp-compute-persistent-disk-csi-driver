@@ -73,7 +73,7 @@ type GCECompute interface {
 	ListZones(ctx context.Context, region string) ([]string, error)
 	ListSnapshots(ctx context.Context, filter string, maxEntries int64, pageToken string) ([]*computev1.Snapshot, string, error)
 	GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error)
-	CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error)
+	CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error)
 	DeleteSnapshot(ctx context.Context, project, snapshotName string) error
 }
 
@@ -787,13 +787,13 @@ func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, project, snapsho
 	return nil
 }
 
-func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Creating snapshot %s for volume %v", snapshotName, volKey)
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.createZonalDiskSnapshot(ctx, project, volKey, snapshotName)
+		return cloud.createZonalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 	case meta.Regional:
-		return cloud.createRegionalDiskSnapshot(ctx, project, volKey, snapshotName)
+		return cloud.createRegionalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 	default:
 		return nil, fmt.Errorf("could not create snapshot, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -864,9 +864,10 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 	return requestGb, nil
 }
 
-func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	snapshotToCreate := &computev1.Snapshot{
-		Name: snapshotName,
+		Name:             snapshotName,
+		StorageLocations: snapshotParams.StorageLocations,
 	}
 
 	_, err := cloud.service.Disks.CreateSnapshot(project, volKey.Zone, volKey.Name, snapshotToCreate).Context(ctx).Do()
@@ -878,9 +879,10 @@ func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project
 	return cloud.waitForSnapshotCreation(ctx, project, snapshotName)
 }
 
-func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	snapshotToCreate := &computev1.Snapshot{
-		Name: snapshotName,
+		Name:             snapshotName,
+		StorageLocations: snapshotParams.StorageLocations,
 	}
 
 	_, err := cloud.service.RegionDisks.CreateSnapshot(project, volKey.Region, volKey.Name, snapshotToCreate).Context(ctx).Do()

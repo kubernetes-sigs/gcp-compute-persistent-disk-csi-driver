@@ -84,6 +84,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -125,6 +126,30 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: "/test/wrongname",
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid snapshot parameter key",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{"bad-key": ""},
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid snapshot locations",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{common.ParameterKeyStorageLocations: "bad-region"},
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
 			},
 			expErrCode: codes.InvalidArgument,
 		},
@@ -848,7 +873,11 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 		}
 
 		if tc.snapshotOnCloud {
-			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name)
+			snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
+			if err != nil {
+				t.Errorf("Got error extracting snapshot parameters: %v", err)
+			}
+			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name, snapshotParams)
 		}
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
 		//check response

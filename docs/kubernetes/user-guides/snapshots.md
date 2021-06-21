@@ -23,6 +23,14 @@ Kubernetes 1.17+.
     kubectl create -f ./examples/kubernetes/snapshot/default-volumesnapshotclass.yaml
     ```
 
+  To place the snapshot in a [custom storage location](https://cloud.google.com/compute/docs/disks/snapshots#custom_location),
+  edit `volumesnapshotclass-storage-locations.yaml` to change the `storage-locations` parameter to a location of your
+  choice, and then create the `VolumeSnapshotClass`.
+
+    ```console
+    kubectl create -f ./examples/kubernetes/snapshot/volumesnapshotclass-storage-locations.yaml
+    ```
+
 1. Create source PVC
 
     ```console

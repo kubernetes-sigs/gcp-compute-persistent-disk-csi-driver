@@ -50,6 +50,18 @@ const (
 	nodeIDTotalElements = 6
 
 	regionalDeviceNameSuffix = "_regional"
+
+	// Snapshot storage location format
+	// Reference: https://cloud.google.com/storage/docs/locations
+	// Example: us
+	multiRegionalLocationFmt = "^[a-z]+$"
+	// Example: us-east1
+	regionalLocationFmt = "^[a-z]+-[a-z]+[0-9]$"
+)
+
+var (
+	multiRegionalPattern = regexp.MustCompile(multiRegionalLocationFmt)
+	regionalPattern      = regexp.MustCompile(regionalLocationFmt)
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -216,4 +228,13 @@ func ConvertLabelsStringToMap(labels string) (map[string]string, error) {
 	}
 
 	return labelsMap, nil
+}
+
+// ProcessStorageLocations trims and normalizes storage location to lower letters.
+func ProcessStorageLocations(storageLocations string) ([]string, error) {
+	normalizedLoc := strings.ToLower(strings.TrimSpace(storageLocations))
+	if !multiRegionalPattern.MatchString(normalizedLoc) && !regionalPattern.MatchString(normalizedLoc) {
+		return []string{}, fmt.Errorf("invalid location for snapshot: %q", storageLocations)
+	}
+	return []string{normalizedLoc}, nil
 }

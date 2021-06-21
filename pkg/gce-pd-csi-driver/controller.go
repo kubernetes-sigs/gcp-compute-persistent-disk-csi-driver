@@ -609,7 +609,11 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get snapshot error: %v", err))
 		}
 		// If we could not find the snapshot, we create a new one
-		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, req.Name)
+		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot parameters: %v", err))
+		}
+		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, req.Name, snapshotParams)
 		if err != nil {
 			if gce.IsGCEError(err, "notFound") {
 				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
