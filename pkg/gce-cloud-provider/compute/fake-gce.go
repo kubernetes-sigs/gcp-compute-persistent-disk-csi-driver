@@ -387,7 +387,7 @@ func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, project, snapsh
 	return snapshot, nil
 }
 
-func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	if snapshot, ok := cloud.snapshots[snapshotName]; ok {
 		return snapshot, nil
 	}
@@ -398,6 +398,7 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project stri
 		CreationTimestamp: Timestamp,
 		Status:            "UPLOADING",
 		SelfLink:          cloud.getGlobalSnapshotURI(project, snapshotName),
+		StorageLocations:  snapshotParams.StorageLocations,
 	}
 	switch volKey.Type() {
 	case meta.Zonal:
@@ -493,11 +494,11 @@ type FakeBlockingCloudProvider struct {
 // Upon starting a CreateSnapshot, it passes a chan 'executeCreateSnapshot' into readyToExecute, then blocks on executeCreateSnapshot.
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
-func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string) (*computev1.Snapshot, error) {
+func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	executeCreateSnapshot := make(chan struct{})
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
-	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName)
+	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 }
 
 func notFoundError() *googleapi.Error {

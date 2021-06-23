@@ -164,3 +164,40 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		})
 	}
 }
+
+// Currently the only parameter is storage-locations, which is already tested
+// in utils_test/TestSnapshotStorageLocations. Here we just test the case where
+// no parameter is set in the snapshot class.
+func TestSnapshotParameters(t *testing.T) {
+	tests := []struct {
+		desc                    string
+		parameters              map[string]string
+		expectedSnapshotParames SnapshotParameters
+	}{
+		{
+			desc:       "valid parameter",
+			parameters: map[string]string{ParameterKeyStorageLocations: "ASIA "},
+			expectedSnapshotParames: SnapshotParameters{
+				StorageLocations: []string{"asia"},
+			},
+		},
+		{
+			desc:       "nil parameter",
+			parameters: nil,
+			expectedSnapshotParames: SnapshotParameters{
+				StorageLocations: []string{},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters)
+			if err != nil {
+				t.Errorf("Got error processing snapshot parameters: %v; expect no error", err)
+			}
+			if !reflect.DeepEqual(p, tc.expectedSnapshotParames) {
+				t.Errorf("Got ExtractAndDefaultSnapshotParameters(%+v) = %+v; expect %+v", tc.parameters, p, tc.expectedSnapshotParames)
+			}
+		})
+	}
+}
