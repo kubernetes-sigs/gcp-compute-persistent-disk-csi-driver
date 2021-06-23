@@ -245,7 +245,7 @@ snapshot-controller and PD CSI driver:
   * gke.gcr.io/csi-attacher:v2.1.1-gke.0
   * gke.gcr.io/csi-resizer:v0.4.0-gke.0
   * gke.gcr.io/csi-snapshotter:v2.1.1-gke.0
-  * gke.gcr.io/gcp-compute-persistent-disk-csi-driver:v0.7.0-gke.0
+  * k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.2.1
 
 #### Migrating by Restoring from a Manually Provisioned Snapshot
 
