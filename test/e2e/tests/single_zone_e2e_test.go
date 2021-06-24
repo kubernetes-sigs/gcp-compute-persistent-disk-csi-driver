@@ -821,6 +821,61 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
+
+	// Use the region of the test location.
+	It("Should successfully create snapshot with storage locations", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+
+		// Convert GCP zone to region, e.g. us-central1-a => us-central1
+		// This is safe because we hardcode the zones.
+		snapshotLocation := z[:len(z)-2]
+
+		snapshotParams := map[string]string{common.ParameterKeyStorageLocations: snapshotLocation}
+		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
