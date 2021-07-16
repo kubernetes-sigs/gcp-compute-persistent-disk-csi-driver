@@ -6,7 +6,6 @@
 # replace the following with annotation approach. https://github.com/docker/cli/pull/2578
 
 export DOCKER_CLI_EXPERIMENTAL=enabled
-_WINDOWS_VERSIONS="20H2 2004 1909 ltsc2019"
 BASE="mcr.microsoft.com/windows/servercore"
 
 IFS=', ' read -r -a imagetags <<< "$WINDOWS_IMAGE_TAGS"
