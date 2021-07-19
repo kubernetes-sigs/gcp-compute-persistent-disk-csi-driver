@@ -98,6 +98,8 @@ Controller-level and node-level deployments will both have priorityClassName set
 
 [Local Development](docs/local-development.md)
 
+For releasing new versions of this driver, googlers should consult [go/pdcsi-oss-release-process](go/pdcsi-oss-release-process).
+
 ### Kubernetes
 
 [User Guides](docs/kubernetes/user-guides)
