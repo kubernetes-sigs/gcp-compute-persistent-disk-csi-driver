@@ -352,9 +352,9 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 }
 
 func getKubeClusterVersion() (string, error) {
-	out, err := exec.Command("kubectl", "version", "-o=json").CombinedOutput()
+	out, err := exec.Command("kubectl", "version", "-o=json").Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to obtain cluster version, error: %v", err)
+		return "", fmt.Errorf("failed to obtain cluster version, error: %v; output was %s", err, out)
 	}
 	type version struct {
 		ClientVersion *apimachineryversion.Info `json:"clientVersion,omitempty" yaml:"clientVersion,omitempty"`
