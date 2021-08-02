@@ -5,7 +5,7 @@ go 1.13
 require (
 	cloud.google.com/go v0.65.0
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20190822182118-27a4ced34534
-	github.com/container-storage-interface/spec v1.2.0
+	github.com/container-storage-interface/spec v1.5.0
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/go-multierror v1.0.0 // indirect

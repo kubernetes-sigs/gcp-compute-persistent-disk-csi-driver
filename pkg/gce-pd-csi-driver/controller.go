@@ -514,6 +514,11 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}, nil
 }
 
+// TODO(#809): Implement logic and advertise related capabilities.
+func (gceCS *GCEControllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ControllerGetVolume is not implemented")
+}
+
 func generateFailedValidationMessage(format string, a ...interface{}) *csi.ValidateVolumeCapabilitiesResponse {
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Message: fmt.Sprintf(format, a...),
