@@ -9,9 +9,9 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.1.2
 	github.com/kubernetes-csi/csi-proxy/client v1.0.0
-	github.com/kubernetes-csi/csi-test/v3 v3.0.0
-	github.com/onsi/ginkgo v1.14.0
-	github.com/onsi/gomega v1.10.1
+	github.com/kubernetes-csi/csi-test/v4 v4.2.0
+	github.com/onsi/ginkgo v1.14.2
+	github.com/onsi/gomega v1.10.4
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
 	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22
 	google.golang.org/api v0.34.0

@@ -293,9 +293,6 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 }
 
 func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, volKey *meta.Key) error {
-	if _, ok := cloud.disks[volKey.Name]; !ok {
-		return notFoundError()
-	}
 	delete(cloud.disks, volKey.Name)
 	return nil
 }
