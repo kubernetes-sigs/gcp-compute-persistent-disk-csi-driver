@@ -138,7 +138,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/sirupsen/logrus v1.7.0
+# github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
@@ -206,7 +206,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
+# golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 golang.org/x/time/rate
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
@@ -355,7 +355,7 @@ gopkg.in/warnings.v0
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 gopkg.in/yaml.v3
-# k8s.io/api v0.22.0-rc.0 => k8s.io/api v0.22.0-rc.0
+# k8s.io/api v0.22.0 => k8s.io/api v0.22.0
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apiserverinternal/v1alpha1
@@ -399,7 +399,7 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.22.0-rc.0 => k8s.io/apimachinery v0.22.0-rc.0
+# k8s.io/apimachinery v0.22.0 => k8s.io/apimachinery v0.22.0
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
 k8s.io/apimachinery/pkg/api/resource
@@ -438,7 +438,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible => k8s.io/client-go v0.22.0-rc.0
+# k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible => k8s.io/client-go v0.22.0
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
 k8s.io/client-go/applyconfigurations/apiserverinternal/v1alpha1
@@ -552,7 +552,7 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/workqueue
-# k8s.io/component-base v0.22.0-rc.0 => k8s.io/component-base v0.22.0-rc.0
+# k8s.io/component-base v0.22.0 => k8s.io/component-base v0.22.0
 k8s.io/component-base/metrics
 k8s.io/component-base/version
 # k8s.io/klog v1.0.0
@@ -561,7 +561,7 @@ k8s.io/klog
 k8s.io/klog/v2
 # k8s.io/kubernetes v1.21.3
 k8s.io/kubernetes/test/e2e/storage/podlogs
-# k8s.io/mount-utils v0.22.0-rc.0 => k8s.io/mount-utils v0.22.0-rc.0
+# k8s.io/mount-utils v0.22.0 => k8s.io/mount-utils v0.22.0
 k8s.io/mount-utils
 # k8s.io/test-infra v0.0.0-20200115230622-70a5174aa78d
 k8s.io/test-infra/boskos/client
