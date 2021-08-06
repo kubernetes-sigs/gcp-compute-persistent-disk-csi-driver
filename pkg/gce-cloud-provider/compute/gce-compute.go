@@ -64,7 +64,7 @@ type GCECompute interface {
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error
 	ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error)
-	ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error)
+	ListDisks(ctx context.Context) ([]*computev1.Disk, string, error)
 	// Regional Disk Methods
 	GetReplicaZoneURI(project string, zone string) string
 	// Instance Methods
@@ -89,19 +89,31 @@ func (cloud *CloudProvider) GetDefaultZone() string {
 
 // ListDisks lists disks based on maxEntries and pageToken only in the project
 // and zone that the driver is running in.
-func (cloud *CloudProvider) ListDisks(ctx context.Context, maxEntries int64, pageToken string) ([]*computev1.Disk, string, error) {
-	lCall := cloud.service.Disks.List(cloud.project, cloud.zone)
-	if maxEntries != 0 {
-		lCall = lCall.MaxResults(maxEntries)
+func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, string, error) {
+	region, err := common.GetRegionFromZones([]string{cloud.zone})
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get region from zones: %v", err)
 	}
-	if len(pageToken) != 0 {
-		lCall = lCall.PageToken(pageToken)
-	}
-	diskList, err := lCall.Do()
+	zones, err := cloud.ListZones(ctx, region)
 	if err != nil {
 		return nil, "", err
 	}
-	return diskList.Items, diskList.NextPageToken, nil
+	items := []*computev1.Disk{}
+
+	for _, zone := range zones {
+		lCall := cloud.service.Disks.List(cloud.project, zone)
+		nextPageToken := "pageToken"
+		for nextPageToken != "" {
+			diskList, err := lCall.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			items = append(items, diskList.Items...)
+			nextPageToken = diskList.NextPageToken
+			lCall.PageToken(nextPageToken)
+		}
+	}
+	return items, "", nil
 }
 
 // RepairUnderspecifiedVolumeKey will query the cloud provider and check each zone for the disk specified

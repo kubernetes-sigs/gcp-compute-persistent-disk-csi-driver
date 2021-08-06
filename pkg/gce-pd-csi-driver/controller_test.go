@@ -771,6 +771,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 }
 
 func TestListVolumeArgs(t *testing.T) {
+	diskCount := 600
 	testCases := []struct {
 		name            string
 		maxEntries      int32
@@ -779,17 +780,12 @@ func TestListVolumeArgs(t *testing.T) {
 	}{
 		{
 			name:            "normal",
-			expectedEntries: 500,
+			expectedEntries: diskCount,
 		},
 		{
 			name:            "fine amount of entries",
 			maxEntries:      420,
 			expectedEntries: 420,
-		},
-		{
-			name:            "too many entries, but defaults to 500",
-			maxEntries:      501,
-			expectedEntries: 500,
 		},
 		{
 			name:        "negative entries",
@@ -802,7 +798,7 @@ func TestListVolumeArgs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup new driver each time so no interference
 			var d []*gce.CloudDisk
-			for i := 0; i < 600; i++ {
+			for i := 0; i < diskCount; i++ {
 				// Create 600 dummy disks
 				d = append(d, gce.CloudDiskFromV1(&compute.Disk{Name: fmt.Sprintf("%v", i)}))
 			}

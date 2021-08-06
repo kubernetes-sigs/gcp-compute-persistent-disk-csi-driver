@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -38,6 +39,9 @@ import (
 type GCEControllerServer struct {
 	Driver        *GCEDriver
 	CloudProvider gce.GCECompute
+
+	disks []*compute.Disk
+	seen  map[string]int
 
 	// A map storing all volumes with ongoing operations so that additional
 	// operations for that same volume (as defined by Volume Key) return an
@@ -529,22 +533,36 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 	// https://cloud.google.com/compute/docs/reference/beta/disks/list
 	if req.MaxEntries < 0 {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
-			"ListVolumes got max entries request %v. GCE only supports values between 0-500", req.MaxEntries))
+			"ListVolumes got max entries request %v. GCE only supports values >0", req.MaxEntries))
 	}
-	var maxEntries int64 = int64(req.MaxEntries)
-	if maxEntries > 500 {
-		klog.Warningf("ListVolumes requested max entries of %v, GCE only supports values <=500 so defaulting value back to 500", maxEntries)
-		maxEntries = 500
-	}
-	diskList, nextToken, err := gceCS.CloudProvider.ListDisks(ctx, maxEntries, req.StartingToken)
-	if err != nil {
-		if gce.IsGCEInvalidError(err) {
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid request: %v", err))
+
+	offset := 0
+	var ok bool
+	if req.StartingToken == "" {
+		diskList, _, err := gceCS.CloudProvider.ListDisks(ctx)
+		if err != nil {
+			if gce.IsGCEInvalidError(err) {
+				return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid request: %v", err))
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list disk error: %v", err))
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list disk error: %v", err))
+		gceCS.disks = diskList
+		gceCS.seen = map[string]int{}
+	} else {
+		offset, ok = gceCS.seen[req.StartingToken]
+		if !ok {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid startingToken: %s", req.StartingToken))
+		}
 	}
+
+	var maxEntries int = int(req.MaxEntries)
+	if maxEntries == 0 {
+		maxEntries = len(gceCS.disks)
+	}
+
 	entries := []*csi.ListVolumesResponse_Entry{}
-	for _, d := range diskList {
+	for i := 0; i+offset < len(gceCS.disks) && i < maxEntries; i++ {
+		d := gceCS.disks[i+offset]
 		users := []string{}
 		for _, u := range d.Users {
 			users = append(users, cleanSelfLink(u))
@@ -557,6 +575,12 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 				PublishedNodeIds: users,
 			},
 		})
+	}
+
+	nextToken := ""
+	if len(entries)+offset < len(gceCS.disks) {
+		nextToken = string(uuid.NewUUID())
+		gceCS.seen[nextToken] = len(entries) + offset
 	}
 
 	return &csi.ListVolumesResponse{
