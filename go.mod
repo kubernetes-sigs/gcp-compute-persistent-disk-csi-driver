@@ -23,7 +23,7 @@ require (
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/component-base v0.22.0
 	k8s.io/klog v1.0.0
-	k8s.io/kubernetes v1.21.3
+	k8s.io/kubernetes v1.22.0
 	k8s.io/mount-utils v0.22.0
 	k8s.io/test-infra v0.0.0-20200115230622-70a5174aa78d
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
@@ -54,6 +54,7 @@ replace (
 	k8s.io/metrics => k8s.io/metrics v0.22.0
 	k8s.io/mount-utils => k8s.io/mount-utils v0.22.0
 	k8s.io/node-api => k8s.io/node-api v0.22.0
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.22.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.22.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.22.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.22.0

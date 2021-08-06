@@ -559,7 +559,7 @@ k8s.io/component-base/version
 k8s.io/klog
 # k8s.io/klog/v2 v2.9.0
 k8s.io/klog/v2
-# k8s.io/kubernetes v1.21.3
+# k8s.io/kubernetes v1.22.0
 k8s.io/kubernetes/test/e2e/storage/podlogs
 # k8s.io/mount-utils v0.22.0 => k8s.io/mount-utils v0.22.0
 k8s.io/mount-utils
