@@ -151,6 +151,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GC
 	return &GCEControllerServer{
 		Driver:        gceDriver,
 		CloudProvider: cloudProvider,
+		seen:          map[string]int{},
 		volumeLocks:   common.NewVolumeLocks(),
 	}
 }
