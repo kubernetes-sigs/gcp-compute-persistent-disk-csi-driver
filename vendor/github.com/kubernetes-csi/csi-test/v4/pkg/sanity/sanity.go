@@ -1,5 +1,5 @@
 /*
-Copyright 2017 Luis Pabón luis@portworx.com
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubernetes-csi/csi-test/v3/utils"
+	"github.com/kubernetes-csi/csi-test/v4/utils"
 	yaml "gopkg.in/yaml.v2"
 
 	"google.golang.org/grpc"
@@ -95,6 +95,7 @@ type TestConfig struct {
 	TestVolumeParametersFile  string
 	TestVolumeParameters      map[string]string
 	TestNodeVolumeAttachLimit bool
+	TestVolumeAccessType      string
 
 	// JUnitFile is used by Test to store test results in JUnit
 	// format. When using GinkgoTest, the caller is responsible
@@ -155,6 +156,22 @@ type TestConfig struct {
 	// generator for valid Volume and Node IDs. Defaults to
 	// DefaultIDGenerator.
 	IDGen IDGenerator
+
+	// Repeat count for Volume operations to test idempotency requirements.
+	// some tests can optionally run repeated variants for those Volume operations
+	// that are required to be idempotent, based on this count value.
+	// <= 0: skip idempotency tests
+	// n > 0: repeat each call n times
+	// NewTestConfig() by default enables idempotency testing.
+	IdempotentCount int
+
+	// CheckPath is a callback function to check whether the given path exists.
+	// If this is not set, then defaultCheckPath will be used instead.
+	CheckPath func(path string) (PathKind, error)
+	// Command to be executed for a customized way to check a given path.
+	CheckPathCmd string
+	// Timeout for the executed command to check a given path.
+	CheckPathCmdTimeout time.Duration
 }
 
 // TestContext gets initialized by the sanity package before each test
@@ -182,17 +199,20 @@ func NewTestConfig() TestConfig {
 		CreatePathCmdTimeout: 10 * time.Second,
 		RemovePathCmdTimeout: 10 * time.Second,
 		TestVolumeSize:       10 * 1024 * 1024 * 1024, // 10 GiB
+		TestVolumeAccessType: "mount",
 		IDGen:                &DefaultIDGenerator{},
+		IdempotentCount:      10,
+		CheckPathCmdTimeout:  10 * time.Second,
 
 		DialOptions:           []grpc.DialOption{grpc.WithInsecure()},
 		ControllerDialOptions: []grpc.DialOption{grpc.WithInsecure()},
 	}
 }
 
-// newContext sets up sanity testing with a config supplied by the
+// NewContext sets up sanity testing with a config supplied by the
 // user of the sanity package. Ownership of that config is shared
 // between the sanity package and the caller.
-func newTestContext(config *TestConfig) *TestContext {
+func NewTestContext(config *TestConfig) *TestContext {
 	return &TestContext{
 		Config: config,
 	}
@@ -221,7 +241,7 @@ func Test(t GinkgoTestingT, config TestConfig) {
 // still be modified in a BeforeEach. The sanity package itself treats
 // it as read-only.
 func GinkgoTest(config *TestConfig) *TestContext {
-	sc := newTestContext(config)
+	sc := NewTestContext(config)
 	registerTestsInGinkgo(sc)
 	return sc
 }
@@ -437,4 +457,90 @@ func PseudoUUID() string {
 // alone should already be fairly unique.
 func UniqueString(prefix string) string {
 	return prefix + uniqueSuffix
+}
+
+// Return codes for CheckPath
+type PathKind string
+
+const (
+	PathIsFile     PathKind = "file"
+	PathIsDir      PathKind = "directory"
+	PathIsNotFound PathKind = "not_found"
+	PathIsOther    PathKind = "other"
+)
+
+// IsPathKind validates that the input string matches one of the defined
+// PathKind values above. If successful, it returns the corresponding
+// PathKind type. Otherwise, it returns an error.
+func IsPathKind(in string) (PathKind, error) {
+	pk := PathKind(in)
+	switch pk {
+	case PathIsFile, PathIsDir, PathIsNotFound, PathIsOther:
+		return pk, nil
+	default:
+		return pk, fmt.Errorf("invalid PathType: %s", pk)
+	}
+}
+
+// defaultCheckPath runs os.Stat against the provided path and returns
+// a code indicating whether it's a file, directory, not found, or other.
+// If an error occurs, it returns an empty string along with the error.
+func defaultCheckPath(path string) (PathKind, error) {
+	var pk PathKind
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return PathIsNotFound, nil
+		} else {
+			return "", err
+		}
+	}
+	switch mode := fi.Mode(); {
+	case mode.IsRegular():
+		pk = PathIsFile
+	case mode.IsDir():
+		pk = PathIsDir
+	default:
+		pk = PathIsOther
+	}
+	return pk, nil
+}
+
+// CheckPath takes a path parameter and returns a code indicating whether
+// it's a file, directory, not found, or other. This can be done using a
+// custom command, custom function, or by the defaultCheckPath function.
+// If an error occurs, it returns an empty string along with the error.
+func CheckPath(path string, config *TestConfig) (PathKind, error) {
+	if path == "" {
+		return "", fmt.Errorf("path argument must not be empty")
+	}
+	if config == nil {
+		return "", fmt.Errorf("config argument must not be nil")
+	}
+
+	if config.CheckPathCmd != "" {
+		// Check the provided path using the check path command.
+		ctx, cancel := context.WithTimeout(context.Background(), config.CheckPathCmdTimeout)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, config.CheckPathCmd, path)
+		cmd.Stderr = os.Stderr
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("check path command %s failed: %v", config.CheckPathCmd, err)
+		}
+		// The output of this command is expected to match the value for
+		// PathIsFile, PathIsDir, PathIsNotFound, or PathIsOther.
+		pk, err := IsPathKind(strings.TrimSpace(string(out)))
+		if err != nil {
+			return "", fmt.Errorf("check path command %s failed: %v", config.CheckPathCmd, err)
+		}
+		return pk, nil
+	} else if config.CheckPath != nil {
+		// Check the path using a custom callback function.
+		return config.CheckPath(path)
+	} else {
+		// Use defaultCheckPath if no custom function was provided.
+		return defaultCheckPath(path)
+	}
 }
