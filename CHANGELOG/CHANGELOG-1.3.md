@@ -1,4 +1,21 @@
-# v1.2.3 - Changelog since v1.2.2
+# v1.3.1 - Changelog since v1.3.0
+
+### Issues
+
+- Fixes issue where `ControllerPublishVolume` is called repeatly if gke nodes are in different cloud zones than the gke controller ([#817](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/817), [@leiyiz](https://github.com/leiyiz))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# v1.3.0 - Changelog since v1.2.2
 
 ### Feature
 
