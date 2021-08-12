@@ -32,7 +32,7 @@ metadata:
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.3.0-rc1"
+  newTag: "v1.3.1-rc1"
 ---
 
 apiVersion: builtin
