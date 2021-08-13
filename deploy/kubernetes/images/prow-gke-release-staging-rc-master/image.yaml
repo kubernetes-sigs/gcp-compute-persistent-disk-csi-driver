@@ -1,3 +1,6 @@
+# Note the image names must be based off of those in stable-master, as that's
+# what this kustomization is built on.
+
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
@@ -28,11 +31,10 @@ imageTag:
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-gce-driver-prow-rc
+  name: imagetag-csi-snapshotter-prow-head
 imageTag:
-  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.3.1-rc1"
+  name: k8s.gcr.io/sig-storage/csi-snapshotter
+  newTag: "v3.0.3"
 ---
 
 apiVersion: builtin
@@ -47,9 +49,9 @@ imageTag:
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-snapshotter-prow-head
+  name: imagetag-csi-gce-driver-prow-rc
 imageTag:
-  name: k8s.gcr.io/sig-storage/csi-snapshotter
-  newTag: "v3.0.3"
+  name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newTag: "v1.3.1-rc1"
 ---
-
