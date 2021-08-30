@@ -14,17 +14,17 @@
 
 
 
-FROM golang:1.13.4 as builder
+FROM golang:1.13.15 as builder
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
 RUN make
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM k8s.gcr.io/build-image/debian-base-amd64:v2.1.3 as base
+FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.9.0 as base
 RUN clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base-amd64:v2.1.3 
+FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.9.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
