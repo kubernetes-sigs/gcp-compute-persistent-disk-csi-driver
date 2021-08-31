@@ -1,5 +1,5 @@
 KUBE_GIT_COMMIT='somefakecommit'
 KUBE_GIT_TREE_STATE='dirty'
-KUBE_GIT_VERSION='v888.888.888-fake-testing-master.version'
-KUBE_GIT_MAJOR='888'
-KUBE_GIT_MINOR='888+'
+KUBE_GIT_VERSION='v1.23.888-fake-testing-master.version'
+KUBE_GIT_MAJOR='1'
+KUBE_GIT_MINOR='23+'
