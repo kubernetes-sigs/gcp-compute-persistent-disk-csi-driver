@@ -325,7 +325,7 @@ func getKubeClusterVersion() (string, error) {
 	var v version
 	err = json.Unmarshal(out, &v)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v", err)
+		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v: %s", err, out)
 	}
 
 	return v.ServerVersion.GitVersion, nil
