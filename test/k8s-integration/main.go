@@ -355,7 +355,7 @@ func handle() error {
 	// Kubernetes version of GKE deployments are expected to be of the pattern x.y.z-gke.k,
 	// hence we use the main.Version utils to parse and compare GKE managed cluster versions.
 	// For clusters deployed on GCE, use the apimachinery version utils (which supports non-gke based semantic versioning).
-	clusterVersion := mustGetKubeClusterVersion()
+	clusterVersion := mustGetKubeClusterVersion(k8sDir)
 	var testSkip string
 	switch *deploymentStrat {
 	case "gce":

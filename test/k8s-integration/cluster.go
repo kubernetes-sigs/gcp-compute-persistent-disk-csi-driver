@@ -312,8 +312,8 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 
 }
 
-func getKubeClusterVersion() (string, error) {
-	out, err := exec.Command("kubectl", "version", "-o=json").CombinedOutput()
+func getKubeClusterVersion(k8sDir string) (string, error) {
+	out, err := exec.Command(filepath.Join(k8sDir, "cluster", "kubectl.sh"), "version", "-o=json").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain cluster version, error: %v", err)
 	}
@@ -331,8 +331,8 @@ func getKubeClusterVersion() (string, error) {
 	return v.ServerVersion.GitVersion, nil
 }
 
-func mustGetKubeClusterVersion() string {
-	ver, err := getKubeClusterVersion()
+func mustGetKubeClusterVersion(k8sDir string) string {
+	ver, err := getKubeClusterVersion(k8sDir)
 	if err != nil {
 		klog.Fatalf("Error: %v", err)
 	}
