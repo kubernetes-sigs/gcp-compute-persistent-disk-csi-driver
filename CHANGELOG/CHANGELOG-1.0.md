@@ -1,8 +1,10 @@
-# v1.0.3 - Changelog since v1.0.2
+# v1.0.4 - Changelog since v1.0.2
 
 ### Other
 
 - Fix build for various go versions, ([#832](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/832), [@mattcary](https://github.com/mattcary))
+
+# v1.0.3 - **Bad tag, skipped**
 
 # v1.0.2 - Changelog since v1.0.1
 
