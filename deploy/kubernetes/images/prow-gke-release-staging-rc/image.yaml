@@ -31,8 +31,8 @@ metadata:
   name: imagetag-csi-gce-driver-prow-rc
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/gke-release-staging/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.2.0"
+  newName: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newTag: "v1.2.2"
 ---
 
 apiVersion: builtin
