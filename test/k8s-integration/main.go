@@ -566,6 +566,12 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|fsgroupchangepolicy"
 	}
 
+	// Generic Ephemeral volume is only enabled in version 1.21.
+	// If there's node skew Generic Ephemeral volume tests might not be skipped correctly
+	if curVer.lessThan(mustParseVersion("1.21.0")) || (nodeVer != nil && nodeVer.lessThan(mustParseVersion("1.21.0"))) {
+		skipString = skipString + "|Generic\\sEphemeral-volume"
+	}
+
 	// ExpandCSIVolumes feature is beta in k8s 1.16
 	// For GKE deployed PD CSI driver, resizer sidecar is enabled in 1.16.8-gke.3
 	if (testParams.useGKEManagedDriver && curVer.lessThan(mustParseVersion("1.16.8-gke.3"))) ||
