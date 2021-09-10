@@ -137,10 +137,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		}
 
 		klog.V(4).Infof("NodePublishVolume with filesystem %s", fstype)
-
-		for _, flag := range mnt.MountFlags {
-			options = append(options, flag)
-		}
+		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
 
 		sourcePath = stagingTargetPath
 		if err := preparePublishPath(targetPath, ns.Mounter); err != nil {
@@ -307,9 +304,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		if mnt.FsType != "" {
 			fstype = mnt.FsType
 		}
-		for _, flag := range mnt.MountFlags {
-			options = append(options, flag)
-		}
+		options = collectMountOptions(fstype, mnt.MountFlags)
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
 		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)

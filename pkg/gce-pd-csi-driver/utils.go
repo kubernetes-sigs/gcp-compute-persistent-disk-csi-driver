@@ -27,6 +27,10 @@ import (
 	"k8s.io/klog"
 )
 
+const (
+	fsTypeXFS = "xfs"
+)
+
 var ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
 
 func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability_AccessMode {
@@ -151,4 +155,19 @@ func getMultiWriterFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func collectMountOptions(fsType string, mntFlags []string) []string {
+	var options []string
+
+	for _, opt := range mntFlags {
+		options = append(options, opt)
+	}
+
+	// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
+	// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
+	if fsType == fsTypeXFS {
+		options = append(options, "nouuid")
+	}
+	return options
 }
