@@ -21,11 +21,11 @@ ADD . .
 RUN GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.6.0 as mad-hack
+FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.9.0 as mad-hack
 RUN clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.6.0
+FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.9.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
