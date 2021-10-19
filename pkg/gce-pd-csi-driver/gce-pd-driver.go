@@ -67,6 +67,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolu
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 	}
 	gceDriver.AddControllerServiceCapabilities(csc)
 	ns := []csi.NodeServiceCapability_RPC_Type{
