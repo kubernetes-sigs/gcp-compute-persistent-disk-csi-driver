@@ -1,3 +1,41 @@
+# v1.3.3 - Changelog since v1.3.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go builder to 1.17 ([#850](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/850), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# v1.3.3 - Changelog since v1.3.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update debian image to buster-1.9.0. ([#841](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/841), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.3.1 - Changelog since v1.3.0
 
 ### Issues
