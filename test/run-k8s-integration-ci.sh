@@ -52,11 +52,10 @@ export GCE_PD_VERBOSITY=9
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    export GO111MODULE=on;
-    go get sigs.k8s.io/kubetest2@latest;
-    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
-    go get sigs.k8s.io/kubetest2/kubetest2-gke@latest;
-    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+    go install sigs.k8s.io/kubetest2@latest;
+    go install sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+    go install sigs.k8s.io/kubetest2/kubetest2-gke@latest;
+    go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
