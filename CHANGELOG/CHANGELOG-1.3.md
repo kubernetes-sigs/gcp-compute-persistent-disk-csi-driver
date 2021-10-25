@@ -1,4 +1,4 @@
-# v1.3.3 - Changelog since v1.3.1
+# v1.3.4 - Changelog since v1.3.3
 
 ## Changes by Kind
 
