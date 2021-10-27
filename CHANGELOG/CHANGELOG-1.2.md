@@ -1,3 +1,45 @@
+# v1.2.4 - Changelog since v1.2.3
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go builder to 1.17 ([#850](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/850), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# v1.2.3 - Changelog since v1.2.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update debian images to buster-v1.9.0 ([#839](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/839), [@mattcary](https://github.com/mattcary))
+
+### Uncategorized
+
+- It is now possible to mount a volume with XFS filesystem and its restored snapshot. ([#838](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/838), [@leiyiz](https://github.com/leiyiz))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.2.2 - Changelog since v1.2.1
 
 ## Changes by Kind
