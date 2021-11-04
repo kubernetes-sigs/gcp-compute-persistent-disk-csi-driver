@@ -4,5 +4,7 @@ namespace:
   gce-pd-csi-driver
 resources:
 - ../../base
+patchesStrategicMerge:
+- no-node-driver-registrar-probe.yaml
 transformers:
 - ../../images/stable-1-18

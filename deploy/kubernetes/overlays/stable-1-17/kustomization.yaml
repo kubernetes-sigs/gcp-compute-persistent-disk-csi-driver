@@ -9,5 +9,6 @@ resources:
 patchesStrategicMerge:
 - no_win_roles.yaml
 - no_v1_csidriver.yaml
+- no-node-driver-registrar-probe.yaml
 transformers:
 - ../../images/stable-1-17
