@@ -1,3 +1,28 @@
+# v1.0.4 - Changelog since v1.0.2
+
+### Other
+
+- Fix build for various go versions, ([#832](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/832), [@mattcary](https://github.com/mattcary))
+
+# v1.0.3 - **Bad tag, skipped**
+
+# v1.0.2 - Changelog since v1.0.1
+
+### Bug or Regression
+
+- Update base image to buster-v.1.9.0 ([#829](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/829), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.0.1 - Changelog since v1.0.0
 
 ## Changes by Kind
