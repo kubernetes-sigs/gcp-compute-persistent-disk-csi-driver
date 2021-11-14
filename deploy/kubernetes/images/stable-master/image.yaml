@@ -46,6 +46,16 @@ imageTag:
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
+  name: imagetag-csi-liveness-probe
+imageTag:
+  name: k8s.gcr.io/sig-storage/livenessprobe
+  newTag: "v2.2.0"
+
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
   name: imagetag-gcepd-driver
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
