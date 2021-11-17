@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 ARG BUILDPLATFORM
 
 FROM --platform=$BUILDPLATFORM golang:1.17.2 as builder
@@ -28,10 +29,25 @@ FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0 as mad-hack
 RUN clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0
+FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0 as debian
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
+
+
 # Install necessary dependencies
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+
+FROM gcr.io/distroless/base
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 COPY --from=mad-hack /lib/udev/scsi_id /lib/udev_containerized/scsi_id
+# COPY --from=debian /lib/xfsprogs/ /lib/xfsprogs_containerized/
+# COPY --from=debian /lib/util-linux/ /lib/util-linux_containerized/
+
+
 
 ENTRYPOINT ["/gce-pd-csi-driver"]
+
+# Since you're leveraging apt to pull in dependencies, you'd want to use `gcr.io/distroless/base` as the ultimate base because it includes glibc
+
+
+# COPY --from=builder /lib/x86_64-linux-gnu/libpthread.so.0 /lib/x86_64-linux-gnu/]
+# RUN ["/busybox/sh", "-c", "clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs"]
