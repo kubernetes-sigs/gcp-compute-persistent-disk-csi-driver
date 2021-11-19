@@ -1,0 +1,20 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-provisioner
+          args:
+            - "--v=5"
+            - "--csi-address=/csi/csi.sock"
+            - "--feature-gates=Topology=true"
+            - "--http-endpoint=:22011"
+            - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+            - "--timeout=250s"
+            - "--extra-create-metadata"
+            - "--leader-election"
+            - "--default-fstype=ext4"
+            - "--controller-publish-readonly=true"

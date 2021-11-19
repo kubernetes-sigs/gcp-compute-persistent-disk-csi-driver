@@ -2,3 +2,4 @@ namespace:
   gce-pd-csi-driver
 resources:
 - ../stable-master/
+- image.yaml

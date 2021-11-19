@@ -3,5 +3,7 @@ kind: Kustomization
 namespace: gce-pd-csi-driver
 resources:
 - ../../base/
+patchesStrategicMerge:
+- controller_readonly.yaml
 transformers:
 - ../../images/alpha

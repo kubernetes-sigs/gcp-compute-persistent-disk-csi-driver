@@ -358,19 +358,14 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "success with MULTI_NODE_READER_ONLY",
+			name: "fail with MULTI_NODE_READER_ONLY",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
 				Parameters:         stdParams,
 			},
-			expVol: &csi.Volume{
-				CapacityBytes:      common.GbToBytes(20),
-				VolumeId:           testVolumeID,
-				VolumeContext:      nil,
-				AccessibleTopology: stdTopology,
-			},
+			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "fail with mount/MULTI_NODE_MULTI_WRITER capabilities",
