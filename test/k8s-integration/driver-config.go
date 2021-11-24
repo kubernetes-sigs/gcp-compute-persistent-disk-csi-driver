@@ -76,7 +76,6 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 	}
 
 	/* Unsupported Capabilities:
-	   pvcDataSource
 	   RWX
 	   volumeLimits # PD Supports volume limits but test is very slow
 	   singleNodeVolume
@@ -117,6 +116,7 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 		absSnapshotClassFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.snapshotClassFile)
 	}
 
+	caps = append(caps, "pvcDataSource")
 	minimumVolumeSize := "5Gi"
 	numAllowedTopologies := 1
 	if storageClassFile == regionalPDStorageClass {

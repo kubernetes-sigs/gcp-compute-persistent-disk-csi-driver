@@ -543,6 +543,9 @@ func generateGCETestSkip(testParams *testParameters) string {
 	if testParams.platform == "windows" {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
+	// Volume cloning has timeouts due to GCE disk cloning rate limits, and operation serialization
+	// race conditions where the cloning begins while the source disk is still being created.
+	skipString = skipString + "|provisioning\\sshould\\sprovision\\sstorage\\swith\\spvc\\sdata\\ssource[^|]*"
 	return skipString
 }
 
@@ -585,7 +588,9 @@ func generateGKETestSkip(testParams *testParameters) string {
 		(!testParams.useGKEManagedDriver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
-
+	// Volume cloning has timeouts due to GCE disk cloning rate limits, and operation serialization
+	// race conditions where the cloning begins while the source disk is still being created.
+	skipString = skipString + "|provisioning\\sshould\\sprovision\\sstorage\\swith\\spvc\\sdata\\ssource[^|]*"
 	return skipString
 }
 

@@ -824,7 +824,7 @@ func TestListVolumeArgs(t *testing.T) {
 	}
 }
 
-func TestCreateVolumeWithVolumeSource(t *testing.T) {
+func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 	// Define test cases
 	testCases := []struct {
 		name            string
@@ -897,6 +897,162 @@ func TestCreateVolumeWithVolumeSource(t *testing.T) {
 			t.Fatalf("Expected volume content source to have snapshot ID, got none")
 		}
 
+	}
+}
+
+func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
+	testSourceVolumeName := "test-volume-source-name"
+	testZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, testSourceVolumeName)
+	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
+	testVolumeSourceIDDifferentZone := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone", testSourceVolumeName)
+	topology := &csi.TopologyRequirement{
+		Requisite: []*csi.Topology{
+			{
+				Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+			},
+			{
+				Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+			},
+		},
+	}
+	regionalParams := map[string]string{
+		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: "regional-pd",
+	}
+	// Define test cases
+	testCases := []struct {
+		name                string
+		volumeOnCloud       bool
+		expErrCode          codes.Code
+		sourceVolumeID      string
+		reqParameters       map[string]string
+		sourceReqParameters map[string]string
+		topology            *csi.TopologyRequirement
+	}{
+		{
+			name:                "success with data source of zonal volume type",
+			volumeOnCloud:       true,
+			sourceVolumeID:      testZonalVolumeSourceID,
+			reqParameters:       stdParams,
+			sourceReqParameters: stdParams,
+		},
+		{
+			name:                "success with data source of regional volume type",
+			volumeOnCloud:       true,
+			sourceVolumeID:      testRegionalVolumeSourceID,
+			reqParameters:       regionalParams,
+			sourceReqParameters: regionalParams,
+			topology:            topology,
+		},
+		{
+			name:                "fail with with data source of replication-type different from CreateVolumeRequest",
+			volumeOnCloud:       true,
+			expErrCode:          codes.InvalidArgument,
+			sourceVolumeID:      testZonalVolumeSourceID,
+			reqParameters:       stdParams,
+			sourceReqParameters: regionalParams,
+			topology:            topology,
+		},
+		{
+			name:                "fail with data source of zonal volume type that doesn't exist",
+			volumeOnCloud:       false,
+			expErrCode:          codes.NotFound,
+			sourceVolumeID:      testZonalVolumeSourceID,
+			reqParameters:       stdParams,
+			sourceReqParameters: stdParams,
+		},
+		{
+			name:                "fail with data source of zonal volume type with invalid volume id format",
+			volumeOnCloud:       false,
+			expErrCode:          codes.InvalidArgument,
+			sourceVolumeID:      testZonalVolumeSourceID + "invalid/format",
+			reqParameters:       stdParams,
+			sourceReqParameters: stdParams,
+		},
+		{
+			name:           "fail with data source of zonal volume type with invalid disk parameters",
+			volumeOnCloud:  true,
+			expErrCode:     codes.InvalidArgument,
+			sourceVolumeID: testVolumeSourceIDDifferentZone,
+			reqParameters:  stdParams,
+			sourceReqParameters: map[string]string{
+				common.ParameterKeyType: "different-type",
+			},
+		},
+		{
+			name:                "fail with data source of zonal volume type with invalid replication type",
+			volumeOnCloud:       true,
+			expErrCode:          codes.InvalidArgument,
+			sourceVolumeID:      testZonalVolumeSourceID,
+			reqParameters:       regionalParams,
+			sourceReqParameters: stdParams,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gceDriver := initGCEDriver(t, nil)
+
+		req := &csi.CreateVolumeRequest{
+			Name:               name,
+			CapacityRange:      stdCapRange,
+			VolumeCapabilities: stdVolCaps,
+			Parameters:         tc.reqParameters,
+			VolumeContentSource: &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: tc.sourceVolumeID,
+					},
+				},
+			},
+		}
+
+		sourceVolumeRequest := &csi.CreateVolumeRequest{
+			Name:               testSourceVolumeName,
+			CapacityRange:      stdCapRange,
+			VolumeCapabilities: stdVolCaps,
+			Parameters:         tc.sourceReqParameters,
+		}
+
+		if tc.topology != nil {
+			// req.AccessibilityRequirements = tc.topology
+			sourceVolumeRequest.AccessibilityRequirements = tc.topology
+		}
+
+		if tc.volumeOnCloud {
+			// Create the source volume.
+			sourceVolume, _ := gceDriver.cs.CreateVolume(context.Background(), sourceVolumeRequest)
+			req.VolumeContentSource = &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: sourceVolume.GetVolume().VolumeId,
+					},
+				},
+			}
+		}
+
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
+		t.Logf("response: %v err: %v", resp, err)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		// Make sure the response has the source volume.
+		sourceVolume := resp.GetVolume()
+		t.Logf("response has source volume: %v ", sourceVolume)
+		if sourceVolume.ContentSource == nil || sourceVolume.ContentSource.Type == nil ||
+			sourceVolume.ContentSource.GetVolume() == nil || sourceVolume.ContentSource.GetVolume().VolumeId == "" {
+			t.Fatalf("Expected volume content source to have volume ID, got none")
+		}
 	}
 }
 
