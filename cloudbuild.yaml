@@ -6,7 +6,7 @@ options:
   substitution_option: ALLOW_LOOSE
 
 steps:
-  - name: 'gcr.io/k8s-testimages/gcb-docker-gcloud:v20210331-c732583'
+  - name: 'gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20211118-2f2d816b90'
     entrypoint: make
     env:
     - GCE_PD_CSI_STAGING_IMAGE=gcr.io/${_STAGING_PROJECT}/gcp-compute-persistent-disk-csi-driver
