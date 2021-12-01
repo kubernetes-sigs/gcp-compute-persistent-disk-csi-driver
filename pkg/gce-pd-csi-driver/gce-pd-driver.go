@@ -20,6 +20,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/mount-utils"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -150,15 +151,21 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 
 func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:        gceDriver,
-		CloudProvider: cloudProvider,
-		seen:          map[string]int{},
-		volumeLocks:   common.NewVolumeLocks(),
+		Driver:                  gceDriver,
+		CloudProvider:           cloudProvider,
+		seen:                    map[string]int{},
+		volumeLocks:             common.NewVolumeLocks(),
+		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "controllerserver"),
+		publishErrorsSeenOnNode: map[string]bool{},
 	}
 }
 
 func (gceDriver *GCEDriver) Run(endpoint string) {
 	klog.V(4).Infof("Driver: %v", gceDriver.name)
+
+	if gceDriver.cs != nil {
+		gceDriver.cs.Run()
+	}
 
 	//Start the nonblocking GRPC
 	s := NewNonBlockingGRPCServer()
@@ -167,5 +174,6 @@ func (gceDriver *GCEDriver) Run(endpoint string) {
 	// The schema for that was in util. basically it was just s.start but with some nil servers.
 
 	s.Start(endpoint, gceDriver.ids, gceDriver.cs, gceDriver.ns)
+
 	s.Wait()
 }
