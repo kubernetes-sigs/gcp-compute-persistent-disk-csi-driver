@@ -445,6 +445,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		}
 		return status.Error(codes.Internal, fmt.Sprintf("unknown Insert disk error: %v", err))
 	}
+	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
 	err = cloud.waitForRegionalOp(ctx, project, opName, volKey.Region)
 	if err != nil {
@@ -544,6 +545,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		}
 		return fmt.Errorf("unknown Insert disk error: %v", err)
 	}
+	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
 	err = cloud.waitForZonalOp(ctx, project, opName, volKey.Zone)
 
@@ -589,6 +591,8 @@ func (cloud *CloudProvider) deleteZonalDisk(ctx context.Context, project, zone, 
 		}
 		return err
 	}
+	klog.V(5).Infof("DeleteDisk operation %s for disk %s", op.Name, name)
+
 	err = cloud.waitForZonalOp(ctx, project, op.Name, zone)
 	if err != nil {
 		return err
@@ -605,6 +609,8 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, project, reg
 		}
 		return err
 	}
+	klog.V(5).Infof("DeleteDisk operation %s for disk %s", op.Name, name)
+
 	err = cloud.waitForRegionalOp(ctx, project, op.Name, region)
 	if err != nil {
 		return err
@@ -632,6 +638,8 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 	if err != nil {
 		return fmt.Errorf("failed cloud service attach disk call: %v", err)
 	}
+	klog.V(5).Infof("AttachDisk operation %s for disk %s", op.Name, attachedDiskV1.DeviceName)
+
 	err = cloud.waitForZonalOp(ctx, project, op.Name, instanceZone)
 	if err != nil {
 		return fmt.Errorf("failed when waiting for zonal op: %v", err)
@@ -645,6 +653,8 @@ func (cloud *CloudProvider) DetachDisk(ctx context.Context, project, deviceName,
 	if err != nil {
 		return err
 	}
+	klog.V(5).Infof("DetachDisk operation %s for disk %s", op.Name, deviceName)
+
 	err = cloud.waitForZonalOp(ctx, project, op.Name, instanceZone)
 	if err != nil {
 		return err
@@ -857,6 +867,7 @@ func (cloud *CloudProvider) resizeZonalDisk(ctx context.Context, project string,
 	if err != nil {
 		return -1, fmt.Errorf("failed to resize zonal volume %v: %v", volKey.String(), err)
 	}
+	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
 	if err != nil {
@@ -875,6 +886,7 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 	if err != nil {
 		return -1, fmt.Errorf("failed to resize regional volume %v: %v", volKey.String(), err)
 	}
+	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForRegionalOp(ctx, project, op.Name, volKey.Region)
 	if err != nil {
