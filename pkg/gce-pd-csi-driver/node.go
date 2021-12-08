@@ -60,6 +60,7 @@ const (
 	volumeLimitBig       int64 = 127
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
+	fsTypeExt3                 = "ext3"
 )
 
 func getDefaultFsType() string {
@@ -311,8 +312,29 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
+	readonly, _ := getReadOnlyFromCapability(volumeCapability)
+	if readonly {
+		options = append(options, "ro")
+		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
+	}
+
 	err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
+		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
+		// as "dirty" even if it is otherwise consistent and ext3/4 will try to restore to a consistent state by replaying
+		// the journal which is not possible in read-only mode. So we'll try again with noload option to skip it. This may
+		// allow mounting of an actually inconsistent filesystem, but because the mount is read-only no further damage should
+		// be caused.
+		if readonly && (fstype == defaultLinuxFsType || fstype == fsTypeExt3) {
+			klog.V(4).Infof("Failed to mount CSI volume read-only, retry mounting with extra option noload")
+
+			options = append(options, "noload")
+			err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
+			if err == nil {
+				klog.V(4).Infof("NodeStageVolume succeeded with \"noload\" option on %v to %s", volumeID, stagingTargetPath)
+				return &csi.NodeStageVolumeResponse{}, nil
+			}
+		}
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
 				devicePath, stagingTargetPath, fstype, options, err))
