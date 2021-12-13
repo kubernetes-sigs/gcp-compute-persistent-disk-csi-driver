@@ -1,3 +1,32 @@
+# v1.3.5 - Changelog since v1.3.4
+
+## Changes by Kind
+
+### Feature
+
+- Add attach/detach back off (#847, @lizhuqi)
+- Add volume cloning feature (#854, @amacaskill)
+- Change to distroless base image (#870, @amacaskill)
+
+### Bug or Regression
+
+- Cherrypick #850 - Update go builder to 1.17 (#851, @saikat-royc)
+
+### Uncategorized
+
+- Doc and Image update for 1.3.4 release (#860, @saikat-royc)
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.3.4 - Changelog since v1.3.3
 
 ## Changes by Kind
