@@ -252,7 +252,12 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 				return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk from source volume %v is not ready", sourceVolKey))
 			}
 		}
+	} else { // if VolumeContentSource is nil, validate access mode is not read only
+		if readonly, _ := getReadOnlyFromCapabilities(volumeCapabilities); readonly {
+			return nil, status.Error(codes.InvalidArgument, "VolumeContentSource must be provided when AccessMode is set to read only")
+		}
 	}
+
 	// Create the disk
 	var disk *gce.CloudDisk
 	switch params.ReplicationType {

@@ -234,3 +234,60 @@ func TestGetMultiWriterFromCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestGetReadOnlyFromCapabilities(t *testing.T) {
+	testCases := []struct {
+		name   string
+		vc     []*csi.VolumeCapability
+		expVal bool
+		expErr bool
+	}{
+		{
+			name:   "false with empty capabilities",
+			vc:     []*csi.VolumeCapability{},
+			expVal: false,
+		},
+		{
+			name: "fail with capabilities no access mode",
+			vc: []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+				},
+			},
+			expErr: true,
+		},
+		{
+			name:   "false with SINGLE_NODE_WRITER capabilities",
+			vc:     createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			expVal: false,
+		},
+		{
+			name:   "true with MULTI_NODE_READER_ONLY capabilities",
+			vc:     createBlockVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			expVal: true,
+		},
+		{
+			name:   "true with SINGLE_NODE_READER_ONLY capabilities",
+			vc:     createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY),
+			expVal: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		val, err := getReadOnlyFromCapabilities(tc.vc)
+		if tc.expErr && err == nil {
+			t.Fatalf("Expected error but didn't get any")
+		}
+		if !tc.expErr && err != nil {
+			t.Fatalf("Did not expect error but got: %v", err)
+		}
+		if err != nil {
+			if tc.expVal != val {
+				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
+			}
+		}
+	}
+}

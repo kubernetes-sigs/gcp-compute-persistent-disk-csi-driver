@@ -160,6 +160,31 @@ func getMultiWriterFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
 	return false, nil
 }
 
+func getReadOnlyFromCapability(vc *csi.VolumeCapability) (bool, error) {
+	if vc.GetAccessMode() == nil {
+		return false, errors.New("access mode is nil")
+	}
+	mode := vc.GetAccessMode().GetMode()
+	return (mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+		mode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY), nil
+}
+
+func getReadOnlyFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
+	if vcs == nil {
+		return false, errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		readOnly, err := getReadOnlyFromCapability(vc)
+		if err != nil {
+			return false, err
+		}
+		if readOnly {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func collectMountOptions(fsType string, mntFlags []string) []string {
 	var options []string
 
