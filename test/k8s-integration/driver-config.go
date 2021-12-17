@@ -17,12 +17,18 @@ type driverConfig struct {
 	SupportedFsType      []string
 	MinimumVolumeSize    string
 	NumAllowedTopologies int
+	Timeouts             map[string]string
 }
 
 const (
 	testConfigDir      = "test/k8s-integration/config"
 	configTemplateFile = "test-config-template.in"
 	configFile         = "test-config.yaml"
+	// configurable timeouts for the k8s e2e testsuites
+	dataSourceProvisionTimeout = "480s"
+
+	// These are keys for the configurable timeout map.
+	dataSourceProvisionTimeoutKey = "DataSourceProvision"
 )
 
 // generateDriverConfigFile loads a testdriver config template and creates a file
@@ -123,6 +129,9 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 		minimumVolumeSize = "200Gi"
 		numAllowedTopologies = 2
 	}
+	timeouts := map[string]string{
+		dataSourceProvisionTimeoutKey: dataSourceProvisionTimeout,
+	}
 	params := driverConfig{
 		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, storageClassFile),
 		StorageClass:         storageClassFile[:strings.LastIndex(storageClassFile, ".")],
@@ -131,6 +140,7 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 		Capabilities:         caps,
 		MinimumVolumeSize:    minimumVolumeSize,
 		NumAllowedTopologies: numAllowedTopologies,
+		Timeouts:             timeouts,
 	}
 
 	// Write config file
