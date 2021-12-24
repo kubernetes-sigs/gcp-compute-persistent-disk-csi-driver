@@ -3,6 +3,7 @@ kind: Kustomization
 patchesStrategicMerge:
 - controller_always_pull.yaml
 - node_always_pull.yaml
+- controller_readonly.yaml
 namespace: gce-pd-csi-driver
 resources:
 - ../../base/
