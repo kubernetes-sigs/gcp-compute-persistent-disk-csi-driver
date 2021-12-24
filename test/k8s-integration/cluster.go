@@ -222,38 +222,27 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		return err
 	}
 
+	// We clone rather than download from release archives, because the file naming has not been
+	// stable.  For example, in late 2021 it appears that archives of minor versions (eg v1.21.tgz)
+	// stopped and was replaced with just patch version.
 	if kubeVersion == "master" {
-		// Clone of master. We cannot download the master version from the archive, because the k8s
-		// version is not set, which affects which APIs are removed in the running cluster. We cannot
-		// use a shallow clone, because in order to find the revision git searches through the tags,
-		// and tags are not fetched in a shallow clone. Not using a shallow clone adds about 700M to the
-		// ~5G archive directory, after make quick-release, so this is not disastrous.
+		// Clone of master. We cannot use a shallow clone, because the k8s version is not set, and
+		// in order to find the revision git searches through the tags, and tags are not fetched in
+		// a shallow clone. Not using a shallow clone adds about 700M to the ~5G archive directory,
+		// after make quick-release, so this is not disastrous.
 		klog.Info("cloning k8s master")
 		out, err := exec.Command("git", "clone", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to clone kubernetes master: %s, err: %v", out, err)
 		}
 	} else {
-		// Download from the release archives rather than cloning the repo.
+		// Shallow clone of a release branch.
 		vKubeVersion := "v" + kubeVersion
-		kubeTarDir := filepath.Join(k8sIoDir, fmt.Sprintf("kubernetes-%s.tar.gz", kubeVersion))
-		klog.Infof("Pulling archive for %s", vKubeVersion)
-		out, err := exec.Command("curl", "-L", fmt.Sprintf("https://github.com/kubernetes/kubernetes/archive/%s.tar.gz", vKubeVersion), "-o", kubeTarDir).CombinedOutput()
+		klog.Infof("shallow clone of k8s %s", vKubeVersion)
+		out, err := exec.Command("git", "clone", "--depth", "1", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to curl kubernetes version %s: %s, err: %v", kubeVersion, out, err)
+			return fmt.Errorf("failed to clone kubernetes %s: %s, err: %v", vKubeVersion, out, err)
 		}
-
-		out, err = exec.Command("tar", "-C", k8sIoDir, "-xvf", kubeTarDir).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to untar %s: %s, err: %v", kubeTarDir, out, err)
-		}
-
-		err = os.Rename(filepath.Join(k8sIoDir, fmt.Sprintf("kubernetes-%s", kubeVersion)), k8sDir)
-		if err != nil {
-			return err
-		}
-
-		klog.Infof("Successfully downloaded Kubernetes v%s to %s", kubeVersion, k8sDir)
 	}
 	return nil
 }

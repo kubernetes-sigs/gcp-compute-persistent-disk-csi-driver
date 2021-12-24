@@ -112,6 +112,11 @@ func main() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
+	if *useGKEManagedDriver {
+		*doDriverBuild = false
+		*teardownDriver = false
+	}
+
 	if !*inProw && *doDriverBuild {
 		ensureVariable(stagingImage, true, "staging-image is a required flag, please specify the name of image to stage to")
 	}
@@ -668,7 +673,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	}
 	kubeTest2Args = append(kubeTest2Args, "--")
 	if len(*testVersion) != 0 && *testVersion != "master" {
-		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-version=v%s", *testVersion))
+		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=latest-%s.txt", *testVersion))
 	}
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
