@@ -554,10 +554,16 @@ func generateGCETestSkip(testParams *testParameters) string {
 
 func generateGKETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
+
 	curVer := mustParseVersion(testParams.clusterVersion)
 	var nodeVer *version
 	if testParams.nodeVersion != "" {
 		nodeVer = mustParseVersion(testParams.nodeVersion)
+	}
+
+	// Cloning test fixes were introduced after 1.23.
+	if curVer.lessThan(mustParseVersion("1.24.0")) {
+		skipString = skipString + "|\\[Feature:VolumeSnapshotDataSource\\]|pvc.data.source"
 	}
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
