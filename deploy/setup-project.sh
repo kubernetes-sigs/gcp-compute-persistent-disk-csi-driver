@@ -14,7 +14,8 @@
 # GCE_PD_SA_NAME: Name of the service account to create
 # GCE_PD_SA_DIR: Directory to save the service account key
 # ENABLE_KMS: If true, it will enable Cloud KMS and configure IAM ACLs.
-
+# CREATE_SA_KEY: (Optional) If true, creates a new service account key and
+#   exports it if creating a new service account
 
 set -o nounset
 set -o errexit
@@ -25,8 +26,14 @@ source "${PKGDIR}/deploy/common.sh"
 
 ensure_var PROJECT
 ensure_var GCE_PD_SA_NAME
-ensure_var GCE_PD_SA_DIR
 ensure_var ENABLE_KMS
+
+# Allow the user to pass CREATE_SA_KEY=false to skip the SA key creation
+# Ensure the SA directory set, if we're creating the SA_KEY
+CREATE_SA_KEY="${CREATE_SA_KEY:-true}"
+if [ "${CREATE_SA_KEY}" = true ]; then
+  ensure_var GCE_PD_SA_DIR
+fi
 
 # If the project id includes the org name in the format "org-name:project", the
 # gCloud api will format the project part of the iam email domain as
@@ -60,11 +67,14 @@ fi
 
 if [ "${CREATE_SA}" = true ];
 then
-	# Delete Service Account Key
-	if [ -f "${GCE_PD_SA_DIR}/cloud-sa.json" ];
-	then
-	  rm "${GCE_PD_SA_DIR}/cloud-sa.json"
+	# Delete Service Account Key, if applicable
+	if [ "${CREATE_SA_KEY}" = true ]; then
+		if [ -f "${GCE_PD_SA_DIR}/cloud-sa.json" ];
+		then
+		  rm "${GCE_PD_SA_DIR}/cloud-sa.json"
+		fi
 	fi
+
 	# Delete ALL EXISTING Bindings
 	gcloud projects get-iam-policy "${PROJECT}" --format json > "${PKGDIR}/deploy/iam.json"
 	sed -i "/serviceAccount:${IAM_NAME}/d" "${PKGDIR}/deploy/iam.json"
@@ -103,9 +113,8 @@ then
   gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"service-${PROJECT_NUMBER}@compute-system.iam.gserviceaccount.com" --role "roles/cloudkms.cryptoKeyEncrypterDecrypter"
 fi
 
-
 # Export key if needed
-if [ "${CREATE_SA}" = true ];
+if [ "${CREATE_SA}" = true ] && [ "${CREATE_SA_KEY}" = true ];
 then
   gcloud iam service-accounts keys create "${GCE_PD_SA_DIR}/cloud-sa.json" --iam-account "${IAM_NAME}" --project "${PROJECT}"
 fi
