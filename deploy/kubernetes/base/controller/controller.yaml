@@ -36,6 +36,7 @@ spec:
           # - "--run-node-service=false"        # disable the node service of the CSI driver
             - "--leader-election"
             - "--default-fstype=ext4"
+            - "--controller-publish-readonly=true"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
