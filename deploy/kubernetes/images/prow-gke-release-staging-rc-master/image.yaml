@@ -7,7 +7,7 @@ metadata:
   name: imagetag-csi-provisioner-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-provisioner
-  newTag: "v2.2.1"
+  newTag: "v3.0.0"
 ---
 
 apiVersion: builtin
@@ -52,5 +52,5 @@ metadata:
   name: imagetag-csi-gce-driver-prow-rc
 imageTag:
   name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.3.4"
+  newTag: "v1.4.0-rc2"
 ---
