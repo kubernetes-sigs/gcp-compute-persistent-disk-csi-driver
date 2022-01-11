@@ -101,7 +101,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
 				},
 			},
-		})
+		}, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created

@@ -330,7 +330,7 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 		return fmt.Errorf("actual disk replication type %v did not match expected param %s", locationType, params.ReplicationType)
 	}
 
-	if !kmsKeyEqual(
+	if !KmsKeyEqual(
 		disk.GetKMSKeyName(), /* fetchedKMSKey */
 		params.DiskEncryptionKMSKey /* storageClassKMSKey */) {
 		return fmt.Errorf("actual disk KMS key name %s did not match expected param %s", disk.GetKMSKeyName(), params.DiskEncryptionKMSKey)
@@ -1119,7 +1119,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 // storageClassKMSKey - key as provided by the client
 //        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
 // cryptoKeyVersions should be disregarded if the rest of the key is identical.
-func kmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
+func KmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
 	return removeCryptoKeyVersion(fetchedKMSKey) == removeCryptoKeyVersion(storageClassKMSKey)
 }
 

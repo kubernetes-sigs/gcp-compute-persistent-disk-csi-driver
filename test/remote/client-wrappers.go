@@ -99,7 +99,7 @@ func (c *CsiClient) CloseConn() error {
 	return c.conn.Close()
 }
 
-func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, caps []*csipb.VolumeCapability) (string, error) {
+func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, caps []*csipb.VolumeCapability, volContentSrc *csipb.VolumeContentSource) (string, error) {
 	capRange := &csipb.CapacityRange{
 		RequiredBytes: common.GbToBytes(sizeInGb),
 	}
@@ -112,6 +112,9 @@ func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]strin
 	if topReq != nil {
 		cvr.AccessibilityRequirements = topReq
 	}
+	if volContentSrc != nil {
+		cvr.VolumeContentSource = volContentSrc
+	}
 	cresp, err := c.ctrlClient.CreateVolume(context.Background(), cvr)
 	if err != nil {
 		return "", err
@@ -119,8 +122,8 @@ func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]strin
 	return cresp.GetVolume().GetVolumeId(), nil
 }
 
-func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement) (string, error) {
-	return c.CreateVolumeWithCaps(volName, params, sizeInGb, topReq, stdVolCaps)
+func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, volContentSrc *csipb.VolumeContentSource) (string, error) {
+	return c.CreateVolumeWithCaps(volName, params, sizeInGb, topReq, stdVolCaps, volContentSrc)
 }
 
 func (c *CsiClient) DeleteVolume(volId string) error {
