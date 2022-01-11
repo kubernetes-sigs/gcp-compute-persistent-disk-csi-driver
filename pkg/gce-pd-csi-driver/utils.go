@@ -19,6 +19,7 @@ package gceGCEDriver
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"context"
 
@@ -28,7 +29,8 @@ import (
 )
 
 const (
-	fsTypeXFS = "xfs"
+	fsTypeXFS             = "xfs"
+	cryptoKeyVerDelimiter = "/cryptoKeyVersions"
 )
 
 var ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
@@ -198,4 +200,32 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		options = append(options, "nouuid")
 	}
 	return options
+}
+
+// kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.
+// fetchedKMSKey - key returned by the server
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}/cryptoKeyVersions/{4}
+// storageClassKMSKey - key as provided by the client
+//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
+// cryptoKeyVersions should be disregarded if the rest of the key is identical.
+func kmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
+	return removeCryptoKeyVersion(fetchedKMSKey) == removeCryptoKeyVersion(storageClassKMSKey)
+}
+
+func removeCryptoKeyVersion(kmsKey string) string {
+	i := strings.LastIndex(kmsKey, cryptoKeyVerDelimiter)
+	if i > 0 {
+		return kmsKey[:i]
+	}
+	return kmsKey
+}
+
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }

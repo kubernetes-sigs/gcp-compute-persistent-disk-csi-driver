@@ -239,10 +239,34 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 					return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume unknown get disk error when validating: %v", err))
 				}
 			}
-			// Verify the zone, region, and disk type of the clone must be the same as that of the source disk.
-			if err := gce.ValidateDiskParameters(diskFromSourceVolume, params); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, `CreateVolume source volume parameters do not match CreateVolumeRequest Parameters: %v`, err)
+
+			// Verify the disk type and encryption key of the clone are the same as that of the source disk.
+			if diskFromSourceVolume.GetPDType() != params.DiskType || !kmsKeyEqual(diskFromSourceVolume.GetKMSKeyName(), params.DiskEncryptionKMSKey) {
+				return nil, status.Errorf(codes.InvalidArgument, `CreateVolume source volume Parameters do not match CreateVolumeRequest Parameters %v`, params)
 			}
+
+			if params.ReplicationType == replicationTypeNone {
+				// For zonal->zonal disk clones, verify the zone is the same as that of the source disk.
+				if sourceVolKey.Zone != volKey.Zone {
+					return nil, status.Errorf(codes.InvalidArgument, `CreateVolume source volume zone %s does not match CreateVolume disk zone %s`, sourceVolKey.Zone, volKey.Zone)
+				}
+				// regional->zonal disk clones are not allowed.
+				if diskFromSourceVolume.LocationType() == meta.Regional {
+					return nil, status.Errorf(codes.InvalidArgument, `Cannot create a zonal disk clone from a regional disk`)
+				}
+			}
+
+			if params.ReplicationType == replicationTypeNone {
+				// For regional->regional disk clones, verify the region is the same as that of the source disk.
+				if diskFromSourceVolume.LocationType() == meta.Regional && sourceVolKey.Region != volKey.Region {
+					return nil, status.Errorf(codes.InvalidArgument, `CreateVolume source volume region %s does not match CreateVolume disk region %s`, sourceVolKey.Region, volKey.Region)
+				}
+				// For zonal->regional disk clones, verify one of the replica zones matches the source disk zone.
+				if diskFromSourceVolume.LocationType() == meta.Zonal && !contains(zones, sourceVolKey.Zone) {
+					return nil, status.Errorf(codes.InvalidArgument, `CreateVolume source volume zone %s does not match one of the replica zones %v of the CreateVolume regional disk`, sourceVolKey.Zone, zones)
+				}
+			}
+
 			// Verify the source disk is ready.
 			ready, err := isDiskReady(diskFromSourceVolume)
 			if err != nil {
