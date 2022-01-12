@@ -902,7 +902,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testSourceVolumeName := "test-volume-source-name"
 	testZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, testSourceVolumeName)
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
-	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
+	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "differentZone", testSourceVolumeName)
 	zonalParams := map[string]string{
 		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
@@ -934,7 +934,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		requestTopology     *csi.TopologyRequirement
 	}{
 		{
-			name:                "success zonal disk clone of zonal source disk",
+			name:                "success zonal->zonal disk clone",
 			volumeOnCloud:       true,
 			sourceVolumeID:      testZonalVolumeSourceID,
 			reqParameters:       zonalParams,
@@ -943,7 +943,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology:     topology,
 		},
 		{
-			name:                "success regional disk clone of regional source disk",
+			name:                "success regional->regional disk clone",
 			volumeOnCloud:       true,
 			sourceVolumeID:      testRegionalVolumeSourceID,
 			reqParameters:       regionalParams,
@@ -952,35 +952,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology:     topology,
 		},
 		{
-			name:                "success regional disk clone of zonal data source",
-			volumeOnCloud:       true,
-			sourceVolumeID:      testZonalVolumeSourceID,
-			reqParameters:       regionalParams,
-			sourceReqParameters: zonalParams,
-			sourceTopology:      topology,
-			requestTopology:     topology,
-		},
-		{
-			name:                "fail regional disk clone with no matching replica zone of zonal data source",
-			volumeOnCloud:       true,
-			expErrCode:          codes.InvalidArgument,
-			sourceVolumeID:      testZonalVolumeSourceID,
-			reqParameters:       regionalParams,
-			sourceReqParameters: zonalParams,
-			sourceTopology:      topology,
-			requestTopology: &csi.TopologyRequirement{
-				Requisite: []*csi.Topology{
-					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
-					},
-					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
-					},
-				},
-			},
-		},
-		{
-			name:           "fail zonal disk clone with different disk type",
+			name:           "fail zonal->zonal disk clone with different disk type",
 			volumeOnCloud:  true,
 			expErrCode:     codes.InvalidArgument,
 			sourceVolumeID: testZonalVolumeSourceID,
@@ -992,7 +964,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology: topology,
 		},
 		{
-			name:           "fail zonal disk clone with different DiskEncryptionKMSKey",
+			name:           "fail zonal->zonal disk clone with different DiskEncryptionKMSKey",
 			volumeOnCloud:  true,
 			expErrCode:     codes.InvalidArgument,
 			sourceVolumeID: testZonalVolumeSourceID,
@@ -1005,7 +977,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology: topology,
 		},
 		{
-			name:                "fail zonal disk clone with different zone",
+			name:                "fail zonal->zonal disk clone with different zone",
 			volumeOnCloud:       true,
 			expErrCode:          codes.InvalidArgument,
 			sourceVolumeID:      testSecondZonalVolumeSourceID,
@@ -1014,17 +986,24 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
-					},
-					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
+						Segments: map[string]string{common.TopologyKeyZone: "country-region-differentZone"},
 					},
 				},
 			},
 			requestTopology: topology,
 		},
 		{
-			name:                "fail zonal disk clone of regional data source",
+			name:                "fail zonal->regional disk clone",
+			volumeOnCloud:       true,
+			expErrCode:          codes.InvalidArgument,
+			sourceVolumeID:      testZonalVolumeSourceID,
+			reqParameters:       regionalParams,
+			sourceReqParameters: zonalParams,
+			sourceTopology:      topology,
+			requestTopology:     topology,
+		},
+		{
+			name:                "fail regional->zonal disk clone",
 			volumeOnCloud:       true,
 			expErrCode:          codes.InvalidArgument,
 			sourceVolumeID:      testRegionalVolumeSourceID,
@@ -1033,9 +1012,8 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceTopology:      topology,
 			requestTopology:     topology,
 		},
-
 		{
-			name:                "fail zonal source disk does not exist",
+			name:                "fail zonal->zonal disk clone with source disk that does not exist",
 			volumeOnCloud:       false,
 			expErrCode:          codes.NotFound,
 			sourceVolumeID:      testZonalVolumeSourceID,
@@ -1044,7 +1022,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology:     topology,
 		},
 		{
-			name:                "fail invalid source disk volume id format",
+			name:                "fail zonal->zonal disk clone with invalid source disk volume id format",
 			volumeOnCloud:       false,
 			expErrCode:          codes.InvalidArgument,
 			sourceVolumeID:      testZonalVolumeSourceID + "/invalid/format",
@@ -1082,7 +1060,8 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 
 		if tc.volumeOnCloud {
 			// Create the source volume.
-			sourceVolume, _ := gceDriver.cs.CreateVolume(context.Background(), sourceVolumeRequest)
+			sourceVolume, e := gceDriver.cs.CreateVolume(context.Background(), sourceVolumeRequest)
+			t.Logf("create volume err: %v", e)
 			req.VolumeContentSource = &csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
 					Volume: &csi.VolumeContentSource_VolumeSource{
