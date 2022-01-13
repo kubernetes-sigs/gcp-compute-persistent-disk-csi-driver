@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -662,15 +663,19 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 
 	testArgs := fmt.Sprintf("%s %s", ginkgoArgs, testConfigArg)
 
-	kubeTestArgs := []string{
-		"--test",
-		"--ginkgo-parallel",
-		"--check-version-skew=false",
-		fmt.Sprintf("--test_args=%s", testArgs),
+	// kubetest2 flags
+
+	var runID string
+	if uid, exists := os.LookupEnv("PROW_JOB_ID"); exists && uid != "" {
+		// reuse uid for CI use cases
+		runID = uid
+	} else {
+		runID = string(uuid.NewUUID())
 	}
 
 	kubeTest2Args := []string{
 		*deploymentStrat,
+		fmt.Sprintf("--run-id=%s", runID),
 		"--test=ginkgo",
 	}
 	kubeTest2Args = append(kubeTest2Args, testParams.cloudProviderArgs...)
@@ -678,14 +683,42 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--artifacts=%s", kubetestDumpDir))
 	}
 	kubeTest2Args = append(kubeTest2Args, "--")
-	if len(*testVersion) != 0 && *testVersion != "master" {
-		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=latest-%s.txt", *testVersion))
+	if len(*testVersion) != 0 {
+		if *testVersion == "master" {
+			// the kubernetes binaries should've already been built above
+			// or by the user if --localK8sDir was set, these binaries should be copied to the
+			// path sent to kubetest2 through its --artifacts path
+
+			// pkg/_artifacts is the default value that kubetests uses for --artifacts
+			kubernetesTestBinariesPath := filepath.Join(testParams.pkgDir, "_artifacts")
+			if kubetestDumpDir != "" {
+				// a custom artifacts dir was set
+				kubernetesTestBinariesPath = kubetestDumpDir
+			}
+			kubernetesTestBinariesPath = filepath.Join(kubernetesTestBinariesPath, runID)
+
+			klog.Infof("Copying kubernetes binaries to path=%s to run the tests", kubernetesTestBinariesPath)
+			err := copyKubernetesTestBinaries(testParams.k8sSourceDir, kubernetesTestBinariesPath)
+			if err != nil {
+				return fmt.Errorf("Failed to copy the kubernetes test binaries, err=%v", err)
+			}
+			kubeTest2Args = append(kubeTest2Args, "--use-built-binaries")
+		} else {
+			kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=latest-%s.txt", *testVersion))
+		}
 	}
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--parallel=%d", testParams.parallel))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, windowsArgs))
 
+	// kubetest flags
+	kubeTestArgs := []string{
+		"--test",
+		"--ginkgo-parallel",
+		"--check-version-skew=false",
+		fmt.Sprintf("--test_args=%s", testArgs),
+	}
 	if kubetestDumpDir != "" {
 		kubeTestArgs = append(kubeTestArgs, fmt.Sprintf("--dump=%s", kubetestDumpDir))
 	}
@@ -700,5 +733,32 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
 	}
 
+	return nil
+}
+
+var (
+	kubernetesTestBinaries = []string{
+		"kubectl",
+		"e2e.test",
+		"ginkgo",
+	}
+)
+
+// copyKubernetesBinariesForTest copies the common test binaries to the output directory
+func copyKubernetesTestBinaries(kuberoot string, outroot string) error {
+	const dockerizedOutput = "_output/dockerized"
+	root := filepath.Join(kuberoot, dockerizedOutput, "bin", runtime.GOOS, runtime.GOARCH)
+	for _, binary := range kubernetesTestBinaries {
+		source := filepath.Join(root, binary)
+		dest := filepath.Join(outroot, binary)
+		if _, err := os.Stat(source); err == nil {
+			klog.Infof("copying %s to %s", source, dest)
+			if err := CopyFile(source, dest); err != nil {
+				return fmt.Errorf("failed to copy %s to %s: %v", source, dest, err)
+			}
+		} else {
+			return fmt.Errorf("could not find %s: %v", source, err)
+		}
+	}
 	return nil
 }
