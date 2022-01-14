@@ -6,17 +6,23 @@
 #   use the driver version from the overlay
 # GCE_PD_BOSKOS_RESOURCE_TYPE: name of the boskos resource type to reserve
 
+set -o xtrace
 set -o nounset
 set -o errexit
 
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
-readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
+readonly overlay_name="${GCE_PD_OVERLAY_NAME:-noauth}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
+readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
+readonly num_windows_nodes=${NUM_WINDOWS_NODES:-3}
+
+# build platforms for `make quick-release`
+export KUBE_BUILD_PLATFORMS="linux/amd64 windows/amd64"
 
 make -C "${PKGDIR}" test-k8s-integration
 
@@ -27,11 +33,37 @@ if [ "$use_kubetest2" = true ]; then
     go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
 
+# TODO(mauriciopoppe): remove this assignment
+E2E_GOOGLE_APPLICATION_CREDENTIALS=sa
+
+# TODO(mauriciopoppe): change run-in-prow=true
+
+# TODO(mauriciopoppe): change overlay back to stable-master
+
+# TODO(mauriciopoppe): remove --staging-image and this flag
+GCE_PD_CSI_STAGING_IMAGE=gcr.io/mauriciopoppe-gke-dev/gcp-compute-persistent-disk-csi-driver
+
+# TODO(mauriciopoppe): change to --do-driver-build=${do_driver_build} \
+
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
-            --platform=windows --bringup-cluster=false --teardown-cluster=false --teardown-driver=${teardown_driver}\
-            --run-in-prow=true --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
-            --do-driver-build=${do_driver_build} --gce-zone=${gce_zone} --test-version=${test_version}\
-            --storageclass-files=sc-windows.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --test-focus='External.Storage' \
-            --deployment-strategy=${deployment_strategy} --use-kubetest2=${use_kubetest2}"
+    --staging-image="${GCE_PD_CSI_STAGING_IMAGE}" \
+    --run-in-prow=false \
+    --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
+    --deployment-strategy=${deployment_strategy} \
+    --gce-zone=${gce_zone} \
+    --platform=windows \
+    --bringup-cluster=true \
+    --teardown-cluster=true \
+    --num-nodes=1 \
+    --num-windows-nodes=${num_windows_nodes} \
+    --teardown-driver=${teardown_driver} \
+    --do-driver-build=true \
+    --deploy-overlay-name=${overlay_name} \
+    --test-version=${test_version} \
+    --kube-version=${kube_version} \
+    --storageclass-files=sc-windows.yaml \
+    --snapshotclass-file=pd-volumesnapshotclass.yaml \
+    --test-focus='External.Storage' \
+    --use-kubetest2=${use_kubetest2}"
 
 eval "$base_cmd"
