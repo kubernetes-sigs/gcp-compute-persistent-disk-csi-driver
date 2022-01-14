@@ -11,7 +11,7 @@ set -o nounset
 set -o errexit
 
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
-readonly overlay_name="${GCE_PD_OVERLAY_NAME:-noauth}"
+readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
@@ -22,7 +22,7 @@ readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly num_windows_nodes=${NUM_WINDOWS_NODES:-3}
 
 # build platforms for `make quick-release`
-export KUBE_BUILD_PLATFORMS="linux/amd64 windows/amd64"
+export KUBE_BUILD_PLATFORMS=${KUBE_BUILD_PLATFORMS:-"linux/amd64 windows/amd64"}
 
 make -C "${PKGDIR}" test-k8s-integration
 
@@ -33,21 +33,8 @@ if [ "$use_kubetest2" = true ]; then
     go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
 
-# TODO(mauriciopoppe): remove this assignment
-E2E_GOOGLE_APPLICATION_CREDENTIALS=sa
-
-# TODO(mauriciopoppe): change run-in-prow=true
-
-# TODO(mauriciopoppe): change overlay back to stable-master
-
-# TODO(mauriciopoppe): remove --staging-image and this flag
-GCE_PD_CSI_STAGING_IMAGE=gcr.io/mauriciopoppe-gke-dev/gcp-compute-persistent-disk-csi-driver
-
-# TODO(mauriciopoppe): change to --do-driver-build=${do_driver_build} \
-
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
-    --staging-image="${GCE_PD_CSI_STAGING_IMAGE}" \
-    --run-in-prow=false \
+    --run-in-prow=true \
     --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
     --deployment-strategy=${deployment_strategy} \
     --gce-zone=${gce_zone} \
@@ -57,7 +44,7 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
     --num-nodes=1 \
     --num-windows-nodes=${num_windows_nodes} \
     --teardown-driver=${teardown_driver} \
-    --do-driver-build=true \
+    --do-driver-build=${do_driver_build} \
     --deploy-overlay-name=${overlay_name} \
     --test-version=${test_version} \
     --kube-version=${kube_version} \

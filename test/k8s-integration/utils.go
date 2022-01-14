@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,8 +13,9 @@ func runCommand(action string, cmd *exec.Cmd) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 
-	fmt.Printf("%s\n", action)
-	fmt.Printf("%s\n", cmd.Args)
+	klog.Infof("%s", action)
+	klog.Infof("cmd env=%v", cmd.Env)
+	klog.Infof("cmd args=%s", cmd.Args)
 
 	err := cmd.Start()
 	if err != nil {
