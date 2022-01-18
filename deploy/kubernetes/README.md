@@ -23,3 +23,7 @@ The current structure for kustomization is as follows. Note that Windows support
   * `prow-gke-release-staging-rc-{k8s-minor}`: Used for prow tests. Contains deployment specs of a driver for given k8s    minor version release.
   * `prow-gke-release-staging-rc-head`: Used for prow tests. Contains deployment specs of a driver with latest sidecar images, for latest k8s master.
   * `stable`, `prow-gke-release-staging-rc`: Soon to be removed!
+
+  ## NVME support
+  udev folder under deploy/kubernetes contains google_nvme_id script required for NVME support. Source is downloaded from [GoogleCloudPlatform/guest-configs](https://github.com/GoogleCloudPlatform/guest-configs). README file in the folder contains the downloaded version.
+  Execute deploy/kubernetes/update-nvme.sh to update. See releases available in [GoogleCloudPlatform/guest-configs/releases](https://github.com/GoogleCloudPlatform/guest-configs/releases).
