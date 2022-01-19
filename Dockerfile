@@ -63,4 +63,7 @@ COPY --from=debian /lib/x86_64-linux-gnu/libselinux.so.1 /lib/x86_64-linux-gnu/l
 COPY --from=debian /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6
 COPY --from=debian /lib/x86_64-linux-gnu/libuuid.so.1 /lib/x86_64-linux-gnu/libuuid.so.1
 
+# Copy NVME support required script and rules into distroless base.
+COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
+
 ENTRYPOINT ["/gce-pd-csi-driver"]
