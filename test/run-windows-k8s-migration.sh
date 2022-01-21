@@ -6,12 +6,12 @@
 #   use the driver version from the overlay
 # GCE_PD_BOSKOS_RESOURCE_TYPE: name of the boskos resource type to reserve
 
+set -o xtrace
 set -o nounset
 set -o errexit
 
 export GCE_PD_VERBOSITY=9
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
-
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
@@ -21,6 +21,10 @@ readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly feature_gates="CSIMigration=true,CSIMigrationGCE=true,ExpandCSIVolumes=true"
 readonly use_kubetest2=${USE_KUBETEST2:-false}
+readonly num_windows_nodes=${NUM_WINDOWS_NODES:-3}
+
+# build platforms for `make quick-release`
+export KUBE_BUILD_PLATFORMS=${KUBE_BUILD_PLATFORMS:-"linux/amd64 windows/amd64"}
 
 make -C "${PKGDIR}" test-k8s-integration
 
@@ -36,15 +40,26 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 
 # TODO(#167): Enable reconstructions tests
 
-${PKGDIR}/bin/k8s-integration-test \
-        --platform=windows --bringup-cluster=false  --teardown-cluster=false \
-        --run-in-prow=true \
-        --kube-feature-gates=${feature_gates} --run-in-prow=true \
-        --deploy-overlay-name=${overlay_name} --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
-        --do-driver-build=${do_driver_build} --boskos-resource-type=${boskos_resource_type} \
-        --migration-test=true --test-focus=${GCE_PD_TEST_FOCUS} \
-        --gce-zone=${gce_zone} --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
-        --use-kubetest2=${use_kubetest2}
+base_cmd="${PKGDIR}/bin/k8s-integration-test \
+    --run-in-prow=true \
+    --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
+    --boskos-resource-type=${boskos_resource_type} \
+    --deployment-strategy=${deployment_strategy} \
+    --gce-zone=${gce_zone} \
+    --platform=windows \
+    --bringup-cluster=true \
+    --teardown-cluster=true \
+    --num-nodes=1 \
+    --num-windows-nodes=${num_windows_nodes} \
+    --teardown-driver=${teardown_driver} \
+    --do-driver-build=${do_driver_build} \
+    --deploy-overlay-name=${overlay_name} \
+    --test-version=${test_version} \
+    --kube-version=${kube_version} \
+    --kube-feature-gates=${feature_gates}
+    --storageclass-files=sc-windows.yaml \
+    --snapshotclass-file=pd-volumesnapshotclass.yaml \
+    --test-focus=${GCE_PD_TEST_FOCUS} \
+    --use-kubetest2=${use_kubetest2}"
 
-#eval "$base_cmd"
-
+eval "$base_cmd"
