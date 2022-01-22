@@ -45,7 +45,8 @@ var (
 	localK8sDir          = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
 	deploymentStrat      = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
 	gkeClusterVer        = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
-	numNodes             = flag.Int("num-nodes", -1, "the number of nodes in the test cluster")
+	numNodes             = flag.Int("num-nodes", 0, "the number of nodes in the test cluster")
+	numWindowsNodes      = flag.Int("num-windows-nodes", 0, "the number of Windows nodes in the test cluster")
 	imageType            = flag.String("image-type", "cos", "the image type to use for the cluster")
 	gkeReleaseChannel    = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
 	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
@@ -160,10 +161,6 @@ func main() {
 		}
 	}
 
-	if *platform == "windows" {
-		ensureFlag(bringupCluster, false, "bringupCluster is set to false if it is for testing in windows cluster")
-	}
-
 	if *deploymentStrat == "gke" {
 		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
 		ensureExactlyOneVariableSet([]*string{gkeClusterVer, gkeReleaseChannel},
@@ -186,8 +183,11 @@ func main() {
 		ensureVariable(testVersion, false, "Cannot set a test version when using a local k8s dir.")
 	}
 
-	if *numNodes == -1 && *bringupCluster {
+	if *numNodes == 0 && *bringupCluster {
 		klog.Fatalf("num-nodes must be set to number of nodes in cluster")
+	}
+	if *numWindowsNodes == 0 && *bringupCluster && *platform == "windows" {
+		klog.Fatalf("num-windows-nodes must be set if the platform is windows")
 	}
 
 	err := handle()
@@ -225,24 +225,19 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to get gcloud project: %s, err: %v", oldProject, err)
 		}
-		// TODO: Currently for prow tests with linux cluster, here it manually sets up a project from Boskos.
-		// For Windows, we used kubernetes_e2e.py which already set up the project and kubernetes automatically.
-		// Will update Linux in the future to use the same way as Windows test.
-		if *platform != "windows" {
-			newproject, _ := testutils.SetupProwConfig(*boskosResourceType)
-			err = setEnvProject(newproject)
-			if err != nil {
-				return fmt.Errorf("failed to set project environment to %s: %v", newproject, err)
-			}
-
-			defer func() {
-				err = setEnvProject(string(oldProject))
-				if err != nil {
-					klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
-				}
-			}()
-			project = newproject
+		newproject, _ := testutils.SetupProwConfig(*boskosResourceType)
+		err = setEnvProject(newproject)
+		if err != nil {
+			return fmt.Errorf("failed to set project environment to %s: %v", newproject, err)
 		}
+
+		defer func() {
+			err = setEnvProject(string(oldProject))
+			if err != nil {
+				klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
+			}
+		}()
+		project = newproject
 		if *doDriverBuild {
 			*stagingImage = fmt.Sprintf("gcr.io/%s/gcp-persistent-disk-csi-driver", strings.TrimSpace(string(project)))
 		}
@@ -256,6 +251,7 @@ func handle() error {
 
 	// Build and push the driver, if required. Defer the driver image deletion.
 	if *doDriverBuild {
+		klog.Infof("Building GCE PD CSI Driver")
 		err := pushImage(testParams.pkgDir, *stagingImage, testParams.stagingVersion, testParams.platform)
 		if err != nil {
 			return fmt.Errorf("failed pushing image: %v", err)
@@ -326,9 +322,9 @@ func handle() error {
 		var err error = nil
 		switch *deploymentStrat {
 		case "gce":
-			err = clusterUpGCE(testParams.k8sSourceDir, *gceZone, *numNodes, testParams.imageType)
+			err = clusterUpGCE(testParams.k8sSourceDir, *gceZone, *numNodes, *numWindowsNodes, testParams.imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, testParams.imageType, testParams.useGKEManagedDriver)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *numWindowsNodes, testParams.imageType, testParams.useGKEManagedDriver)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
 		}
@@ -360,6 +356,8 @@ func handle() error {
 	// For windows cluster, when cluster is up, all Windows nodes are tainted with NoSchedule to avoid linux pods
 	// being scheduled to Windows nodes. When running windows tests, we need to remove the taint.
 	if testParams.platform == "windows" {
+		klog.Infof("Removing taints from all windows nodes.")
+
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=windows", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
@@ -428,6 +426,7 @@ func handle() error {
 	// unschedulable.
 	testParams.allowedNotReadyNodes = 0
 	if *platform == "windows" {
+		klog.Infof("Tainting linux nodes")
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=linux", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
@@ -664,7 +663,6 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	testArgs := fmt.Sprintf("%s %s", ginkgoArgs, testConfigArg)
 
 	// kubetest2 flags
-
 	var runID string
 	if uid, exists := os.LookupEnv("PROW_JOB_ID"); exists && uid != "" {
 		// reuse uid for CI use cases
@@ -673,20 +671,27 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		runID = string(uuid.NewUUID())
 	}
 
+	// Usage: kubetest2 <deployer> [Flags] [DeployerFlags] -- [TesterArgs]
+	// [Flags]
 	kubeTest2Args := []string{
 		*deploymentStrat,
 		fmt.Sprintf("--run-id=%s", runID),
 		"--test=ginkgo",
 	}
+
+	// [DeployerFlags]
 	kubeTest2Args = append(kubeTest2Args, testParams.cloudProviderArgs...)
 	if kubetestDumpDir != "" {
 		kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--artifacts=%s", kubetestDumpDir))
 	}
+
 	kubeTest2Args = append(kubeTest2Args, "--")
+
+	// [TesterArgs]
 	if len(*testVersion) != 0 {
 		if *testVersion == "master" {
-			// the kubernetes binaries should've already been built above
-			// or by the user if --localK8sDir was set, these binaries should be copied to the
+			// the kubernetes binaries should've already been built above because of `--kube-version`
+			// or by the user if --local-k8s-dir was set, these binaries should be copied to the
 			// path sent to kubetest2 through its --artifacts path
 
 			// pkg/_artifacts is the default value that kubetests uses for --artifacts

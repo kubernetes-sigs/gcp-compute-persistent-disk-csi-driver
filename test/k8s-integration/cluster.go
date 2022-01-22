@@ -36,6 +36,7 @@ func isRegionalGKECluster(gceZone, gceRegion string) bool {
 
 func clusterDownGCE(k8sDir string) error {
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-down.sh"))
+	cmd.Env = os.Environ()
 	err := runCommand("Bringing Down E2E Cluster on GCE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gce: %v", err)
@@ -60,14 +61,15 @@ func clusterDownGKE(gceZone, gceRegion string) error {
 
 func buildKubernetes(k8sDir, command string) error {
 	cmd := exec.Command("make", "-C", k8sDir, command)
-	err := runCommand("Building Kubernetes", cmd)
+	cmd.Env = os.Environ()
+	err := runCommand(fmt.Sprintf("Running command in kubernetes/kubernetes path=%s", k8sDir), cmd)
 	if err != nil {
 		return fmt.Errorf("failed to build Kubernetes: %v", err)
 	}
 	return nil
 }
 
-func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error {
+func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, imageType string) error {
 	kshPath := filepath.Join(k8sDir, "cluster", "kubectl.sh")
 	_, err := os.Stat(kshPath)
 	if err == nil {
@@ -98,6 +100,14 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error 
 		return err
 	}
 
+	// the chain is NUM_WINDOWS_NODES -> --num-windows-nodes -> NUM_WINDOWS_NODES
+	// runCommand runs e2e-up.sh inheriting env vars so the `--num-windows-nodes`
+	// flags might not be needed, added to be similar to the setup of NUM_NODES
+	err = os.Setenv("NUM_WINDOWS_NODES", strconv.Itoa(numWindowsNodes))
+	if err != nil {
+		return err
+	}
+
 	// The default master size with few nodes is too small; the tests must hit the API server
 	// more than usual. The main issue seems to be memory, to reduce GC times that stall the
 	// api server. For defaults, get-master-size in k/k/cluster/gce/config-common.sh.
@@ -113,6 +123,7 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, imageType string) error 
 		return err
 	}
 	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
+	cmd.Env = os.Environ()
 	err = runCommand("Starting E2E Cluster on GCE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err)
@@ -147,7 +158,7 @@ func setImageTypeEnvs(imageType string) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, useManagedDriver bool) error {
+func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
@@ -213,7 +224,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, imageType string, use
 
 func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
-	klog.Infof("Downloading Kubernetes source for %s", kubeVersion)
+	klog.Infof("Downloading Kubernetes source v=%s to path=%s", kubeVersion, k8sIoDir)
 
 	if err := os.MkdirAll(k8sIoDir, 0777); err != nil {
 		return err

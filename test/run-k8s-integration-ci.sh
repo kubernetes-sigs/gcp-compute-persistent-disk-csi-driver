@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 # Optional environment variables
 # GCE_PD_OVERLAY_NAME: which Kustomize overlay to deploy with
@@ -6,6 +6,7 @@
 #   use the driver version from the overlay
 # GCE_PD_BOSKOS_RESOURCE_TYPE: name of the boskos resource type to reserve
 
+set -o xtrace
 set -o nounset
 set -o errexit
 
