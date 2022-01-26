@@ -41,7 +41,7 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 
 # TODO(#167): Enable reconstructions tests
 
-base_cmd="${PKGDIR}/bin/k8s-integration-test \
+${PKGDIR}/bin/k8s-integration-test \
     --run-in-prow=true \
     --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
     --boskos-resource-type=${boskos_resource_type} \
@@ -61,6 +61,4 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
     --storageclass-files=sc-windows.yaml \
     --snapshotclass-file=pd-volumesnapshotclass.yaml \
     --test-focus=${GCE_PD_TEST_FOCUS} \
-    --use-kubetest2=${use_kubetest2}"
-
-eval "$base_cmd"
+    --use-kubetest2=${use_kubetest2}
