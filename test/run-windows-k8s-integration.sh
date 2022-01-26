@@ -34,7 +34,7 @@ if [ "$use_kubetest2" = true ]; then
     go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
 fi
 
-base_cmd="${PKGDIR}/bin/k8s-integration-test \
+${PKGDIR}/bin/k8s-integration-test \
     --run-in-prow=true \
     --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
     --boskos-resource-type=${boskos_resource_type} \
@@ -53,6 +53,4 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
     --storageclass-files=sc-windows.yaml \
     --snapshotclass-file=pd-volumesnapshotclass.yaml \
     --test-focus='External.Storage' \
-    --use-kubetest2=${use_kubetest2}"
-
-eval "$base_cmd"
+    --use-kubetest2=${use_kubetest2}
