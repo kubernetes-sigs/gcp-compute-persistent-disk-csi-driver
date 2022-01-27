@@ -51,6 +51,7 @@ ${PKGDIR}/bin/k8s-integration-test \
     --bringup-cluster=true \
     --teardown-cluster=true \
     --num-nodes=1 \
+    --migration-test=true \
     --num-windows-nodes="${num_windows_nodes}" \
     --teardown-driver="${teardown_driver}" \
     --do-driver-build="${do_driver_build}" \
