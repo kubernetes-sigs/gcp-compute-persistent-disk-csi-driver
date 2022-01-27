@@ -24,13 +24,11 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 
 BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2019
-BASE_IMAGE_1909=mcr.microsoft.com/windows/servercore:1909
-BASE_IMAGE_2004=mcr.microsoft.com/windows/servercore:2004
 BASE_IMAGE_20H2=mcr.microsoft.com/windows/servercore:20H2
 
 # Both arrays MUST be index aligned.
-WINDOWS_IMAGE_TAGS=ltsc2019 1909 2004 20H2
-WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_1909) $(BASE_IMAGE_2004) $(BASE_IMAGE_20H2)
+WINDOWS_IMAGE_TAGS=ltsc2019 20H2
+WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019) $(BASE_IMAGE_20H2)
 
 GCFLAGS=""
 ifdef GCE_PD_CSI_DEBUG
@@ -59,26 +57,14 @@ build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
-build-and-push-windows-container-1909: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION)_1909 \
-		--build-arg BASE_IMAGE=$(BASE_IMAGE_1909) \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
-
-build-and-push-windows-container-2004: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION)_2004 \
-		--build-arg BASE_IMAGE=$(BASE_IMAGE_2004) \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
-
 build-and-push-windows-container-20H2: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_20H2) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
-build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019 build-and-push-windows-container-1909 build-and-push-windows-container-2004 build-and-push-windows-container-20H2
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_2004 $(STAGINGIMAGE):$(STAGINGVERSION)_1909 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019 build-and-push-windows-container-20H2
+	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_20H2 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
