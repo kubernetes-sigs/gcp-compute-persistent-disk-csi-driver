@@ -36,21 +36,21 @@ fi
 
 ${PKGDIR}/bin/k8s-integration-test \
     --run-in-prow=true \
-    --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
-    --boskos-resource-type=${boskos_resource_type} \
-    --deployment-strategy=${deployment_strategy} \
-    --gce-zone=${gce_zone} \
+    --service-account-file="${E2E_GOOGLE_APPLICATION_CREDENTIALS}" \
+    --boskos-resource-type="${boskos_resource_type}" \
+    --deployment-strategy="${deployment_strategy}" \
+    --gce-zone="${gce_zone}" \
     --platform=windows \
     --bringup-cluster=true \
     --teardown-cluster=true \
     --num-nodes=1 \
-    --num-windows-nodes=${num_windows_nodes} \
-    --teardown-driver=${teardown_driver} \
-    --do-driver-build=${do_driver_build} \
-    --deploy-overlay-name=${overlay_name} \
-    --test-version=${test_version} \
-    --kube-version=${kube_version} \
+    --num-windows-nodes="${num_windows_nodes}" \
+    --teardown-driver="${teardown_driver}" \
+    --do-driver-build="${do_driver_build}" \
+    --deploy-overlay-name="${overlay_name}" \
+    --test-version="${test_version}" \
+    --kube-version="${kube_version}" \
     --storageclass-files=sc-windows.yaml \
     --snapshotclass-file=pd-volumesnapshotclass.yaml \
     --test-focus='External.Storage' \
-    --use-kubetest2=${use_kubetest2}
+    --use-kubetest2="${use_kubetest2}"
