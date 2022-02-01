@@ -47,7 +47,7 @@ metadata:
   name: imagetag-csi-gce-driver-prow-rc
 imageTag:
   name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newName: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newTag: "v1.4.0"
 ---
 
