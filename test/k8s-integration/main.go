@@ -47,7 +47,7 @@ var (
 	gkeClusterVer        = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
 	numNodes             = flag.Int("num-nodes", 0, "the number of nodes in the test cluster")
 	numWindowsNodes      = flag.Int("num-windows-nodes", 0, "the number of Windows nodes in the test cluster")
-	imageType            = flag.String("image-type", "cos", "the image type to use for the cluster")
+	imageType            = flag.String("image-type", "cos_containerd", "the image type to use for the cluster")
 	gkeReleaseChannel    = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
 	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
 	gkeTestClusterName   = flag.String("gke-cluster-name", "", "Name of existing cluster")
@@ -155,7 +155,7 @@ func main() {
 	if !*bringupCluster && *platform != "windows" {
 		ensureVariable(kubeFeatureGates, false, "kube-feature-gates set but not bringing up new cluster")
 	} else {
-		ensureVariable(imageType, true, "image type is a required flag. Available options include 'cos' and 'ubuntu'")
+		ensureVariable(imageType, true, "image type is a required flag. A good default is 'cos_containerd'")
 		if *isRegionalCluster {
 			klog.Error("is-regional-cluster can only be set when using an existing cluster")
 		}

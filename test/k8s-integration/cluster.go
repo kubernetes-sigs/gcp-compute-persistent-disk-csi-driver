@@ -135,8 +135,9 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 func setImageTypeEnvs(imageType string) error {
 	switch strings.ToLower(imageType) {
 	case "cos":
+	case "cos_containerd":
 	case "gci": // GCI/COS is default type and does not need env vars set
-	case "ubuntu":
+	case "ubuntu", "ubuntu_containerd":
 		return errors.New("setting environment vars for bringing up *ubuntu* cluster on GCE is unimplemented")
 		/* TODO(dyzz) figure out how to bring up a Ubuntu cluster on GCE. The below doesn't work.
 		err := os.Setenv("KUBE_OS_DISTRIBUTION", "ubuntu")
