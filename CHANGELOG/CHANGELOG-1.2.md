@@ -1,3 +1,7 @@
+# v1.2.5 - Changelog since v1.2.4
+
+- Update base image to buster-1.10
+
 # v1.2.4 - Changelog since v1.2.3
 
 ## Changes by Kind
