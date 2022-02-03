@@ -1,3 +1,7 @@
+# v1.3.5 - Changelog since v1.3.4
+
+- Bump base image to buster-v1.10.0
+
 # v1.3.4 - Changelog since v1.3.3
 
 ## Changes by Kind
