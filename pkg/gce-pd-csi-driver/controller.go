@@ -59,6 +59,8 @@ type GCEControllerServer struct {
 	// the attach/detach operations until there is an attach / detach
 	// operation succeeds
 	publishErrorsSeenOnNode map[string]bool
+
+	opsCache *common.OpsCache
 }
 
 type workItem struct {
@@ -495,14 +497,29 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v, already attached.", volKey, nodeID)
 		return pubVolResp, nil
 	}
+
+	// Check and initiate an attach disk operation.
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
 	}
-	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
+
+	// Acquire the ops cache lock and inspect the ops to determine if its safe to initiate an attach operation for the given disk on the given instance.
+	attachDiskOp, err := gceCS.CheckCacheAndStartAttachDiskOp(ctx, volKey, readWrite, attachableDiskTypePersistent, project, instanceZone, deviceName, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("unknown Attach error: %v", err))
 	}
+
+	err = gceCS.CloudProvider.WaitForZonalOp(ctx, project, attachDiskOp.Name, instanceZone)
+	if err != nil {
+		// Mark the node and rate limit all the following attach/detach
+		// operations for this node
+		gceCS.publishErrorsSeenOnNode[nodeID] = true
+		return nil, fmt.Errorf("failed when waiting for zonal op: %v", err)
+	}
+
+	// Op succeeded, clear from disk ops cache.
+	gceCS.opsCache.ClearDiskInstanceOpSafe(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), attachDiskOp.Name)
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
@@ -612,15 +629,22 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
+	// Acquire the ops cache lock and inspect the ops to determine if its safe to initiate a detach operation for the given disk on the given instance.
+	detachDiskOp, err := gceCS.CheckCacheAndStartDetachDiskOp(ctx, project, instanceZone, deviceName, instanceName)
+	if err != nil {
+		return nil, status.Error(codes.Aborted, fmt.Sprintf("detach error: %v", err))
+	}
+
+	err = gceCS.CloudProvider.WaitForZonalOp(ctx, project, detachDiskOp.Name, instanceZone)
 	if err != nil {
 		// Mark the node and rate limit all the following attach/detach
 		// operations for this node
 		gceCS.publishErrorsSeenOnNode[nodeID] = true
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("detach error: %v", err))
 	}
 
-	// Detach succeeds so unmark the node
+	// Detach Op succeeded, clear from disk ops cache.
+	gceCS.opsCache.ClearDiskInstanceOpSafe(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), detachDiskOp.Name)
 	delete(gceCS.publishErrorsSeenOnNode, nodeID)
 
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
@@ -1326,4 +1350,96 @@ func pickRandAndConsecutive(slice []string, n int) ([]string, error) {
 		ret = append(ret, slice[idx])
 	}
 	return ret, nil
+}
+
+func (gceCS GCEControllerServer) CheckAndUpdateLastKnownInstanceOps(ctx context.Context, project, location, instanceName string) error {
+	ops := gceCS.opsCache.InstanceOps.GetOps(common.CreateInstanceKey(project, location, instanceName))
+	if ops == nil {
+		return nil
+	}
+
+	for _, op := range ops {
+		done, err := gceCS.CloudProvider.CheckOpDoneStatus(ctx, project, location, op.Name)
+		if err != nil {
+			return err
+		}
+
+		if !done {
+			return fmt.Errorf("found running op %q", op.Name)
+		}
+
+		gceCS.opsCache.InstanceOps.ClearOp(common.CreateInstanceKey(project, location, instanceName), op.Name)
+	}
+
+	return nil
+}
+
+func (gceCS GCEControllerServer) CheckAndUpdateLastKnownDiskInstanceOp(ctx context.Context, project, location, deviceName, instanceName string) error {
+	opInfo := gceCS.opsCache.DiskInstanceOps.GetOp(common.CreateDiskInstanceKey(project, location, deviceName, instanceName))
+	if opInfo == nil {
+		return nil
+	}
+
+	klog.V(5).Infof("Found last known op name %q (type %q) for project %q location %q instance %q", opInfo.Name, opInfo.Type, project, location, instanceName)
+	done, err := gceCS.CloudProvider.CheckOpDoneStatus(ctx, project, location, opInfo.Name)
+	if err != nil {
+		return err
+	}
+
+	if !done {
+		return fmt.Errorf("operation %q (type %q) is still in progress", opInfo.Name, opInfo.Type)
+	}
+
+	gceCS.opsCache.DiskInstanceOps.ClearOp(common.CreateDiskInstanceKey(project, location, deviceName, instanceName), opInfo.Name)
+	return nil
+}
+
+// CheckCacheAndStartAttachDiskOp first verifies that there is no ongoing attach/detach operation for the given disk + instance combination, before triggering a new attach operation.
+func (gceCS *GCEControllerServer) CheckCacheAndStartAttachDiskOp(ctx context.Context, volKey *meta.Key, readWrite, diskType, project, instanceZone, deviceName, instanceName string) (*compute.Operation, error) {
+	gceCS.opsCache.Lock()
+	defer gceCS.opsCache.Unlock()
+
+	err := gceCS.CheckAndUpdateLastKnownDiskInstanceOp(ctx, project, instanceZone, deviceName, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("attach operation for project %q location %q disk %s on instance %s failed, err: %v", project, instanceZone, deviceName, instanceName, err)
+	}
+
+	err = gceCS.CheckAndUpdateLastKnownInstanceOps(ctx, project, instanceZone, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("attach operation for project %q location %q disk %s on instance %s failed, err: %v", project, instanceZone, deviceName, instanceName, err)
+	}
+
+	op, err := gceCS.CloudProvider.StartAttachDiskOp(ctx, volKey, readWrite, diskType, project, instanceZone, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed cloud service attach disk call: %v", err)
+	}
+
+	klog.V(5).Infof("AttachDisk operation %s for disk %s started", op.Name, deviceName)
+	gceCS.opsCache.DiskInstanceOps.AddOp(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), common.OpInfo{Name: op.Name, Type: op.OperationType})
+	return op, nil
+}
+
+// CheckCacheAndStartDetachDiskOp first verifies that there is no ongoing attach/detach operation for the given disk + instance combination, before triggering a new detach operation.
+func (gceCS *GCEControllerServer) CheckCacheAndStartDetachDiskOp(ctx context.Context, project, instanceZone, deviceName, instanceName string) (*compute.Operation, error) {
+	gceCS.opsCache.Lock()
+	defer gceCS.opsCache.Unlock()
+
+	err := gceCS.CheckAndUpdateLastKnownDiskInstanceOp(ctx, project, instanceZone, deviceName, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("detach operation for project %q location %q disk %s on instance %s failed, err: %v", project, instanceZone, deviceName, instanceName, err)
+	}
+
+	err = gceCS.CheckAndUpdateLastKnownInstanceOps(ctx, project, instanceZone, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("detach operation for project %q location %q disk %s on instance %s failed, err: %v", project, instanceZone, deviceName, instanceName, err)
+	}
+
+	op, err := gceCS.CloudProvider.StartDetachDiskOp(ctx, project, instanceZone, deviceName, instanceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed cloud service detach disk call: %v", err)
+	}
+
+	klog.V(5).Infof("detach operation %q for disk %q started on instance %q", op.Name, deviceName, instanceName)
+	gceCS.opsCache.DiskInstanceOps.AddOp(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), common.OpInfo{Name: op.Name, Type: op.OperationType})
+	return op, nil
 }

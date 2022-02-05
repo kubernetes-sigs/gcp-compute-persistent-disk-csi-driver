@@ -22,6 +22,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/uuid"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
@@ -47,6 +48,7 @@ type FakeCloudProvider struct {
 	pageTokens map[string]sets.String
 	instances  map[string]*computev1.Instance
 	snapshots  map[string]*computev1.Snapshot
+	ops        []*computev1.Operation
 
 	// marker to set disk status during InsertDisk operation.
 	mockDiskStatus string
@@ -451,9 +453,14 @@ func (cloud *FakeCloudProvider) UpdateDiskStatus(s string) {
 	cloud.mockDiskStatus = s
 }
 
+type Signal struct {
+	ReportError   bool
+	ReportRunning bool
+}
+
 type FakeBlockingCloudProvider struct {
 	*FakeCloudProvider
-	ReadyToExecute chan chan struct{}
+	ReadyToExecute chan chan Signal
 }
 
 // FakeBlockingCloudProvider's method adds functionality to finely control the order of execution of CreateSnapshot calls.
@@ -461,10 +468,34 @@ type FakeBlockingCloudProvider struct {
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
 func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
-	executeCreateSnapshot := make(chan struct{})
+	executeCreateSnapshot := make(chan Signal)
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
 	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
+}
+
+func (cloud *FakeBlockingCloudProvider) WaitForZonalOp(ctx context.Context, project, opName string, zone string) error {
+	execute := make(chan Signal)
+	cloud.ReadyToExecute <- execute
+	val := <-execute
+	if val.ReportError {
+		return fmt.Errorf("force mock error of zonal op %s", opName)
+	}
+	return nil
+}
+
+func (cloud *FakeBlockingCloudProvider) CheckOpDoneStatus(ctx context.Context, project, location, opId string) (bool, error) {
+	execute := make(chan Signal)
+	cloud.ReadyToExecute <- execute
+	val := <-execute
+	if val.ReportError {
+		return false, fmt.Errorf("force mock error of zonal op %s", opId)
+	}
+
+	if val.ReportRunning {
+		return false, nil
+	}
+	return cloud.FakeCloudProvider.CheckOpDoneStatus(ctx, project, location, opId)
 }
 
 func notFoundError() *googleapi.Error {
@@ -485,4 +516,68 @@ func invalidError() *googleapi.Error {
 			},
 		},
 	}
+}
+
+func (cloud *FakeCloudProvider) StartAttachDiskOp(ctx context.Context, volKey *meta.Key, readWrite, diskType, project, location, instanceName string) (*computev1.Operation, error) {
+	source := cloud.GetDiskSourceURI(project, volKey)
+	attachedDiskV1 := &computev1.AttachedDisk{
+		DeviceName: volKey.Name,
+		Kind:       diskKind,
+		Mode:       readWrite,
+		Source:     source,
+		Type:       diskType,
+	}
+	instance, ok := cloud.instances[instanceName]
+	if !ok {
+		return nil, fmt.Errorf("Failed to get instance %v", instanceName)
+	}
+	instance.Disks = append(instance.Disks, attachedDiskV1)
+	op := &computev1.Operation{Name: "op" + uuid.New().String(), OperationType: "attachDisk"}
+	cloud.ops = append(cloud.ops, op)
+	return op, nil
+}
+
+func (cloud *FakeCloudProvider) StartDetachDiskOp(ctx context.Context, project, location, deviceName, instanceName string) (*computev1.Operation, error) {
+	instance, ok := cloud.instances[instanceName]
+	if !ok {
+		return nil, fmt.Errorf("Failed to get instance %v", instanceName)
+	}
+	found := -1
+	for i, disk := range instance.Disks {
+		if disk.DeviceName == deviceName {
+			found = i
+			break
+		}
+	}
+	instance.Disks[found] = instance.Disks[len(instance.Disks)-1]
+	instance.Disks = instance.Disks[:len(instance.Disks)-1]
+	op := &computev1.Operation{Name: "op" + uuid.New().String(), OperationType: "detachDisk"}
+	cloud.ops = append(cloud.ops, op)
+	return op, nil
+}
+
+func (cloud *FakeCloudProvider) OpIsDone(op *computev1.Operation) (bool, error) {
+	if op == nil || op.Status != operationStatusDone {
+		return false, nil
+	}
+	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
+		return true, fmt.Errorf("operation %v failed (%v): %v", op.Name, op.Error.Errors[0].Code, op.Error.Errors[0].Message)
+	}
+	return true, nil
+}
+
+func (cloud *FakeCloudProvider) CheckOpDoneStatus(ctx context.Context, project, location, opId string) (bool, error) {
+	return true, nil
+}
+
+func (cloud *FakeCloudProvider) WaitForZonalOp(ctx context.Context, project, opName string, zone string) error {
+	return nil
+}
+
+func (cloud *FakeCloudProvider) ListZonalOps(ctx context.Context, opTypeFilter map[string]bool) ([]*computev1.Operation, error) {
+	return cloud.ops, nil
+}
+
+func (cloud *FakeCloudProvider) InsertOps(ops []*computev1.Operation) {
+	cloud.ops = ops
 }

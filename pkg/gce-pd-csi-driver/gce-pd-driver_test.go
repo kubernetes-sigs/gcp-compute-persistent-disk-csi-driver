@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
@@ -28,7 +29,7 @@ func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
 	return initGCEDriverWithCloudProvider(t, fakeCloudProvider)
 }
 
-func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan struct{}) *GCEDriver {
+func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan gcecloudprovider.Signal) *GCEDriver {
 	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
