@@ -58,8 +58,8 @@ type GCECompute interface {
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
 	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
-	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
-	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
+	StartAttachDiskOp(ctx context.Context, volKey *meta.Key, readWrite, diskType, project, location, instanceName string) (*computev1.Operation, error)
+	StartDetachDiskOp(ctx context.Context, project, location, deviceName, instanceName string) (*computev1.Operation, error)
 	GetDiskSourceURI(project string, volKey *meta.Key) string
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error
@@ -75,6 +75,13 @@ type GCECompute interface {
 	GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error)
 	CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error)
 	DeleteSnapshot(ctx context.Context, project, snapshotName string) error
+	// Operation methods
+	// Evaluate the status on a operation object.
+	OpIsDone(op *computev1.Operation) (bool, error)
+	// Perform GET of operation and then evaluate the status.
+	CheckZonalOpDoneStatus(ctx context.Context, project, location, opId string) (bool, error)
+	WaitForZonalOp(ctx context.Context, project, opName string, zone string) error
+	ListZonalOps(ctx context.Context, opTypeFilter map[string]bool) ([]*computev1.Operation, error)
 }
 
 // GetDefaultProject returns the project that was used to instantiate this GCE client.
@@ -547,7 +554,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 	}
 	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
-	err = cloud.waitForZonalOp(ctx, project, opName, volKey.Zone)
+	err = cloud.WaitForZonalOp(ctx, project, opName, volKey.Zone)
 
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
@@ -593,7 +600,7 @@ func (cloud *CloudProvider) deleteZonalDisk(ctx context.Context, project, zone, 
 	}
 	klog.V(5).Infof("DeleteDisk operation %s for disk %s", op.Name, name)
 
-	err = cloud.waitForZonalOp(ctx, project, op.Name, zone)
+	err = cloud.WaitForZonalOp(ctx, project, op.Name, zone)
 	if err != nil {
 		return err
 	}
@@ -612,50 +619,6 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, project, reg
 	klog.V(5).Infof("DeleteDisk operation %s for disk %s", op.Name, name)
 
 	err = cloud.waitForRegionalOp(ctx, project, op.Name, region)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
-	klog.V(5).Infof("Attaching disk %v to %s", volKey, instanceName)
-	source := cloud.GetDiskSourceURI(project, volKey)
-
-	deviceName, err := common.GetDeviceName(volKey)
-	if err != nil {
-		return fmt.Errorf("failed to get device name: %v", err)
-	}
-	attachedDiskV1 := &computev1.AttachedDisk{
-		DeviceName: deviceName,
-		Kind:       diskKind,
-		Mode:       readWrite,
-		Source:     source,
-		Type:       diskType,
-	}
-
-	op, err := cloud.service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed cloud service attach disk call: %v", err)
-	}
-	klog.V(5).Infof("AttachDisk operation %s for disk %s", op.Name, attachedDiskV1.DeviceName)
-
-	err = cloud.waitForZonalOp(ctx, project, op.Name, instanceZone)
-	if err != nil {
-		return fmt.Errorf("failed when waiting for zonal op: %v", err)
-	}
-	return nil
-}
-
-func (cloud *CloudProvider) DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error {
-	klog.V(5).Infof("Detaching disk %v from %v", deviceName, instanceName)
-	op, err := cloud.service.Instances.DetachDisk(project, instanceZone, instanceName, deviceName).Context(ctx).Do()
-	if err != nil {
-		return err
-	}
-	klog.V(5).Infof("DetachDisk operation %s for disk %s", op.Name, deviceName)
-
-	err = cloud.waitForZonalOp(ctx, project, op.Name, instanceZone)
 	if err != nil {
 		return err
 	}
@@ -708,7 +671,7 @@ func (cloud *CloudProvider) getRegionalDiskTypeURI(project string, region, diskT
 	return cloud.service.BasePath + fmt.Sprintf(diskTypeURITemplateRegional, project, region, diskType)
 }
 
-func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName string, zone string) error {
+func (cloud *CloudProvider) WaitForZonalOp(ctx context.Context, project, opName string, zone string) error {
 	// The v1 API can query for v1, alpha, or beta operations.
 	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
 		pollOp, err := cloud.service.ZoneOperations.Get(project, zone, opName).Context(ctx).Do()
@@ -716,7 +679,7 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName 
 			klog.Errorf("WaitForOp(op: %s, zone: %#v) failed to poll the operation", opName, zone)
 			return false, err
 		}
-		done, err := opIsDone(pollOp)
+		done, err := cloud.OpIsDone(pollOp)
 		return done, err
 	})
 }
@@ -729,7 +692,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 			klog.Errorf("WaitForOp(op: %s, region: %#v) failed to poll the operation", opName, region)
 			return false, err
 		}
-		done, err := opIsDone(pollOp)
+		done, err := cloud.OpIsDone(pollOp)
 		return done, err
 	})
 }
@@ -741,7 +704,7 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName
 			klog.Errorf("waitForGlobalOp(op: %s) failed to poll the operation", opName)
 			return false, err
 		}
-		done, err := opIsDone(pollOp)
+		done, err := cloud.OpIsDone(pollOp)
 		return done, err
 	})
 }
@@ -769,8 +732,11 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 	})
 }
 
-func opIsDone(op *computev1.Operation) (bool, error) {
-	if op == nil || op.Status != operationStatusDone {
+func (cloud *CloudProvider) OpIsDone(op *computev1.Operation) (bool, error) {
+	if op == nil {
+		return true, nil
+	}
+	if op.Status != operationStatusDone {
 		return false, nil
 	}
 	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
@@ -869,7 +835,7 @@ func (cloud *CloudProvider) resizeZonalDisk(ctx context.Context, project string,
 	}
 	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
-	err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
+	err = cloud.WaitForZonalOp(ctx, project, op.Name, volKey.Zone)
 	if err != nil {
 		return -1, fmt.Errorf("failed waiting for op for zonal resize for %s: %v", volKey.String(), err)
 	}
@@ -951,6 +917,86 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
 		}
 	}
+}
+
+func (cloud *CloudProvider) StartAttachDiskOp(ctx context.Context, volKey *meta.Key, readWrite, diskType, project, location, instanceName string) (*computev1.Operation, error) {
+	deviceName, err := common.GetDeviceName(volKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device name: %v", err)
+	}
+
+	attachedDiskV1 := &computev1.AttachedDisk{
+		DeviceName: deviceName,
+		Kind:       diskKind,
+		Mode:       readWrite,
+		Source:     cloud.GetDiskSourceURI(project, volKey),
+		Type:       diskType,
+	}
+
+	op, err := cloud.service.Instances.AttachDisk(project, location, instanceName, attachedDiskV1).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed cloud service attach disk call: %v", err)
+	}
+	return op, nil
+}
+
+func (cloud *CloudProvider) StartDetachDiskOp(ctx context.Context, project, location, deviceName, instanceName string) (*computev1.Operation, error) {
+	op, err := cloud.service.Instances.DetachDisk(project, location, instanceName, deviceName).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed cloud service detach disk call: %v", err)
+	}
+	return op, nil
+}
+
+// CheckZonalOpDoneStatus returns true, if the op is complete. Returns false otherwise. Returns an error if GET returns an error.
+func (cloud *CloudProvider) CheckZonalOpDoneStatus(ctx context.Context, project, location, opId string) (bool, error) {
+	lastKnownOp, err := cloud.service.ZoneOperations.Get(project, location, opId).Context(ctx).Do()
+	if err != nil {
+		if !IsGCENotFoundError(err) {
+			return false, fmt.Errorf("failed to get operation %s: %v", opId, err)
+		}
+		return true, nil
+	}
+
+	// If the op complete with errors, the op is still complete.
+	if done, _ := cloud.OpIsDone(lastKnownOp); done {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (cloud *CloudProvider) ListZonalOps(ctx context.Context, opTypeFilter map[string]bool) ([]*computev1.Operation, error) {
+	region, err := common.GetRegionFromZones([]string{cloud.zone})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get region from zones: %v", err)
+	}
+	zones, err := cloud.ListZones(ctx, region)
+	if err != nil {
+		return nil, err
+	}
+
+	items := []*computev1.Operation{}
+	for _, zone := range zones {
+		lCall := cloud.service.ZoneOperations.List(cloud.project, zone)
+		nextPageToken := "pageToken"
+		for nextPageToken != "" {
+			opList, err := lCall.Do()
+			if err != nil {
+				return nil, err
+			}
+
+			for _, op := range opList.Items {
+				if _, ok := opTypeFilter[op.OperationType]; ok {
+					items = append(items, op)
+				}
+			}
+
+			nextPageToken = opList.NextPageToken
+			lCall.PageToken(nextPageToken)
+		}
+	}
+	return items, nil
 }
 
 // kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.

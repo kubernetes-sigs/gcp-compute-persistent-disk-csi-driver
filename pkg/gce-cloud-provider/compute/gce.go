@@ -56,8 +56,7 @@ type CloudProvider struct {
 	betaService *computebeta.Service
 	project     string
 	zone        string
-
-	zonesCache map[string][]string
+	zonesCache  map[string][]string
 }
 
 var _ GCECompute = &CloudProvider{}

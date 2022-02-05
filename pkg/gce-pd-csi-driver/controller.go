@@ -59,6 +59,8 @@ type GCEControllerServer struct {
 	// the attach/detach operations until there is an attach / detach
 	// operation succeeds
 	publishErrorsSeenOnNode map[string]bool
+
+	opsManager *OpsManager
 }
 
 type workItem struct {
@@ -334,6 +336,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 // Run starts the GCEControllerServer.
 func (gceCS *GCEControllerServer) Run() {
+	go gceCS.opsManager.HydrateOpsCache()
 	go wait.Until(gceCS.worker, 1*time.Second, wait.NeverStop)
 }
 
@@ -377,6 +380,10 @@ func (gceCS *GCEControllerServer) processNextWorkItem() bool {
 }
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	if !gceCS.opsManager.IsReady() {
+		return nil, status.Errorf(codes.Aborted, "Cache not ready")
+	}
+
 	// Only valid requests will be queued
 	_, _, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
 
@@ -495,13 +502,24 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v, already attached.", volKey, nodeID)
 		return pubVolResp, nil
 	}
+
+	// Check and initiate an attach disk operation.
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
 	}
-	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
+
+	err = gceCS.opsManager.ExecuteAttachDisk(ctx, &AttachDiskOpts{
+		Volumekey:    volKey,
+		ReadWrite:    readWrite,
+		DiskType:     attachableDiskTypePersistent,
+		Project:      project,
+		Location:     instanceZone,
+		DeviceName:   deviceName,
+		InstanceName: instanceName,
+	})
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
+		return nil, err
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
@@ -520,6 +538,10 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 }
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	if !gceCS.opsManager.IsReady() {
+		return nil, status.Errorf(codes.Aborted, "Cache not ready")
+	}
+
 	// Only valid requests will be queued
 	_, _, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 
@@ -612,17 +634,17 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
+	err = gceCS.opsManager.ExecuteDetachDisk(ctx, &DetachDiskOpts{
+		Project:      project,
+		Location:     instanceZone,
+		DeviceName:   deviceName,
+		InstanceName: instanceName,
+	})
 	if err != nil {
-		// Mark the node and rate limit all the following attach/detach
-		// operations for this node
-		gceCS.publishErrorsSeenOnNode[nodeID] = true
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
+		return nil, err
 	}
 
-	// Detach succeeds so unmark the node
 	delete(gceCS.publishErrorsSeenOnNode, nodeID)
-
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
