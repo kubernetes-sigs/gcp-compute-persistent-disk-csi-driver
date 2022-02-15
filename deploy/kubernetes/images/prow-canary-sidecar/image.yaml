@@ -1,0 +1,57 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-gcepd-driver-prow-head
+imageTag:
+  name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newTag: "master"
+---
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-provisioner-prow-head
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-provisioner
+  newName: gcr.io/k8s-staging-sig-storage/csi-provisioner
+  newTag: "canary"
+
+---
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-attacher-prow-head
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-attacher
+  newName: gcr.io/k8s-staging-sig-storage/csi-attacher
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-nodo-registrar-prow-head
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+  newName: gcr.io/k8s-staging-sig-storage/csi-node-driver-registrar
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-resizer-prow-head
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-resizer
+  newName: gcr.io/k8s-staging-sig-storage/csi-resizer
+  newTag: "canary"
+---
+
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-csi-snapshotter-prow-head
+imageTag:
+  name: k8s.gcr.io/sig-storage/csi-snapshotter
+  newName: gcr.io/k8s-staging-sig-storage/csi-snapshotter
+  newTag: "canary"

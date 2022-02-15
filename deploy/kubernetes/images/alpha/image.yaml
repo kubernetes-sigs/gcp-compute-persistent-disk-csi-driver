@@ -1,7 +1,0 @@
-apiVersion: builtin
-kind: ImageTagTransformer
-metadata:
-  name: imagetag-csi-provisioner-alpha
-imageTag:
-  name: k8s.gcr.io/sig-storage/csi-provisioner
-  newTag: "v3.0.0"

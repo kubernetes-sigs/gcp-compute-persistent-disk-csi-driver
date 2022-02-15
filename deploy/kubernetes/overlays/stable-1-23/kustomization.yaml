@@ -5,4 +5,4 @@ namespace:
 resources:
 - ../../base/
 transformers:
-- ../../images/stable-master
+- ../../images/stable-1-23

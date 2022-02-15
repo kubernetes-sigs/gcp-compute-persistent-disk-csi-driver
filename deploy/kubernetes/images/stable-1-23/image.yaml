@@ -49,8 +49,5 @@ metadata:
   name: imagetag-gcepd-driver
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  # Don't change stable image without changing pdImagePlaceholder in
-  # test/k8s-integration/main.go
-  newName: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newTag: "v1.4.0"
 ---
