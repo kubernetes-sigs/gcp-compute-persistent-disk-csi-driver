@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
@@ -336,6 +337,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 // Run starts the GCEControllerServer.
 func (gceCS *GCEControllerServer) Run() {
+	go gceCS.HydrateOpsCache()
 	go wait.Until(gceCS.worker, 1*time.Second, wait.NeverStop)
 }
 
@@ -379,6 +381,9 @@ func (gceCS *GCEControllerServer) processNextWorkItem() bool {
 }
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	if !gceCS.opsCache.IsReady() {
+		return nil, status.Errorf(codes.Aborted, "Cache not ready")
+	}
 	// Only valid requests will be queued
 	_, _, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
 
@@ -537,6 +542,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 }
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	if !gceCS.opsCache.IsReady() {
+		return nil, status.Errorf(codes.Aborted, "Cache not ready")
+	}
 	// Only valid requests will be queued
 	_, _, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 
@@ -1442,4 +1450,40 @@ func (gceCS *GCEControllerServer) CheckCacheAndStartDetachDiskOp(ctx context.Con
 	klog.V(5).Infof("detach operation %q for disk %q started on instance %q", op.Name, deviceName, instanceName)
 	gceCS.opsCache.DiskInstanceOps.AddOp(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), common.OpInfo{Name: op.Name, Type: op.OperationType})
 	return op, nil
+}
+
+func (gceCS *GCEControllerServer) HydrateOpsCache() {
+	var ops []*compute.Operation
+	backoff := wait.Backoff{
+		Steps:    300,
+		Duration: 1 * time.Second,
+		Factor:   1.0,
+	}
+	retry.OnError(backoff, func(err error) bool { return true }, func() error {
+		var err error
+		ops, err = gceCS.CloudProvider.ListZonalOps(context.Background(), map[string]bool{
+			"attachDisk": true,
+			"detachDisk": true})
+		return err
+	})
+
+	klog.V(5).Infof("Found %d zonal ops", len(ops))
+	gceCS.opsCache.Lock()
+	defer gceCS.opsCache.Unlock()
+
+	for _, op := range ops {
+		if done, _ := gceCS.CloudProvider.OpIsDone(op); done {
+			continue
+		}
+		project, zone, instanceName, err := common.ParseOpTargetLinkUrl(op.TargetLink)
+		if err != nil {
+			klog.Errorf("Failed to parse operation target link, err: %s", err)
+			continue
+		}
+
+		klog.V(5).Infof("Adding op %q(type %q) for project %q, zone %q, instance %q to cache", op.Name, op.OperationType, project, zone, instanceName)
+		gceCS.opsCache.InstanceOps.AddOp(common.CreateInstanceKey(project, zone, instanceName), common.OpInfo{Name: op.Name, Type: op.OperationType})
+	}
+
+	gceCS.opsCache.Ready = true
 }

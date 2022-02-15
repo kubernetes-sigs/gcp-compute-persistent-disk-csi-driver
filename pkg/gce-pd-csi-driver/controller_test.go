@@ -2648,3 +2648,461 @@ func TestControllerPublishUnpublishDiskInstanceOpCache(t *testing.T) {
 		})
 	}
 }
+
+func TestControllerPublishUnpublishInstanceOpCache(t *testing.T) {
+	disk1 := name + "1"
+	volId1 := testVolumeID + "1"
+	containsDiskInstanceEntry := func(cache *common.OpsCache, e CacheEntry) bool {
+		op := cache.DiskInstanceOps.GetOp(e.Key)
+		if op == nil {
+			return false
+		}
+
+		if op.Name != e.Op.Name || op.Type != e.Op.Type {
+			return false
+		}
+		return true
+	}
+
+	tests := []struct {
+		name                        string
+		initialCache                []CacheEntry // pre-populate cache before calling CSI op.
+		expectAttachDetachOpInCache bool         // While poll filestore op is in progress, we expect the op to be present in cache.
+		pubReq                      *csi.ControllerPublishVolumeRequest
+		unpubReq                    *csi.ControllerUnpublishVolumeRequest
+		checkOpStatusError          []bool // sequence of error to return during status check for each op.
+		checkOpStatusRunning        []bool // sequence of done status to return during status check for each op.
+		signalCheckOpDoneCount      int    // Expected number of times, the tester would block on check status op.
+		signalPollOp                bool   // if the code path is expected to reach the stage where the filestore op is polled, the fake blocking cloud provider will block for a signal to proceed forward.
+		expectCSIOpError            bool   // whether the high level csi op is expected to fail
+	}{
+		{
+			name: "empty cache, publish op completes successfully",
+			pubReq: &csi.ControllerPublishVolumeRequest{
+				VolumeId: volId1,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			expectAttachDetachOpInCache: true,
+			signalPollOp:                true,
+		},
+		{
+			name: "non-empty initial cache, check op status on same instance returns error, csi publish op returns error",
+			initialCache: []CacheEntry{
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+			},
+			pubReq: &csi.ControllerPublishVolumeRequest{
+				VolumeId: volId1,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			signalCheckOpDoneCount: 1,
+			checkOpStatusError:     []bool{true},
+			expectCSIOpError:       true,
+		},
+		{
+			name: "non-empty initial cache, check op status running on same instance, csi publish op returns error",
+			initialCache: []CacheEntry{
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+			},
+			pubReq: &csi.ControllerPublishVolumeRequest{
+				VolumeId: volId1,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			signalCheckOpDoneCount: 1,
+			checkOpStatusRunning:   []bool{true},
+			expectCSIOpError:       true,
+		},
+		{
+			name: "non-empty initial cache, subset of ops for same instance returns error, csi publish op returns error",
+			initialCache: []CacheEntry{
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-2",
+						Type: "detachDisk",
+					},
+				},
+			},
+			pubReq: &csi.ControllerPublishVolumeRequest{
+				VolumeId: volId1,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			checkOpStatusError: []bool{false, true},
+			expectCSIOpError:   true,
+		},
+		{
+			name: "non-empty initial cache, subset of ops for same instance still in progress, csi publish op returns error",
+			initialCache: []CacheEntry{
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+				{
+					Key: common.CreateInstanceKey(project, zone, node),
+					Op: common.OpInfo{
+						Name: "op-2",
+						Type: "detachDisk",
+					},
+				},
+			},
+			pubReq: &csi.ControllerPublishVolumeRequest{
+				VolumeId: volId1,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			checkOpStatusRunning: []bool{false, true},
+			expectCSIOpError:     true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			readyToExecute := make(chan chan gcecloudprovider.Signal, 1)
+
+			cloudDisks := []*gce.CloudDisk{
+				createZonalCloudDisk(disk1),
+			}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			fcpBlocking := &gce.FakeBlockingCloudProvider{
+				FakeCloudProvider: fcp,
+				ReadyToExecute:    readyToExecute,
+			}
+			instance := &compute.Instance{
+				Name:  node,
+				Disks: []*compute.AttachedDisk{},
+			}
+			if tc.unpubReq != nil {
+				instance.Disks = append(instance.Disks, &compute.AttachedDisk{DeviceName: disk1})
+			}
+			fcp.InsertInstance(instance, zone, node)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcpBlocking)
+			cs := gceDriver.cs
+			for _, e := range tc.initialCache {
+				cs.opsCache.InstanceOps.AddOp(e.Key, e.Op)
+			}
+			cs.opsCache.Ready = true
+
+			runPublishRequest := func(req *csi.ControllerPublishVolumeRequest) <-chan error {
+				response := make(chan error)
+				go func() {
+					_, err := cs.ControllerPublishVolume(context.Background(), req)
+					response <- err
+				}()
+				return response
+			}
+			runUnpublishRequest := func(req *csi.ControllerUnpublishVolumeRequest) <-chan error {
+				response := make(chan error)
+				go func() {
+					_, err := cs.ControllerUnpublishVolume(context.Background(), req)
+					response <- err
+				}()
+				return response
+			}
+
+			var resp <-chan error
+			if tc.pubReq != nil {
+				resp = runPublishRequest(tc.pubReq)
+			} else if tc.unpubReq != nil {
+				resp = runUnpublishRequest(tc.unpubReq)
+			} else {
+				t.Errorf("invalid test case")
+			}
+
+			// If a key corresponding to the disk+instance found in the cache, controller will check the op status.
+			for _, v := range tc.checkOpStatusError {
+				s := gcecloudprovider.Signal{}
+				if v {
+					s.ReportError = true
+				}
+				execute := <-readyToExecute
+				execute <- s
+			}
+
+			// If a key corresponding to the disk+instance found in the cache, controller will check the op status.
+			for _, v := range tc.checkOpStatusRunning {
+				s := gcecloudprovider.Signal{}
+				if v {
+					s.ReportRunning = true
+				}
+				execute := <-readyToExecute
+				execute <- s
+			}
+
+			if tc.expectAttachDetachOpInCache {
+				// Find the running attach/detach op. This may need a few retries, because, at this time the controller publish/unpublish op will the cache and add a new op to cache.
+				backoff := wait.Backoff{
+					Duration: 10 * time.Millisecond,
+					Steps:    100,
+				}
+				if err := retry.OnError(backoff, func(err error) bool { return true }, func() error {
+					ops, innererr := cs.CloudProvider.ListZonalOps(context.Background(), map[string]bool{
+						"attachDisk": true, "detachDisk": true})
+					if innererr != nil {
+						return innererr
+					}
+					if len(ops) > 0 {
+						return nil
+					}
+					return fmt.Errorf("failed to find ops for fake cloud provider")
+				}); err != nil {
+					t.Errorf("timed out waiting for attach op to be updated")
+					return
+				}
+				ops, err := cs.CloudProvider.ListZonalOps(context.Background(), map[string]bool{"attachDisk": true})
+				if err != nil {
+					t.Errorf("Unexpected error in finding ops")
+				}
+				if len(ops) != 1 {
+					t.Errorf("Unexpected number of attach ops in cache")
+					return
+				}
+				// Now the controller has updated the cache and should block at poll
+				// verify cache content
+				opinfo := common.OpInfo{
+					Name: ops[0].Name,
+					Type: ops[0].OperationType,
+				}
+				if !containsDiskInstanceEntry(cs.opsCache, CacheEntry{Key: common.CreateDiskInstanceKey(project, zone, disk1, node), Op: opinfo}) {
+					t.Errorf("Unexpected cache entry detected")
+				}
+			}
+
+			// Unblock the poll operation
+			if tc.signalPollOp {
+				s := gcecloudprovider.Signal{}
+				execute := <-readyToExecute
+				execute <- s
+			}
+
+			err = <-resp
+			if tc.expectCSIOpError && err == nil {
+				t.Errorf("Expected error found none")
+			}
+			if !tc.expectCSIOpError && err != nil {
+				t.Errorf("Unexpected error found")
+			}
+		})
+	}
+}
+
+func TestHydrateCache(t *testing.T) {
+	tests := []struct {
+		name                 string
+		initialOps           []*compute.Operation
+		expectedCacheEntries []CacheEntry
+	}{
+		{
+			name: "no attach detach ops, no entries expected in cache",
+			initialOps: []*compute.Operation{
+				{
+					Name:          "op-1",
+					OperationType: "create",
+					Status:        "DONE",
+				},
+				{
+					Name:          "op-2",
+					OperationType: "create",
+					Status:        "DONE",
+				},
+			},
+		},
+		{
+			name: "done attach detach ops, no entries expected in cache",
+			initialOps: []*compute.Operation{
+				{
+					Name:          "op-1",
+					OperationType: "attachDisk",
+					Status:        "DONE",
+				},
+				{
+					Name:          "op-2",
+					OperationType: "detachDisk",
+					Status:        "DONE",
+				},
+			},
+		},
+		{
+			name: "in progress attach detach ops, entries expected in cache",
+			initialOps: []*compute.Operation{
+				{
+					Name:          "op-1",
+					OperationType: "attachDisk",
+					Status:        "PENDING",
+					TargetLink:    "https://www.googleapis.com/compute/v1/projects/testproject/zones/testzone/instances/testinstance",
+				},
+				{
+					Name:          "op-2",
+					OperationType: "detachDisk",
+					Status:        "RUNNING",
+					TargetLink:    "https://www.googleapis.com/compute/v1beta1/projects/testproject/zones/testzone/instances/testinstance",
+				},
+			},
+			expectedCacheEntries: []CacheEntry{
+				{
+					Key: "testproject_testzone_testinstance",
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+				{
+					Key: "testproject_testzone_testinstance",
+					Op: common.OpInfo{
+						Name: "op-2",
+						Type: "detachDisk",
+					},
+				},
+			},
+		},
+		{
+			name: "in progress attach detach ops for multiple instances, entries expected in cache",
+			initialOps: []*compute.Operation{
+				{
+					Name:          "op-1",
+					OperationType: "attachDisk",
+					Status:        "PENDING",
+					TargetLink:    "https://www.googleapis.com/compute/v1/projects/testproject/zones/testzone/instances/testinstance",
+				},
+				{
+					Name:          "op-2",
+					OperationType: "detachDisk",
+					Status:        "RUNNING",
+					TargetLink:    "https://www.googleapis.com/compute/v1beta1/projects/testproject/zones/testzone/instances/testinstance",
+				},
+				{
+					Name:          "op-3",
+					OperationType: "attachDisk",
+					Status:        "PENDING",
+					TargetLink:    "https://www.googleapis.com/compute/v1/projects/testproject/zones/testzone/instances/testinstance1",
+				},
+				{
+					Name:          "op-4",
+					OperationType: "detachDisk",
+					Status:        "RUNNING",
+					TargetLink:    "https://www.googleapis.com/compute/v1beta1/projects/testproject/zones/testzone/instances/testinstance1",
+				},
+			},
+			expectedCacheEntries: []CacheEntry{
+				{
+					Key: "testproject_testzone_testinstance",
+					Op: common.OpInfo{
+						Name: "op-1",
+						Type: "attachDisk",
+					},
+				},
+				{
+					Key: "testproject_testzone_testinstance",
+					Op: common.OpInfo{
+						Name: "op-2",
+						Type: "detachDisk",
+					},
+				},
+				{
+					Key: "testproject_testzone_testinstance1",
+					Op: common.OpInfo{
+						Name: "op-3",
+						Type: "attachDisk",
+					},
+				},
+				{
+					Key: "testproject_testzone_testinstance1",
+					Op: common.OpInfo{
+						Name: "op-4",
+						Type: "detachDisk",
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+			if err != nil {
+				t.Errorf("Failed to create fake cloud provider: %v", err)
+			}
+			fcp.InsertOps(tc.initialOps)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver.cs.HydrateOpsCache()
+			if !gceDriver.cs.opsCache.Ready {
+				t.Errorf("failed to initialize cache")
+			}
+			for _, e := range tc.expectedCacheEntries {
+				if !containsOp(e.Key, e.Op, gceDriver.cs.opsCache) {
+					t.Errorf("expected entry not found")
+				}
+			}
+		})
+	}
+}
+
+func containsOp(key string, op common.OpInfo, cache *common.OpsCache) bool {
+	ops := cache.InstanceOps.GetOps(key)
+	for _, o := range ops {
+		if o.Name == op.Name && o.Type == op.Type {
+			return true
+		}
+	}
+	return false
+}
