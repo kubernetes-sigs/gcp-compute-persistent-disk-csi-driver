@@ -30,7 +30,6 @@ require (
 )
 
 require (
-	github.com/GoogleCloudPlatform/guest-configs v0.0.0-20211028171426-a0dacef88470 // indirect
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect

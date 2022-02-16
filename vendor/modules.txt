@@ -3,8 +3,6 @@
 cloud.google.com/go/compute/metadata
 cloud.google.com/go/iam
 cloud.google.com/go/kms/apiv1
-# github.com/GoogleCloudPlatform/guest-configs v0.0.0-20211028171426-a0dacef88470
-## explicit
 # github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20200415212048-7901bc822317
 ## explicit; go 1.13
 github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta
