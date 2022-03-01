@@ -238,3 +238,24 @@ func ProcessStorageLocations(storageLocations string) ([]string, error) {
 	}
 	return []string{normalizedLoc}, nil
 }
+
+func ParseOpTargetLinkUrl(url string) (string, string, string, error) {
+	if url == "" {
+		return "", "", "", fmt.Errorf("url is empty")
+	}
+
+	// example url: https://www.googleapis.com/compute/v1/projects/<projectname>/zones/<location>/instances/<instance-name>
+	s := strings.TrimPrefix(url, "https://www.googleapis.com/compute/")
+	splitStr := strings.Split(s, "/")
+	if len(splitStr) != 7 {
+		return "", "", "", fmt.Errorf("unknown targetLink format %s", url)
+	}
+
+	project := splitStr[2]
+	location := splitStr[4]
+	instanceName := splitStr[6]
+	if project == "" || location == "" || instanceName == "" {
+		return "", "", "", fmt.Errorf("unknown targetLink format %s", url)
+	}
+	return project, location, instanceName, nil
+}

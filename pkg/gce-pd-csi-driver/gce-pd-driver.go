@@ -157,6 +157,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GC
 		volumeLocks:             common.NewVolumeLocks(),
 		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "controllerserver"),
 		publishErrorsSeenOnNode: map[string]bool{},
+		opsManager:              NewOpsManager(cloudProvider),
 	}
 }
 

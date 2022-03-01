@@ -577,3 +577,78 @@ func TestSnapshotStorageLocations(t *testing.T) {
 		})
 	}
 }
+
+func TestParseOpTargetLinkUrl(t *testing.T) {
+	type InstanceInfo struct {
+		project  string
+		location string
+		name     string
+	}
+	tests := []struct {
+		name             string
+		url              string
+		expectError      bool
+		expectedInstance *InstanceInfo
+	}{
+		{
+			name:        "empty url",
+			url:         "",
+			expectError: true,
+		},
+		{
+			name:        "invalid instance 1",
+			url:         "https://www.googleapis.co/compute/v1beta1/projects/myproject/zones/us-central1-c/instances/myinstance",
+			expectError: true,
+		},
+		{
+			name:        "invalid instance 2",
+			url:         "https://www.googleapis.comcompute/v1beta1/projects/myproject/zones/us-central1-c/instances/myinstance",
+			expectError: true,
+		},
+		{
+			name:        "invalid instance 3",
+			url:         "https://www.googleapis.com/compute/v1beta1/myproject/zones/us-central1-c/instances/myinstance",
+			expectError: true,
+		},
+		{
+			name:        "invalid instance 4",
+			url:         "https://www.googleapis.com/compute/v1beta1/projects/myproject/us-central1-c/instances/myinstance",
+			expectError: true,
+		},
+		{
+			name: "valid v1 instance",
+			url:  "https://www.googleapis.com/compute/v1/projects/myproject/zones/us-central1-c/instances/myinstance",
+			expectedInstance: &InstanceInfo{
+				project:  "myproject",
+				name:     "myinstance",
+				location: "us-central1-c",
+			},
+		},
+		{
+			name: "valid v1beta1 instance",
+			url:  "https://www.googleapis.com/compute/v1beta1/projects/myproject/zones/us-central1-c/instances/myinstance",
+			expectedInstance: &InstanceInfo{
+				project:  "myproject",
+				name:     "myinstance",
+				location: "us-central1-c",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			project, location, instance, err := ParseOpTargetLinkUrl(tc.url)
+			if tc.expectError && err == nil {
+				t.Error("expected error")
+			}
+			if !tc.expectError && err != nil {
+				t.Error("unexpected error")
+			}
+
+			if tc.expectedInstance != nil {
+				if tc.expectedInstance.project != project || tc.expectedInstance.name != instance || tc.expectedInstance.location != location {
+					t.Error("unexpected instance found")
+				}
+			}
+		})
+	}
+}
