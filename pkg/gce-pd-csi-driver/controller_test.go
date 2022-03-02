@@ -64,6 +64,7 @@ var (
 	region, _      = common.GetRegionFromZones([]string{zone})
 	testRegionalID = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
 	testSnapshotID = fmt.Sprintf("projects/%s/global/snapshots/%s", project, name)
+	testImageID    = fmt.Sprintf("projects/%s/global/images/%s", project, name)
 	testNodeID     = fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone, node)
 )
 
@@ -93,6 +94,24 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			},
 			expSnapshot: &csi.Snapshot{
 				SnapshotId:     testSnapshotID,
+				SourceVolumeId: testVolumeID,
+				CreationTime:   tp,
+				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
+				ReadyToUse:     false,
+			},
+		},
+		{
+			name: "success disk image of zonal disk",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
+			expSnapshot: &csi.Snapshot{
+				SnapshotId:     testImageID,
 				SourceVolumeId: testVolumeID,
 				CreationTime:   tp,
 				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
@@ -199,9 +218,15 @@ func TestDeleteSnapshot(t *testing.T) {
 		expErrCode codes.Code
 	}{
 		{
-			name: "valid",
+			name: "valid snapshot delete",
 			req: &csi.DeleteSnapshotRequest{
 				SnapshotId: testSnapshotID,
+			},
+		},
+		{
+			name: "valid image delete",
+			req: &csi.DeleteSnapshotRequest{
+				SnapshotId: testImageID,
 			},
 		},
 		{
@@ -246,31 +271,62 @@ func TestDeleteSnapshot(t *testing.T) {
 func TestListSnapshotsArguments(t *testing.T) {
 	// Define test cases
 	testCases := []struct {
-		name         string
-		req          *csi.ListSnapshotsRequest
-		numSnapshots int
-		expErrCode   codes.Code
+		name          string
+		req           *csi.ListSnapshotsRequest
+		numSnapshots  int
+		numImages     int
+		expectedCount int
+		expErrCode    codes.Code
 	}{
 		{
 			name: "valid",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: testSnapshotID + "0",
 			},
-			numSnapshots: 1,
+			numSnapshots:  3,
+			numImages:     2,
+			expectedCount: 1,
 		},
 		{
 			name: "invalid id",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: testSnapshotID + "/foo",
 			},
-			numSnapshots: 0,
+			expectedCount: 0,
 		},
 		{
 			name: "no id",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: "",
 			},
-			numSnapshots: 5,
+			numSnapshots:  2,
+			numImages:     3,
+			expectedCount: 5,
+		},
+		{
+			name: "with invalid token",
+			req: &csi.ListSnapshotsRequest{
+				StartingToken: "invalid",
+			},
+			expectedCount: 0,
+			expErrCode:    codes.Aborted,
+		},
+		{
+			name: "negative entries",
+			req: &csi.ListSnapshotsRequest{
+				MaxEntries: -1,
+			},
+
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "max enries",
+			req: &csi.ListSnapshotsRequest{
+				MaxEntries: 4,
+			},
+			numSnapshots:  2,
+			numImages:     3,
+			expectedCount: 4,
 		},
 	}
 
@@ -278,7 +334,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 		t.Logf("test case: %s", tc.name)
 
 		disks := []*gce.CloudDisk{}
-		for i := 0; i < tc.numSnapshots; i++ {
+		for i := 0; i < tc.numSnapshots+tc.numImages; i++ {
 			sname := fmt.Sprintf("%s%d", name, i)
 			disks = append(disks, createZonalCloudDisk(sname))
 		}
@@ -292,6 +348,21 @@ func TestListSnapshotsArguments(t *testing.T) {
 			createReq := &csi.CreateSnapshotRequest{
 				Name:           nameID,
 				SourceVolumeId: volumeID,
+				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskSnapshotType},
+			}
+			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
+			if err != nil {
+				t.Errorf("error %v", err)
+			}
+		}
+
+		for i := 0; i < tc.numImages; i++ {
+			volumeID := fmt.Sprintf("%s%d", testVolumeID, i)
+			nameID := fmt.Sprintf("%s%d", name, i)
+			createReq := &csi.CreateSnapshotRequest{
+				Name:           nameID,
+				SourceVolumeId: volumeID,
+				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskImageType},
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -327,8 +398,8 @@ func TestListSnapshotsArguments(t *testing.T) {
 			// If one is nil or empty but not both
 			t.Fatalf("Expected snapshots number %v, got no snapshot", tc.numSnapshots)
 		}
-		if len(snapshots) != tc.numSnapshots {
-			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshots[0].Snapshot, tc.numSnapshots)
+		if len(snapshots) != tc.expectedCount {
+			errStr := fmt.Sprintf("Expected snapshot number to equal: %v", tc.numSnapshots)
 			t.Errorf(errStr)
 		}
 	}
@@ -827,6 +898,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		name            string
 		project         string
 		volKey          *meta.Key
+		snapshotType    string
 		snapshotOnCloud bool
 		expErrCode      codes.Code
 	}{
@@ -834,12 +906,29 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			name:            "success with data source of snapshot type",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotType:    common.DiskSnapshotType,
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotType:    common.DiskSnapshotType,
+			snapshotOnCloud: false,
+			expErrCode:      codes.NotFound,
+		},
+		{
+			name:            "success with data source of snapshot type",
+			project:         "test-project",
+			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotType:    common.DiskImageType,
+			snapshotOnCloud: true,
+		},
+		{
+			name:            "fail with data source of snapshot type that doesn't exist",
+			project:         "test-project",
+			volKey:          meta.ZonalKey("my-disk", zone),
+			snapshotType:    common.DiskImageType,
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
 		},
@@ -851,7 +940,28 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
 
+		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil)
+		if err != nil {
+			t.Errorf("Got error extracting snapshot parameters: %v", err)
+		}
+
 		// Start Test
+		var snapshotID string
+		switch tc.snapshotType {
+		case common.DiskSnapshotType:
+			snapshotID = testSnapshotID
+			if tc.snapshotOnCloud {
+				gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name, snapshotParams)
+			}
+		case common.DiskImageType:
+			snapshotID = testImageID
+			if tc.snapshotOnCloud {
+				gceDriver.cs.CloudProvider.CreateImage(context.Background(), tc.project, tc.volKey, name, snapshotParams)
+			}
+		default:
+			t.Errorf("Unknown snapshot type: %v", tc.snapshotType)
+		}
+
 		req := &csi.CreateVolumeRequest{
 			Name:               "test-name",
 			CapacityRange:      stdCapRange,
@@ -859,19 +969,12 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			VolumeContentSource: &csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Snapshot{
 					Snapshot: &csi.VolumeContentSource_SnapshotSource{
-						SnapshotId: testSnapshotID,
+						SnapshotId: snapshotID,
 					},
 				},
 			},
 		}
 
-		if tc.snapshotOnCloud {
-			snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
-			if err != nil {
-				t.Errorf("Got error extracting snapshot parameters: %v", err)
-			}
-			gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name, snapshotParams)
-		}
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
 		//check response
 		if err != nil {
@@ -1717,6 +1820,7 @@ func TestVolumeOperationConcurrency(t *testing.T) {
 		response := make(chan error)
 		go func() {
 			_, err := cs.CreateSnapshot(context.Background(), req)
+			t.Log(err)
 			response <- err
 		}()
 		return response

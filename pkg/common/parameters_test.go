@@ -165,37 +165,50 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 	}
 }
 
-// Currently the only parameter is storage-locations, which is already tested
-// in utils_test/TestSnapshotStorageLocations. Here we just test the case where
-// no parameter is set in the snapshot class.
+// Currently the storage-locations parameter is tested in utils_test/TestSnapshotStorageLocations.
+// Here we just test other parameters.
 func TestSnapshotParameters(t *testing.T) {
 	tests := []struct {
 		desc                    string
 		parameters              map[string]string
 		expectedSnapshotParames SnapshotParameters
+		expectError             bool
 	}{
 		{
 			desc:       "valid parameter",
-			parameters: map[string]string{ParameterKeyStorageLocations: "ASIA "},
+			parameters: map[string]string{ParameterKeyStorageLocations: "ASIA ", ParameterKeySnapshotType: "images", ParameterKeyImageFamily: "test-family"},
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{"asia"},
+				SnapshotType:     DiskImageType,
+				ImageFamily:      "test-family",
 			},
+			expectError: false,
 		},
 		{
 			desc:       "nil parameter",
 			parameters: nil,
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{},
+				SnapshotType:     DiskSnapshotType,
 			},
+			expectError: false,
+		},
+		{
+			desc:        "invalid snapshot type",
+			parameters:  map[string]string{ParameterKeySnapshotType: "invalid-type"},
+			expectError: true,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
 			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters)
-			if err != nil {
-				t.Errorf("Got error processing snapshot parameters: %v; expect no error", err)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v; expect no error", err)
 			}
-			if !reflect.DeepEqual(p, tc.expectedSnapshotParames) {
+			if err == nil && tc.expectError {
+				t.Error("Got no error; expect an error")
+			}
+			if err == nil && !reflect.DeepEqual(p, tc.expectedSnapshotParames) {
 				t.Errorf("Got ExtractAndDefaultSnapshotParameters(%+v) = %+v; expect %+v", tc.parameters, p, tc.expectedSnapshotParames)
 			}
 		})

@@ -114,15 +114,15 @@ func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
 	return fmt.Sprintf(volIDRegionalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
 }
 
-func SnapshotIDToProjectKey(id string) (string, string, error) {
+func SnapshotIDToProjectKey(id string) (string, string, string, error) {
 	splitId := strings.Split(id, "/")
 	if len(splitId) != snapshotTotalElements {
-		return "", "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/snapshot/{name}. Got: %s", id)
+		return "", "", "", fmt.Errorf("failed to get id components. Expected projects/{project}/global/{snapshots|images}/{name}. Got: %s", id)
 	}
 	if splitId[snapshotTopologyKey] == "global" {
-		return splitId[snapshotProjectKey], splitId[snapshotTotalElements-1], nil
+		return splitId[snapshotProjectKey], splitId[snapshotTotalElements-2], splitId[snapshotTotalElements-1], nil
 	} else {
-		return "", "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
+		return "", "", "", fmt.Errorf("could not get id components, expected global, got: %v", splitId[snapshotTopologyKey])
 	}
 }
 
@@ -237,4 +237,14 @@ func ProcessStorageLocations(storageLocations string) ([]string, error) {
 		return []string{}, fmt.Errorf("invalid location for snapshot: %q", storageLocations)
 	}
 	return []string{normalizedLoc}, nil
+}
+
+// ValidateSnapshotType validates the type
+func ValidateSnapshotType(snapshotType string) error {
+	switch snapshotType {
+	case DiskSnapshotType, DiskImageType:
+		return nil
+	default:
+		return fmt.Errorf("invalid snapshot type %s", snapshotType)
+	}
 }

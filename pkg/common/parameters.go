@@ -30,8 +30,11 @@ const (
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
-
-	replicationTypeNone = "none"
+	ParameterKeySnapshotType     = "snapshot-type"
+	ParameterKeyImageFamily      = "image-family"
+	DiskSnapshotType             = "snapshots"
+	DiskImageType                = "images"
+	replicationTypeNone          = "none"
 
 	// Keys for PV and PVC parameters as reported by external-provisioner
 	ParameterKeyPVCName      = "csi.storage.k8s.io/pvc/name"
@@ -67,6 +70,8 @@ type DiskParameters struct {
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
 type SnapshotParameters struct {
 	StorageLocations []string
+	SnapshotType     string
+	ImageFamily      string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
@@ -131,6 +136,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 func ExtractAndDefaultSnapshotParameters(parameters map[string]string) (SnapshotParameters, error) {
 	p := SnapshotParameters{
 		StorageLocations: []string{},
+		SnapshotType:     DiskSnapshotType,
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -140,6 +146,14 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string) (Snapshot
 				return p, err
 			}
 			p.StorageLocations = normalizedStorageLocations
+		case ParameterKeySnapshotType:
+			err := ValidateSnapshotType(v)
+			if err != nil {
+				return p, err
+			}
+			p.SnapshotType = v
+		case ParameterKeyImageFamily:
+			p.ImageFamily = v
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
