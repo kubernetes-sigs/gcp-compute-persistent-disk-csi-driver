@@ -149,6 +149,8 @@ elsewhere in GCP.
   1. Create a `VolumeSnapshot` resource which will be bound to a pre-provisioned
      `VolumeSnapshotContents`. Note this is called `restored-snapshot`; this
      name can be changed, but do it consistently across the other resources.
+     `VolumeSnapshotContentName` field must reference to the
+     VolumeSnapshotContent's name for the bidirectional binding to be valid.
      ```console
      kubectl apply -f - <<EOF
        apiVersion: snapshot.storage.k8s.io/v1beta1
@@ -158,22 +160,24 @@ elsewhere in GCP.
        spec:
          volumeSnapshotClassName: csi-gce-pd-snapshot-class
          source:
-           volumeSnapshotContentName: snapcontent-migrated
+           volumeSnapshotContentName: restored-snapshot-content
      EOF
      ```
   1. Create a `VolumeSnapshotContents` pointing to your existing PD
-     snapshot from the first step.
+     snapshot from the first step. Both `volumeSnapshotRef.name` and
+     `volumeSnapshotRef.namespace` must point to the previously created
+     VolumeSnapshot for the bidirectional binding to be valid.
      ```console
      kubectl apply -f - <<EOF
        apiVersion: snapshot.storage.k8s.io/v1beta1
-       kind: VolumeSnapshotContents
+       kind: VolumeSnapshotContent
        metadata:
          name: restored-snapshot-content
        spec:
          deletionPolicy: Retain
          driver: pd.csi.storage.gke.io
          source:
-           snapshotHandle: projects/$PROJECT_ID/global/snapshots/$SNAPSHOT_ID
+           snapshotHandle: projects/$PROJECT_ID/global/snapshots/$SNAPSHOT_NAME
          volumeSnapshotRef:
            kind: VolumeSnapshot
            name: restored-snapshot
