@@ -91,7 +91,7 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		return fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
-	imageURL := "projects/debian-cloud/global/images/family/debian-9"
+	imageURL := "projects/debian-cloud/global/images/family/debian-11"
 	inst := &compute.Instance{
 		Name:        i.name,
 		MachineType: machineType(i.zone, ""),
