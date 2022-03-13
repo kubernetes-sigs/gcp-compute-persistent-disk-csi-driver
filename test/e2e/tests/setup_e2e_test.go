@@ -104,6 +104,11 @@ var _ = BeforeSuite(func() {
 				klog.Fatalf("could not copy scsi_id to containerized directory: %v", err)
 			}
 
+			err = testutils.CopyFile(i, "/lib/udev/google_nvme_id", "/lib/udev_containerized/google_nvme_id")
+			if err != nil {
+				klog.Fatalf("could not copy google_nvme_id to containerized directory: %v", err)
+			}
+
 			klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
 			testContext, err := testutils.GCEClientAndDriverSetup(i)
