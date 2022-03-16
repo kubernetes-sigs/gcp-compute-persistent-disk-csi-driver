@@ -519,6 +519,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		InstanceName: instanceName,
 	})
 	if err != nil {
+		// Mark the node and rate limit all the following attach/detach
+		// operations for this node
+		gceCS.publishErrorsSeenOnNode[nodeID] = true
 		return nil, err
 	}
 
@@ -641,6 +644,9 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		InstanceName: instanceName,
 	})
 	if err != nil {
+		// Mark the node and rate limit all the following attach/detach
+		// operations for this node
+		gceCS.publishErrorsSeenOnNode[nodeID] = true
 		return nil, err
 	}
 
