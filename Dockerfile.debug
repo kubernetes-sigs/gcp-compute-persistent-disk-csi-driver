@@ -38,5 +38,5 @@ COPY --from=mad-hack /lib/udev/scsi_id /lib/udev_containerized/scsi_id
 
 # PDCSI driver isn't copied to / because of delve not being able to correlate
 # the binary and the source code, instead just run the binary where it was
-# compiled, the overlay noauth-dev calls this binary
+# compiled, the overlay noauth-debug calls this binary
 ENTRYPOINT ["/go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver"]

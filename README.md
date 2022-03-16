@@ -40,11 +40,11 @@ The following table captures the compatibility matrix of the core persistent dis
 | dev                                  | yes   |
 
 The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
-csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. For example, v1 CSIDriver resources are supported in 1.18+ only, so [stable-1-17](deploy/kubernetes/overlays/stable-1-17) driver manifests use the v1beta1 version.
+csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. 
 
 Example:
 
-`stable-1-19` overlays bundle can be used to deploy all the components of the driver on kubernetes 1.19.
+`stable-1-21` overlays bundle can be used to deploy all the components of the driver on kubernetes 1.21.
 
 `stable-master` overlays bundle can be used to deploy all the components of the driver on kubernetes master.
 
@@ -79,9 +79,10 @@ GCE PD driver starts to support CSI Windows with [CSI Proxy] (https://github.com
 
 | Feature         | Stage | Min Kubernetes Master Version | Min Kubernetes Nodes Version | Min Driver Version | Deployment Overlay |
 |-----------------|-------|-------------------------------|------------------------------|--------------------|--------------------|
-| Snapshots       | Beta  | 1.17                          | Any                          | v1.0.0             | stable-1-17, stable-1-18, stable-1-19, stable-master |
-| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | stable-1-17, stable-1-18, stable-1-19, stable-master |
-| Windows*        | Beta  | 1.18                          | 1.18                         | v1.1.0             | stable-1-18, stable-1-19, stable-master |
+| Snapshots       | GA    | 1.17                          | Any                          | v1.0.0             | stable-1-21, stable-1-22, stable-1-23, stable-master |
+| Clones          | GA    | 1.18                          | Any                          | v1.4.0             | stable-1-21, stable-1-22, stable-1-23, stable-master |
+| Resize (Expand) | Beta  | 1.16                          | 1.16                         | v0.7.0             | stable-1-21, stable-1-22, stable-1-23, stable-master |
+| Windows*        | GA    | 1.19                          | 1.19                         | v1.1.0             | stable-1-21, stable-1-22, stable-1-23, stable-master |
 
 \* For Windows, it is recommended to use this driver with CSI proxy v0.2.2+. The master version of driver requires disk v1beta2 group, which is only available in CSI proxy v0.2.2+
 
