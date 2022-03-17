@@ -49,7 +49,7 @@ make -C "${PKGDIR}" test-k8s-integration
 # snapshot tests for the PD CSI driver.
 #${PKGDIR}/bin/k8s-integration-test --run-in-prow=false \
 #--staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
-#--deploy-overlay-name=prow-gke-release-staging-head --bringup-cluster=false --teardown-cluster=false --test-focus="External.*Storage.*snapshot" --local-k8s-dir=$KTOP \
+#--deploy-overlay-name=prow-canary-sidecar --bringup-cluster=false --teardown-cluster=false --test-focus="External.*Storage.*snapshot" --local-k8s-dir=$KTOP \
 #--storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml --do-driver-build=true \
 #--gce-zone="us-central1-b" --num-nodes=${NUM_NODES:-3}
 
