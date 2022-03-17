@@ -1,56 +1,53 @@
+# Note the image names must be based off of those in stable-master, as that's
+# what this kustomization is built on.
+
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-provisioner
+  name: imagetag-csi-provisioner-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-provisioner
   newTag: "v3.1.0"
-
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-attacher
+  name: imagetag-csi-attacher-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-attacher
   newTag: "v3.4.0"
 ---
-
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-resizer
+  name: imagetag-csi-resize-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-resizer
   newTag: "v1.4.0"
 ---
-
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-snapshotter
+  name: imagetag-csi-snapshotter-prow-head
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-snapshotter
   newTag: "v4.0.1"
 ---
-
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-csi-node-registrar
+  name: imagetag-csi-node-registrar-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
   newTag: "v2.5.0"
 ---
-
 apiVersion: builtin
 kind: ImageTagTransformer
 metadata:
-  name: imagetag-gcepd-driver
+  name: imagetag-csi-gce-driver-prow-rc
 imageTag:
-  name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
-  # Don't change stable image without changing pdImagePlaceholder in
-  # test/k8s-integration/main.go
+  name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newName: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newTag: "v1.4.0"
 ---
+

@@ -1,9 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-- ../stable-1-17
-- v1beta1_csidriver.yaml
-patchesStrategicMerge:
-- no_v1_csidriver.yaml
-transformers:
-- ../../images/prow-gke-release-staging-rc-1-17
