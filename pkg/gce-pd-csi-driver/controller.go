@@ -25,6 +25,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -44,6 +45,9 @@ type GCEControllerServer struct {
 
 	disks []*compute.Disk
 	seen  map[string]int
+
+	snapshots      []*csi.ListSnapshotsResponse_Entry
+	snapshotTokens map[string]int
 
 	// A map storing all volumes with ongoing operations so that additional
 	// operations for that same volume (as defined by Volume Key) return an
@@ -807,19 +811,46 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateSnapshot unknown get disk error: %v", err))
 	}
 
-	// Check if snapshot already exists
+	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot parameters: %v", err))
+	}
+
+	var snapshot *csi.Snapshot
+	switch snapshotParams.SnapshotType {
+	case common.DiskSnapshotType:
+		snapshot, err = gceCS.createPDSnapshot(ctx, project, volKey, req.Name, snapshotParams)
+		if err != nil {
+			return nil, err
+		}
+	case common.DiskImageType:
+		snapshot, err = gceCS.createImage(ctx, project, volKey, req.Name, snapshotParams)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot type: %s", snapshotParams.SnapshotType))
+	}
+
+	klog.V(4).Infof("CreateSnapshot succeeded for snapshot %s on volume %s", snapshot.SnapshotId, volumeID)
+	return &csi.CreateSnapshotResponse{Snapshot: snapshot}, nil
+}
+
+func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*csi.Snapshot, error) {
+	volumeID, err := common.KeyToVolumeID(volKey, project)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume key: %v", volKey))
+	}
+
+	// Check if PD snapshot already exists
 	var snapshot *compute.Snapshot
-	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, req.Name)
+	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get snapshot error: %v", err))
 		}
 		// If we could not find the snapshot, we create a new one
-		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
-		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot parameters: %v", err))
-		}
-		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, req.Name, snapshotParams)
+		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 		if err != nil {
 			if gce.IsGCEError(err, "notFound") {
 				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
@@ -832,12 +863,8 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	if err != nil {
 		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Error in creating snapshot: %v", err))
 	}
-	t, err := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
-	}
 
-	tp, err := ptypes.TimestampProto(t)
+	timestamp, err := parseTimestamp(snapshot.CreationTimestamp)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
 	}
@@ -847,17 +874,111 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Snapshot had error checking ready status: %v", err))
 	}
 
-	createResp := &csi.CreateSnapshotResponse{
-		Snapshot: &csi.Snapshot{
-			SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
-			SnapshotId:     cleanSelfLink(snapshot.SelfLink),
-			SourceVolumeId: volumeID,
-			CreationTime:   tp,
-			ReadyToUse:     ready,
-		},
+	return &csi.Snapshot{
+		SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
+		SnapshotId:     cleanSelfLink(snapshot.SelfLink),
+		SourceVolumeId: volumeID,
+		CreationTime:   timestamp,
+		ReadyToUse:     ready,
+	}, nil
+}
+
+func (gceCS *GCEControllerServer) createImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*csi.Snapshot, error) {
+	volumeID, err := common.KeyToVolumeID(volKey, project)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume key: %v", volKey))
 	}
-	klog.V(4).Infof("CreateSnapshot succeeded for snapshot %s on volume %s", cleanSelfLink(snapshot.SelfLink), volumeID)
-	return createResp, nil
+
+	// Check if image already exists
+	var image *compute.Image
+	image, err = gceCS.CloudProvider.GetImage(ctx, project, imageName)
+	if err != nil {
+		if !gce.IsGCEError(err, "notFound") {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get image error: %v", err))
+		}
+		// create a new image
+		image, err = gceCS.CloudProvider.CreateImage(ctx, project, volKey, imageName, snapshotParams)
+		if err != nil {
+			if gce.IsGCEError(err, "notFound") {
+				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown create image error: %v", err))
+		}
+	}
+
+	err = gceCS.validateExistingImage(image, volKey)
+	if err != nil {
+		return nil, status.Errorf(codes.AlreadyExists, fmt.Sprintf("Error in creating snapshot: %v", err))
+	}
+
+	timestamp, err := parseTimestamp(image.CreationTimestamp)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
+	}
+
+	ready, err := isImageReady(image.Status)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, fmt.Sprintf("Failed to check image status: %v", err))
+	}
+
+	return &csi.Snapshot{
+		SizeBytes:      common.GbToBytes(image.DiskSizeGb),
+		SnapshotId:     cleanSelfLink(image.SelfLink),
+		SourceVolumeId: volumeID,
+		CreationTime:   timestamp,
+		ReadyToUse:     ready,
+	}, nil
+}
+
+func (gceCS *GCEControllerServer) validateExistingImage(image *compute.Image, volKey *meta.Key) error {
+	if image == nil {
+		return fmt.Errorf("disk does not exist")
+	}
+
+	_, sourceKey, err := common.VolumeIDToKey(cleanSelfLink(image.SourceDisk))
+	if err != nil {
+		return fmt.Errorf("fail to get source disk key %s, %v", image.SourceDisk, err)
+	}
+
+	if sourceKey.String() != volKey.String() {
+		return fmt.Errorf("image already exists with same name but with a different disk source %s, expected disk source %s", sourceKey.String(), volKey.String())
+	}
+
+	klog.V(5).Infof("Compatible image %s exists with source disk %s.", image.Name, image.SourceDisk)
+	return nil
+}
+
+func parseTimestamp(creationTimestamp string) (*timestamp.Timestamp, error) {
+	t, err := time.Parse(time.RFC3339, creationTimestamp)
+	if err != nil {
+		return nil, err
+	}
+
+	timestamp, err := ptypes.TimestampProto(t)
+	if err != nil {
+		return nil, err
+	}
+	return timestamp, nil
+}
+func isImageReady(status string) (bool, error) {
+	// Possible status:
+	//   "DELETING"
+	//   "FAILED"
+	//   "PENDING"
+	//   "READY"
+	switch status {
+	case "DELETING":
+		klog.V(4).Infof("image status is DELETING")
+		return true, nil
+	case "FAILED":
+		return false, fmt.Errorf("image status is FAILED")
+	case "PENDING":
+		return false, nil
+	case "READY":
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown image status %s", status)
+	}
 }
 
 func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Snapshot, volKey *meta.Key) error {
@@ -899,7 +1020,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 		return nil, status.Error(codes.InvalidArgument, "DeleteSnapshot Snapshot ID must be provided")
 	}
 
-	project, key, err := common.SnapshotIDToProjectKey(snapshotID)
+	project, snapshotType, key, err := common.SnapshotIDToProjectKey(snapshotID)
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		// This is a success according to the spec
@@ -907,9 +1028,19 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
-	err = gceCS.CloudProvider.DeleteSnapshot(ctx, project, key)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete snapshot error: %v", err))
+	switch snapshotType {
+	case common.DiskSnapshotType:
+		err = gceCS.CloudProvider.DeleteSnapshot(ctx, project, key)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete snapshot error: %v", err))
+		}
+	case common.DiskImageType:
+		err = gceCS.CloudProvider.DeleteImage(ctx, project, key)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete image error: %v", err))
+		}
+	default:
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("unknown snapshot type %s", snapshotType))
 	}
 
 	return &csi.DeleteSnapshotResponse{}, nil
@@ -922,7 +1053,48 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 	}
 
 	// case 2: no SnapshotId is set, so we return all the snapshots that satify the reqeust.
-	return gceCS.getSnapshots(ctx, req)
+	var maxEntries int = int(req.MaxEntries)
+	if maxEntries < 0 {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"ListSnapshots got max entries request %v. GCE only supports values >0", maxEntries))
+	}
+
+	var offset int
+	var length int
+	var ok bool
+	var nextToken string
+	if req.StartingToken == "" {
+		snapshotList, err := gceCS.getSnapshots(ctx, req)
+		if err != nil {
+			if gce.IsGCEInvalidError(err) {
+				return nil, status.Error(codes.Aborted, fmt.Sprintf("ListSnapshots error with invalid request: %v", err))
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshots error: %v", err))
+		}
+		gceCS.snapshots = snapshotList
+		gceCS.snapshotTokens = map[string]int{}
+	} else {
+		offset, ok = gceCS.snapshotTokens[req.StartingToken]
+		if !ok {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListSnapshots error with invalid startingToken: %s", req.StartingToken))
+		}
+	}
+
+	if maxEntries == 0 {
+		maxEntries = len(gceCS.snapshots)
+	}
+	if maxEntries < len(gceCS.snapshots)-offset {
+		length = maxEntries
+		nextToken = string(uuid.NewUUID())
+		gceCS.snapshotTokens[nextToken] = length + offset
+	} else {
+		length = len(gceCS.snapshots) - offset
+	}
+
+	return &csi.ListSnapshotsResponse{
+		Entries:   gceCS.snapshots[offset : offset+length],
+		NextToken: nextToken,
+	}, nil
 }
 
 func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
@@ -961,59 +1133,90 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	}, nil
 }
 
-func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) ([]*csi.ListSnapshotsResponse_Entry, error) {
 	var snapshots []*compute.Snapshot
-	var nextToken string
+	var images []*compute.Image
+	var filter string
 	var err error
 	if len(req.GetSourceVolumeId()) != 0 {
-		snapshots, nextToken, err = gceCS.CloudProvider.ListSnapshots(ctx, fmt.Sprintf("sourceDisk eq .*%s$", req.SourceVolumeId), int64(req.MaxEntries), req.StartingToken)
-	} else {
-		snapshots, nextToken, err = gceCS.CloudProvider.ListSnapshots(ctx, "", int64(req.MaxEntries), req.StartingToken)
+		filter = fmt.Sprintf("sourceDisk eq .*%s$", req.SourceVolumeId)
 	}
+	snapshots, _, err = gceCS.CloudProvider.ListSnapshots(ctx, filter)
 	if err != nil {
 		if gce.IsGCEError(err, "invalid") {
 			return nil, status.Error(codes.Aborted, fmt.Sprintf("Invalid error: %v", err))
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 	}
+
+	images, _, err = gceCS.CloudProvider.ListImages(ctx, filter)
+	if err != nil {
+		if gce.IsGCEError(err, "invalid") {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("Invalid error: %v", err))
+		}
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list image error: %v", err))
+	}
+
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 
 	for _, snapshot := range snapshots {
-		entry, err := generateSnapshotEntry(snapshot)
+		entry, err := generateDiskSnapshotEntry(snapshot)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
 		}
 		entries = append(entries, entry)
 	}
-	listSnapshotResp := &csi.ListSnapshotsResponse{
-		Entries:   entries,
-		NextToken: nextToken,
+
+	for _, image := range images {
+		entry, err := generateDiskImageEntry(image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate image entry: %v", err)
+		}
+		entries = append(entries, entry)
 	}
-	return listSnapshotResp, nil
+
+	return entries, nil
 }
 
 func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotID string) (*csi.ListSnapshotsResponse, error) {
-	project, key, err := common.SnapshotIDToProjectKey(snapshotID)
+	project, snapshotType, key, err := common.SnapshotIDToProjectKey(snapshotID)
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		klog.Warningf("invalid snapshot id format %s", snapshotID)
 		return &csi.ListSnapshotsResponse{}, nil
 	}
 
-	snapshot, err := gceCS.CloudProvider.GetSnapshot(ctx, project, key)
-	if err != nil {
-		if gce.IsGCEError(err, "notFound") {
-			// return empty list if no snapshot is found
-			return &csi.ListSnapshotsResponse{}, nil
+	var entries []*csi.ListSnapshotsResponse_Entry
+	switch snapshotType {
+	case common.DiskSnapshotType:
+		snapshot, err := gceCS.CloudProvider.GetSnapshot(ctx, project, key)
+		if err != nil {
+			if gce.IsGCEError(err, "notFound") {
+				// return empty list if no snapshot is found
+				return &csi.ListSnapshotsResponse{}, nil
+			}
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
-	}
-	e, err := generateSnapshotEntry(snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+		e, err := generateDiskSnapshotEntry(snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+		}
+		entries = []*csi.ListSnapshotsResponse_Entry{e}
+	case common.DiskImageType:
+		image, err := gceCS.CloudProvider.GetImage(ctx, project, key)
+		if err != nil {
+			if gce.IsGCEError(err, "notFound") {
+				// return empty list if no snapshot is found
+				return &csi.ListSnapshotsResponse{}, nil
+			}
+		}
+		e, err := generateImageEntry(image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate image entry: %v", err)
+		}
+		entries = []*csi.ListSnapshotsResponse_Entry{e}
 	}
 
-	entries := []*csi.ListSnapshotsResponse_Entry{e}
 	//entries[0] = entry
 	listSnapshotResp := &csi.ListSnapshotsResponse{
 		Entries: entries,
@@ -1021,7 +1224,7 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 	return listSnapshotResp, nil
 }
 
-func generateSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsResponse_Entry, error) {
+func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
 
 	tp, err := ptypes.TimestampProto(t)
@@ -1040,6 +1243,49 @@ func generateSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRespon
 			SnapshotId:     cleanSelfLink(snapshot.SelfLink),
 			SourceVolumeId: cleanSelfLink(snapshot.SourceDisk),
 			CreationTime:   tp,
+			ReadyToUse:     ready,
+		},
+	}
+	return entry, nil
+}
+
+func generateDiskImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
+	t, _ := time.Parse(time.RFC3339, image.CreationTimestamp)
+
+	tp, err := ptypes.TimestampProto(t)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+
+	ready, _ := isImageReady(image.Status)
+
+	entry := &csi.ListSnapshotsResponse_Entry{
+		Snapshot: &csi.Snapshot{
+			SizeBytes:      common.GbToBytes(image.DiskSizeGb),
+			SnapshotId:     cleanSelfLink(image.SelfLink),
+			SourceVolumeId: cleanSelfLink(image.SourceDisk),
+			CreationTime:   tp,
+			ReadyToUse:     ready,
+		},
+	}
+	return entry, nil
+}
+
+func generateImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
+	timestamp, err := parseTimestamp(image.CreationTimestamp)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	}
+
+	// ignore the error intentionally here since we are just listing images
+	ready, _ := isImageReady(image.Status)
+
+	entry := &csi.ListSnapshotsResponse_Entry{
+		Snapshot: &csi.Snapshot{
+			SizeBytes:      common.GbToBytes(image.DiskSizeGb),
+			SnapshotId:     cleanSelfLink(image.SelfLink),
+			SourceVolumeId: cleanSelfLink(image.SourceDisk),
+			CreationTime:   timestamp,
 			ReadyToUse:     ready,
 		},
 	}
