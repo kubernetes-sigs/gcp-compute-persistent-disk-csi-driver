@@ -839,7 +839,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// This is safe because we hardcode the zones.
 		snapshotLocation := z[:len(z)-2]
 
-		snapshotParams := map[string]string{common.ParameterKeyStorageLocations: snapshotLocation}
+		snapshotParams := map[string]string{
+			common.ParameterKeyStorageLocations:          snapshotLocation,
+			common.ParameterKeyVolumeSnapshotName:        "test-volumesnapshot-name",
+			common.ParameterKeyVolumeSnapshotNamespace:   "test-volumesnapshot-namespace",
+			common.ParameterKeyVolumeSnapshotContentName: "test-volumesnapshotcontent-name",
+		}
 		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
 		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
 
@@ -847,6 +852,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
 		Expect(snapshot.Name).To(Equal(snapshotName))
+		Expect(snapshot.Description).To(Equal("{\"kubernetes.io/created-for/volumesnapshot/name\":\"test-volumesnapshot-name\",\"kubernetes.io/created-for/volumesnapshot/namespace\":\"test-volumesnapshot-namespace\",\"kubernetes.io/created-for/volumesnapshotcontent/name\":\"test-volumesnapshotcontent-name\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
 
 		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
 			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()

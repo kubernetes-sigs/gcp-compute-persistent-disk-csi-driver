@@ -324,7 +324,7 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
 
-	description, err := encodeDiskTags(params.Tags)
+	description, err := encodeTags(params.Tags)
 	if err != nil {
 		return err
 	}
@@ -848,11 +848,23 @@ func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, project, snapsho
 
 func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Creating snapshot %s for volume %v", snapshotName, volKey)
+
+	description, err := encodeTags(snapshotParams.Tags)
+	if err != nil {
+		return nil, err
+	}
+
 	switch volKey.Type() {
 	case meta.Zonal:
-		return cloud.createZonalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
+		if description == "" {
+			description = "Snapshot created by GCE-PD CSI Driver"
+		}
+		return cloud.createZonalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams, description)
 	case meta.Regional:
-		return cloud.createRegionalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
+		if description == "" {
+			description = "Regional Snapshot created by GCE-PD CSI Driver"
+		}
+		return cloud.createRegionalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams, description)
 	default:
 		return nil, fmt.Errorf("could not create snapshot, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
@@ -860,6 +872,16 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, 
 
 func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
 	klog.V(5).Infof("Creating image %s for source %v", imageName, volKey)
+
+	description, err := encodeTags(snapshotParams.Tags)
+	if err != nil {
+		return nil, err
+	}
+
+	if description == "" {
+		description = "Image created by GCE-PD CSI Driver"
+	}
+
 	diskID, err := common.KeyToVolumeID(volKey, project)
 	if err != nil {
 		return nil, err
@@ -869,6 +891,7 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 		Family:           snapshotParams.ImageFamily,
 		Name:             imageName,
 		StorageLocations: snapshotParams.StorageLocations,
+		Description:      description,
 	}
 
 	_, err = cloud.service.Images.Insert(project, image).Context(ctx).Do()
@@ -1013,10 +1036,11 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 	return requestGb, nil
 }
 
-func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters, description string) (*computev1.Snapshot, error) {
 	snapshotToCreate := &computev1.Snapshot{
 		Name:             snapshotName,
 		StorageLocations: snapshotParams.StorageLocations,
+		Description:      description,
 	}
 
 	_, err := cloud.service.Disks.CreateSnapshot(project, volKey.Zone, volKey.Name, snapshotToCreate).Context(ctx).Do()
@@ -1028,10 +1052,11 @@ func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project
 	return cloud.waitForSnapshotCreation(ctx, project, snapshotName)
 }
 
-func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters, description string) (*computev1.Snapshot, error) {
 	snapshotToCreate := &computev1.Snapshot{
 		Name:             snapshotName,
 		StorageLocations: snapshotParams.StorageLocations,
+		Description:      description,
 	}
 
 	_, err := cloud.service.RegionDisks.CreateSnapshot(project, volKey.Region, volKey.Name, snapshotToCreate).Context(ctx).Do()
@@ -1088,9 +1113,9 @@ func removeCryptoKeyVersion(kmsKey string) string {
 	return kmsKey
 }
 
-// encodeDiskTags encodes requested volume tags into JSON string, as GCE does
-// not support tags on GCE PDs and we use Description field as fallback.
-func encodeDiskTags(tags map[string]string) (string, error) {
+// encodeTags encodes requested volume or snapshot tags into JSON string, suitable for putting into
+// the PD or Snapshot Description field.
+func encodeTags(tags map[string]string) (string, error) {
 	if len(tags) == 0 {
 		// No tags -> empty JSON
 		return "", nil
@@ -1098,7 +1123,7 @@ func encodeDiskTags(tags map[string]string) (string, error) {
 
 	enc, err := json.Marshal(tags)
 	if err != nil {
-		return "", fmt.Errorf("failed to encodeDiskTags %v: %v", tags, err)
+		return "", fmt.Errorf("failed to encodeTags %v: %v", tags, err)
 	}
 	return string(enc), nil
 }
