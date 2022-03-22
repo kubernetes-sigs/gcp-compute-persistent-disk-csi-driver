@@ -251,36 +251,57 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 }
 
 // ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
-// link location - it then finds the backing PD using scsi_id and validates that
-// it is the same as diskName
+// link location - it then finds the backing PD using either scsi_id or
+// google_nvme_id (depending on the /dev path) and validates that it is the
+// same as diskName
 func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName string) (bool, error) {
 	const (
-		scsiPattern = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`
-		sdPattern   = "sd\\w"
+		scsiPattern       = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`
+		sdPattern         = `sd\w+`
+		nvmeSerialPattern = `ID_SERIAL_SHORT=([\S]+)\s*`
+		nvmeDevPattern    = `nvme\w+`
 	)
 	// regex to parse scsi_id output and extract the serial
 	scsiRegex := regexp.MustCompile(scsiPattern)
 	sdRegex := regexp.MustCompile(sdPattern)
+	nvmeSerialRegex := regexp.MustCompile(nvmeSerialPattern)
+	nvmeDevRegex := regexp.MustCompile(nvmeDevPattern)
 
-	devSDX, err := instance.SSH("find", link, "-printf", "'%l'")
+	devFsPath, err := instance.SSH("find", link, "-printf", "'%l'")
 	if err != nil {
-		return false, fmt.Errorf("failed to find %s's symbolic link. Output: %v, errror: %v", link, devSDX, err)
+		return false, fmt.Errorf("failed to find symbolic link for %s. Output: %v, errror: %v", link, devFsPath, err)
 	}
-	if len(devSDX) == 0 {
+	if len(devFsPath) == 0 {
 		return false, nil
 	}
-	sdx := sdRegex.Find([]byte(devSDX))
-	fullDevPath := path.Join("/dev/", string(sdx))
-	scsiIDOut, err := instance.SSH("/lib/udev_containerized/scsi_id", "--page=0x83", "--whitelisted", fmt.Sprintf("--device=%v", fullDevPath))
-	if err != nil {
-		return false, fmt.Errorf("failed to find %s's SCSI ID. Output: %v, errror: %v", devSDX, scsiIDOut, err)
+	if sdx := sdRegex.FindString(devFsPath); len(sdx) != 0 {
+		fullDevPath := path.Join("/dev/", string(sdx))
+		scsiIDOut, err := instance.SSH("/lib/udev_containerized/scsi_id", "--page=0x83", "--whitelisted", fmt.Sprintf("--device=%v", fullDevPath))
+		if err != nil {
+			return false, fmt.Errorf("failed to find %s's SCSI ID. Output: %v, errror: %v", devFsPath, scsiIDOut, err)
+		}
+		scsiID := scsiRegex.FindStringSubmatch(scsiIDOut)
+		if len(scsiID) == 0 {
+			return false, fmt.Errorf("scsi_id output cannot be parsed: %s. Output: %v", scsiID, scsiIDOut)
+		}
+		if scsiID[1] != diskName {
+			return false, fmt.Errorf("scsiID %s did not match expected diskName %s", scsiID, diskName)
+		}
+		return true, nil
+	} else if nvmex := nvmeDevRegex.FindString(devFsPath); len(nvmex) != 0 {
+		fullDevPath := path.Join("/dev/", string(nvmex))
+		nvmeIDOut, err := instance.SSH("/lib/udev_containerized/google_nvme_id", fmt.Sprintf("-d%v", fullDevPath))
+		if err != nil {
+			return false, fmt.Errorf("failed to find %s's NVME ID. Output: %v, errror: %v", devFsPath, nvmeIDOut, err)
+		}
+		nvmeID := nvmeSerialRegex.FindStringSubmatch(nvmeIDOut)
+		if len(nvmeID) == 0 {
+			return false, fmt.Errorf("google_nvme_id output cannot be parsed: %s. Output: %v", nvmeID, nvmeIDOut)
+		}
+		if nvmeID[1] != diskName {
+			return false, fmt.Errorf("nvmeID %s did not match expected diskName %s", nvmeID, diskName)
+		}
+		return true, nil
 	}
-	scsiID := scsiRegex.FindStringSubmatch(scsiIDOut)
-	if len(scsiID) == 0 {
-		return false, fmt.Errorf("scsi_id output cannot be parsed: %s", scsiID)
-	}
-	if scsiID[1] != diskName {
-		return false, fmt.Errorf("scsiID %s did not match expected diskName %s", scsiID, diskName)
-	}
-	return true, nil
+	return false, fmt.Errorf("symlinked disk %s for diskName %s does not match a supported /dev/sd* or /dev/nvme* path", devFsPath, diskName)
 }

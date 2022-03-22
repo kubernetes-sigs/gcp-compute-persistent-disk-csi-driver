@@ -87,14 +87,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
-	It("Should automatically fix symlink errors between /dev/sdx and /dev/by-id if disk is not found", func() {
+	It("Should automatically fix the symlink between /dev/* and /dev/by-id if the disk does not match", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
-
-		// Set-up instance to have scsi_id where we expect it
 
 		// Create Disk
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
@@ -123,6 +121,78 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// MESS UP THE symlink
+		devicePaths := mountmanager.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			err = testutils.RmAll(instance, devicePath)
+			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
+			err = testutils.Symlink(instance, "/dev/null", devicePath)
+			Expect(err).To(BeNil(), "failed to add invalid symlink /dev/by-id folder")
+		}
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
+
+		// Validate that the link is correct
+		var validated bool
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				break
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+	})
+
+	It("Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolume(volID, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+
+		}()
+
+		// DELETE THE symlink
 		devicePaths := mountmanager.NewDeviceUtils().GetDiskByIdPaths(volName, "")
 		for _, devicePath := range devicePaths {
 			err = testutils.RmAll(instance, devicePath)
