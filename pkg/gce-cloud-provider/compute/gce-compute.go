@@ -871,7 +871,7 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 		StorageLocations: snapshotParams.StorageLocations,
 	}
 
-	_, err = cloud.service.Images.Insert(project, image).Context(ctx).Do()
+	_, err = cloud.service.Images.Insert(project, image).Context(ctx).ForceCreate(true).Do()
 	if err != nil {
 		return nil, err
 	}
