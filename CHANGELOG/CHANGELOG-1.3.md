@@ -1,3 +1,22 @@
+# v1.3.6 - Changelog since v1.3.5
+
+## Changes by Kind
+
+### Uncategorized
+
+- Cherry-pick #930: Update golang version to 1.17.8 for building drivers. ([#937](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/937), [@pwschuurman](https://github.com/pwschuurman))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.3.5 - Changelog since v1.3.4
 
 - Bump base image to buster-v1.10.0
