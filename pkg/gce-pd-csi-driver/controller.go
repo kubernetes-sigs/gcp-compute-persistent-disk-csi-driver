@@ -389,12 +389,16 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return gceCS.executeControllerPublishVolume(ctx, req)
 	}
 
-	// Node is marked so queue up the request
+	// Node is marked so queue up the request. Note the original gRPC context may get canceled,
+	// so a new one is created here.
+	//
+	// Note that the original context probably has a timeout (see csiAttach in external-attacher),
+	// which is ignored.
 	gceCS.queue.AddRateLimited(&workItem{
-		ctx:        ctx,
+		ctx:        context.Background(),
 		publishReq: req,
 	})
-	return &csi.ControllerPublishVolumeResponse{}, nil
+	return nil, status.Error(codes.Unavailable, "Request queued due to error condition on node")
 }
 
 func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (string, *meta.Key, error) {
