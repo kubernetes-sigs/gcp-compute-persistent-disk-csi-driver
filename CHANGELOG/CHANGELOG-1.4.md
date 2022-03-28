@@ -1,3 +1,27 @@
+# v1.4.1 - Changelog since v1.4.0
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fix #942 that can cause attacher to think a disk has been attached even if the attach failed. (#945, @mattcary)
+
+### Uncategorized
+
+- Add support for NVMe persistent disks (#946, @pwschuurman)
+- Cherry-pick #930: Update golang version to 1.17.8 for building drivers. (#936, @pwschuurman)
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.4.0 - Changelog since v1.3.4
 
 ## Changes by Kind
