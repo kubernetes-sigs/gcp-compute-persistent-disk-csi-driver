@@ -946,6 +946,65 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
 		}()
 	})
+
+	// Use the region of the test location.
+	It("Should successfully create snapshot backed by disk image", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		testImageFamily := "test-family"
+
+		snapshotParams := map[string]string{common.ParameterKeySnapshotType: common.DiskImageType, common.ParameterKeyImageFamily: testImageFamily}
+		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Images.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Images.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		// Check Snapshot Type
+		snapshot, err = computeService.Images.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		_, snapshotType, _, err := common.SnapshotIDToProjectKey(cleanSelfLink(snapshot.SelfLink))
+		Expect(err).To(BeNil(), "Failed to parse snapshot ID")
+		Expect(snapshotType).To(Equal(common.DiskImageType), "Expected images type in snapshot ID")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Images.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
@@ -1024,4 +1083,10 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	Expect(cloudDisk.MultiWriter).To(Equal(true))
 
 	return volName, volID
+}
+
+func cleanSelfLink(selfLink string) string {
+	temp := strings.TrimPrefix(selfLink, gce.GCEComputeAPIEndpoint)
+	temp = strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
+	return strings.TrimPrefix(temp, gce.GCEComputeAlphaAPIEndpoint)
 }

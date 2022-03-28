@@ -60,6 +60,6 @@ ${PKGDIR}/bin/k8s-integration-test \
     --kube-version="${kube_version}" \
     --kube-feature-gates="${feature_gates}" \
     --storageclass-files=sc-windows.yaml \
-    --snapshotclass-file=pd-volumesnapshotclass.yaml \
+    --snapshotclass-files=pd-volumesnapshotclass.yaml \
     --test-focus="${GCE_PD_TEST_FOCUS}" \
     --use-kubetest2="${use_kubetest2}"
