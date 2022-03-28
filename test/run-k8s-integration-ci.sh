@@ -29,6 +29,7 @@ readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
+readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-true}
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
@@ -62,7 +63,7 @@ fi
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files="${storage_classes}" --snapshotclass-file=pd-volumesnapshotclass.yaml \
+            --storageclass-files="${storage_classes}" \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
@@ -98,6 +99,12 @@ fi
 
 if [ -n "$gke_node_version" ]; then
   base_cmd="${base_cmd} --gke-node-version=${gke_node_version}"
+fi
+
+if [ "$test_disk_image_snapshot" = true ]; then
+  base_cmd="${base_cmd} --snapshotclass-files=image-volumesnapshotclass.yaml,pd-volumesnapshotclass.yaml"
+else
+  base_cmd="${base_cmd} --snapshotclass-files=pd-volumesnapshotclass.yaml"
 fi
 
 eval "$base_cmd"
