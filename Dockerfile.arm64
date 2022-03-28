@@ -32,7 +32,11 @@ RUN clean-install udev
 FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
+# google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash
 COPY --from=mad-hack /lib/udev/scsi_id /lib/udev_containerized/scsi_id
+
+# Copy google_nvme_id script, which is needed for NVMe support.
+COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
 
 ENTRYPOINT ["/gce-pd-csi-driver"]
