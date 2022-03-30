@@ -13,6 +13,7 @@ type driverConfig struct {
 	StorageClassFile     string
 	StorageClass         string
 	SnapshotClassFile    string
+	SnapshotClass        string
 	Capabilities         []string
 	SupportedFsType      []string
 	MinimumVolumeSize    string
@@ -115,11 +116,15 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 	}
 
 	var absSnapshotClassFilePath string
+	var snapshotClassName string
 	// If snapshot class is passed in as argument, include snapshot specific driver capabiltiites.
 	if testParams.snapshotClassFile != "" {
 		caps = append(caps, "snapshotDataSource")
 		// Update the absolute file path pointing to the snapshot class file, if it is provided as an argument.
 		absSnapshotClassFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.snapshotClassFile)
+		snapshotClassName = testParams.snapshotClassFile[:strings.LastIndex(testParams.snapshotClassFile, ".")]
+	} else {
+		snapshotClassName = "no-volumesnapshotclass"
 	}
 
 	caps = append(caps, "pvcDataSource")
@@ -136,6 +141,7 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, storageClassFile),
 		StorageClass:         storageClassFile[:strings.LastIndex(storageClassFile, ".")],
 		SnapshotClassFile:    absSnapshotClassFilePath,
+		SnapshotClass:        snapshotClassName,
 		SupportedFsType:      fsTypes,
 		Capabilities:         caps,
 		MinimumVolumeSize:    minimumVolumeSize,

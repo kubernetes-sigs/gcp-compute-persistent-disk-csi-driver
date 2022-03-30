@@ -10,7 +10,7 @@ Timeouts:
   {{ end }}
 {{end}}
 DriverInfo:
-  Name: csi-gcepd-{{.StorageClass}}
+  Name: csi-gcepd-{{.StorageClass}}--{{.SnapshotClass}}
   SupportedFsType:
   {{range .SupportedFsType}}  {{ . }}:
   {{end}}
