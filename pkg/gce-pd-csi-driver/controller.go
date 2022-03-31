@@ -542,11 +542,11 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 
 	// Node is marked so queue up the request
 	gceCS.queue.AddRateLimited(&workItem{
-		ctx:          ctx,
+		ctx:          context.Background(),
 		unpublishReq: req,
 	})
 
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
+	return nil, status.Error(codes.Unavailable, "Request queued due to error condition on node")
 }
 
 func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (string, *meta.Key, error) {
