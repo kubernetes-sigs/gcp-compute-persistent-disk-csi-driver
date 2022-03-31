@@ -30,12 +30,16 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+)
+
+const (
+	nodeBackoffInitialDuration = 200 * time.Millisecond
+	nodeBackoffMaxDuration     = 5 * time.Minute
 )
 
 type GCEControllerServer struct {
@@ -50,17 +54,9 @@ type GCEControllerServer struct {
 	// Aborted error
 	volumeLocks *common.VolumeLocks
 
-	// queue is a rate limited work queue for Controller Publish/Unpublish
-	// Volume calls
-	queue workqueue.RateLimitingInterface
-
-	// publishErrorsSeenOnNode is a list of nodes with attach/detach
-	// operation failures so those nodes shall be rate limited for all
-	// the attach/detach operations until there is an attach / detach
-	// operation succeeds
-	publishErrorsSeenOnNode map[string]bool
-
-	opsManager *OpsManager
+	// nodeBackoff keeps track of any active backoff condition on a given node, and the time when retry of controller publish/unpublish is permissible.
+	nodeBackoff *flowcontrol.Backoff
+	opsManager  *OpsManager
 }
 
 type workItem struct {
@@ -337,46 +333,6 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 // Run starts the GCEControllerServer.
 func (gceCS *GCEControllerServer) Run() {
 	go gceCS.opsManager.HydrateOpsCache()
-	go wait.Until(gceCS.worker, 1*time.Second, wait.NeverStop)
-}
-
-func (gceCS *GCEControllerServer) worker() {
-	// Runs until workqueue is shut down
-	for gceCS.processNextWorkItem() {
-	}
-}
-
-func (gceCS *GCEControllerServer) processNextWorkItem() bool {
-	item, quit := gceCS.queue.Get()
-	if quit {
-		return false
-	}
-	defer gceCS.queue.Done(item)
-
-	workItem, ok := item.(*workItem)
-	if !ok {
-		gceCS.queue.AddRateLimited(item)
-		return true
-	}
-
-	if workItem.publishReq != nil {
-		_, err := gceCS.executeControllerPublishVolume(workItem.ctx, workItem.publishReq)
-
-		if err != nil {
-			klog.Errorf("ControllerPublishVolume failed with error: %v", err)
-		}
-	}
-
-	if workItem.unpublishReq != nil {
-		_, err := gceCS.executeControllerUnpublishVolume(workItem.ctx, workItem.unpublishReq)
-
-		if err != nil {
-			klog.Errorf("ControllerUnpublishVolume failed with error: %v", err)
-		}
-	}
-
-	gceCS.queue.Forget(item)
-	return true
 }
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
@@ -384,28 +340,27 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, status.Errorf(codes.Aborted, "Cache not ready")
 	}
 
-	// Only valid requests will be queued
+	// Only valid requests will be accepted
 	_, _, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// If the node is not marked, proceed the request
-	if _, found := gceCS.publishErrorsSeenOnNode[req.NodeId]; !found {
-		return gceCS.executeControllerPublishVolume(ctx, req)
+	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		return nil, status.Errorf(codes.Unavailable, "ControllerPublish not permitted on node %q due to backoff", req.NodeId)
 	}
 
-	// Node is marked so queue up the request. Note the original gRPC context may get canceled,
-	// so a new one is created here.
-	//
-	// Note that the original context probably has a timeout (see csiAttach in external-attacher),
-	// which is ignored.
-	gceCS.queue.AddRateLimited(&workItem{
-		ctx:        context.Background(),
-		publishReq: req,
-	})
-	return nil, status.Error(codes.Unavailable, "Request queued due to error condition on node")
+	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
+	backoff := isResourceExhaustedError(err)
+	if backoff && !gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		klog.V(5).Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+	} else if err == nil {
+		klog.V(5).Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Reset(req.NodeId)
+	}
+
+	return resp, err
 }
 
 func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (string, *meta.Key, error) {
@@ -438,7 +393,6 @@ func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx con
 
 func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	project, volKey, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
@@ -457,6 +411,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err)
 		}
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "ControllerPublishVolume error repairing underspecified volume key: %v", err)
+		}
 		return nil, status.Errorf(codes.Internal, "ControllerPublishVolume error repairing underspecified volume key: %v", err)
 	}
 
@@ -473,6 +430,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
 		}
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "get disk error: %v", err)
+		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
 	}
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
@@ -483,6 +443,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find instance %v: %v", nodeID, err))
+		}
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "get instance error: %v", err)
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get instance error: %v", err))
 	}
@@ -523,19 +486,19 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		InstanceName: instanceName,
 	})
 	if err != nil {
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "Failed to execute attach operation, error: %v", err)
+		}
 		return nil, err
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
-		// Mark the node and rate limit all the following attach/detach
-		// operations for this node
-		gceCS.publishErrorsSeenOnNode[nodeID] = true
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "Failed to execute wait for attach operation, error: %v", err)
+		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
 	}
-
-	// Attach succeeds so unmark the node
-	delete(gceCS.publishErrorsSeenOnNode, nodeID)
 
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
 	return pubVolResp, nil
@@ -546,25 +509,25 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Errorf(codes.Aborted, "Cache not ready")
 	}
 
-	// Only valid requests will be queued
+	// Only valid requests will be accepted.
 	_, _, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// If the node is not marked, proceed the request
-	if _, found := gceCS.publishErrorsSeenOnNode[req.NodeId]; !found {
-		return gceCS.executeControllerUnpublishVolume(ctx, req)
+	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		return nil, status.Errorf(codes.Unavailable, "ControllerUnpublish not permitted on node %q due to backoff", req.NodeId)
 	}
-
-	// Node is marked so queue up the request
-	gceCS.queue.AddRateLimited(&workItem{
-		ctx:          ctx,
-		unpublishReq: req,
-	})
-
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
+	resp, err := gceCS.executeControllerUnpublishVolume(ctx, req)
+	backoff := isResourceExhaustedError(err)
+	if backoff && !gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		klog.V(5).Infof("For node %s adding backoff due to unpublish error for volume %s", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+	} else if err == nil {
+		klog.V(5).Infof("For node %s clear backoff due to succesful unpublish of volume %s", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Reset(req.NodeId)
+	}
+	return resp, err
 }
 
 func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (string, *meta.Key, error) {
@@ -588,7 +551,6 @@ func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx c
 
 func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	project, volKey, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
@@ -599,6 +561,9 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err)
+		}
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "ControllerUnpublishVolume error repairing underspecified volume key: %v", err)
 		}
 		return nil, status.Errorf(codes.Internal, "ControllerUnpublishVolume error repairing underspecified volume key: %v", err)
 	}
@@ -621,6 +586,9 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 			// Node not existing on GCE means that disk has been detached
 			klog.Warningf("Treating volume %v as unpublished because node %v could not be found", volKey.String(), instanceName)
 			return &csi.ControllerUnpublishVolumeResponse{}, nil
+		}
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "ControllerUnpublishVolume error repairing underspecified volume key: %v", err)
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting instance: %v", err))
 	}
@@ -645,10 +613,12 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		InstanceName: instanceName,
 	})
 	if err != nil {
+		if gce.IsTooManyRequestError(err) {
+			return nil, status.Errorf(codes.ResourceExhausted, "Failed to execute detach operation, error: %v", err)
+		}
 		return nil, err
 	}
 
-	delete(gceCS.publishErrorsSeenOnNode, nodeID)
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }

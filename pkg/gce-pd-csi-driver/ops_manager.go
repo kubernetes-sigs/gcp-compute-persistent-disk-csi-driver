@@ -83,7 +83,7 @@ func (o *OpsManager) ExecuteAttachDisk(ctx context.Context, opts *AttachDiskOpts
 	// Lock released, wait for the op to complete.
 	err = o.cloudProvider.WaitForZonalOp(ctx, opts.Project, op.Name, opts.Location)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("%v", err))
+		return err
 	}
 
 	// Op succeeded, acquire cache lock and clear op.
@@ -102,7 +102,7 @@ func (o *OpsManager) ExecuteDetachDisk(ctx context.Context, opts *DetachDiskOpts
 	// Lock released, wait for the op to complete.
 	err = o.cloudProvider.WaitForZonalOp(ctx, opts.Project, op.Name, opts.Location)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("%v", err))
+		return err
 	}
 
 	// Op succeeded, acquire cache lock and clear op.
@@ -117,13 +117,15 @@ func (o *OpsManager) checkAndUpdateLastKnownInstanceOps(ctx context.Context, pro
 	}
 
 	for _, op := range ops {
-		klog.V(5).Infof("Found last known op name %q (type %q) for instance %q", op.Name, op.Type, instanceName)
+		klog.V(5).Infof("Found last known op name %q (type %q) on node %q", op.Name, op.Type, instanceName)
 		done, err := o.cloudProvider.CheckZonalOpDoneStatus(ctx, project, location, op.Name)
 		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("%v", err))
+			return err
 		}
 
 		if !done {
+			msg := fmt.Sprintf("operation %q (type %q) on node %s is still in progress", op.Name, op.Type, instanceName)
+			klog.V(5).Info(msg)
 			return status.Error(codes.Aborted, fmt.Sprintf("operation %q (type %q) is still in progress", op.Name, op.Type))
 		}
 
@@ -139,14 +141,16 @@ func (o *OpsManager) checkAndUpdateLastKnownDiskInstanceOp(ctx context.Context, 
 		return nil
 	}
 
-	klog.V(5).Infof("Found last known op name %q (type %q) for instance %q", opInfo.Name, opInfo.Type, instanceName)
+	klog.V(5).Infof("Found last known op name %q (type %q) on node %q", opInfo.Name, opInfo.Type, instanceName)
 	done, err := o.cloudProvider.CheckZonalOpDoneStatus(ctx, project, location, opInfo.Name)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("%v", err))
+		return err
 	}
 
 	if !done {
-		return status.Error(codes.Aborted, fmt.Sprintf("operation %q (type %q) is still in progress", opInfo.Name, opInfo.Type))
+		msg := fmt.Sprintf("operation %q (type %q) for disk %s on node %s is still in progress", opInfo.Name, opInfo.Type, deviceName, instanceName)
+		klog.V(5).Info(msg)
+		return status.Error(codes.Aborted, msg)
 	}
 
 	o.opsCache.DiskInstanceOps.ClearOp(common.CreateDiskInstanceKey(project, location, deviceName, instanceName), opInfo.Name)
@@ -169,7 +173,7 @@ func (o *OpsManager) checkCacheAndStartAttachDiskOp(ctx context.Context, volKey 
 
 	op, err := o.cloudProvider.StartAttachDiskOp(ctx, volKey, readWrite, diskType, project, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("%v", err))
+		return nil, err
 	}
 
 	klog.V(5).Infof("AttachDisk operation %q for disk %q started on instance %q", op.Name, deviceName, instanceName)
@@ -194,13 +198,14 @@ func (o *OpsManager) checkCacheAndStartDetachDiskOp(ctx context.Context, project
 
 	op, err := o.cloudProvider.StartDetachDiskOp(ctx, project, instanceZone, deviceName, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("%v", err))
+		return nil, err
 	}
 
 	klog.V(5).Infof("DetachDisk operation %q for disk %q started on instance %q", op.Name, deviceName, instanceName)
 	o.opsCache.DiskInstanceOps.AddOp(common.CreateDiskInstanceKey(project, instanceZone, deviceName, instanceName), common.OpInfo{Name: op.Name, Type: op.OperationType})
 	return op, nil
 }
+
 func (o *OpsManager) HydrateOpsCache() {
 	var ops []*compute.Operation
 	retry.OnError(backoff, func(err error) bool { return true }, func() error {

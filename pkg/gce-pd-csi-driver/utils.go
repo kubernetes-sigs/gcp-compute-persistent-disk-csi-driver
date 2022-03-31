@@ -23,7 +23,9 @@ import (
 	"context"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 )
 
@@ -198,4 +200,30 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		options = append(options, "nouuid")
 	}
 	return options
+}
+
+func isInternalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return st.Code().String() == "Internal"
+}
+
+func isResourceExhaustedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return st.Code().String() == "ResourceExhausted"
 }

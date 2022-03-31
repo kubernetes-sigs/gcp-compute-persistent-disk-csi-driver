@@ -258,8 +258,17 @@ func IsGCENotFoundError(err error) bool {
 	return IsGCEError(err, "notFound")
 }
 
-// IsInvalidError returns true if the error is a googleapi.Error with
+// IsGCEInvalidError returns true if the error is a googleapi.Error with
 // invalid reason
 func IsGCEInvalidError(err error) bool {
 	return IsGCEError(err, "invalid")
+}
+
+// IsTooManyRequestError returns true if the error is a googleapi.Error with
+// resource exhausted error code.
+func IsTooManyRequestError(err error) bool {
+	if apierr, ok := err.(*googleapi.Error); ok && apierr.Code == http.StatusTooManyRequests {
+		return true
+	}
+	return false
 }
