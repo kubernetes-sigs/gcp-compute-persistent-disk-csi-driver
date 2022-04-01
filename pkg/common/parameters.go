@@ -41,11 +41,21 @@ const (
 	ParameterKeyPVCNamespace = "csi.storage.k8s.io/pvc/namespace"
 	ParameterKeyPVName       = "csi.storage.k8s.io/pv/name"
 
-	// Keys for tags to put in the provisioned disk description.
+	// Keys for tags to put in the provisioned disk description
 	tagKeyCreatedForClaimNamespace = "kubernetes.io/created-for/pvc/namespace"
 	tagKeyCreatedForClaimName      = "kubernetes.io/created-for/pvc/name"
 	tagKeyCreatedForVolumeName     = "kubernetes.io/created-for/pv/name"
 	tagKeyCreatedBy                = "storage.gke.io/created-by"
+
+	// Keys for Snapshot and SnapshotContent parameters as reported by external-snapshotter
+	ParameterKeyVolumeSnapshotName        = "csi.storage.k8s.io/volumesnapshot/name"
+	ParameterKeyVolumeSnapshotNamespace   = "csi.storage.k8s.io/volumesnapshot/namespace"
+	ParameterKeyVolumeSnapshotContentName = "csi.storage.k8s.io/volumesnapshotcontent/name"
+
+	// Keys for tags to put in the provisioned snapshot description
+	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
+	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
+	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
 )
 
 // DiskParameters contains normalized and defaulted disk parameters
@@ -72,6 +82,7 @@ type SnapshotParameters struct {
 	StorageLocations []string
 	SnapshotType     string
 	ImageFamily      string
+	Tags             map[string]string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
@@ -133,10 +144,11 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 	return p, nil
 }
 
-func ExtractAndDefaultSnapshotParameters(parameters map[string]string) (SnapshotParameters, error) {
+func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string) (SnapshotParameters, error) {
 	p := SnapshotParameters{
 		StorageLocations: []string{},
 		SnapshotType:     DiskSnapshotType,
+		Tags:             make(map[string]string), // Default
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -154,9 +166,18 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string) (Snapshot
 			p.SnapshotType = v
 		case ParameterKeyImageFamily:
 			p.ImageFamily = v
+		case ParameterKeyVolumeSnapshotName:
+			p.Tags[tagKeyCreatedForSnapshotName] = v
+		case ParameterKeyVolumeSnapshotNamespace:
+			p.Tags[tagKeyCreatedForSnapshotNamespace] = v
+		case ParameterKeyVolumeSnapshotContentName:
+			p.Tags[tagKeyCreatedForSnapshotContentName] = v
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
+	}
+	if len(p.Tags) > 0 {
+		p.Tags[tagKeyCreatedBy] = driverName
 	}
 	return p, nil
 }

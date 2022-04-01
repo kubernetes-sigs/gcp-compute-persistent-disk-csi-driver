@@ -175,12 +175,25 @@ func TestSnapshotParameters(t *testing.T) {
 		expectError             bool
 	}{
 		{
-			desc:       "valid parameter",
-			parameters: map[string]string{ParameterKeyStorageLocations: "ASIA ", ParameterKeySnapshotType: "images", ParameterKeyImageFamily: "test-family"},
+			desc: "valid parameter",
+			parameters: map[string]string{
+				ParameterKeyStorageLocations:          "ASIA ",
+				ParameterKeySnapshotType:              "images",
+				ParameterKeyImageFamily:               "test-family",
+				ParameterKeyVolumeSnapshotName:        "snapshot-name",
+				ParameterKeyVolumeSnapshotContentName: "snapshot-content-name",
+				ParameterKeyVolumeSnapshotNamespace:   "snapshot-namespace",
+			},
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{"asia"},
 				SnapshotType:     DiskImageType,
 				ImageFamily:      "test-family",
+				Tags: map[string]string{
+					tagKeyCreatedForSnapshotName:        "snapshot-name",
+					tagKeyCreatedForSnapshotContentName: "snapshot-content-name",
+					tagKeyCreatedForSnapshotNamespace:   "snapshot-namespace",
+					tagKeyCreatedBy:                     "test-driver",
+				},
 			},
 			expectError: false,
 		},
@@ -190,6 +203,7 @@ func TestSnapshotParameters(t *testing.T) {
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{},
 				SnapshotType:     DiskSnapshotType,
+				Tags:             make(map[string]string),
 			},
 			expectError: false,
 		},
@@ -201,7 +215,7 @@ func TestSnapshotParameters(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters)
+			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters, "test-driver")
 			if err != nil && !tc.expectError {
 				t.Errorf("Got error %v; expect no error", err)
 			}

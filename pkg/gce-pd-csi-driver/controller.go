@@ -815,7 +815,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateSnapshot unknown get disk error: %v", err))
 	}
 
-	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters())
+	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot parameters: %v", err))
 	}
