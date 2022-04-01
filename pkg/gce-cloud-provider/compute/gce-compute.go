@@ -49,6 +49,24 @@ const (
 	GCEAPIVersionBeta GCEAPIVersion = "beta"
 )
 
+// AttachDiskBackoff is backoff used to wait for AttachDisk to complete.
+// Default values are similar to Poll every 5 seconds with 2 minute timeout.
+var AttachDiskBackoff = wait.Backoff{
+	Duration: 5 * time.Second,
+	Factor:   0.0,
+	Jitter:   0.0,
+	Steps:    24,
+	Cap:      0}
+
+// WaitForOpBackoff is backoff used to wait for Global, Regional or Zonal operation to complete.
+// Default values are similar to Poll every 3 seconds with 5 minute timeout.
+var WaitForOpBackoff = wait.Backoff{
+	Duration: 3 * time.Second,
+	Factor:   0.0,
+	Jitter:   0.0,
+	Steps:    100,
+	Cap:      0}
+
 type GCECompute interface {
 	// Metadata information
 	GetDefaultProject() string
@@ -739,7 +757,7 @@ func (cloud *CloudProvider) getRegionalDiskTypeURI(project string, region, diskT
 
 func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName string, zone string) error {
 	// The v1 API can query for v1, alpha, or beta operations.
-	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		pollOp, err := cloud.service.ZoneOperations.Get(project, zone, opName).Context(ctx).Do()
 		if err != nil {
 			klog.Errorf("WaitForOp(op: %s, zone: %#v) failed to poll the operation", opName, zone)
@@ -752,7 +770,7 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName 
 
 func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opName string, region string) error {
 	// The v1 API can query for v1, alpha, or beta operations.
-	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		pollOp, err := cloud.service.RegionOperations.Get(project, region, opName).Context(ctx).Do()
 		if err != nil {
 			klog.Errorf("WaitForOp(op: %s, region: %#v) failed to poll the operation", opName, region)
@@ -764,7 +782,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 }
 
 func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName string) error {
-	return wait.Poll(3*time.Second, 5*time.Minute, func() (bool, error) {
+	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		pollOp, err := cloud.service.GlobalOperations.Get(project, opName).Context(ctx).Do()
 		if err != nil {
 			klog.Errorf("waitForGlobalOp(op: %s) failed to poll the operation", opName)
@@ -778,7 +796,7 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName
 func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
 	klog.V(5).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, instanceName)
 	start := time.Now()
-	return wait.Poll(5*time.Second, 2*time.Minute, func() (bool, error) {
+	return wait.ExponentialBackoff(AttachDiskBackoff, func() (bool, error) {
 		klog.V(6).Infof("Polling for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
 		disk, err := cloud.GetDisk(ctx, project, volKey, GCEAPIVersionV1)
 		if err != nil {
