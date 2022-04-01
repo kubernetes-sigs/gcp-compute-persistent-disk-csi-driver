@@ -57,7 +57,7 @@ var (
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFiles  = flag.String("storageclass-files", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
-	snapshotClassFile  = flag.String("snapshotclass-file", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config")
+	snapshotClassFiles = flag.String("snapshotclass-files", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
@@ -203,7 +203,6 @@ func handle() error {
 	testParams := &testParameters{
 		platform:            *platform,
 		testFocus:           *testFocus,
-		snapshotClassFile:   *snapshotClassFile,
 		stagingVersion:      string(uuid.NewUUID()),
 		deploymentStrategy:  *deploymentStrat,
 		useGKEManagedDriver: *useGKEManagedDriver,
@@ -481,6 +480,7 @@ func handle() error {
 	// Run the tests using the k8sSourceDir kubernetes
 	if len(*storageClassFiles) != 0 {
 		applicableStorageClassFiles := []string{}
+		applicableSnapshotClassFiles := []string{}
 		for _, rawScFile := range strings.Split(*storageClassFiles, ",") {
 			scFile := strings.TrimSpace(rawScFile)
 			if len(scFile) == 0 {
@@ -495,13 +495,29 @@ func handle() error {
 		if len(applicableStorageClassFiles) == 0 {
 			return fmt.Errorf("No applicable storage classes found")
 		}
+		for _, rawSnapshotClassFile := range strings.Split(*snapshotClassFiles, ",") {
+			snapshotClassFile := strings.TrimSpace(rawSnapshotClassFile)
+			if len(snapshotClassFile) != 0 {
+				applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, snapshotClassFile)
+			}
+		}
+		if len(applicableSnapshotClassFiles) == 0 {
+			// when no snapshot class specified, we run the tests without snapshot capability
+			applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, "")
+		}
 		var ginkgoErrors []string
 		var testOutputDirs []string
 		for _, scFile := range applicableStorageClassFiles {
 			outputDir := strings.TrimSuffix(scFile, ".yaml")
-			testOutputDirs = append(testOutputDirs, outputDir)
-			if err = runCSITests(testParams, scFile, outputDir); err != nil {
-				ginkgoErrors = append(ginkgoErrors, err.Error())
+			for _, snapshotClassFile := range applicableSnapshotClassFiles {
+				if len(snapshotClassFile) != 0 {
+					outputDir = fmt.Sprintf("%s--%s", outputDir, strings.TrimSuffix(snapshotClassFile, ".yaml"))
+				}
+				testOutputDirs = append(testOutputDirs, outputDir)
+				testParams.snapshotClassFile = snapshotClassFile
+				if err = runCSITests(testParams, scFile, outputDir); err != nil {
+					ginkgoErrors = append(ginkgoErrors, err.Error())
+				}
 			}
 		}
 		if err = mergeArtifacts(testOutputDirs); err != nil {

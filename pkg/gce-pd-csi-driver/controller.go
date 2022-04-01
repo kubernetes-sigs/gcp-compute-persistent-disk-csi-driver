@@ -1480,8 +1480,9 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.Crea
 		},
 	}
 	snapshotID := disk.GetSnapshotId()
+	imageID := disk.GetImageId()
 	diskID := disk.GetSourceDiskId()
-	if diskID != "" || snapshotID != "" {
+	if diskID != "" || snapshotID != "" || imageID != "" {
 		contentSource := &csi.VolumeContentSource{}
 		if snapshotID != "" {
 			contentSource = &csi.VolumeContentSource{
@@ -1497,6 +1498,15 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.Crea
 				Type: &csi.VolumeContentSource_Volume{
 					Volume: &csi.VolumeContentSource_VolumeSource{
 						VolumeId: diskID,
+					},
+				},
+			}
+		}
+		if imageID != "" {
+			contentSource = &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: imageID,
 					},
 				},
 			}

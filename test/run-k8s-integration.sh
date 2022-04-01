@@ -44,7 +44,7 @@ fi
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files=sc-standard.yaml --snapshotclass-file=pd-volumesnapshotclass.yaml \
+            --storageclass-files=sc-standard.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
