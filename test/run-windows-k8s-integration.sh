@@ -51,6 +51,6 @@ ${PKGDIR}/bin/k8s-integration-test \
     --test-version="${test_version}" \
     --kube-version="${kube_version}" \
     --storageclass-files=sc-windows.yaml \
-    --snapshotclass-file=pd-volumesnapshotclass.yaml \
+    --snapshotclass-files=pd-volumesnapshotclass.yaml \
     --test-focus='External.Storage' \
     --use-kubetest2="${use_kubetest2}"
