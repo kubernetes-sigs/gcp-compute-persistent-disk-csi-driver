@@ -1,3 +1,11 @@
+# v1.5.1 - Changelog since v1.5.0
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fix bug in original disk-image implementation that was fixed in test PR ([#955](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/955), [@mattcary](https://github.com/mattcary))
+
 # v1.5.0 - Changelog since v1.4.1
 
 ## Changes by Kind
