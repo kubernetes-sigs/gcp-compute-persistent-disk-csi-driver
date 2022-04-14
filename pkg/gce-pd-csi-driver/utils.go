@@ -199,3 +199,13 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	}
 	return options
 }
+
+func containsZone(zones []string, zone string) bool {
+	for _, z := range zones {
+		if z == zone {
+			return true
+		}
+	}
+
+	return false
+}

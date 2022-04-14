@@ -45,7 +45,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 						Segments: map[string]string{common.TopologyKeyZone: z},
 					},
 				},
-			})
+			}, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -152,7 +152,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 						Segments: map[string]string{common.TopologyKeyZone: z},
 					},
 				},
-			})
+			}, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created & size
@@ -264,7 +264,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 						Segments: map[string]string{common.TopologyKeyZone: z},
 					},
 				},
-			})
+			}, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
