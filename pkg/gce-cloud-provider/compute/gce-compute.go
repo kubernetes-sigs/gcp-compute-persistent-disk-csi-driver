@@ -716,7 +716,7 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 		klog.V(6).Infof("Polling for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
 		disk, err := cloud.GetDisk(ctx, project, volKey, GCEAPIVersionV1)
 		if err != nil {
-			return false, fmt.Errorf("GetDisk failed to get disk: %v", err)
+			return false, err
 		}
 
 		if disk == nil {
@@ -935,6 +935,7 @@ func (cloud *CloudProvider) StartAttachDiskOp(ctx context.Context, volKey *meta.
 
 	op, err := cloud.service.Instances.AttachDisk(project, location, instanceName, attachedDiskV1).Context(ctx).Do()
 	if err != nil {
+		klog.Errorf("failed to start attach op for disk %s, instance %s, err: %v", deviceName, instanceName, err)
 		return nil, fmt.Errorf("failed cloud service attach disk call: %v", err)
 	}
 	return op, nil
@@ -943,6 +944,7 @@ func (cloud *CloudProvider) StartAttachDiskOp(ctx context.Context, volKey *meta.
 func (cloud *CloudProvider) StartDetachDiskOp(ctx context.Context, project, location, deviceName, instanceName string) (*computev1.Operation, error) {
 	op, err := cloud.service.Instances.DetachDisk(project, location, instanceName, deviceName).Context(ctx).Do()
 	if err != nil {
+		klog.Errorf("failed to start detach op for disk %s, instance %s, err %v", deviceName, instanceName, err)
 		return nil, fmt.Errorf("failed cloud service detach disk call: %v", err)
 	}
 	return op, nil
@@ -953,7 +955,8 @@ func (cloud *CloudProvider) CheckZonalOpDoneStatus(ctx context.Context, project,
 	lastKnownOp, err := cloud.service.ZoneOperations.Get(project, location, opId).Context(ctx).Do()
 	if err != nil {
 		if !IsGCENotFoundError(err) {
-			return false, fmt.Errorf("failed to get operation %s: %v", opId, err)
+			klog.Errorf("failed to check status for op %s, err: %v", opId, err)
+			return false, err
 		}
 		return true, nil
 	}

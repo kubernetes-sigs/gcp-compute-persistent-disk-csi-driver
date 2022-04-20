@@ -20,7 +20,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/client-go/util/workqueue"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog"
 	"k8s.io/mount-utils"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -151,13 +151,13 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 
 func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:                  gceDriver,
-		CloudProvider:           cloudProvider,
-		seen:                    map[string]int{},
-		volumeLocks:             common.NewVolumeLocks(),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "controllerserver"),
-		publishErrorsSeenOnNode: map[string]bool{},
-		opsManager:              NewOpsManager(cloudProvider),
+		Driver:        gceDriver,
+		CloudProvider: cloudProvider,
+		seen:          map[string]int{},
+		volumeLocks:   common.NewVolumeLocks(),
+		// flowcontrol uses an exponential backoff policy with a factor of 2
+		nodeBackoff: flowcontrol.NewBackOff(nodeBackoffInitialDuration, nodeBackoffMaxDuration),
+		opsManager:  NewOpsManager(cloudProvider),
 	}
 }
 

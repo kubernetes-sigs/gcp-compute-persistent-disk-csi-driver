@@ -17,6 +17,7 @@ package gcecloudprovider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -419,8 +420,9 @@ func (cloud *FakeCloudProvider) UpdateDiskStatus(s string) {
 }
 
 type Signal struct {
-	ReportError   bool
-	ReportRunning bool
+	ReportError                bool
+	ReportRunning              bool
+	ReportTooManyRequestsError bool
 }
 
 type FakeBlockingCloudProvider struct {
@@ -445,6 +447,9 @@ func (cloud *FakeBlockingCloudProvider) WaitForZonalOp(ctx context.Context, proj
 	val := <-execute
 	if val.ReportError {
 		return fmt.Errorf("force mock error of zonal op %s", opName)
+	}
+	if val.ReportTooManyRequestsError {
+		return tooManyRequestsError()
 	}
 	return nil
 }
@@ -480,6 +485,12 @@ func invalidError() *googleapi.Error {
 				Reason: "invalid",
 			},
 		},
+	}
+}
+
+func tooManyRequestsError() *googleapi.Error {
+	return &googleapi.Error{
+		Code: http.StatusTooManyRequests,
 	}
 }
 
