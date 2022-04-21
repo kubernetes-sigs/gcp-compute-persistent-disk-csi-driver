@@ -356,7 +356,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	}
 
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Error(codes.Aborted, fmt.Sprintf("An operation with the given Volume ID %s already exists", volumeID))
+		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
