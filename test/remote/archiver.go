@@ -55,7 +55,7 @@ func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
 
 func setupBinaries(tarDir, pkgPath, binPath string) error {
 	klog.V(4).Infof("Making binaries and copying to temp dir...")
-	out, err := exec.Command("make", "-C", pkgPath).CombinedOutput()
+	out, err := exec.Command("make", "-C", pkgPath, "ARCH="+architecture).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err)
 	}

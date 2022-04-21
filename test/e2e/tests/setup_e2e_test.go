@@ -35,6 +35,8 @@ import (
 
 var (
 	project         = flag.String("project", "", "Project to run tests in")
+	architecture    = flag.String("arch", "amd64", "Architecture pd csi driver build on")
+	vmName          = flag.String("vm-name", "", "Name of the VM to run tests on")
 	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
 	zones           = flag.String("zones", "us-central1-c,us-central1-b", "Zones to run tests in. If there are multiple zones, separate each by comma")
 	machineType     = flag.String("machine-type", "n1-standard-1", "Type of machine to provision instance on")
@@ -90,7 +92,7 @@ var _ = BeforeSuite(func() {
 	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
-			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
+			nodeID := getNodeId(*vmName, curZone)
 			klog.Infof("Setting up node %s\n", nodeID)
 
 			i, err := remote.SetupInstance(*project, curZone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
@@ -145,4 +147,11 @@ func getRandomTestContext() *remote.TestContext {
 	Expect(testContexts).ToNot(BeEmpty())
 	rn := rand.Intn(len(testContexts))
 	return testContexts[rn]
+}
+
+func getNodeId(vmName, curZone string) string {
+	if vmName == "" {
+		return fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
+	}
+	return vmName
 }
