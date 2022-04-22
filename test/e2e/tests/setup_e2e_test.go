@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,6 +36,9 @@ import (
 var (
 	project         = flag.String("project", "", "Project to run tests in")
 	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
+	zones           = flag.String("zones", "us-central1-c,us-central1-b", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	machineType     = flag.String("machine-type", "n1-standard-1", "Type of machine to provision instance on")
+	imageURL        = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 
@@ -60,7 +64,7 @@ var _ = BeforeSuite(func() {
 	tcc := make(chan *remote.TestContext)
 	defer close(tcc)
 
-	zones := []string{"us-central1-c", "us-central1-b"}
+	zones := strings.Split(*zones, ",")
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -89,7 +93,7 @@ var _ = BeforeSuite(func() {
 			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
 			klog.Infof("Setting up node %s\n", nodeID)
 
-			i, err := remote.SetupInstance(*project, curZone, nodeID, *serviceAccount, computeService)
+			i, err := remote.SetupInstance(*project, curZone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
 			if err != nil {
 				klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 			}

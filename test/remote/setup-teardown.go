@@ -54,14 +54,14 @@ type processes struct {
 }
 
 // SetupInstance sets up the specified GCE Instance for E2E testing and returns a handle to the instance object for future use.
-func SetupInstance(instanceProject, instanceZone, instanceName, instanceServiceAccount string, cs *compute.Service) (*InstanceInfo, error) {
+func SetupInstance(instanceProject, instanceZone, instanceName, instanceMachineType, instanceServiceAccount, instanceImageURL string, cs *compute.Service) (*InstanceInfo, error) {
 	// Create the instance in the requisite zone
-	instance, err := CreateInstanceInfo(instanceProject, instanceZone, instanceName, cs)
+	instance, err := CreateInstanceInfo(instanceProject, instanceZone, instanceName, instanceMachineType, cs)
 	if err != nil {
 		return nil, err
 	}
 
-	err = instance.CreateOrGetInstance(instanceServiceAccount)
+	err = instance.CreateOrGetInstance(instanceImageURL, instanceServiceAccount)
 	if err != nil {
 		return nil, err
 	}

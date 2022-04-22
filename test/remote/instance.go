@@ -38,7 +38,6 @@ import (
 )
 
 const (
-	defaultMachine      = "n1-standard-1"
 	defaultFirewallRule = "default-allow-ssh"
 
 	// timestampFormat is the timestamp format used in the e2e directory name.
@@ -46,9 +45,10 @@ const (
 )
 
 type InstanceInfo struct {
-	project string
-	zone    string
-	name    string
+	project     string
+	zone        string
+	name        string
+	machineType string
 
 	// External IP is filled in after instance creation
 	externalIP string
@@ -68,18 +68,19 @@ func (i *InstanceInfo) GetNodeID() string {
 	return common.CreateNodeID(i.project, i.zone, i.name)
 }
 
-func CreateInstanceInfo(project, instanceZone, name string, cs *compute.Service) (*InstanceInfo, error) {
+func CreateInstanceInfo(project, instanceZone, name, machineType string, cs *compute.Service) (*InstanceInfo, error) {
 	return &InstanceInfo{
-		project: project,
-		zone:    instanceZone,
-		name:    name,
+		project:     project,
+		zone:        instanceZone,
+		name:        name,
+		machineType: machineType,
 
 		computeService: cs,
 	}, nil
 }
 
 // Provision a gce instance using image
-func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
+func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) error {
 	var err error
 	var instance *compute.Instance
 	klog.V(4).Infof("Creating instance: %v", i.name)
@@ -91,10 +92,9 @@ func (i *InstanceInfo) CreateOrGetInstance(serviceAccount string) error {
 		return fmt.Errorf("Failed to create firewall rule: %v", err)
 	}
 
-	imageURL := "projects/debian-cloud/global/images/family/debian-11"
 	inst := &compute.Instance{
 		Name:        i.name,
-		MachineType: machineType(i.zone, ""),
+		MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", i.zone, i.machineType),
 		NetworkInterfaces: []*compute.NetworkInterface{
 			{
 				AccessConfigs: []*compute.AccessConfig{
@@ -213,13 +213,6 @@ func getexternalIP(instance *compute.Instance) string {
 
 func getTimestamp() string {
 	return fmt.Sprintf(time.Now().Format(timestampFormat))
-}
-
-func machineType(zone, machine string) string {
-	if machine == "" {
-		machine = defaultMachine
-	}
-	return fmt.Sprintf("zones/%s/machineTypes/%s", zone, machine)
 }
 
 // Create default SSH filewall rule if it does not exist
