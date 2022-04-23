@@ -41,11 +41,11 @@ gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 	go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows: require-GCE_PD_CSI_STAGING_VERSION
-ifeq ($(ARCH), amd64)
+ifeq (GOARCH, amd64)
 	mkdir -p bin
-	GOOS=windows GOARCH=$(ARCH) go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
+	GOOS=windows go build -mod=vendor -ldflags -X=main.version=$(STAGINGVERSION) -o bin/${DRIVERWINDOWSBINARY} ./cmd/gce-pd-csi-driver/
 else
-  echo "Warning: gcp-pd-driver-windows only supports ARCH=amd64."
+  $(warning gcp-pd-driver-windows only supports amd64.)
 endif
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
