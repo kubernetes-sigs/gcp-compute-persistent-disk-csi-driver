@@ -134,6 +134,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		newInst.Metadata = meta
 	}
 
+	// If instance exists but machine-type doesn't match, delete instance
 	curInst, _ := i.computeService.Instances.Get(i.project, i.zone, newInst.Name).Do()
 	if curInst != nil {
 		if !strings.Contains(curInst.MachineType, newInst.MachineType) {
