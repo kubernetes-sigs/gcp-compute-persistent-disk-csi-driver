@@ -137,7 +137,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 	curInst, _ := i.computeService.Instances.Get(i.project, i.zone, newInst.Name).Do()
 	if curInst != nil {
 		if !strings.Contains(curInst.MachineType, newInst.MachineType) {
-			klog.V(4).Infof("Instance machine type doesn't match the required one. Remove instance.")
+			klog.V(4).Infof("Instance machine type doesn't match the required one. Delete instance.")
 			if _, err := i.computeService.Instances.Delete(i.project, i.zone, i.name).Do(); err != nil {
 				return err
 			}
@@ -153,17 +153,23 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 			if err != nil {
 				return err
 			}
+		}
+	}
 
-			if err := insertInstance(i, newInst); err != nil {
-				return err
+	if _, err := i.computeService.Instances.Get(i.project, i.zone, newInst.Name).Do(); err != nil {
+		op, err := i.computeService.Instances.Insert(i.project, i.zone, newInst).Do()
+		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.project, i.zone)
+		if err != nil {
+			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
+			if op != nil {
+				ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
 			}
-		} else {
-			klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", newInst.Name)
+			return errors.New(ret)
+		} else if op.Error != nil {
+			return fmt.Errorf("could not create instance %s: %+v", i.name, op.Error)
 		}
 	} else {
-		if err := insertInstance(i, newInst); err != nil {
-			return err
-		}
+		klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", newInst.Name)
 	}
 
 	then := time.Now()
@@ -202,21 +208,6 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 
 	// Instance reached running state in time, make sure that cloud-init is complete
 	klog.V(2).Infof("Instance %v has been created successfully", i.name)
-	return nil
-}
-
-func insertInstance(i *InstanceInfo, newInst *compute.Instance) error {
-	op, err := i.computeService.Instances.Insert(i.project, i.zone, newInst).Do()
-	klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.project, i.zone)
-	if err != nil {
-		ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
-		if op != nil {
-			ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
-		}
-		return errors.New(ret)
-	} else if op.Error != nil {
-		return fmt.Errorf("could not create instance %s: %+v", i.name, op.Error)
-	}
 	return nil
 }
 
