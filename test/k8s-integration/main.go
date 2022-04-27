@@ -93,6 +93,7 @@ type testParameters struct {
 	k8sSourceDir         string
 	testFocus            string
 	testSkip             string
+	storageClassFile     string
 	snapshotClassFile    string
 	cloudProviderArgs    []string
 	deploymentStrategy   string
@@ -501,21 +502,27 @@ func handle() error {
 				applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, snapshotClassFile)
 			}
 		}
-		if len(applicableSnapshotClassFiles) == 0 {
-			// when no snapshot class specified, we run the tests without snapshot capability
-			applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, "")
-		}
 		var ginkgoErrors []string
 		var testOutputDirs []string
+
+		// Run non-snapshot tests.
+		testParams.snapshotClassFile = ""
 		for _, scFile := range applicableStorageClassFiles {
 			outputDir := strings.TrimSuffix(scFile, ".yaml")
+			testOutputDirs = append(testOutputDirs, outputDir)
+			testParams.storageClassFile = scFile
+			if err = runCSITests(testParams, outputDir); err != nil {
+				ginkgoErrors = append(ginkgoErrors, err.Error())
+			}
+		}
+		// Run snapshot tests, if there are applicable files, using the first storage class.
+		if len(applicableStorageClassFiles) > 0 {
+			testParams.storageClassFile = applicableStorageClassFiles[0]
 			for _, snapshotClassFile := range applicableSnapshotClassFiles {
-				if len(snapshotClassFile) != 0 {
-					outputDir = fmt.Sprintf("%s--%s", outputDir, strings.TrimSuffix(snapshotClassFile, ".yaml"))
-				}
-				testOutputDirs = append(testOutputDirs, outputDir)
 				testParams.snapshotClassFile = snapshotClassFile
-				if err = runCSITests(testParams, scFile, outputDir); err != nil {
+				outputDir := strings.TrimSuffix(snapshotClassFile, ".yaml")
+				testOutputDirs = append(testOutputDirs, outputDir)
+				if err = runCSITests(testParams, outputDir); err != nil {
 					ginkgoErrors = append(ginkgoErrors, err.Error())
 				}
 			}
@@ -633,8 +640,8 @@ func runMigrationTests(testParams *testParameters) error {
 	return runTestsWithConfig(testParams, "--storage.migratedPlugins=kubernetes.io/gce-pd", "")
 }
 
-func runCSITests(testParams *testParameters, storageClassFile string, reportPrefix string) error {
-	testDriverConfigFile, err := generateDriverConfigFile(testParams, storageClassFile)
+func runCSITests(testParams *testParameters, reportPrefix string) error {
+	testDriverConfigFile, err := generateDriverConfigFile(testParams)
 	if err != nil {
 		return fmt.Errorf("failed to generated driver config: %w", err)
 	}
@@ -668,7 +675,20 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 			kubetestDumpDir = artifactsDir
 		}
 	}
-	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", testParams.testFocus, testParams.testSkip)
+
+	focus := testParams.testFocus
+	skip := testParams.testSkip
+	// If testParams.snapshotClassFile is empty, then snapshot tests will be automatically skipped. Otherwise confirm
+	// the right tests are run.
+	if testParams.snapshotClassFile != "" && strings.Contains(skip, "VolumeSnapshotDataSource") {
+		return fmt.Errorf("Snapshot class file %s specified, but snapshot tests are skipped: %s", testParams.snapshotClassFile, skip)
+	}
+	if testParams.snapshotClassFile != "" {
+		// Run exactly the snapshot tests, if there is a snapshot class file.
+		focus = "Driver:\\s*csi-gcepd.*Feature:VolumeSnapshotDataSource"
+	}
+
+	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", focus, skip)
 
 	windowsArgs := ""
 	if testParams.platform == "windows" {
@@ -728,8 +748,8 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 			kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=latest-%s.txt", *testVersion))
 		}
 	}
-	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", testParams.testFocus))
-	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", testParams.testSkip))
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", focus))
+	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--skip-regex=%s", skip))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--parallel=%d", testParams.parallel))
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-args=%s %s", testConfigArg, windowsArgs))
 
