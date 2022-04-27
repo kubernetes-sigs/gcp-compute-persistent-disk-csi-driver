@@ -146,7 +146,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 			then := time.Now()
 			err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
 				klog.V(2).Infof("Waiting for instance to be deleted. %v elapsed", time.Since(then))
-				if instance, _ = i.computeService.Instances.Get(i.project, i.zone, i.name).Do(); instance != nil {
+				if curInst, _ = i.computeService.Instances.Get(i.project, i.zone, i.name).Do(); curInst != nil {
 					return false, nil
 				}
 				return true, nil
@@ -157,7 +157,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		}
 	}
 
-	if _, err := i.computeService.Instances.Get(i.project, i.zone, newInst.Name).Do(); err != nil {
+	if curInst == nil {
 		op, err := i.computeService.Instances.Insert(i.project, i.zone, newInst).Do()
 		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.project, i.zone)
 		if err != nil {
