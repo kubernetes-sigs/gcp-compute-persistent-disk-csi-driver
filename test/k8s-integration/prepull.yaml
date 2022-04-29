@@ -33,8 +33,8 @@ spec:
       # run ping in each container to keep it alive so that kubernetes does not
       # continually restart the containers while we're prepulling.
       containers:
-      - image: k8s.gcr.io/e2e-test-images/agnhost:2.26
-        name: agnhost-212
+      - image: registry.k8s.io/e2e-test-images/agnhost:2.36
+        name: agnhost-236
         resources:
           requests:
             cpu: 1m
