@@ -36,6 +36,7 @@ import (
 var (
 	project         = flag.String("project", "", "Project to run tests in")
 	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
+	architecture    = flag.String("arch", "amd64", "Architecture pd csi driver build on")
 	zones           = flag.String("zones", "us-central1-c,us-central1-b", "Zones to run tests in. If there are multiple zones, separate each by comma")
 	machineType     = flag.String("machine-type", "n1-standard-1", "Type of machine to provision instance on")
 	imageURL        = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
@@ -93,7 +94,7 @@ var _ = BeforeSuite(func() {
 			nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", curZone)
 			klog.Infof("Setting up node %s\n", nodeID)
 
-			i, err := remote.SetupInstance(*project, curZone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
+			i, err := remote.SetupInstance(*project, *architecture, curZone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
 			if err != nil {
 				klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 			}

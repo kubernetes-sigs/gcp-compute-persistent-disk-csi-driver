@@ -54,9 +54,9 @@ type processes struct {
 }
 
 // SetupInstance sets up the specified GCE Instance for E2E testing and returns a handle to the instance object for future use.
-func SetupInstance(instanceProject, instanceZone, instanceName, instanceMachineType, instanceServiceAccount, instanceImageURL string, cs *compute.Service) (*InstanceInfo, error) {
+func SetupInstance(instanceProject, instanceArchitecture, instanceZone, instanceName, instanceMachineType, instanceServiceAccount, instanceImageURL string, cs *compute.Service) (*InstanceInfo, error) {
 	// Create the instance in the requisite zone
-	instance, err := CreateInstanceInfo(instanceProject, instanceZone, instanceName, instanceMachineType, cs)
+	instance, err := CreateInstanceInfo(instanceProject, instanceArchitecture, instanceZone, instanceName, instanceMachineType, cs)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func SetupInstance(instanceProject, instanceZone, instanceName, instanceMachineT
 // that the driver is on and the CSI Client object to make CSI calls to the remote driver.
 func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*TestContext, error) {
 	archiveName := fmt.Sprintf("e2e_driver_binaries_%s.tar.gz", uuid.NewUUID())
-	archivePath, err := CreateDriverArchive(archiveName, config.PkgPath, config.BinPath)
+	archivePath, err := CreateDriverArchive(archiveName, instance.architecture, config.PkgPath, config.BinPath)
 	if err != nil {
 		return nil, err
 	}

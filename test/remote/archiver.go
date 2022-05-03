@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog"
 )
 
-func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
+func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (string, error) {
 	klog.V(2).Infof("Building archive...")
 	tarDir, err := ioutil.TempDir("", "driver-temp-archive")
 	if err != nil {
@@ -35,7 +35,7 @@ func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
 	defer os.RemoveAll(tarDir)
 
 	// Call the suite function to setup the test package.
-	err = setupBinaries(tarDir, pkgPath, binPath)
+	err = setupBinaries(architecture, tarDir, pkgPath, binPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to setup test package %q: %v", tarDir, err)
 	}
@@ -53,9 +53,9 @@ func CreateDriverArchive(archiveName, pkgPath, binPath string) (string, error) {
 	return filepath.Join(dir, archiveName), nil
 }
 
-func setupBinaries(tarDir, pkgPath, binPath string) error {
+func setupBinaries(architecture, tarDir, pkgPath, binPath string) error {
 	klog.V(4).Infof("Making binaries and copying to temp dir...")
-	out, err := exec.Command("make", "-C", pkgPath).CombinedOutput()
+	out, err := exec.Command("make", "-C", pkgPath, "GOARCH="+architecture).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err)
 	}
