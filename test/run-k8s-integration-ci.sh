@@ -29,7 +29,7 @@ readonly run_intree_plugin_tests=${RUN_INTREE_PLUGIN_TESTS:-false}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
-readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-false}
+readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-true}
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 

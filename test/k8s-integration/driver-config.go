@@ -34,7 +34,7 @@ const (
 
 // generateDriverConfigFile loads a testdriver config template and creates a file
 // with the test-specific configuration
-func generateDriverConfigFile(testParams *testParameters, storageClassFile string) (string, error) {
+func generateDriverConfigFile(testParams *testParameters) (string, error) {
 	// Load template
 	t, err := template.ParseFiles(filepath.Join(testParams.pkgDir, testConfigDir, configTemplateFile))
 	if err != nil {
@@ -130,16 +130,18 @@ func generateDriverConfigFile(testParams *testParameters, storageClassFile strin
 	caps = append(caps, "pvcDataSource")
 	minimumVolumeSize := "5Gi"
 	numAllowedTopologies := 1
-	if storageClassFile == regionalPDStorageClass {
+	if testParams.storageClassFile == regionalPDStorageClass {
 		minimumVolumeSize = "200Gi"
 		numAllowedTopologies = 2
 	}
 	timeouts := map[string]string{
 		dataSourceProvisionTimeoutKey: dataSourceProvisionTimeout,
 	}
+	extLoc := strings.LastIndex(testParams.storageClassFile, ".")
+	scName := testParams.storageClassFile[:extLoc]
 	params := driverConfig{
-		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, storageClassFile),
-		StorageClass:         storageClassFile[:strings.LastIndex(storageClassFile, ".")],
+		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, testParams.storageClassFile),
+		StorageClass:         scName,
 		SnapshotClassFile:    absSnapshotClassFilePath,
 		SnapshotClass:        snapshotClassName,
 		SupportedFsType:      fsTypes,
