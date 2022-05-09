@@ -9,8 +9,8 @@ readonly prepull_daemonset=prepull-test-containers
 
 wait_on_prepull()
 {
-    # Wait up to 15 minutes for the test images to be pulled onto the nodes.
-    retries=90
+    # Wait up to 30 minutes for the test images to be pulled onto the nodes.
+    retries=180
     while [[ $retries -ge 0 ]];do
         ready=$(kubectl get daemonset "${prepull_daemonset}" -o jsonpath="{.status.numberReady}")
         required=$(kubectl get daemonset "${prepull_daemonset}" -o jsonpath="{.status.desiredNumberScheduled}")
