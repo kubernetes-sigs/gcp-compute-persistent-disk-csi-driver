@@ -586,7 +586,7 @@ func generateGKETestSkip(testParams *testParameters) string {
 
 	// Cloning test fixes were introduced after 1.23.
 	if curVer.lessThan(mustParseVersion("1.24.0")) {
-		skipString = skipString + "|\\[Feature:VolumeSnapshotDataSource\\]|pvc.data.source"
+		skipString = skipString + "pvc.data.source"
 	}
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
