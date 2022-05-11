@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -o xtrace
+
 # The following is a workaround for issue https://github.com/moby/moby/issues/41417
 # to manually inserver os.version information into docker manifest file
 # TODO: once docker manifest annotation for os.versions is availabler for the installed docker here,
@@ -33,4 +35,7 @@ for ((i=0;i<${#imagetags[@]};++i)); do
   sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":$full_version/" \
   "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
 
+  # manifest after transformations
+  cat "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
 done
+
