@@ -32,8 +32,8 @@ for ((i=0;i<${#imagetags[@]};++i)); do
   image_folder=$(echo "${IMAGETAG}" | sed "s|/|_|g" | sed "s/:/-/")
   echo ${manifest_folder}
 
-  sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":$full_version/" \
-  "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
+  # sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":$full_version/" \
+  # "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
 
   # manifest after transformations
   cat "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
