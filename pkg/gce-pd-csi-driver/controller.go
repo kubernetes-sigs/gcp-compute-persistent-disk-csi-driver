@@ -31,12 +31,16 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+)
+
+const (
+	nodeBackoffInitialDuration = 200 * time.Millisecond
+	nodeBackoffMaxDuration     = 5 * time.Minute
 )
 
 type GCEControllerServer struct {
@@ -54,15 +58,9 @@ type GCEControllerServer struct {
 	// Aborted error
 	volumeLocks *common.VolumeLocks
 
-	// queue is a rate limited work queue for Controller Publish/Unpublish
-	// Volume calls
-	queue workqueue.RateLimitingInterface
-
-	// publishErrorsSeenOnNode is a list of nodes with attach/detach
-	// operation failures so those nodes shall be rate limited for all
-	// the attach/detach operations until there is an attach / detach
-	// operation succeeds
-	publishErrorsSeenOnNode map[string]bool
+	// When the attacher sidecar issues controller publish/unpublish for multiple disks for a given node, the per-instance operation queue in GCE fills up causing attach/detach disk requests to immediately return with an error until the queue drains. nodeBackoff keeps track of any active backoff condition on a given node, and the time when retry of controller publish/unpublish is permissible. A node is marked with backoff when any error is encountered by the driver during controller publish/unpublish calls.
+	// If the controller eventually allows controller publish/publish requests for volumes (because the backoff time expired), and those requests fail, the next backoff retry time will be updated on every failure and capped at 'nodeBackoffMaxDuration'. Also, any successful controller publish/unpublish call will clear the backoff condition for the node.
+	nodeBackoff *flowcontrol.Backoff
 }
 
 type workItem struct {
@@ -364,73 +362,26 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
-// Run starts the GCEControllerServer.
-func (gceCS *GCEControllerServer) Run() {
-	go wait.Until(gceCS.worker, 1*time.Second, wait.NeverStop)
-}
-
-func (gceCS *GCEControllerServer) worker() {
-	// Runs until workqueue is shut down
-	for gceCS.processNextWorkItem() {
-	}
-}
-
-func (gceCS *GCEControllerServer) processNextWorkItem() bool {
-	item, quit := gceCS.queue.Get()
-	if quit {
-		return false
-	}
-	defer gceCS.queue.Done(item)
-
-	workItem, ok := item.(*workItem)
-	if !ok {
-		gceCS.queue.AddRateLimited(item)
-		return true
-	}
-
-	if workItem.publishReq != nil {
-		_, err := gceCS.executeControllerPublishVolume(workItem.ctx, workItem.publishReq)
-
-		if err != nil {
-			klog.Errorf("ControllerPublishVolume failed with error: %v", err)
-		}
-	}
-
-	if workItem.unpublishReq != nil {
-		_, err := gceCS.executeControllerUnpublishVolume(workItem.ctx, workItem.unpublishReq)
-
-		if err != nil {
-			klog.Errorf("ControllerUnpublishVolume failed with error: %v", err)
-		}
-	}
-
-	gceCS.queue.Forget(item)
-	return true
-}
-
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
-	// Only valid requests will be queued
+	// Only valid requests will be accepted
 	_, _, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// If the node is not marked, proceed the request
-	if _, found := gceCS.publishErrorsSeenOnNode[req.NodeId]; !found {
-		return gceCS.executeControllerPublishVolume(ctx, req)
+	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		return nil, status.Errorf(codes.Unavailable, "ControllerPublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 
-	// Node is marked so queue up the request. Note the original gRPC context may get canceled,
-	// so a new one is created here.
-	//
-	// Note that the original context probably has a timeout (see csiAttach in external-attacher),
-	// which is ignored.
-	gceCS.queue.AddRateLimited(&workItem{
-		ctx:        context.Background(),
-		publishReq: req,
-	})
-	return nil, status.Error(codes.Unavailable, "Request queued due to error condition on node")
+	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
+	if err != nil {
+		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+	} else {
+		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Reset(req.NodeId)
+	}
+	return resp, err
 }
 
 func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (string, *meta.Key, error) {
@@ -542,15 +493,8 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
-		// Mark the node and rate limit all the following attach/detach
-		// operations for this node
-		gceCS.publishErrorsSeenOnNode[nodeID] = true
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
 	}
-
-	// Attach succeeds so unmark the node
-	delete(gceCS.publishErrorsSeenOnNode, nodeID)
-
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
 	return pubVolResp, nil
 }
@@ -558,23 +502,23 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	// Only valid requests will be queued
 	_, _, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// If the node is not marked, proceed the request
-	if _, found := gceCS.publishErrorsSeenOnNode[req.NodeId]; !found {
-		return gceCS.executeControllerUnpublishVolume(ctx, req)
+	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+		return nil, status.Errorf(codes.Unavailable, "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 
-	// Node is marked so queue up the request
-	gceCS.queue.AddRateLimited(&workItem{
-		ctx:          context.Background(),
-		unpublishReq: req,
-	})
-
-	return nil, status.Error(codes.Unavailable, "Request queued due to error condition on node")
+	resp, err := gceCS.executeControllerUnpublishVolume(ctx, req)
+	if err != nil {
+		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+	} else {
+		klog.Infof("For node %s clear backoff due to successful unpublish of volume %v", req.NodeId, req.VolumeId)
+		gceCS.nodeBackoff.Reset(req.NodeId)
+	}
+	return resp, err
 }
 
 func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (string, *meta.Key, error) {
@@ -650,14 +594,8 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 
 	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 	if err != nil {
-		// Mark the node and rate limit all the following attach/detach
-		// operations for this node
-		gceCS.publishErrorsSeenOnNode[nodeID] = true
 		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
 	}
-
-	// Detach succeeds so unmark the node
-	delete(gceCS.publishErrorsSeenOnNode, nodeID)
 
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil

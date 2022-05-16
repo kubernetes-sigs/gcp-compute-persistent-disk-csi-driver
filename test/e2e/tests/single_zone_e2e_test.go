@@ -603,6 +603,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Failed to enable crypto key")
 		}
 
+		// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
+		time.Sleep(time.Second)
 		// Make sure attach of PD succeeds
 		err = testAttachWriteReadDetach(volID, volName, controllerInstance, controllerClient, false /* readOnly */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
