@@ -10,8 +10,8 @@
 # Args:
 # GCE_PD_SA_DIR: Directory the service account key has been saved in (generated
 #   by setup-project.sh). Ignored if GCE_PD_DRIVER_VERSION == noauth.
-# GCE_PD_DRIVER_VERSION: The kustomize overlay (located in
-#   deploy/kubernetes/overlays) to deploy. Can be one of {stable, dev}
+# GCE_PD_DRIVER_VERSION: The kustomize overlay to deploy. See
+# `deploy/kubernetes/overlays` for your choices.
 
 set -o nounset
 set -o errexit
