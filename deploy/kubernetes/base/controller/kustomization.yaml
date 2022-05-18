@@ -5,5 +5,4 @@ namespace:
 resources:
 - cluster_setup.yaml
 - controller.yaml
-- psp.yaml
 - v1_csidriver.yaml

@@ -4,4 +4,3 @@ namespace:
   gce-pd-csi-driver
 resources:
 - node.yaml
-- psp.yaml

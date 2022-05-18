@@ -3,9 +3,9 @@ kind: Kustomization
 namespace:
   gce-pd-csi-driver
 resources:
-- ../../base/
+- ../../base
 - psp_controller.yaml
 - psp_linux.yaml
 - psp_windows.yaml
 transformers:
-- ../../images/stable-1-21
+- ../../images/stable-1-24
