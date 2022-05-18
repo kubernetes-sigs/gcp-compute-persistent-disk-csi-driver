@@ -8,4 +8,4 @@ resources:
 - psp_linux.yaml
 - psp_windows.yaml
 transformers:
-- ../../images/stable-1-21
+- ../../images/stable-1-22
