@@ -28,7 +28,7 @@ func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
 	return initGCEDriverWithCloudProvider(t, fakeCloudProvider)
 }
 
-func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan struct{}) *GCEDriver {
+func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan gce.Signal) *GCEDriver {
 	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)

@@ -504,7 +504,7 @@ func (cloud *FakeCloudProvider) UpdateDiskStatus(s string) {
 
 type FakeBlockingCloudProvider struct {
 	*FakeCloudProvider
-	ReadyToExecute chan chan struct{}
+	ReadyToExecute chan chan Signal
 }
 
 // FakeBlockingCloudProvider's method adds functionality to finely control the order of execution of CreateSnapshot calls.
@@ -512,17 +512,37 @@ type FakeBlockingCloudProvider struct {
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
 func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
-	executeCreateSnapshot := make(chan struct{})
+	executeCreateSnapshot := make(chan Signal)
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
 	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 }
 
 func (cloud *FakeBlockingCloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
-	executeCreateSnapshot := make(chan struct{})
+	executeCreateSnapshot := make(chan Signal)
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
 	return cloud.FakeCloudProvider.CreateImage(ctx, project, volKey, imageName, snapshotParams)
+}
+
+func (cloud *FakeBlockingCloudProvider) DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error {
+	execute := make(chan Signal)
+	cloud.ReadyToExecute <- execute
+	val := <-execute
+	if val.ReportError {
+		return fmt.Errorf("force mock error for DetachDisk device %s", deviceName)
+	}
+	return cloud.FakeCloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
+}
+
+func (cloud *FakeBlockingCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+	execute := make(chan Signal)
+	cloud.ReadyToExecute <- execute
+	val := <-execute
+	if val.ReportError {
+		return fmt.Errorf("force mock error for AttachDisk: volkey %s", volKey)
+	}
+	return cloud.FakeCloudProvider.AttachDisk(ctx, project, volKey, readWrite, diskType, instanceZone, instanceName)
 }
 
 func notFoundError() *googleapi.Error {
@@ -543,4 +563,9 @@ func invalidError() *googleapi.Error {
 			},
 		},
 	}
+}
+
+type Signal struct {
+	ReportError   bool
+	ReportRunning bool
 }
