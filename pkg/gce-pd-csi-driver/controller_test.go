@@ -15,6 +15,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -24,8 +25,6 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/golang/protobuf/ptypes"
-
-	"context"
 
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
@@ -840,8 +839,79 @@ func TestCreateVolumeArguments(t *testing.T) {
 	}
 }
 
+func TestListVolumePagination(t *testing.T) {
+	testCases := []struct {
+		name            string
+		diskCount       int
+		maxEntries      int32
+		expectedEntries []int
+	}{
+		{
+			name:            "no pagination (implicit)",
+			diskCount:       325,
+			expectedEntries: []int{325},
+		},
+		{
+			name:            "no pagination (explicit)",
+			diskCount:       2500,
+			maxEntries:      2500,
+			expectedEntries: []int{2500},
+		},
+		{
+			name:            "pagination (implicit)",
+			diskCount:       1327,
+			expectedEntries: []int{500, 500, 327},
+		},
+		{
+			name:            "pagination (explicit)",
+			diskCount:       723,
+			maxEntries:      200,
+			expectedEntries: []int{200, 200, 200, 123},
+		},
+		{
+			name:            "pagination (explicit)",
+			diskCount:       3253,
+			maxEntries:      1000,
+			expectedEntries: []int{1000, 1000, 1000, 253},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup new driver each time so no interference
+			var d []*gce.CloudDisk
+			for i := 0; i < tc.diskCount; i++ {
+				// Create diskCount dummy disks
+				d = append(d, gce.CloudDiskFromV1(&compute.Disk{Name: fmt.Sprintf("%v", i)}))
+			}
+			gceDriver := initGCEDriver(t, d)
+			tok := ""
+			for i, expectedEntry := range tc.expectedEntries {
+				lvr := &csi.ListVolumesRequest{
+					MaxEntries:    tc.maxEntries,
+					StartingToken: tok,
+				}
+				resp, err := gceDriver.cs.ListVolumes(context.TODO(), lvr)
+				if err != nil {
+					t.Fatalf("Got error %v", err)
+					return
+				}
+
+				if len(resp.Entries) != expectedEntry {
+					t.Fatalf("Got %v entries, expected %v on call # %d", len(resp.Entries), expectedEntry, i+1)
+				}
+
+				tok = resp.NextToken
+			}
+			if len(tok) != 0 {
+				t.Fatalf("Expected no more entries, but got NextToken in response: %s", tok)
+			}
+		})
+	}
+}
+
 func TestListVolumeArgs(t *testing.T) {
-	diskCount := 600
+	diskCount := 500
 	testCases := []struct {
 		name            string
 		maxEntries      int32
