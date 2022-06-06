@@ -81,6 +81,13 @@ const (
 
 	replicationTypeNone       = "none"
 	replicationTypeRegionalPD = "regional-pd"
+
+	// The maximum number of entries that we can include in the
+	// ListVolumesResposne
+	// In reality, the limit here is 4MB (based on gRPC client response limits),
+	// but 500 is a good proxy (gives ~8KB of data per ListVolumesResponse#Entry)
+	// See https://github.com/grpc/grpc/blob/master/include/grpc/impl/codegen/grpc_types.h#L503)
+	maxListVolumesResponseEntries = 500
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
@@ -708,7 +715,7 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 
 	var maxEntries int = int(req.MaxEntries)
 	if maxEntries == 0 {
-		maxEntries = len(gceCS.disks)
+		maxEntries = maxListVolumesResponseEntries
 	}
 
 	entries := []*csi.ListVolumesResponse_Entry{}
