@@ -24,7 +24,11 @@ while [[ -n "${1-}" ]]; do
   esac
 done
 
-kubectl wait -n gce-pd-csi-driver deployment csi-gce-pd-controller --for condition=available || exit -1
+kubectl wait \
+  -n gce-pd-csi-driver deployment csi-gce-pd-controller \
+  --for condition=available \
+  --timeout=900s \
+  || exit -1
 
 retries=90
 while [[ $retries -ge 0 ]]; do
