@@ -1,3 +1,9 @@
+# v1.7.1.0 - Changelog since v1.7.0
+
+- Creates v1.7.1 upstream tag with changes from 1.7.0 release.
+  - Cloud builder was broken when 1.7.0 was cut, so v1.7.0 upstream tag was not
+  created.
+
 # v1.7.0 - Changelog since v1.5.1
 
 >**Attention:** 1.6.0 is not a recommended version to use because of known issues where pods can get stuck (due to controller publish/unpublish failures) during cluster upgrades or during node reboot (as seen in [#987](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/987)). Users should upgrade directly to the 1.7 branch.
