@@ -50,5 +50,5 @@ metadata:
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   newName: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.4.0"
+  newTag: "v1.7.1"
 ---
