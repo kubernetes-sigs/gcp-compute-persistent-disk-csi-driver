@@ -1,9 +1,3 @@
 # CHANGELOGs
 
-- [CHANGELOG v1.3.0](./CHANGELOG-1.4.md)
-- [CHANGELOG v1.3.0](./CHANGELOG-1.3.md)
-- [CHANGELOG v1.2.0](./CHANGELOG-1.2.md)
-- [CHANGELOG v1.1.0](./CHANGELOG-1.1.md)
-- [CHANGELOG v1.0.0](./CHANGELOG-1.0.md)
-- [CHANGELOG v0.7.0](./CHANGELOG-0.7.md)
-- [CHANGELOG v0.6.0](./CHANGELOG-0.6.md)
+Please refer to [CHANGELOGs in master branch](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/blob/master/CHANGELOG/CHANGELOG-1.7.md)
