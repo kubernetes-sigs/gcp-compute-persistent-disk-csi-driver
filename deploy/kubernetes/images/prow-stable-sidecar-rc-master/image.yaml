@@ -7,7 +7,7 @@ metadata:
   name: imagetag-csi-provisioner-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-provisioner
-  newTag: "v3.1.0"
+  newTag: "v3.1.1"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
@@ -15,7 +15,7 @@ metadata:
   name: imagetag-csi-attacher-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-attacher
-  newTag: "v3.4.0"
+  newTag: "v3.5.0"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
@@ -23,7 +23,7 @@ metadata:
   name: imagetag-csi-resize-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-resizer
-  newTag: "v1.4.0"
+  newTag: "v1.5.0"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
@@ -31,7 +31,7 @@ metadata:
   name: imagetag-csi-snapshotter-prow-head
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-snapshotter
-  newTag: "v4.1.1"
+  newTag: "v6.0.1"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
@@ -39,7 +39,7 @@ metadata:
   name: imagetag-csi-node-registrar-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
-  newTag: "v2.5.0"
+  newTag: "v2.5.1"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
@@ -48,6 +48,6 @@ metadata:
 imageTag:
   name: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.7.0-rc1"
+  newTag: "v1.7.2-rc1"
 ---
 
