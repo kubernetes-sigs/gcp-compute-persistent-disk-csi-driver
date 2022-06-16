@@ -1,4 +1,16 @@
-# v1.7.1.0 - Changelog since v1.7.0
+# v1.7.2 - Changelog since v1.7.1
+
+## Changes by Kind
+
+### Uncategorized
+
+- Enforce implicit pagination limit of 500 of the ListVolumesResponse#Entry field when ListVolumesRequest#max_entries is not set (#1011, @pwschuurman)
+
+## Dependencies
+
+_Nothing has changed._
+
+# v1.7.1 - Changelog since v1.7.0
 
 - Creates v1.7.1 upstream tag with changes from 1.7.0 release.
   - Cloud builder was broken when 1.7.0 was cut, so v1.7.0 upstream tag was not
