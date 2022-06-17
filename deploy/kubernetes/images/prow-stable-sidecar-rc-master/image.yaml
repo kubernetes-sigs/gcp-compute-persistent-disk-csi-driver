@@ -31,7 +31,7 @@ metadata:
   name: imagetag-csi-snapshotter-prow-head
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-snapshotter
-  newTag: "v6.0.1"
+  newTag: "v4.2.1"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
