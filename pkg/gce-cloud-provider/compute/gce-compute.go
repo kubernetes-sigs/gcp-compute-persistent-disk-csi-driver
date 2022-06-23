@@ -1059,6 +1059,7 @@ func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project
 		Name:             snapshotName,
 		StorageLocations: snapshotParams.StorageLocations,
 		Description:      description,
+		Labels:           snapshotParams.Labels,
 	}
 
 	_, err := cloud.service.Disks.CreateSnapshot(project, volKey.Zone, volKey.Name, snapshotToCreate).Context(ctx).Do()
@@ -1075,6 +1076,7 @@ func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, proj
 		Name:             snapshotName,
 		StorageLocations: snapshotParams.StorageLocations,
 		Description:      description,
+		Labels:           snapshotParams.Labels,
 	}
 
 	_, err := cloud.service.RegionDisks.CreateSnapshot(project, volKey.Region, volKey.Name, snapshotToCreate).Context(ctx).Do()

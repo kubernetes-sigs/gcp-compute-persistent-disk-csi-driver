@@ -344,6 +344,7 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project stri
 		Status:            "UPLOADING",
 		SelfLink:          cloud.getGlobalSnapshotURI(project, snapshotName),
 		StorageLocations:  snapshotParams.StorageLocations,
+		Labels:            snapshotParams.Labels,
 	}
 	switch volKey.Type() {
 	case meta.Zonal:

@@ -83,6 +83,7 @@ type SnapshotParameters struct {
 	SnapshotType     string
 	ImageFamily      string
 	Tags             map[string]string
+	Labels           map[string]string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
@@ -149,6 +150,7 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 		StorageLocations: []string{},
 		SnapshotType:     DiskSnapshotType,
 		Tags:             make(map[string]string), // Default
+		Labels:           make(map[string]string), // Default
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -172,6 +174,15 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 			p.Tags[tagKeyCreatedForSnapshotNamespace] = v
 		case ParameterKeyVolumeSnapshotContentName:
 			p.Tags[tagKeyCreatedForSnapshotContentName] = v
+		case ParameterKeyLabels:
+			paramLabels, err := ConvertLabelsStringToMap(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
+			}
+			// Override any existing labels with those from this parameter.
+			for labelKey, labelValue := range paramLabels {
+				p.Labels[labelKey] = labelValue
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}

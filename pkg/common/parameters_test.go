@@ -183,6 +183,7 @@ func TestSnapshotParameters(t *testing.T) {
 				ParameterKeyVolumeSnapshotName:        "snapshot-name",
 				ParameterKeyVolumeSnapshotContentName: "snapshot-content-name",
 				ParameterKeyVolumeSnapshotNamespace:   "snapshot-namespace",
+				ParameterKeyLabels:                    "label-1=value-a,key1=value1",
 			},
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{"asia"},
@@ -194,6 +195,7 @@ func TestSnapshotParameters(t *testing.T) {
 					tagKeyCreatedForSnapshotNamespace:   "snapshot-namespace",
 					tagKeyCreatedBy:                     "test-driver",
 				},
+				Labels: map[string]string{"label-1": "value-a", "key1": "value1"},
 			},
 			expectError: false,
 		},
@@ -204,6 +206,7 @@ func TestSnapshotParameters(t *testing.T) {
 				StorageLocations: []string{},
 				SnapshotType:     DiskSnapshotType,
 				Tags:             make(map[string]string),
+				Labels:           map[string]string{},
 			},
 			expectError: false,
 		},
