@@ -36,4 +36,7 @@ RUN ln -fs /bin/rm /usr/sbin/rm \
   && clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs
 COPY --from=mad-hack /lib/udev/scsi_id /lib/udev_containerized/scsi_id
 
+# The CIS benchmark does not like having the backup passwd file accessible.
+RUN rm -f /etc/passwd-
+
 ENTRYPOINT ["/gce-pd-csi-driver"]

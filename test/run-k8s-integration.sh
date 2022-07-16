@@ -15,8 +15,9 @@ readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
-readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
-readonly test_version=${TEST_VERSION:-master}
+# The release-1.3 branch is only meant to be used up to cluster version 1.21.
+readonly kube_version=${GCE_PD_KUBE_VERSION:-1.21.14}
+readonly test_version=${TEST_VERSION:-1.21.14}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly gce_region=${GCE_CLUSTER_REGION:-}
 readonly image_type=${IMAGE_TYPE:-cos}
