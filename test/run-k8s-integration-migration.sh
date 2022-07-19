@@ -24,10 +24,11 @@ readonly use_kubetest2=${USE_KUBETEST2:-false}
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    go install sigs.k8s.io/kubetest2@latest;
-    go install sigs.k8s.io/kubetest2/kubetest2-gce@latest;
-    go install sigs.k8s.io/kubetest2/kubetest2-gke@latest;
-    go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    go install sigs.k8s.io/kubetest2@${kt2_version}
+    go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
+    go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
+    go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@${kt2_version}
 fi
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
