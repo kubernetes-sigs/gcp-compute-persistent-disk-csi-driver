@@ -325,3 +325,9 @@ func (mounter *CSIProxyMounterV1Beta) GetDiskTotalBytes(devicePath string) (int6
 func (mounter *CSIProxyMounterV1Beta) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
 	return errors.New("MountSensitiveWithoutSystemd is not implemented")
 }
+
+// MountSensitiveWithoutSystemdWithMountFlags is the same as MountSensitiveWithoutSystemd with additional mount flags.
+// It's unimplemented in PD CSI Driver
+func (mounter *CSIProxyMounterV1Beta) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
+	return errors.New("MountSensitiveWithoutSystemd is not implemented")
+}
