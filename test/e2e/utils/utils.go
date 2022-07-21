@@ -28,8 +28,8 @@ import (
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	"k8s.io/klog"
-	boskosclient "k8s.io/test-infra/boskos/client"
-	"k8s.io/test-infra/boskos/common"
+	boskosclient "sigs.k8s.io/boskos/client"
+	"sigs.k8s.io/boskos/common"
 	utilcommon "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -105,7 +105,7 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	klog.V(4).Infof("Fetching a Boskos loaned project")
 
 	p := getBoskosProject(resourceType)
-	project = p.GetName()
+	project = p.Name
 
 	go func(c *boskosclient.Client, proj string) {
 		for range time.Tick(time.Minute * 5) {
