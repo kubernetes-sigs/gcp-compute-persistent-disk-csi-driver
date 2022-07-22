@@ -5,6 +5,50 @@
   "protoPackage": "google.cloud.kms.v1",
   "libraryPackage": "cloud.google.com/go/kms/apiv1",
   "services": {
+    "EkmService": {
+      "clients": {
+        "grpc": {
+          "libraryClient": "EkmClient",
+          "rpcs": {
+            "CreateEkmConnection": {
+              "methods": [
+                "CreateEkmConnection"
+              ]
+            },
+            "GetEkmConnection": {
+              "methods": [
+                "GetEkmConnection"
+              ]
+            },
+            "GetIamPolicy": {
+              "methods": [
+                "GetIamPolicy"
+              ]
+            },
+            "ListEkmConnections": {
+              "methods": [
+                "ListEkmConnections"
+              ]
+            },
+            "SetIamPolicy": {
+              "methods": [
+                "SetIamPolicy"
+              ]
+            },
+            "TestIamPermissions": {
+              "methods": [
+                "TestIamPermissions"
+              ]
+            },
+            "UpdateEkmConnection": {
+              "methods": [
+                "UpdateEkmConnection"
+              ]
+            }
+          }
+        }
+      }
+    },
     "KeyManagementService": {
       "clients": {
         "grpc": {
@@ -55,6 +99,11 @@
                 "Encrypt"
               ]
             },
+            "GenerateRandomBytes": {
+              "methods": [
+                "GenerateRandomBytes"
+              ]
+            },
             "GetCryptoKey": {
               "methods": [
                 "GetCryptoKey"
@@ -63,6 +112,11 @@
             "GetCryptoKeyVersion": {
               "methods": [
                 "GetCryptoKeyVersion"
+              ]
+            },
+            "GetIamPolicy": {
+              "methods": [
+                "GetIamPolicy"
               ]
             },
             "GetImportJob": {
@@ -105,9 +159,29 @@
                 "ListKeyRings"
               ]
             },
+            "MacSign": {
+              "methods": [
+                "MacSign"
+              ]
+            },
+            "MacVerify": {
+              "methods": [
+                "MacVerify"
+              ]
+            },
             "RestoreCryptoKeyVersion": {
               "methods": [
                 "RestoreCryptoKeyVersion"
+              ]
+            },
+            "SetIamPolicy": {
+              "methods": [
+                "SetIamPolicy"
+              ]
+            },
+            "TestIamPermissions": {
+              "methods": [
+                "TestIamPermissions"
               ]
             },
             "UpdateCryptoKey": {
