@@ -39,8 +39,8 @@ import (
 )
 
 const (
-	nodeBackoffInitialDuration = 200 * time.Millisecond
-	nodeBackoffMaxDuration     = 5 * time.Minute
+	errorBackoffInitialDuration = 200 * time.Millisecond
+	errorBackoffMaxDuration     = 5 * time.Minute
 )
 
 type GCEControllerServer struct {
@@ -58,10 +58,45 @@ type GCEControllerServer struct {
 	// Aborted error
 	volumeLocks *common.VolumeLocks
 
-	// When the attacher sidecar issues controller publish/unpublish for multiple disks for a given node, the per-instance operation queue in GCE fills up causing attach/detach disk requests to immediately return with an error until the queue drains. nodeBackoff keeps track of any active backoff condition on a given node, and the time when retry of controller publish/unpublish is permissible. A node is marked with backoff when any error is encountered by the driver during controller publish/unpublish calls.
-	// If the controller eventually allows controller publish/publish requests for volumes (because the backoff time expired), and those requests fail, the next backoff retry time will be updated on every failure and capped at 'nodeBackoffMaxDuration'. Also, any successful controller publish/unpublish call will clear the backoff condition for the node.
-	nodeBackoff *flowcontrol.Backoff
+	// There are several kinds of errors that are immediately retried by either
+	// the CSI sidecars or the k8s control plane. The retries consume GCP api
+	// quota, eg by doing ListVolumes, and so backoff needs to be used to
+	// prevent quota exhaustion.
+	//
+	// Examples of these errors are the per-instance GCE operation queue getting
+	// full (typically only 32 operations in flight at a time are allowed), and
+	// disks being deleted out from under a PV causing unpublish errors.
+	//
+	// While we need to backoff, we also need some semblance of fairness. In
+	// particular, volume unpublish retries happen very quickly, and with
+	// a single backoff per node these retries can prevent any other operation
+	// from making progess, even if it would succeed. Hence we track errors on
+	// node and disk pairs, backing off only for calls matching such a
+	// pair.
+	//
+	// An implication is that in the full operation queue situation, requests
+	// for new disks will not backoff the first time. This is acceptible as a
+	// single spurious call will not cause problems for quota exhaustion or make
+	// the operation queue problem worse. This is well compensated by giving
+	// disks where no problems are ocurring a chance to be processed.
+	//
+	// errorBackoff keeps track of any active backoff condition on a given node,
+	// and the time when retry of controller publish/unpublish is permissible. A
+	// node and disk pair is marked with backoff when any error is encountered
+	// by the driver during controller publish/unpublish calls.  If the
+	// controller eventually allows controller publish/publish requests for
+	// volumes (because the backoff time expired), and those requests fail, the
+	// next backoff retry time will be updated on every failure and capped at
+	// 'errorBackoffMaxDuration'. Also, any successful controller
+	// publish/unpublish call will clear the backoff condition for a node and
+	// disk.
+	errorBackoff *csiErrorBackoff
 }
+
+type csiErrorBackoff struct {
+	backoff *flowcontrol.Backoff
+}
+type csiErrorBackoffId string
 
 type workItem struct {
 	ctx          context.Context
@@ -376,17 +411,18 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		return nil, err
 	}
 
-	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId)
+	if gceCS.errorBackoff.blocking(backoffId) {
 		return nil, status.Errorf(codes.Unavailable, "ControllerPublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 
 	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
 	if err != nil {
-		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
-		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
+		gceCS.errorBackoff.next(backoffId)
 	} else {
 		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
-		gceCS.nodeBackoff.Reset(req.NodeId)
+		gceCS.errorBackoff.reset(backoffId)
 	}
 	return resp, err
 }
@@ -513,17 +549,18 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, err
 	}
 
-	if gceCS.nodeBackoff.IsInBackOffSinceUpdate(req.NodeId, gceCS.nodeBackoff.Clock.Now()) {
+	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId)
+	if gceCS.errorBackoff.blocking(backoffId) {
 		return nil, status.Errorf(codes.Unavailable, "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 
 	resp, err := gceCS.executeControllerUnpublishVolume(ctx, req)
 	if err != nil {
 		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
-		gceCS.nodeBackoff.Next(req.NodeId, gceCS.nodeBackoff.Clock.Now())
+		gceCS.errorBackoff.next(backoffId)
 	} else {
 		klog.Infof("For node %s clear backoff due to successful unpublish of volume %v", req.NodeId, req.VolumeId)
-		gceCS.nodeBackoff.Reset(req.NodeId)
+		gceCS.errorBackoff.reset(backoffId)
 	}
 	return resp, err
 }
@@ -1559,4 +1596,25 @@ func pickRandAndConsecutive(slice []string, n int) ([]string, error) {
 		ret = append(ret, slice[idx])
 	}
 	return ret, nil
+}
+
+func newCsiErrorBackoff() *csiErrorBackoff {
+	return &csiErrorBackoff{flowcontrol.NewBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration)}
+}
+
+func (_ *csiErrorBackoff) backoffId(nodeId, volumeId string) csiErrorBackoffId {
+	return csiErrorBackoffId(fmt.Sprintf("%s:%s", nodeId, volumeId))
+}
+
+func (b *csiErrorBackoff) blocking(id csiErrorBackoffId) bool {
+	blk := b.backoff.IsInBackOffSinceUpdate(string(id), b.backoff.Clock.Now())
+	return blk
+}
+
+func (b *csiErrorBackoff) next(id csiErrorBackoffId) {
+	b.backoff.Next(string(id), b.backoff.Clock.Now())
+}
+
+func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
+	b.backoff.Reset(string(id))
 }
