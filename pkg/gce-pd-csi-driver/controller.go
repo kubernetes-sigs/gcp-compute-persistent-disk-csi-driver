@@ -24,11 +24,10 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/util/flowcontrol"
@@ -962,14 +961,14 @@ func (gceCS *GCEControllerServer) validateExistingImage(image *compute.Image, vo
 	return nil
 }
 
-func parseTimestamp(creationTimestamp string) (*timestamp.Timestamp, error) {
+func parseTimestamp(creationTimestamp string) (*timestamppb.Timestamp, error) {
 	t, err := time.Parse(time.RFC3339, creationTimestamp)
 	if err != nil {
 		return nil, err
 	}
 
-	timestamp, err := ptypes.TimestampProto(t)
-	if err != nil {
+	timestamp := timestamppb.New(t)
+	if err := timestamp.CheckValid(); err != nil {
 		return nil, err
 	}
 	return timestamp, nil
@@ -1241,8 +1240,8 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
 
-	tp, err := ptypes.TimestampProto(t)
-	if err != nil {
+	tp := timestamppb.New(t)
+	if err := tp.CheckValid(); err != nil {
 		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
 	}
 
@@ -1266,9 +1265,9 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 func generateDiskImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, image.CreationTimestamp)
 
-	tp, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	tp := timestamppb.New(t)
+	if err := tp.CheckValid(); err != nil {
+		return nil, fmt.Errorf("failed to covert creation timestamp: %v", err)
 	}
 
 	ready, _ := isImageReady(image.Status)
