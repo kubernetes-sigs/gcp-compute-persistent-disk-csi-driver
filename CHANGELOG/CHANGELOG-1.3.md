@@ -1,3 +1,9 @@
+# v1.3.7 - Changelog since v1.3.6
+
+- Update to go1.18.4 and base image to bullseye-v1.4.1 to fix CVE-2022-1271, CVE-2022-1664, CVE-2022-24675, CVE-2022-34903, CVE-2018-25032, CVE-2022-28327, CVE-2021-43618 ([#1033](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1033), [@mattcary](https://github.com/mattcary))
+- Default to MAXPROCS=1 to improve memory usage on nodes with many CPUs. ([#1022](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1022), [@mattcary](https://github.com/mattcary))
+- Remove passwd- file to make CIS benchmark happy. ([#1021](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1021), [@mattcary](https://github.com/mattcary))
+
 # v1.3.6 - Changelog since v1.3.5
 
 ## Changes by Kind

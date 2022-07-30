@@ -1,3 +1,9 @@
+# v1.7.3 - Changelog since v.1.7.2
+
+- Update go builder to 1.18.4. Fixes several CVEs. (#1031, @mattcary)
+
+- Cherry pick #1028, Improve backoff to be per-node and disk to avoid missing disks from blocking all operations (#1036, @mattcary)
+
 # v1.7.2 - Changelog since v1.7.1
 
 ## Changes by Kind
