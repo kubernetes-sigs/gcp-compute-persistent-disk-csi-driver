@@ -14,7 +14,7 @@
 
 ARG BUILDPLATFORM
 
-FROM --platform=$BUILDPLATFORM golang:1.17.8 as builder
+FROM --platform=$BUILDPLATFORM golang:1.18.4 as builder
 
 ARG STAGINGVERSION
 ARG TARGETPLATFORM
@@ -24,12 +24,12 @@ ADD . .
 RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0 as mad-hack
+FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.4.1 as mad-hack
 RUN ln -fs /bin/rm /usr/sbin/rm \
   && clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.10.0
+FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.4.1
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
 RUN ln -fs /bin/rm /usr/sbin/rm \
