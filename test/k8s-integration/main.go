@@ -478,6 +478,12 @@ func handle() error {
 		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
 
+	skipDiskImageSnapshots := false
+	if mustParseVersion(testParams.clusterVersion).lessThan(mustParseVersion("1.22.0")) {
+		// Disk image cloning in only supported from 1.22 on.
+		skipDiskImageSnapshots = true
+	}
+
 	// Run the tests using the k8sSourceDir kubernetes
 	if len(*storageClassFiles) != 0 {
 		applicableStorageClassFiles := []string{}
@@ -498,6 +504,9 @@ func handle() error {
 		}
 		for _, rawSnapshotClassFile := range strings.Split(*snapshotClassFiles, ",") {
 			snapshotClassFile := strings.TrimSpace(rawSnapshotClassFile)
+			if skipDiskImageSnapshots && strings.Contains(snapshotClassFile, "image-volumesnapshotclass") {
+				continue
+			}
 			if len(snapshotClassFile) != 0 {
 				applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, snapshotClassFile)
 			}

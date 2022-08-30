@@ -72,6 +72,12 @@ func TestParseVersion(t *testing.T) {
 				version: [4]int{1, 20, -1, -1},
 			},
 		},
+		{
+			version: "v1.26.0-alpha.0.293+6e3d62ca1c9e11",
+			expectedV: version{
+				version: [4]int{1, 26, 0, -2},
+			},
+		},
 		// Negative test cases
 		{
 			version:   "1",
@@ -106,11 +112,11 @@ func TestParseVersion(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			version:   "1.18.0-alpha.x",
+			version:   "1.18.0-beta.x",
 			expectErr: true,
 		},
 		{
-			version:   "1.18.0-alpha.beta.1",
+			version:   "1.18.0-beta.alpha.1",
 			expectErr: true,
 		},
 		{
@@ -119,10 +125,6 @@ func TestParseVersion(t *testing.T) {
 		},
 		{
 			version:   "1.18-alpha.3.673+73326ef01d2d7c",
-			expectErr: true,
-		},
-		{
-			version:   "1.18.3-alpha.3.673+73326ef01d2d7c",
 			expectErr: true,
 		},
 	}
@@ -138,7 +140,7 @@ func TestParseVersion(t *testing.T) {
 			}
 
 			if err == nil && tc.expectErr {
-				t.Fatal("Got no error but expected one")
+				t.Fatalf("Got no error but expected one with version %s", tc.version)
 				return
 			}
 

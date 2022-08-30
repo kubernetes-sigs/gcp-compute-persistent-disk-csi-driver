@@ -12,10 +12,11 @@ import (
 
 var (
 	versionNum           = `(0|[1-9][0-9]*)`
-	internalPatchVersion = `(\-[a-zA-Z0-9_.+-]+)`
+	internalPatchVersion = `(\-gke\.[0-9]+)`
 
 	versionRegex         = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + internalPatchVersion + "?$")
 	minorVersionRegex    = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `$`)
+	alphaVersionRegex    = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + `-alpha.*`)
 	gkeExtraVersionRegex = regexp.MustCompile(`^(?:gke)\.(0|[1-9][0-9]*)$`)
 )
 
@@ -24,7 +25,9 @@ type version struct {
 }
 
 func (v *version) String() string {
-	if v.version[3] != -1 {
+	if v.version[3] == -2 {
+		return fmt.Sprintf("%d.%d.%d-alpha", v.version[0], v.version[1], v.version[2])
+	} else if v.version[3] != -1 {
 		return fmt.Sprintf("%d.%d.%d-gke.%d", v.version[0], v.version[1], v.version[2], v.version[3])
 	}
 
@@ -82,6 +85,10 @@ func parseVersion(vs string) (*version, error) {
 	case versionRegex.MatchString(vs):
 		submatches = versionRegex.FindStringSubmatch(vs)
 		lastIndex = 4
+	case alphaVersionRegex.MatchString(vs):
+		submatches = alphaVersionRegex.FindStringSubmatch(vs)
+		v.version[3] = -2
+		lastIndex = 4
 	case minorVersionRegex.MatchString(vs):
 		submatches = minorVersionRegex.FindStringSubmatch(vs)
 		v.version[2] = -1
@@ -99,7 +106,7 @@ func parseVersion(vs string) (*version, error) {
 		}
 	}
 
-	if minorVersionRegex.MatchString(vs) {
+	if minorVersionRegex.MatchString(vs) || alphaVersionRegex.MatchString(vs) {
 		return &v, nil
 	}
 
@@ -131,9 +138,10 @@ func mustParseVersion(version string) *version {
 }
 
 // Helper function to compare versions.
-//  -1 -- if left  < right
-//   0 -- if left == right
-//   1 -- if left  > right
+//
+//	-1 -- if left  < right
+//	 0 -- if left == right
+//	 1 -- if left  > right
 func (v *version) compare(right *version) int {
 	for i, b := range v.version {
 		if b > right.version[i] {
