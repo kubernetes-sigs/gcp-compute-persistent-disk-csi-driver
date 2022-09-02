@@ -725,10 +725,13 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		runID = string(uuid.NewUUID())
 	}
 
+	runDir := filepath.Join(testParams.pkgDir, "_rundir")
+
 	// Usage: kubetest2 <deployer> [Flags] [DeployerFlags] -- [TesterArgs]
 	// [Flags]
 	kubeTest2Args := []string{
 		*deploymentStrat,
+		fmt.Sprintf("--rundir=%s", runDir),
 		fmt.Sprintf("--run-id=%s", runID),
 		"--test=ginkgo",
 	}
@@ -745,16 +748,11 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	if len(*testVersion) != 0 {
 		if *testVersion == "master" {
 			// the kubernetes binaries should've already been built above because of `--kube-version`
-			// or by the user if --local-k8s-dir was set, these binaries should be copied to the
-			// path sent to kubetest2 through its --artifacts path
+			// or by the user if --local-k8s-dir was set, copy these binaries to a place where
+			// kubetest2-tester-ginkgo will find them
 
-			// pkg/_artifacts is the default value that kubetests uses for --artifacts
-			kubernetesTestBinariesPath := filepath.Join(testParams.pkgDir, "_artifacts")
-			if kubetestDumpDir != "" {
-				// a custom artifacts dir was set
-				kubernetesTestBinariesPath = kubetestDumpDir
-			}
-			kubernetesTestBinariesPath = filepath.Join(kubernetesTestBinariesPath, runID)
+			// runDir/runID is the default place kubetest2-tester-ginkgo will look
+			kubernetesTestBinariesPath := filepath.Join(runDir, runID)
 
 			klog.Infof("Copying kubernetes binaries to path=%s to run the tests", kubernetesTestBinariesPath)
 			err := copyKubernetesTestBinaries(testParams.k8sSourceDir, kubernetesTestBinariesPath)

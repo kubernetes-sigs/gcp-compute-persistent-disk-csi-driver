@@ -35,7 +35,7 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    kt2_version=26f2492dc52f7259ccff48856c444c421f65df50
     go install sigs.k8s.io/kubetest2@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
