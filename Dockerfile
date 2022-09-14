@@ -29,7 +29,7 @@ RUN ln -fs /bin/rm /usr/sbin/rm \
   && clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.4.1
+FROM k8s.gcr.io/build-image/debian-base:bullseye-v1.4.2
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
 # Install necessary dependencies
 RUN ln -fs /bin/rm /usr/sbin/rm \
