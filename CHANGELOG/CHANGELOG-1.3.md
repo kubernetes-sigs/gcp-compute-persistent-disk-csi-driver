@@ -1,3 +1,7 @@
+# v1.3.8 - Changelog since v1.3.7
+
+- Update base image to bullseye-v1.4.2 to fix CVE-2021-46828, CVE-2022-2509.
+
 # v1.3.7 - Changelog since v1.3.6
 
 - Update to go1.18.4 and base image to bullseye-v1.4.1 to fix CVE-2022-1271, CVE-2022-1664, CVE-2022-24675, CVE-2022-34903, CVE-2018-25032, CVE-2022-28327, CVE-2021-43618 ([#1033](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1033), [@mattcary](https://github.com/mattcary))
