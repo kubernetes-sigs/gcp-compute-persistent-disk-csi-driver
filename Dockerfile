@@ -14,7 +14,7 @@
 
 ARG BUILDPLATFORM
 
-FROM --platform=$BUILDPLATFORM golang:1.18.6 as builder
+FROM --platform=$BUILDPLATFORM golang:1.19.1 as builder
 
 ARG STAGINGVERSION
 ARG TARGETPLATFORM
