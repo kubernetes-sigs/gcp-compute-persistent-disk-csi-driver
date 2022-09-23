@@ -80,6 +80,10 @@ type DeviceUtils interface {
 	// VerifyDevicePath returns the first of the list of device paths that
 	// exists on the machine, or an empty string if none exists
 	VerifyDevicePath(devicePaths []string, deviceName string) (string, error)
+
+	// DisableDevice performs necessary disabling prior to a device being
+	// detached from a node. The path is that from GetDiskByIdPaths.
+	DisableDevice(devicePath string) error
 }
 
 type deviceUtils struct {

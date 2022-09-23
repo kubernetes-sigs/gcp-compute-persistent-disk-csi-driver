@@ -25,12 +25,16 @@ func NewFakeDeviceUtils() *fakeDeviceUtils {
 
 // Returns list of all /dev/disk/by-id/* paths for given PD.
 func (m *fakeDeviceUtils) GetDiskByIdPaths(pdName string, partition string) []string {
-	// Don't need to implement this in the fake because we have no actual device paths
-	return nil
+	return []string{"/dev/disk/fake-path"}
 }
 
 // Returns the first path that exists, or empty string if none exist.
 func (m *fakeDeviceUtils) VerifyDevicePath(devicePaths []string, diskName string) (string, error) {
 	// Return any random device path to use as mount source
 	return "/dev/disk/fake-path", nil
+}
+
+func (_ *fakeDeviceUtils) DisableDevice(devicePath string) error {
+	// No-op for testing.
+	return nil
 }

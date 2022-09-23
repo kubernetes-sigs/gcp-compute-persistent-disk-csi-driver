@@ -364,6 +364,13 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err, stagingTargetPath))
 	}
 
+	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
+	if err != nil {
+		klog.Errorf("Failed to find device path for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", volumeID, err)
+	} else if err := ns.DeviceUtils.DisableDevice(devicePath); err != nil {
+		klog.Errorf("Failed to disabled device %s for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", devicePath, volumeID, err)
+	}
+
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }

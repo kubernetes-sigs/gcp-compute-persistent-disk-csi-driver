@@ -93,6 +93,11 @@ func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error
 	return proxy.GetDiskNumber(deviceName, partition, volumeKey.Name)
 }
 
+func disableDevice(devicePath string) error {
+	// This is a no-op on windows.
+	return nil
+}
+
 func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
 	proxy, ok := m.Interface.(mounter.CSIProxyMounter)
 	if !ok {
