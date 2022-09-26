@@ -33,6 +33,7 @@ FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.5.0
 # Copy source code too to correlate the binary and the breakpoints
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver
 
 COPY --from=builder /go/bin/dlv /go/bin/dlv
 
