@@ -232,17 +232,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 		}()
 
-		// Verify pre-resize fs size
-		sizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
-		Expect(err).To(BeNil(), "Failed to get FSSize in GB")
-		Expect(sizeGb).To(Equal(defaultSizeGb))
-
 		// Resize node
 		_, err = client.NodeExpandVolume(volID, publishDir, newSizeGb)
 		Expect(err).To(BeNil(), "Node expand volume failed")
 
 		// Verify disk size
-		sizeGb, err = testutils.GetFSSizeInGb(instance, publishDir)
+		sizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
 		Expect(err).To(BeNil(), "Failed to get FSSize in GB")
 		Expect(sizeGb).To(Equal(newSizeGb))
 
