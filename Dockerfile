@@ -80,6 +80,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libe2p.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libext2fs.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libgcc_s.so.1 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzma.so.5 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre.so.3 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libreadline.so.5 \
