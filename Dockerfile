@@ -71,6 +71,7 @@ COPY --from=debian /bin/date /bin/date
 COPY --from=debian /bin/grep /bin/grep
 COPY --from=debian /bin/sed /bin/sed
 COPY --from=debian /bin/ln /bin/ln
+COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
 COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
