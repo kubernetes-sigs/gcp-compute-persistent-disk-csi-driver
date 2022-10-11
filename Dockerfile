@@ -94,6 +94,7 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libacl.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicudata.so.63 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.63 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.63 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkmod.so.2 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 # Copy NVME support required script and rules into distroless base.
