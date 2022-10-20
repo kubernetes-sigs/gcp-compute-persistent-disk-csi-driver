@@ -638,6 +638,14 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|volumes.should.store.data|provisioning.should.provision.storage.with.snapshot.data.source"
 	}
 
+	// Starting in 1.24, the storage framework has a new test case:
+	// https://github.com/kubernetes/kubernetes/commit/4a076578451aa27e8ac60beec1fd3f23918c5331,
+	// which breaks the node skew tests when the node version
+	// is less than 1.24.
+	if nodeVer != nil && nodeVer.lessThan(mustParseVersion("1.24.0")) {
+		skipString = skipString + "|provisioning.should.mount.multiple.PV.pointing.to.the.same.storage.on.the.same.node"
+	}
+
 	return skipString
 }
 
