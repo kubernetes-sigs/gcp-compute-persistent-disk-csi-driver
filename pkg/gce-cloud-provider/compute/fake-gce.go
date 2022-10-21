@@ -424,6 +424,7 @@ func (cloud *FakeCloudProvider) CreateImage(ctx context.Context, project string,
 		SourceType:        "RAW",
 		Status:            "PENDING",
 		StorageLocations:  snapshotParams.StorageLocations,
+		Labels:            snapshotParams.Labels,
 	}
 
 	switch volKey.Type() {
