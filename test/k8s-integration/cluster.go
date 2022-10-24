@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -161,13 +162,16 @@ func setImageTypeEnvs(imageType string) error {
 
 func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
 	// Enable the GKE service API
+	var gkeServiceName string
 	gkeURL := os.Getenv("CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER")
 	if gkeURL == "" {
-		gkeURL = "container.googleapis.com"
+		gkeServiceName = "container.googleapis.com"
+	} else {
+		gkeServiceName = regexp.MustCompile("https://(.+)/").FindStringSubmatch(gkeURL)[1]
 	}
-	_, err := exec.Command("gcloud", "services", "enable", gkeURL).CombinedOutput()
+	_, err := exec.Command("gcloud", "services", "enable", gkeServiceName).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to enable GKE service API %q: %v", gkeURL, err)
+		return fmt.Errorf("failed to enable GKE service API %q: %v", gkeServiceName, err)
 	}
 
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
