@@ -19,7 +19,8 @@ limitations under the License.
 package resizefs
 
 import (
-	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"k8s.io/klog"
 	"k8s.io/mount-utils"
@@ -38,51 +39,22 @@ func NewResizeFs(mounter *mount.SafeFormatAndMount) *resizeFs {
 }
 
 // Resize perform resize of file system
-func (resizefs *resizeFs) Resize(devicePath, deviceMountPath string) (bool, error) {
-	format, err := resizefs.mounter.GetDiskFormat(devicePath)
+func (resizefs *resizeFs) Resize(devicePath, deviceMountPath string) (needResize bool, err error) {
+	resizer := mount.NewResizeFs(resizefs.mounter.Exec)
 
-	if err != nil {
-		formatErr := fmt.Errorf("ResizeFS.Resize - error checking format for device %s: %v", devicePath, err)
-		return false, formatErr
+	klog.V(4).Infof("Checking if filesystem needs to be resized. Device: %s Mountpoint: %s", devicePath, deviceMountPath)
+	if needResize, err = resizer.NeedResize(devicePath, deviceMountPath); err != nil {
+		err = status.Errorf(codes.Internal, "Could not determine if filesystem %q needs to be resized: %v", deviceMountPath, err)
+		return
 	}
 
-	// If disk has no format, there is no need to resize the disk because mkfs.*
-	// by default will use whole disk anyways.
-	if format == "" {
-		return false, nil
+	if needResize {
+		klog.V(4).Infof("Resizing filesystem. Device: %s Mountpoint: %s", devicePath, deviceMountPath)
+		if _, err = resizer.Resize(devicePath, deviceMountPath); err != nil {
+			err = status.Errorf(codes.Internal, "Failed to resize filesystem %q: %v", deviceMountPath, err)
+			return
+		}
 	}
 
-	klog.V(3).Infof("ResizeFS.Resize - Expanding mounted volume %s", devicePath)
-	switch format {
-	case "ext3", "ext4":
-		return resizefs.extResize(devicePath)
-	case "xfs":
-		return resizefs.xfsResize(deviceMountPath)
-	}
-	return false, fmt.Errorf("ResizeFS.Resize - resize of format %s is not supported for device %s mounted at %s", format, devicePath, deviceMountPath)
-}
-
-func (resizefs *resizeFs) extResize(devicePath string) (bool, error) {
-	output, err := resizefs.mounter.Exec.Command("resize2fs", devicePath).CombinedOutput()
-	if err == nil {
-		klog.V(2).Infof("Device %s resized successfully", devicePath)
-		return true, nil
-	}
-
-	resizeError := fmt.Errorf("resize of device %s failed: %v. resize2fs output: %s", devicePath, err, string(output))
-	return false, resizeError
-
-}
-
-func (resizefs *resizeFs) xfsResize(deviceMountPath string) (bool, error) {
-	args := []string{"-d", deviceMountPath}
-	output, err := resizefs.mounter.Exec.Command("xfs_growfs", args...).CombinedOutput()
-
-	if err == nil {
-		klog.V(2).Infof("Device %s resized successfully", deviceMountPath)
-		return true, nil
-	}
-
-	resizeError := fmt.Errorf("resize of device %s failed: %v. xfs_growfs output: %s", deviceMountPath, err, string(output))
-	return false, resizeError
+	return
 }

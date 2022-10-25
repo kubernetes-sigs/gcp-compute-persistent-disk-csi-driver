@@ -17,7 +17,10 @@ package gceGCEDriver
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"k8s.io/utils/exec"
+	testingexec "k8s.io/utils/exec/testing"
 	"os"
 	"path/filepath"
 	"testing"
@@ -61,6 +64,15 @@ func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
 	return gceDriver
+}
+
+func makeFakeCmd(fakeCmd *testingexec.FakeCmd, cmd string, args ...string) testingexec.FakeCommandAction {
+	c := cmd
+	a := args
+	return func(cmd string, args ...string) exec.Cmd {
+		command := testingexec.InitFakeCmd(fakeCmd, c, a...)
+		return command
+	}
 }
 
 func TestNodeGetVolumeStats(t *testing.T) {
@@ -351,8 +363,6 @@ func TestNodeUnpublishVolume(t *testing.T) {
 }
 
 func TestNodeStageVolume(t *testing.T) {
-	gceDriver := getTestGCEDriver(t)
-	ns := gceDriver.ns
 	volumeID := "project/test001/zones/c1/disks/testDisk"
 	blockCap := &csi.VolumeCapability_Block{
 		Block: &csi.VolumeCapability_BlockVolume{},
@@ -436,6 +446,61 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
+		actionList := []testingexec.FakeCommandAction{
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+						},
+					},
+				},
+				"blkid",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte("1"), nil, nil
+						},
+					},
+				},
+				"blockdev",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte("1"), nil, nil
+						},
+					},
+				},
+				"blockdev",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+						},
+					},
+				},
+				"blkid",
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte(fmt.Sprintf("block size: 1\nblock count: 1")), nil, nil
+						},
+					},
+				},
+				"dumpe2fs",
+			),
+		}
+		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
+		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
+		ns := gceDriver.ns
 		_, err := ns.NodeStageVolume(context.Background(), tc.req)
 		if err != nil {
 			serverError, ok := status.FromError(err)
