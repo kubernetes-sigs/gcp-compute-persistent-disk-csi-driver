@@ -160,16 +160,6 @@ func setImageTypeEnvs(imageType string) error {
 }
 
 func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
-	// Enable the GKE service API
-	gkeURL := os.Getenv("CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER")
-	if gkeURL == "" {
-		gkeURL = "container.googleapis.com"
-	}
-	_, err := exec.Command("gcloud", "services", "enable", gkeURL).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to enable GKE service API %q: %v", gkeURL, err)
-	}
-
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
