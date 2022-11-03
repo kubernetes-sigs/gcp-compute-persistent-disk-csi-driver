@@ -924,6 +924,7 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 		Name:             imageName,
 		StorageLocations: snapshotParams.StorageLocations,
 		Description:      description,
+		Labels:           snapshotParams.Labels,
 	}
 
 	_, err = cloud.service.Images.Insert(project, image).Context(ctx).ForceCreate(true).Do()
