@@ -240,6 +240,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		// If there exists a devicePath we make sure disk at /dev/* matches the
 		// expected disk at devicePath by matching device Serial to the disk name
 		devFsPath, innerErr := filepath.EvalSymlinks(devicePath)
+		klog.V(4).Infof("For disk %s the /dev/* path is %s", deviceName, devFsPath)
 		if innerErr != nil {
 			return false, fmt.Errorf("filepath.EvalSymlinks(%q) failed with %v", devicePath, innerErr)
 		}
