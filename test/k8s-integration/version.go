@@ -14,10 +14,10 @@ var (
 	versionNum           = `(0|[1-9][0-9]*)`
 	internalPatchVersion = `(\-gke\.[0-9]+)`
 
-	versionRegex         = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + internalPatchVersion + "?$")
-	minorVersionRegex    = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `$`)
-	alphaVersionRegex    = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + `-alpha.*`)
-	gkeExtraVersionRegex = regexp.MustCompile(`^(?:gke)\.(0|[1-9][0-9]*)$`)
+	versionRegex           = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + internalPatchVersion + "?$")
+	minorVersionRegex      = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `$`)
+	prereleaseVersionRegex = regexp.MustCompile(`^` + versionNum + `\.` + versionNum + `\.` + versionNum + `-(?:alpha|beta).*`)
+	gkeExtraVersionRegex   = regexp.MustCompile(`^(?:gke)\.(0|[1-9][0-9]*)$`)
 )
 
 type version struct {
@@ -26,7 +26,7 @@ type version struct {
 
 func (v *version) String() string {
 	if v.version[3] == -2 {
-		return fmt.Sprintf("%d.%d.%d-alpha", v.version[0], v.version[1], v.version[2])
+		return fmt.Sprintf("%d.%d.%d-prerelease", v.version[0], v.version[1], v.version[2])
 	} else if v.version[3] != -1 {
 		return fmt.Sprintf("%d.%d.%d-gke.%d", v.version[0], v.version[1], v.version[2], v.version[3])
 	}
@@ -85,8 +85,8 @@ func parseVersion(vs string) (*version, error) {
 	case versionRegex.MatchString(vs):
 		submatches = versionRegex.FindStringSubmatch(vs)
 		lastIndex = 4
-	case alphaVersionRegex.MatchString(vs):
-		submatches = alphaVersionRegex.FindStringSubmatch(vs)
+	case prereleaseVersionRegex.MatchString(vs):
+		submatches = prereleaseVersionRegex.FindStringSubmatch(vs)
 		v.version[3] = -2
 		lastIndex = 4
 	case minorVersionRegex.MatchString(vs):
@@ -106,7 +106,7 @@ func parseVersion(vs string) (*version, error) {
 		}
 	}
 
-	if minorVersionRegex.MatchString(vs) || alphaVersionRegex.MatchString(vs) {
+	if minorVersionRegex.MatchString(vs) || prereleaseVersionRegex.MatchString(vs) {
 		return &v, nil
 	}
 
