@@ -78,6 +78,12 @@ func TestParseVersion(t *testing.T) {
 				version: [4]int{1, 26, 0, -2},
 			},
 		},
+		{
+			version: "v1.26.0-beta.0.25+4b1b42624e06a9",
+			expectedV: version{
+				version: [4]int{1, 26, 0, -2},
+			},
+		},
 		// Negative test cases
 		{
 			version:   "1",
@@ -112,11 +118,11 @@ func TestParseVersion(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			version:   "1.18.0-beta.x",
+			version:   "1.18.0-zeta.x",
 			expectErr: true,
 		},
 		{
-			version:   "1.18.0-beta.alpha.1",
+			version:   "1.18.0-zeta.alpha.1",
 			expectErr: true,
 		},
 		{
