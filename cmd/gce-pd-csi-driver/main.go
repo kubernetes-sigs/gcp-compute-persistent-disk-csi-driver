@@ -36,7 +36,7 @@ import (
 var (
 	cloudConfigFilePath  = flag.String("cloud-config", "", "Path to GCE cloud provider config")
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
-	computeEndpoint 		 = flag.String("compute-endpoint", "", "If set, used as the endpoint for the GCE API.")
+	computeEndpoint      = flag.String("compute-endpoint", "", "If set, used as the endpoint for the GCE API.")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
 	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
