@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1204,7 +1205,6 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 }
 
 func cleanSelfLink(selfLink string) string {
-	temp := strings.TrimPrefix(selfLink, gce.GCEComputeAPIEndpoint)
-	temp = strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
-	return strings.TrimPrefix(temp, gce.GCEComputeAlphaAPIEndpoint)
+	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
+	return r.ReplaceAllString(selfLink, "")
 }
