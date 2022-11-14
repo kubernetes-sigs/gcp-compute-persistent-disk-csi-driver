@@ -792,6 +792,31 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "success with provisionedIops parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"labels": "key1=value1,key2=value2", "provisioned-iops-on-create": "10000"},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+		{
+			name: "fail with malformed provisionedIops parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"labels": "key1=value1,key2=value2", "provisioned-iops-on-create": "dsfo3"},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
 	}
 
 	// Run test cases
