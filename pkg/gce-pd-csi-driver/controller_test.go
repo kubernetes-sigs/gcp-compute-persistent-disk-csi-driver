@@ -2294,56 +2294,56 @@ func TestControllerPublishBackoffMissingInstance(t *testing.T) {
 	})
 }
 
-func TestCleanSelfLink(t *testing.T){
+func TestCleanSelfLink(t *testing.T) {
 	testCases := []struct {
-		name       string
-		in         string
-		want       string
+		name string
+		in   string
+		want string
 	}{
 		{
 			name: "v1 full standard w/ endpoint prefix",
-			in: "https://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			in:   "https://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "beta full standard w/ endpoint prefix",
-			in: "https://www.googleapis.com/compute/beta/projects/project/zones/zone/disks/disk",
+			in:   "https://www.googleapis.com/compute/beta/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "alpha full standard w/ endpoint prefix",
-			in: "https://www.googleapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
+			in:   "https://www.googleapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "no prefix",
-			in: "projects/project/zones/zone/disks/disk",
+			in:   "projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 
 		{
 			name: "no prefix + project omitted",
-			in: "zones/zone/disks/disk",
+			in:   "zones/zone/disks/disk",
 			want: "zones/zone/disks/disk",
 		},
 		{
 			name: "Compute prefix, google api",
-			in: "https://www.compute.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			in:   "https://www.compute.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "Compute prefix, partner api",
-			in: "https://www.compute.PARTNERapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			in:   "https://www.compute.PARTNERapis.com/compute/v1/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "Partner beta api",
-			in: "https://www.PARTNERapis.com/compute/beta/projects/project/zones/zone/disks/disk",
+			in:   "https://www.PARTNERapis.com/compute/beta/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "Partner alpha api",
-			in: "https://www.partnerapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
+			in:   "https://www.partnerapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 	}
