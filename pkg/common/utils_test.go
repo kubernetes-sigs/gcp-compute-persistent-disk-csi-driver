@@ -578,55 +578,91 @@ func TestSnapshotStorageLocations(t *testing.T) {
 	}
 }
 
-func TestParseMachineType(t *testing.T) {
+func TestConvertGiBStringToInt64(t *testing.T) {
 	tests := []struct {
-		desc                string
-		inputMachineTypeUrl string
-		expectedMachineType string
-		expectError         bool
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
 	}{
 		{
-			desc:                "full URL machine type",
-			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/machineTypes/c3-highcpu-4",
-			expectedMachineType: "c3-highcpu-4",
+			"valid number string",
+			"10000",
+			1,
+			false,
 		},
 		{
-			desc:                "partial URL machine type",
-			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/n2-standard-4",
-			expectedMachineType: "n2-standard-4",
+			"round Ki to GiB",
+			"1000Ki",
+			1,
+			false,
 		},
 		{
-			desc:                "custom partial URL machine type",
-			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/e2-custom-2-4096",
-			expectedMachineType: "e2-custom-2-4096",
+			"round k to GiB",
+			"1000k",
+			1,
+			false,
 		},
 		{
-			desc:                "incorrect URL",
-			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/psch-gke-dev/zones/us-central1-c",
-			expectError:         true,
+			"round Mi to GiB",
+			"1000Mi",
+			1,
+			false,
 		},
 		{
-			desc:                "incorrect partial URL",
-			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/",
-			expectError:         true,
+			"round M to GiB",
+			"1000M",
+			1,
+			false,
 		},
 		{
-			desc:                "missing zone",
-			inputMachineTypeUrl: "zones//machineTypes/n2-standard-4",
-			expectError:         true,
+			"round G to GiB",
+			"1000G",
+			932,
+			false,
+		},
+		{
+			"round Gi to GiB",
+			"10000Gi",
+			10000,
+			false,
+		},
+		{
+			"round decimal to GiB",
+			"1.2Gi",
+			2,
+			false,
+		},
+		{
+			"round big value to GiB",
+			"8191Pi",
+			8588886016,
+			false,
+		},
+		{
+			"invalid empty string",
+			"",
+			10000,
+			true,
+		},
+		{
+			"invalid string",
+			"ew%65",
+			10000,
+			true,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			actualMachineFamily, err := ParseMachineType(tc.inputMachineTypeUrl)
+			actualInt64, err := ConvertGiBStringToInt64(tc.inputStr)
 			if err != nil && !tc.expectError {
-				t.Errorf("Got error %v parsing machine type %s; expect no error", err, tc.inputMachineTypeUrl)
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
 			}
 			if err == nil && tc.expectError {
-				t.Errorf("Got no error parsing machine type %s; expect an error", tc.inputMachineTypeUrl)
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
 			}
-			if err == nil && actualMachineFamily != tc.expectedMachineType {
-				t.Errorf("Got %s parsing machine type; expect %s", actualMachineFamily, tc.expectedMachineType)
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
 			}
 		})
 	}

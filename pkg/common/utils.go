@@ -22,7 +22,9 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 )
 
 const (
@@ -257,14 +259,13 @@ func ValidateSnapshotType(snapshotType string) error {
 	}
 }
 
-// ParseMachineType returns an extracted machineType from a URL, or empty if not found.
-// machineTypeUrl: Full or partial URL of the machine type resource, in the format:
-//
-//	zones/zone/machineTypes/machine-type
-func ParseMachineType(machineTypeUrl string) (string, error) {
-	machineType := machineTypeRegex.FindStringSubmatch(machineTypeUrl)
-	if machineType == nil {
-		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
+// ConvertGiBStringToInt64 converts a GiB string to int64
+func ConvertGiBStringToInt64(str string) (int64, error) {
+	// Verify regex before
+	match, _ := regexp.MatchString("^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$", str)
+	if !match {
+		return 0, fmt.Errorf("invalid string %s", str)
 	}
-	return machineType[1], nil
+	quantity := resource.MustParse(str)
+	return volumehelpers.RoundUpToGiB(quantity)
 }

@@ -32,6 +32,11 @@ require (
 require google.golang.org/protobuf v1.26.0
 
 require (
+	google.golang.org/protobuf v1.26.0
+	k8s.io/cloud-provider v0.22.0
+)
+
+require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect

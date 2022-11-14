@@ -23,10 +23,11 @@ import (
 
 const (
 	// Parameters for StorageClass
-	ParameterKeyType                 = "type"
-	ParameterKeyReplicationType      = "replication-type"
-	ParameterKeyDiskEncryptionKmsKey = "disk-encryption-kms-key"
-	ParameterKeyLabels               = "labels"
+	ParameterKeyType                    = "type"
+	ParameterKeyReplicationType         = "replication-type"
+	ParameterKeyDiskEncryptionKmsKey    = "disk-encryption-kms-key"
+	ParameterKeyLabels                  = "labels"
+	ParameterKeyProvisionedIOPSOnCreate = "provisioned-iops-on-create"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -75,6 +76,9 @@ type DiskParameters struct {
 	// Values: {map[string]string}
 	// Default: ""
 	Labels map[string]string
+	// Values: {int64}
+	// Default: none
+	ProvisionedIOPSOnCreate int64
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -134,6 +138,12 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			for labelKey, labelValue := range paramLabels {
 				p.Labels[labelKey] = labelValue
 			}
+		case ParameterKeyProvisionedIOPSOnCreate:
+			paramProvisionedIOPSOnCreate, err := ConvertGiBStringToInt64(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid provisionedIOPSOnCreate parameter: %w", err)
+			}
+			p.ProvisionedIOPSOnCreate = paramProvisionedIOPSOnCreate
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
