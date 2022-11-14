@@ -577,3 +577,93 @@ func TestSnapshotStorageLocations(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertGiBStringToInt64(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
+	}{
+		{
+			"valid number string",
+			"10000",
+			1,
+			false,
+		},
+		{
+			"round Ki to GiB",
+			"1000Ki",
+			1,
+			false,
+		},
+		{
+			"round k to GiB",
+			"1000k",
+			1,
+			false,
+		},
+		{
+			"round Mi to GiB",
+			"1000Mi",
+			1,
+			false,
+		},
+		{
+			"round M to GiB",
+			"1000M",
+			1,
+			false,
+		},
+		{
+			"round G to GiB",
+			"1000G",
+			932,
+			false,
+		},
+		{
+			"round Gi to GiB",
+			"10000Gi",
+			10000,
+			false,
+		},
+		{
+			"round decimal to GiB",
+			"1.2Gi",
+			2,
+			false,
+		},
+		{
+			"round big value to GiB",
+			"8191Pi",
+			8588886016,
+			false,
+		},
+		{
+			"invalid empty string",
+			"",
+			10000,
+			true,
+		},
+		{
+			"invalid string",
+			"ew%65",
+			10000,
+			true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualInt64, err := ConvertGiBStringToInt64(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
+			}
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
+			}
+		})
+	}
+}

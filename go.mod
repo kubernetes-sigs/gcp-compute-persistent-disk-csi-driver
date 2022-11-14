@@ -21,6 +21,7 @@ require (
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/apimachinery v0.24.1
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
+	k8s.io/cloud-provider v0.24.1
 	k8s.io/component-base v0.24.1
 	k8s.io/klog/v2 v2.60.1
 	k8s.io/kubernetes v1.24.1

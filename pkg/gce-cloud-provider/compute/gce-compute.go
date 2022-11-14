@@ -429,11 +429,12 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:        volKey.Name,
-		SizeGb:      common.BytesToGbRoundUp(capBytes),
-		Description: description,
-		Type:        cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
-		Labels:      params.Labels,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     description,
+		Type:            cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 	if snapshotID != "" {
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(snapshotID)

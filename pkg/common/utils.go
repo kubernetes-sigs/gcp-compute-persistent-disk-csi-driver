@@ -22,7 +22,9 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 )
 
 const (
@@ -247,4 +249,15 @@ func ValidateSnapshotType(snapshotType string) error {
 	default:
 		return fmt.Errorf("invalid snapshot type %s", snapshotType)
 	}
+}
+
+// ConvertGiBStringToInt64 converts a GiB string to int64
+func ConvertGiBStringToInt64(str string) (int64, error) {
+	// Verify regex before
+	match, _ := regexp.MatchString("^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$", str)
+	if !match {
+		return 0, fmt.Errorf("invalid string %s", str)
+	}
+	quantity := resource.MustParse(str)
+	return volumehelpers.RoundUpToGiB(quantity)
 }
