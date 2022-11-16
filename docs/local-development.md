@@ -26,7 +26,7 @@ $ ./test/run-e2e-local.sh
 ### Sanity Tests
 > **_NOTE:_**  Sanity tests are currently failing, tracked by go/pdcsi-oss-driver/issues/990.
 
-Unit tests can be run from VS Code, etc directly or via the cmd line:
+Sanity tests can be run from VS Code, etc directly or via the cmd line:
 ```
 $ ./test/run-sanity.sh
 ```
