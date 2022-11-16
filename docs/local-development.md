@@ -3,19 +3,36 @@ This page contains information on how to develop and test the driver locally.
 
 ## Testing
 
-Running E2E Tests:
+### E2E Tests:
+
+#### One time setup
+
+```console
+$ export PROJECT=my-project                               # GCP Project to run tests in
+$ export GCE_PD_SA_NAME=$PROJECT-pd-sa                 # Name of the service account to create
+$ export GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
+$ export ENABLE_KMS=false
+$ ./deploy/setup-project.sh
 ```
-$ PROJECT=my-project                               # GCP Project to run tests in
-$ IAM_NAME=my-iam@project.iam.gserviceaccount.com  # Existing IAM Account with GCE PD CSI Driver Permissions
+#### Ongoing runs
+```console
+$ export PROJECT=my-project                               # GCP Project to run tests in
+$ export GCE_PD_SA_NAME=$PROJECT-pd-sa
+$ export IAM_NAME=$GCE_PD_SA_NAME@$PROJECT.iam.gserviceaccount.com  # IAM SA that was set up in "one time setup"
+
 $ ./test/run-e2e-local.sh
 ```
 
-Running Sanity Tests:
+### Sanity Tests
+> **_NOTE:_**  Sanity tests are currently failing, tracked by go/pdcsi-oss-driver/issues/990.
+
+Unit tests can be run from VS Code, etc directly or via the cmd line:
 ```
 $ ./test/run-sanity.sh
 ```
 
-Running Unit Tests:
+### Unit Tests
+Unit tests can be run from VS Code, etc directly or via the cmd line:
 ```
 $ ./test/run-unit.sh
 ```
