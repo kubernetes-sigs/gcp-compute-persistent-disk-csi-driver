@@ -1,14 +1,16 @@
 reviewers:
-  - davidz627
-  - jingxu97
+  - amacaskill
+  - leiyiz
   - mattcary
   - msau42
-  - saad-ali
   - saikat-royc
 approvers:
-  - davidz627
-  - jingxu97
+  - amacaskill
+  - leiyiz
   - mattcary
   - msau42
-  - saad-ali
   - saikat-royc
+emeritus_reviewers:
+  - davidz627
+  - jingxu97
+  - saad-ali
