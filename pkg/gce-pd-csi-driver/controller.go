@@ -18,8 +18,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -1526,9 +1526,8 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.Crea
 }
 
 func cleanSelfLink(selfLink string) string {
-	temp := strings.TrimPrefix(selfLink, gce.GCEComputeAPIEndpoint)
-	temp = strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
-	return strings.TrimPrefix(temp, gce.GCEComputeAlphaAPIEndpoint)
+	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
+	return r.ReplaceAllString(selfLink, "")
 }
 
 func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) (*gce.CloudDisk, error) {

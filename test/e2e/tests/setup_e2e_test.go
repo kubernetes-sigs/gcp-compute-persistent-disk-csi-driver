@@ -116,7 +116,7 @@ var _ = BeforeSuite(func() {
 
 			klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
-			testContext, err := testutils.GCEClientAndDriverSetup(i)
+			testContext, err := testutils.GCEClientAndDriverSetup(i, "")
 			if err != nil {
 				klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 			}

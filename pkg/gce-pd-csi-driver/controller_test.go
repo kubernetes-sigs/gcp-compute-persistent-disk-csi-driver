@@ -2294,6 +2294,71 @@ func TestControllerPublishBackoffMissingInstance(t *testing.T) {
 	})
 }
 
+func TestCleanSelfLink(t *testing.T) {
+	testCases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "v1 full standard w/ endpoint prefix",
+			in:   "https://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "beta full standard w/ endpoint prefix",
+			in:   "https://www.googleapis.com/compute/beta/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "alpha full standard w/ endpoint prefix",
+			in:   "https://www.googleapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "no prefix",
+			in:   "projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+
+		{
+			name: "no prefix + project omitted",
+			in:   "zones/zone/disks/disk",
+			want: "zones/zone/disks/disk",
+		},
+		{
+			name: "Compute prefix, google api",
+			in:   "https://www.compute.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Compute prefix, partner api",
+			in:   "https://www.compute.PARTNERapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Partner beta api",
+			in:   "https://www.PARTNERapis.com/compute/beta/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Partner alpha api",
+			in:   "https://www.partnerapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cleanSelfLink(tc.in)
+			if got != tc.want {
+				t.Errorf("Expected cleaned self link: %v, got: %v", tc.want, got)
+			}
+		})
+	}
+}
+
 func backoffTesterForPublish(t *testing.T, config *backoffTesterConfig) {
 	readyToExecute := make(chan chan gce.Signal)
 	cloudDisks := []*gce.CloudDisk{

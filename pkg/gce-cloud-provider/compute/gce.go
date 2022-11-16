@@ -44,10 +44,6 @@ const (
 
 	regionURITemplate = "projects/%s/regions/%s"
 
-	GCEComputeAPIEndpoint      = "https://www.googleapis.com/compute/v1/"
-	GCEComputeBetaAPIEndpoint  = "https://www.googleapis.com/compute/beta/"
-	GCEComputeAlphaAPIEndpoint = "https://www.googleapis.com/compute/alpha/"
-
 	replicaZoneURITemplateSingleZone = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 )
 
@@ -73,7 +69,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint string) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -88,12 +84,12 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	svc, err := createCloudService(ctx, vendorVersion, tokenSource)
+	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource)
+	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -159,12 +155,17 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*computebeta.Service, error) {
+func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*computebeta.Service, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
-	service, err := computebeta.NewService(ctx, option.WithHTTPClient(client))
+
+	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+	if computeEndpoint != "" {
+		computeOpts = append(computeOpts, option.WithEndpoint(computeEndpoint))
+	}
+	service, err := computebeta.NewService(ctx, computeOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,17 +173,22 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 	return service, nil
 }
 
-func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
-	svc, err := createCloudServiceWithDefaultServiceAccount(ctx, vendorVersion, tokenSource)
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*compute.Service, error) {
+	svc, err := createCloudServiceWithDefaultServiceAccount(ctx, vendorVersion, tokenSource, computeEndpoint)
 	return svc, err
 }
 
-func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource) (*compute.Service, error) {
+func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*compute.Service, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
-	service, err := compute.New(client)
+
+	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+	if computeEndpoint != "" {
+		computeOpts = append(computeOpts, option.WithEndpoint(computeEndpoint))
+	}
+	service, err := compute.NewService(ctx, computeOpts...)
 	if err != nil {
 		return nil, err
 	}
