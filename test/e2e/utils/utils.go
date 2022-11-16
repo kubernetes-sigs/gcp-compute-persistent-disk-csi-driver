@@ -43,7 +43,7 @@ var (
 	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
 
-func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext, error) {
+func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint string) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
@@ -53,10 +53,14 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo) (*remote.TestContext
 	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
 
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
+	computeFlag := ""
+	if computeEndpoint != "" {
+		computeFlag = fmt.Sprintf("--compute-endpoint %s", computeEndpoint)
+	}
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s --extra-labels=%s=%s 2> %s/prog.out < /dev/null > /dev/null &'",
-		workspace, endpoint, DiskLabelKey, DiskLabelValue, workspace)
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s %s --extra-labels=%s=%s 2> %s/prog.out < /dev/null > /dev/null &'",
+		workspace, endpoint, computeFlag, DiskLabelKey, DiskLabelValue, workspace)
 
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,

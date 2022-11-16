@@ -1124,8 +1124,41 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
-})
 
+	It("Should pass/fail if valid/invalid compute endpoint is passed in", func() {
+		// gets instance set up w/o compute-endpoint set from test setup
+		_, err := getRandomTestContext().Client.ListVolumes()
+		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
+
+		zone := "us-central1-c"
+		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+		i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
+
+		if err != nil {
+			klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
+		}
+
+		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
+
+		// Create new driver and client w/ invalid endpoint
+		tcInvalid, err := testutils.GCEClientAndDriverSetup(i, "invalid-string")
+		if err != nil {
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		}
+
+		_, err = tcInvalid.Client.ListVolumes()
+		Expect(err).ToNot(BeNil(), "expected error when passed invalid compute url")
+
+		// Create new driver and client w/ valid, passed-in endpoint
+		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com/compute/v1/")
+		if err != nil {
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		}
+		_, err = tcValid.Client.ListVolumes()
+
+		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
+	})
+})
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
 	if a > b {
 		return a-b < epsiolon
