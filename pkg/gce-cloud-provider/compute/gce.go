@@ -163,7 +163,8 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 
 	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
 	if computeEndpoint != "" {
-		computeOpts = append(computeOpts, option.WithEndpoint(computeEndpoint))
+		betaEndpoint := fmt.Sprintf("%s/compute/beta/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(betaEndpoint))
 	}
 	service, err := computebeta.NewService(ctx, computeOpts...)
 	if err != nil {
@@ -186,7 +187,8 @@ func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVers
 
 	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
 	if computeEndpoint != "" {
-		computeOpts = append(computeOpts, option.WithEndpoint(computeEndpoint))
+		v1Endpoint := fmt.Sprintf("%s/compute/v1/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(v1Endpoint))
 	}
 	service, err := compute.NewService(ctx, computeOpts...)
 	if err != nil {
