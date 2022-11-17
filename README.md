@@ -40,7 +40,7 @@ The following table captures the compatibility matrix of the core persistent dis
 | dev                                  | yes   |
 
 The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
-csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions. 
+csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions.
 
 Example:
 
@@ -97,7 +97,7 @@ Controller-level and node-level deployments will both have priorityClassName set
 
 ## Further Documentation
 
-[Local Development](docs/local-development.md)
+[Local Development](docs/kubernetes/development.md)
 
 For releasing new versions of this driver, googlers should consult [go/pdcsi-oss-release-process](go/pdcsi-oss-release-process).
 
