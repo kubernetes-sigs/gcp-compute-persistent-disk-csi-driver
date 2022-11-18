@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func runCommand(action string, cmd *exec.Cmd) error {
@@ -32,7 +32,7 @@ func runCommand(action string, cmd *exec.Cmd) error {
 func generateUniqueTmpDir() string {
 	dir, err := ioutil.TempDir("", "gcp-pd-driver-tmp")
 	if err != nil {
-		klog.Fatalf("Error creating temp dir: %v", err)
+		klog.Fatalf("Error creating temp dir: %w", err)
 	}
 	return dir
 }
@@ -40,7 +40,7 @@ func generateUniqueTmpDir() string {
 func removeDir(dir string) {
 	err := os.RemoveAll(dir)
 	if err != nil {
-		klog.Fatalf("Error removing temp dir: %v", err)
+		klog.Fatalf("Error removing temp dir: %w", err)
 	}
 }
 

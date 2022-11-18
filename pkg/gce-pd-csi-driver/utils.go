@@ -24,7 +24,7 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -67,7 +67,7 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 	klog.V(4).Infof("%s called with request: %s", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
-		klog.Errorf("%s returned with error: %v", info.FullMethod, err)
+		klog.Errorf("%s returned with error: %w", info.FullMethod, err)
 	} else {
 		cappedStr := fmt.Sprintf("%v", resp)
 		if len(cappedStr) > maxLogChar {

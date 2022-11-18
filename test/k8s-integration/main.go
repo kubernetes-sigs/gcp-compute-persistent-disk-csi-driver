@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
 
@@ -193,7 +193,7 @@ func main() {
 
 	err := handle()
 	if err != nil {
-		klog.Fatalf("Failed to run integration test: %v", err)
+		klog.Fatalf("Failed to run integration test: %w", err)
 	}
 }
 
@@ -223,18 +223,18 @@ func handle() error {
 		oldProject, err := exec.Command("gcloud", "config", "get-value", "project").CombinedOutput()
 		project := strings.TrimSpace(string(oldProject))
 		if err != nil {
-			return fmt.Errorf("failed to get gcloud project: %s, err: %v", oldProject, err)
+			return fmt.Errorf("failed to get gcloud project: %s, err: %w", oldProject, err)
 		}
 		newproject, _ := testutils.SetupProwConfig(*boskosResourceType)
 		err = setEnvProject(newproject)
 		if err != nil {
-			return fmt.Errorf("failed to set project environment to %s: %v", newproject, err)
+			return fmt.Errorf("failed to set project environment to %s: %w", newproject, err)
 		}
 
 		defer func() {
 			err = setEnvProject(string(oldProject))
 			if err != nil {
-				klog.Errorf("failed to set project environment to %s: %v", oldProject, err)
+				klog.Errorf("failed to set project environment to %s: %w", oldProject, err)
 			}
 		}()
 		project = newproject
@@ -260,7 +260,7 @@ func handle() error {
 			if *teardownCluster {
 				err := deleteImage(*stagingImage, testParams.stagingVersion)
 				if err != nil {
-					klog.Errorf("failed to delete image: %v", err)
+					klog.Errorf("failed to delete image: %w", err)
 				}
 			}
 		}()
@@ -329,7 +329,7 @@ func handle() error {
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
 		}
 		if err != nil {
-			return fmt.Errorf("failed to cluster up: %v", err)
+			return fmt.Errorf("failed to cluster up: %w", err)
 		}
 	}
 
@@ -340,12 +340,12 @@ func handle() error {
 			case "gce":
 				err := clusterDownGCE(testParams.k8sSourceDir)
 				if err != nil {
-					klog.Errorf("failed to cluster down: %v", err)
+					klog.Errorf("failed to cluster down: %w", err)
 				}
 			case "gke":
 				err := clusterDownGKE(*gceZone, *gceRegion)
 				if err != nil {
-					klog.Errorf("failed to cluster down: %v", err)
+					klog.Errorf("failed to cluster down: %w", err)
 				}
 			default:
 				klog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
@@ -399,19 +399,19 @@ func handle() error {
 		if *teardownDriver {
 			defer func() {
 				if teardownErr := deleteDriver(testParams, *deployOverlayName); teardownErr != nil {
-					klog.Errorf("failed to delete driver: %v", teardownErr)
+					klog.Errorf("failed to delete driver: %w", teardownErr)
 				}
 			}()
 		}
 		if err != nil {
-			return fmt.Errorf("failed to install CSI Driver: %v", err)
+			return fmt.Errorf("failed to install CSI Driver: %w", err)
 		}
 	}
 
 	// Dump all driver logs to the test artifacts
 	cancel, err := dumpDriverLogs()
 	if err != nil {
-		return fmt.Errorf("failed to start driver logging: %v", err)
+		return fmt.Errorf("failed to start driver logging: %w", err)
 	}
 	defer func() {
 		if cancel != nil {
