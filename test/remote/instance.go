@@ -32,7 +32,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
@@ -179,7 +179,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 
 		instance, err = i.computeService.Instances.Get(i.project, i.zone, i.name).Do()
 		if err != nil {
-			klog.Errorf("Failed to get instance %v: %v", i.name, err)
+			klog.Errorf("Failed to get instance %v: %w", i.name, err)
 			return false, nil
 		}
 
@@ -219,7 +219,7 @@ func (i *InstanceInfo) DeleteInstance() {
 		if isGCEError(err, "notFound") {
 			return
 		}
-		klog.Errorf("Error deleting instance %q: %v", i.name, err)
+		klog.Errorf("Error deleting instance %q: %w", i.name, err)
 	}
 }
 

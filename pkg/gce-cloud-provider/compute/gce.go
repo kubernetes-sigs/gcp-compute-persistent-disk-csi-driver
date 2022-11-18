@@ -32,7 +32,7 @@ import (
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -201,7 +201,7 @@ func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVers
 func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
 	if err := wait.PollImmediate(5*time.Second, 30*time.Second, func() (bool, error) {
 		if _, err := tokenSource.Token(); err != nil {
-			klog.Errorf("error fetching initial token: %v", err)
+			klog.Errorf("error fetching initial token: %w", err)
 			return false, nil
 		}
 		return true, nil

@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -376,14 +376,14 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 	if err != nil {
 		// Cannot find volume associated with this ID because VolumeID is not in
 		// correct format, this is a success according to the Spec
-		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %v", volumeID, err)
+		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %w", volumeID, err)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %v", volumeID, err)
+			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %w", volumeID, err)
 			return &csi.DeleteVolumeResponse{}, nil
 		}
 		return nil, status.Errorf(codes.Internal, "DeleteVolume error repairing underspecified volume key: %v", err)
@@ -417,7 +417,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
 	if err != nil {
-		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
+		klog.Infof("For node %s adding backoff due to error for volume %s: %w", req.NodeId, req.VolumeId, err)
 		gceCS.errorBackoff.next(backoffId)
 	} else {
 		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)

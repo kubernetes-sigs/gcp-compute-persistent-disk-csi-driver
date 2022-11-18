@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
@@ -191,7 +191,7 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		// Detach Disk
 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 		if err != nil {
-			klog.Errorf("Failed to detach disk: %v", err)
+			klog.Errorf("Failed to detach disk: %w", err)
 		}
 
 	}()
@@ -206,19 +206,19 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 
 	//err = client.NodeStageExt4Volume(volID, stageDir)
 	if err != nil {
-		return fmt.Errorf("NodeStageExt4Volume failed with error: %v", err)
+		return fmt.Errorf("NodeStageExt4Volume failed with error: %w", err)
 	}
 
 	defer func() {
 		// Unstage Disk
 		err = client.NodeUnstageVolume(volID, stageDir)
 		if err != nil {
-			klog.Errorf("Failed to unstage volume: %v", err)
+			klog.Errorf("Failed to unstage volume: %w", err)
 		}
 		fp := filepath.Join("/tmp/", volName)
 		err = testutils.RmAll(instance, fp)
 		if err != nil {
-			klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			klog.Errorf("Failed to rm file path %s: %w", fp, err)
 		}
 	}()
 

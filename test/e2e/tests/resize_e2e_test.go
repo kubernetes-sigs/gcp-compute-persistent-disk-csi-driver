@@ -22,7 +22,7 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
@@ -74,7 +74,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+				klog.Errorf("Failed to detach disk: %w", err)
 			}
 		}()
 
@@ -87,12 +87,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %v", err)
+				klog.Errorf("Failed to unstage volume: %w", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+				klog.Errorf("Failed to rm file path %s: %w", fp, err)
 			}
 		}()
 
@@ -105,7 +105,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unmount Disk
 			err = client.NodeUnpublishVolume(volID, publishDir)
 			if err != nil {
-				klog.Errorf("NodeUnpublishVolume failed with error: %v", err)
+				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
 		}()
 
@@ -196,7 +196,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+				klog.Errorf("Failed to detach disk: %w", err)
 			}
 
 		}()
@@ -210,12 +210,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %v", err)
+				klog.Errorf("Failed to unstage volume: %w", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+				klog.Errorf("Failed to rm file path %s: %w", fp, err)
 			}
 		}()
 
@@ -228,7 +228,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unmount Disk
 			err = client.NodeUnpublishVolume(volID, publishDir)
 			if err != nil {
-				klog.Errorf("NodeUnpublishVolume failed with error: %v", err)
+				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
 		}()
 
@@ -288,7 +288,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+				klog.Errorf("Failed to detach disk: %w", err)
 			}
 
 		}()
@@ -302,12 +302,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %v", err)
+				klog.Errorf("Failed to unstage volume: %w", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+				klog.Errorf("Failed to rm file path %s: %w", fp, err)
 			}
 		}()
 
@@ -320,7 +320,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unmount Disk
 			err = client.NodeUnpublishVolume(volID, publishDir)
 			if err != nil {
-				klog.Errorf("NodeUnpublishVolume failed with error: %v", err)
+				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
 		}()
 
