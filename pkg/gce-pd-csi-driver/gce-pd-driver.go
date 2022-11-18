@@ -29,6 +29,8 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
+var maxLogChar int
+
 type GCEDriver struct {
 	name              string
 	vendorVersion     string
@@ -159,7 +161,9 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 	}
 }
 
-func (gceDriver *GCEDriver) Run(endpoint string) {
+func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int) {
+	maxLogChar = grpcLogCharCap
+
 	klog.V(4).Infof("Driver: %v", gceDriver.name)
 	//Start the nonblocking GRPC
 	s := NewNonBlockingGRPCServer()
