@@ -26,7 +26,7 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -172,10 +172,10 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 
 	err = ns.Mounter.Interface.Mount(sourcePath, targetPath, fstype, options)
 	if err != nil {
-		klog.Errorf("Mount of disk %s failed: %v", targetPath, err)
+		klog.Errorf("Mount of disk %s failed: %w", targetPath, err)
 		notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 		if mntErr != nil {
-			klog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
+			klog.Errorf("IsLikelyNotMountPoint check failed: %w", mntErr)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to check whether target path is a mount point: %v", err))
 		}
 		if !notMnt {
@@ -183,12 +183,12 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 			// Why need to unmount?
 			klog.Warningf("Although volume mount failed, but IsLikelyNotMountPoint returns volume %s is mounted already at %s", volumeID, targetPath)
 			if mntErr = ns.Mounter.Interface.Unmount(targetPath); mntErr != nil {
-				klog.Errorf("Failed to unmount: %v", mntErr)
+				klog.Errorf("Failed to unmount: %w", mntErr)
 				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to unmount target path: %v", err))
 			}
 			notMnt, mntErr := ns.Mounter.Interface.IsLikelyNotMountPoint(targetPath)
 			if mntErr != nil {
-				klog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
+				klog.Errorf("IsLikelyNotMountPoint check failed: %w", mntErr)
 				return nil, status.Error(codes.Internal, fmt.Sprintf("NodePublishVolume failed to check whether target path is a mount point: %v", err))
 			}
 			if !notMnt {

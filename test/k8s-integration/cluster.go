@@ -13,7 +13,7 @@ import (
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func gkeLocationArgs(gceZone, gceRegion string) (locationArg, locationVal string, err error) {
@@ -64,7 +64,7 @@ func buildKubernetes(k8sDir, command string) error {
 	cmd.Env = os.Environ()
 	err := runCommand(fmt.Sprintf("Running command in kubernetes/kubernetes path=%s", k8sDir), cmd)
 	if err != nil {
-		return fmt.Errorf("failed to build Kubernetes: %v", err)
+		return fmt.Errorf("failed to build Kubernetes: %w", err)
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 		// Set kubectl to the one bundled in the k8s tar for versioning
 		err = os.Setenv("GCE_PD_KUBECTL", kshPath)
 		if err != nil {
-			return fmt.Errorf("failed to set cluster specific kubectl: %v", err)
+			return fmt.Errorf("failed to set cluster specific kubectl: %w", err)
 		}
 	} else {
 		klog.Errorf("could not find cluster kubectl at %s, falling back to default kubectl", kshPath)
@@ -85,14 +85,14 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 	if len(*kubeFeatureGates) != 0 {
 		err = os.Setenv("KUBE_FEATURE_GATES", *kubeFeatureGates)
 		if err != nil {
-			return fmt.Errorf("failed to set kubernetes feature gates: %v", err)
+			return fmt.Errorf("failed to set kubernetes feature gates: %w", err)
 		}
 		klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 	}
 
 	err = setImageTypeEnvs(imageType)
 	if err != nil {
-		return fmt.Errorf("failed to set image type environment variables: %v", err)
+		return fmt.Errorf("failed to set image type environment variables: %w", err)
 	}
 
 	err = os.Setenv("NUM_NODES", strconv.Itoa(numNodes))
@@ -372,7 +372,7 @@ func getKubeClusterVersion() (string, error) {
 func mustGetKubeClusterVersion() string {
 	ver, err := getKubeClusterVersion()
 	if err != nil {
-		klog.Fatalf("Error: %v", err)
+		klog.Fatalf("Error: %w", err)
 	}
 	return ver
 }
