@@ -90,7 +90,7 @@ func TestSanity(t *testing.T) {
 	}()
 
 	go func() {
-		gceDriver.Run(endpoint)
+		gceDriver.Run(endpoint, 10000)
 	}()
 
 	// TODO(#818): Fix failing tests and remove test skip flag.
