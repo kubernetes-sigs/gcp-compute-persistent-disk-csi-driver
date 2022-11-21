@@ -412,8 +412,6 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 
 	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId, reflect.TypeOf(req).String())
-	klog.Errorf("BLAHBLAH %s", reflect.TypeOf(req).Name())
-
 	if gceCS.errorBackoff.blocking(backoffId) {
 		return nil, status.Errorf(codes.Unavailable, "ControllerPublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
@@ -1613,7 +1611,6 @@ func (b *csiErrorBackoff) blocking(id csiErrorBackoffId) bool {
 }
 
 func (b *csiErrorBackoff) next(id csiErrorBackoffId) {
-	klog.Errorf("Here %s", id)
 	b.backoff.Next(string(id), b.backoff.Clock.Now())
 }
 
