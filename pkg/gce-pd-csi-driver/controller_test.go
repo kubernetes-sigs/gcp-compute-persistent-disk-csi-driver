@@ -2195,7 +2195,7 @@ func backoffTesterForUnpublish(t *testing.T, config *backoffTesterConfig) {
 		errorBackoff:  newFakeCsiErrorBackoff(tc),
 	}
 
-	backoffId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID)
+	backoffId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID, reflect.TypeOf(csi.ControllerUnpublishVolumeRequest{}).String())
 	step := 1 * time.Millisecond
 
 	runUnpublishRequest := func(req *csi.ControllerUnpublishVolumeRequest, reportError bool) error {
@@ -2390,10 +2390,14 @@ func backoffTesterForPublish(t *testing.T, config *backoffTesterConfig) {
 		errorBackoff:  newFakeCsiErrorBackoff(tc),
 	}
 
-	backoffId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID)
+	backoffUnpublishId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID, reflect.TypeOf(csi.ControllerUnpublishVolumeRequest{}).String())
 	step := 1 * time.Millisecond
+	// Mock an active backoff condition for unpublish command on the node.
+	driver.cs.errorBackoff.next(backoffUnpublishId)
+
+	backoffPublishId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID, reflect.TypeOf(csi.ControllerPublishVolumeRequest{}).String())
 	// Mock an active backoff condition on the node.
-	driver.cs.errorBackoff.next(backoffId)
+	driver.cs.errorBackoff.next(backoffPublishId)
 
 	// A detach request for a different disk should succeed. As this disk is not
 	// on the instance, the detach will succeed without calling the gce detach
@@ -2447,9 +2451,13 @@ func backoffTesterForPublish(t *testing.T, config *backoffTesterConfig) {
 			t.Errorf("unexpected error %v", err)
 		}
 
-		t1 := driver.cs.errorBackoff.backoff.Get(string(backoffId))
+		t1 := driver.cs.errorBackoff.backoff.Get(string(backoffUnpublishId))
 		if t1 == 0 {
-			t.Error("expected delay, got none")
+			t.Error("expected delay for unpublish backoff, got none")
+		}
+		t1 = driver.cs.errorBackoff.backoff.Get(string(backoffPublishId))
+		if t1 == 0 {
+			t.Error("expected delay for publish backoff, got none")
 		}
 		return
 	}
@@ -2478,9 +2486,13 @@ func backoffTesterForPublish(t *testing.T, config *backoffTesterConfig) {
 	}
 
 	// Driver is expected to remove the node key from the backoff map.
-	t1 := driver.cs.errorBackoff.backoff.Get(string(backoffId))
+	t1 := driver.cs.errorBackoff.backoff.Get(string(backoffUnpublishId))
 	if t1 != 0 {
-		t.Error("unexpected delay")
+		t.Error("unexpected unpublish backoff delay")
+	}
+	t1 = driver.cs.errorBackoff.backoff.Get(string(backoffPublishId))
+	if t1 != 0 {
+		t.Error("unexpected publish backoff delay")
 	}
 }
 
