@@ -83,7 +83,7 @@ func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error
 	}
 	deviceName, err := common.GetDeviceName(volumeKey)
 	if err != nil {
-		return "", fmt.Errorf("error getting device name: %v", err)
+		return "", fmt.Errorf("error getting device name: %w", err)
 	}
 
 	proxy, ok := ns.Mounter.Interface.(mounter.CSIProxyMounter)

@@ -101,7 +101,7 @@ func (mm *metricsManager) InitializeHttpHandler(address, path string) {
 	go func() {
 		klog.Infof("Metric server listening at %q", address)
 		if err := http.ListenAndServe(address, mux); err != nil {
-			klog.Fatalf("Failed to start metric server at specified address (%q) and path (%q): %w", address, path, err)
+			klog.Fatalf("Failed to start metric server at specified address (%q) and path (%q): %v", address, path, err.Error())
 		}
 	}()
 }

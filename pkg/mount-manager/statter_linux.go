@@ -45,7 +45,7 @@ func (*realStatter) StatFS(path string) (available, capacity, used, inodesFree, 
 	statfs := &unix.Statfs_t{}
 	err = unix.Statfs(path, statfs)
 	if err != nil {
-		err = fmt.Errorf("failed to get fs info on path %s: %v", path, err)
+		err = fmt.Errorf("failed to get fs info on path %s: %w", path, err)
 		return
 	}
 

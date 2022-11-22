@@ -67,7 +67,7 @@ func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 			Exec:      utilexec.New(),
 		}, nil
 	}
-	klog.V(4).Infof("failed to connect to csi-proxy v1 with error=%v, will try with v1Beta", err)
+	klog.V(4).Infof("failed to connect to csi-proxy v1 with error=%v, will try with v1Beta", err.Error())
 
 	csiProxyMounterV1Beta, err := NewCSIProxyMounterV1Beta()
 	if err == nil {
@@ -77,6 +77,6 @@ func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
 			Exec:      utilexec.New(),
 		}, nil
 	}
-	klog.V(4).Infof("failed to connect to csi-proxy v1beta with error=%v", err)
+	klog.V(4).Infof("failed to connect to csi-proxy v1beta with error=%v", err.Error())
 	return nil, err
 }
