@@ -34,7 +34,7 @@ var (
 func init() {
 	usr, err := user.Current()
 	if err != nil {
-		klog.Fatal(err)
+		klog.Fatal(err.Error())
 	}
 	sshDefaultKey = fmt.Sprintf("%s/.ssh/google_compute_engine", usr.HomeDir)
 

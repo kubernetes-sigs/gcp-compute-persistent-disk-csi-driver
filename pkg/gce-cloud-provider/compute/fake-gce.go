@@ -103,7 +103,7 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 		}
 		r, err := common.GetRegionFromZones([]string{cloud.zone})
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to get region from zones: %v", err)
+			return "", nil, fmt.Errorf("failed to get region from zones: %w", err)
 		}
 		volumeKey.Region = r
 		return project, volumeKey, nil
