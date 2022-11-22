@@ -28,7 +28,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -947,7 +947,7 @@ func (cloud *CloudProvider) waitForImageCreation(ctx context.Context, project, i
 			klog.V(6).Infof("Checking GCE Image %s.", imageName)
 			image, err := cloud.GetImage(ctx, project, imageName)
 			if err != nil {
-				klog.Warningf("Error in getting image %s, %v", imageName, err)
+				klog.Warningf("Error in getting image %s, %w", imageName, err)
 			} else if image != nil {
 				if image.Status != "PENDING" {
 					klog.V(6).Infof("Image %s status is %s", imageName, image.Status)
@@ -1115,7 +1115,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 			klog.V(6).Infof("Checking GCE Snapshot %s.", snapshotName)
 			snapshot, err := cloud.GetSnapshot(ctx, project, snapshotName)
 			if err != nil {
-				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
+				klog.Warningf("Error in getting snapshot %s, %w", snapshotName, err)
 			} else if snapshot != nil {
 				if snapshot.Status != "CREATING" {
 					klog.V(6).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)

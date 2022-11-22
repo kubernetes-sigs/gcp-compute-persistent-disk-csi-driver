@@ -22,7 +22,7 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // TestContext holds the CSI Client handle to a remotely connected Driver

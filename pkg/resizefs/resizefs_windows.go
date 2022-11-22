@@ -25,7 +25,7 @@ import (
 	volumeapiv1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
 	volumeapiv1beta1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	mounter "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
