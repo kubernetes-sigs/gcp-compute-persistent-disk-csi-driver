@@ -37,11 +37,6 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
-const (
-	errorBackoffInitialDuration = 200 * time.Millisecond
-	errorBackoffMaxDuration     = 5 * time.Minute
-)
-
 type GCEControllerServer struct {
 	Driver        *GCEDriver
 	CloudProvider gce.GCECompute
@@ -517,7 +512,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 
 	attached, err := diskIsAttachedAndCompatible(deviceName, instance, volumeCapability, readWrite)
 	if err != nil {
-		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Disk %v already published to node %v but incompatbile: %v", volKey.Name, nodeID, err))
+		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Disk %v already published to node %v but incompatible: %v", volKey.Name, nodeID, err))
 	}
 	if attached {
 		// Volume is attached to node. Success!
@@ -1597,8 +1592,8 @@ func pickRandAndConsecutive(slice []string, n int) ([]string, error) {
 	return ret, nil
 }
 
-func newCsiErrorBackoff() *csiErrorBackoff {
-	return &csiErrorBackoff{flowcontrol.NewBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration)}
+func newCsiErrorBackoff(initialDuration, errorBackoffMaxDuration time.Duration) *csiErrorBackoff {
+	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration)}
 }
 
 func (_ *csiErrorBackoff) backoffId(nodeId, volumeId string) csiErrorBackoffId {
