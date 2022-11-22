@@ -18,9 +18,13 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"errors"
+	"net/http"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/grpc/codes"
 )
 
 var (
@@ -288,6 +292,40 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 			if tc.expVal != val {
 				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
 			}
+		}
+	}
+}
+
+func TestCodeForError(t *testing.T) {
+	internalErrorCode := codes.Internal
+	userErrorCode := codes.InvalidArgument
+	testCases := []struct {
+		name     string
+		inputErr error
+		expCode  *codes.Code
+	}{
+		{
+			name:     "Not googleapi.Error",
+			inputErr: errors.New("I am not a googleapi.Error"),
+			expCode:  &internalErrorCode,
+		},
+		{
+			name:     "User error",
+			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
+			expCode:  &userErrorCode,
+		},
+		{
+			name:     "googleapi.Error but not a user error",
+			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
+			expCode:  &internalErrorCode,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		actualCode := *CodeForError(tc.inputErr)
+		if *tc.expCode != actualCode {
+			t.Fatalf("Expected error code '%v' but got '%v'", tc.expCode, actualCode)
 		}
 	}
 }
