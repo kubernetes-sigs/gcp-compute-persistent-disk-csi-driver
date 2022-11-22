@@ -12,7 +12,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package mountmanager
+package deviceutils
+
+import "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 
 type fakeDeviceUtils struct {
 }
@@ -37,4 +39,8 @@ func (m *fakeDeviceUtils) VerifyDevicePath(devicePaths []string, diskName string
 func (_ *fakeDeviceUtils) DisableDevice(devicePath string) error {
 	// No-op for testing.
 	return nil
+}
+
+func (_ *fakeDeviceUtils) Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error) {
+	return false, nil
 }

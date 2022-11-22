@@ -1,4 +1,4 @@
-package mountmanager
+package deviceutils
 
 import (
 	"testing"

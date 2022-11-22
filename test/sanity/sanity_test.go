@@ -28,6 +28,7 @@ import (
 	sanity "github.com/kubernetes-csi/csi-test/v4/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
@@ -60,7 +61,7 @@ func TestSanity(t *testing.T) {
 	}
 
 	mounter := mountmanager.NewFakeSafeMounter()
-	deviceUtils := mountmanager.NewFakeDeviceUtils()
+	deviceUtils := deviceutils.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)

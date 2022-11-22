@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
@@ -122,7 +122,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// MESS UP THE symlink
-		devicePaths := mountmanager.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
 		for _, devicePath := range devicePaths {
 			err = testutils.RmAll(instance, devicePath)
 			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
@@ -194,7 +194,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// DELETE THE symlink
-		devicePaths := mountmanager.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
 		for _, devicePath := range devicePaths {
 			err = testutils.RmAll(instance, devicePath)
 			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
