@@ -54,6 +54,35 @@ Unit tests can be run from VS Code, etc directly or via the cmd line:
 $ ./test/run-unit.sh
 ```
 
+### Performance Tests
+Performance tests are run in automated testing frameworks, but you may wish to run them locally to benchmark changes. For a given test configuration, you need to modify the `test-config.yaml` file automatically generated from running one of the `run-k8s-integration...` or `run-windows-k8s-integration.sh` scripts to enable performance tests.
+
+```yaml
+DriverInfo:
+  ...
+  PerformanceTestOptions:
+    ProvisioningOptions: # deploy 50 1Gi PVCs and measure latency/throughput
+      VolumeSize: 1Gi
+      Count: 50
+      ExpectedMetrics:
+        AvgLatency: 10000000000 # 10 seconds
+        Throughput: 5
+```
+
+You may modify the parameter values to customize the test.
+
+You also need to modify the `StorageClass` file pointed to in `test-config.yaml` to set `volumeBindingMode: Immediate`, as the performance tests only support this mode.
+
+We will be running the Kubernetes integration tests directly from its repository. Install `kubetest` and set up a test cluster with the driver installed. Now, cd into `$GOPATH/src/k8s.io/kubernetes` and run
+
+```bash
+# pwd=k/k
+kubetest <custom flags based on your provider> \
+  --check-version-skew=false \
+  --test \
+  --test_args="--ginkgo.focus=External.Storage.*volume-lifecycle-performance --allowed-not-ready-nodes=10 --node-os-distro=<linux or windows> --storage.testdriver=<path-to-test-config>"
+```
+
 ## Dependency Management
 
 Use [dep](https://github.com/golang/dep)
