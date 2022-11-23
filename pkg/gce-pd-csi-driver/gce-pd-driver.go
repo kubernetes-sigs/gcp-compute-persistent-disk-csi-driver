@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -148,13 +149,13 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration) *GCEControllerServer {
 	return &GCEControllerServer{
 		Driver:        gceDriver,
 		CloudProvider: cloudProvider,
 		seen:          map[string]int{},
 		volumeLocks:   common.NewVolumeLocks(),
-		errorBackoff:  newCsiErrorBackoff(),
+		errorBackoff:  newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
 	}
 }
 

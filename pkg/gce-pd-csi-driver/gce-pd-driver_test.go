@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"testing"
+	"time"
 
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
@@ -43,7 +44,10 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	controllerServer := NewControllerServer(gceDriver, cloudProvider)
+	errorBackoffInitialDuration := 200 * time.Millisecond
+	errorBackoffMaxDuration := 5 * time.Minute
+
+	controllerServer := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration)
 	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)

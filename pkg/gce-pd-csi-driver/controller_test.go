@@ -2149,6 +2149,8 @@ type backoffTesterConfig struct {
 }
 
 func newFakeCsiErrorBackoff(tc *clock.FakeClock) *csiErrorBackoff {
+	errorBackoffInitialDuration := 200 * time.Millisecond
+	errorBackoffMaxDuration := 5 * time.Minute
 	return &csiErrorBackoff{flowcontrol.NewFakeBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration, tc)}
 }
 
