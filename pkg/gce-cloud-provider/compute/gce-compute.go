@@ -111,7 +111,7 @@ func (cloud *CloudProvider) GetDefaultZone() string {
 }
 
 // ListDisks lists disks based on maxEntries and pageToken only in the project
-// and zone that the driver is running in.
+// and region that the driver is running in.
 func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, string, error) {
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
 	if err != nil {
@@ -123,6 +123,20 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, s
 	}
 	items := []*computev1.Disk{}
 
+	// listing out regional disks in the region
+	rlCall := cloud.service.RegionDisks.List(cloud.project, region)
+	nextPageToken := "pageToken"
+	for nextPageToken != "" {
+		rDiskList, err := rlCall.Do()
+		if err != nil {
+			return nil, "", err
+		}
+		items = append(items, rDiskList.Items...)
+		nextPageToken = rDiskList.NextPageToken
+		rlCall.PageToken(nextPageToken)
+	}
+
+	// listing out zonal disks in all zones of the region
 	for _, zone := range zones {
 		lCall := cloud.service.Disks.List(cloud.project, zone)
 		nextPageToken := "pageToken"
