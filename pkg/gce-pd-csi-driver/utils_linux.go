@@ -17,6 +17,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -78,4 +79,8 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 		return -1, fmt.Errorf("failed to parse %s into an int size", strOut)
 	}
 	return gotSizeBytes, nil
+}
+
+func parseEndpoint(endpoint string) (*url.URL, error) {
+	return url.Parse(endpoint)
 }

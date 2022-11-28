@@ -20,10 +20,8 @@ package resizefs
 
 import (
 	"context"
-	"fmt"
 
-	volumeapiv1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
-	volumeapiv1beta1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
+	"github.com/kubernetes-csi/csi-proxy/v2/pkg/volume"
 
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
@@ -44,58 +42,23 @@ func NewResizeFs(mounter *mount.SafeFormatAndMount) *resizeFs {
 
 // resize perform resize of file system
 func (resizefs *resizeFs) Resize(devicePath string, deviceMountPath string) (bool, error) {
-	switch resizefs.mounter.Interface.(type) {
-	case *mounter.CSIProxyMounterV1:
-		return resizefs.resizeV1(devicePath, deviceMountPath)
-	case *mounter.CSIProxyMounterV1Beta:
-		return resizefs.resizeV1Beta(devicePath, deviceMountPath)
-	}
-	return false, fmt.Errorf("resize.mounter.Interface is not valid")
-}
-
-func (resizefs *resizeFs) resizeV1(devicePath string, deviceMountPath string) (bool, error) {
 	klog.V(3).Infof("resizeFS.Resize - Expanding mounted volume %s", deviceMountPath)
 
-	proxy := resizefs.mounter.Interface.(*mounter.CSIProxyMounterV1)
+	proxy := resizefs.mounter.Interface.(*mounter.CSIProxyMounterImpl)
 
-	idRequest := &volumeapiv1.GetVolumeIDFromTargetPathRequest{
+	idRequest := &volume.GetVolumeIDFromTargetPathRequest{
 		TargetPath: deviceMountPath,
 	}
-	idResponse, err := proxy.VolumeClient.GetVolumeIDFromTargetPath(context.Background(), idRequest)
+	idResponse, err := proxy.Volume.GetVolumeIDFromTargetPath(context.Background(), idRequest)
 	if err != nil {
 		return false, err
 	}
-	volumeId := idResponse.GetVolumeId()
+	volumeID := idResponse.VolumeID
 
-	request := &volumeapiv1.ResizeVolumeRequest{
-		VolumeId: volumeId,
+	request := &volume.ResizeVolumeRequest{
+		VolumeID: volumeID,
 	}
-	_, err = proxy.VolumeClient.ResizeVolume(context.Background(), request)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// resize perform resize of file system
-func (resizefs *resizeFs) resizeV1Beta(devicePath string, deviceMountPath string) (bool, error) {
-	klog.V(3).Infof("resizeFS.Resize - Expanding mounted volume %s", deviceMountPath)
-
-	proxy := resizefs.mounter.Interface.(*mounter.CSIProxyMounterV1Beta)
-
-	idRequest := &volumeapiv1beta1.VolumeIDFromMountRequest{
-		Mount: deviceMountPath,
-	}
-	idResponse, err := proxy.VolumeClient.GetVolumeIDFromMount(context.Background(), idRequest)
-	if err != nil {
-		return false, err
-	}
-	volumeId := idResponse.GetVolumeId()
-
-	request := &volumeapiv1beta1.ResizeVolumeRequest{
-		VolumeId: volumeId,
-	}
-	_, err = proxy.VolumeClient.ResizeVolume(context.Background(), request)
+	_, err = proxy.Volume.ResizeVolume(context.Background(), request)
 	if err != nil {
 		return false, err
 	}

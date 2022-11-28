@@ -8,7 +8,7 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.18.0
 	github.com/container-storage-interface/spec v1.6.0
 	github.com/google/uuid v1.3.0
-	github.com/kubernetes-csi/csi-proxy/client v1.1.1
+	github.com/kubernetes-csi/csi-proxy/v2 v2.0.0-alpha.0
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.20.0
@@ -32,7 +32,6 @@ require (
 require (
 	cloud.google.com/go v0.103.0 // indirect
 	cloud.google.com/go/iam v0.3.0 // indirect
-	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -64,7 +63,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect

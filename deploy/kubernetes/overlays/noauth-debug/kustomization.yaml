@@ -9,6 +9,7 @@ patchesStrategicMerge:
 - noauth.yaml
 - controller-overlay.yaml
 - node-overlay.yaml
+- windows_hostprocess.yaml
 namespace: gce-pd-csi-driver
 # To change the dev image, add something like the following.
 # images:

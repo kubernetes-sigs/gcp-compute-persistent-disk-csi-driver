@@ -1,0 +1,40 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-node-win
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\SYSTEM"
+      containers:
+        - name: csi-driver-registrar
+          command:
+            - csi-node-driver-registrar.exe
+          args:
+            - --v=5
+            - --csi-address=unix://c:\var\lib\kubelet\plugins\pd.csi.storage.gke.io\csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/pd.csi.storage.gke.io/csi.sock
+            - --plugin-registration-path=/var/lib/kubelet/plugins_registry
+          volumeMounts:
+            - name: registration-dir
+              mountPath: /registration
+              $patch: delete
+        - name: gce-pd-driver
+          command:
+            - gce-pd-csi-driver.exe
+          args:
+            - --v=5
+            - --endpoint=unix:/c:\var\lib\kubelet\plugins\pd.csi.storage.gke.io\csi.sock
+            - --run-controller-service=false
+          volumeMounts:
+            - $patch: replace
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/pd.csi.storage.gke.io
+            type: DirectoryOrCreate
+        - $patch: replace

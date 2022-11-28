@@ -16,7 +16,6 @@ package gceGCEDriver
 
 import (
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -75,7 +74,7 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		grpc.UnaryInterceptor(logGRPC),
 	}
 
-	u, err := url.Parse(endpoint)
+	u, err := parseEndpoint(endpoint)
 
 	if err != nil {
 		klog.Fatal(err.Error())

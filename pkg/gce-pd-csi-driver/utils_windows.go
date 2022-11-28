@@ -17,6 +17,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"k8s.io/mount-utils"
@@ -104,4 +105,18 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 		return 0, fmt.Errorf("could not cast to csi proxy class")
 	}
 	return proxy.GetDiskTotalBytes(devicePath)
+}
+
+func parseEndpoint(endpoint string) (*url.URL, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "unix" {
+		// remove leading slashes
+		if len(u.Path) > 0 && string(u.Path[0]) == "/" {
+			u.Path = u.Path[1:]
+		}
+	}
+	return u, err
 }
