@@ -21,6 +21,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -28,6 +29,7 @@ import (
 	sanity "github.com/kubernetes-csi/csi-test/v4/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
@@ -60,11 +62,11 @@ func TestSanity(t *testing.T) {
 	}
 
 	mounter := mountmanager.NewFakeSafeMounter()
-	deviceUtils := mountmanager.NewFakeDeviceUtils()
+	deviceUtils := deviceutils.NewFakeDeviceUtils()
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 1*time.Millisecond, 5*time.Minute)
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
@@ -90,7 +92,7 @@ func TestSanity(t *testing.T) {
 	}()
 
 	go func() {
-		gceDriver.Run(endpoint)
+		gceDriver.Run(endpoint, 10000)
 	}()
 
 	// TODO(#818): Fix failing tests and remove test skip flag.

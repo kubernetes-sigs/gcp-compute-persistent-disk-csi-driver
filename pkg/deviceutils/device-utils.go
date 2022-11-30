@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package mountmanager
+package deviceutils
 
 import (
 	"fmt"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	pathutils "k8s.io/utils/path"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
 
 const (
@@ -84,6 +85,9 @@ type DeviceUtils interface {
 	// DisableDevice performs necessary disabling prior to a device being
 	// detached from a node. The path is that from GetDiskByIdPaths.
 	DisableDevice(devicePath string) error
+
+	// Resize returns whether or not a device needs resizing.
+	Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error)
 }
 
 type deviceUtils struct {
@@ -272,6 +276,10 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 	}
 
 	return devicePath, nil
+}
+
+func (m *deviceUtils) Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error) {
+	return resizer.Resize(devicePath, deviceMountPath)
 }
 
 // getDevFsSerial returns the serial number of the /dev/* path at devFsPath.
