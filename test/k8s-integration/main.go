@@ -479,7 +479,7 @@ func handle() error {
 	}
 
 	skipDiskImageSnapshots := false
-	if mustParseVersion(testParams.clusterVersion).lessThan(mustParseVersion("1.22.0")) {
+	if mustParseVersion(testParams.clusterVersion).lessThan(mustParseVersion("1.22.0")) || strings.Contains(testParams.storageClassFile, "sc-extreme") {
 		// Disk image cloning in only supported from 1.22 on.
 		skipDiskImageSnapshots = true
 	}
