@@ -71,6 +71,7 @@ COPY --from=debian /bin/date /bin/date
 COPY --from=debian /bin/grep /bin/grep
 COPY --from=debian /bin/sed /bin/sed
 COPY --from=debian /bin/ln /bin/ln
+COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
 COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
@@ -79,6 +80,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libe2p.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libext2fs.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libgcc_s.so.1 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzma.so.5 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre.so.3 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libreadline.so.5 \
@@ -93,6 +95,7 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libacl.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicudata.so.63 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.63 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.63 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkmod.so.2 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 # Copy NVME support required script and rules into distroless base.
