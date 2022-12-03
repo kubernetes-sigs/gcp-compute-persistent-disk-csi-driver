@@ -1,3 +1,16 @@
+# v1.7.4 - Changelog since v.1.7.3
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add udevadm binary in the container image. ([#1095](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1095), [@mattcary](https://github.com/mattcary))
+- Fixed issue where Regional disks are repeatedly queued for re-attaching and consuming api quota ([#1091](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1091), [@pwschuurman](https://github.com/pwschuurman))
+
+## Dependencies
+
+_Nothing has changed._
+
 # v1.7.3 - Changelog since v.1.7.2
 
 - Update go builder to 1.18.4. Fixes several CVEs. (#1031, @mattcary)
