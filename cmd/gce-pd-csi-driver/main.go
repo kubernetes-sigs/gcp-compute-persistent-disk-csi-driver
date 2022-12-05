@@ -127,7 +127,7 @@ func handle() {
 			klog.Fatalf("Failed to get cloud provider: %w", err)
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
-		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Microsecond
+		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
