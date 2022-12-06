@@ -1,3 +1,15 @@
+# v1.8.1 - Changelog since v1.8.0
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add udevadm binary in the container image. ([#1097](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1097), [@mattcary](https://github.com/mattcary))
+
+## Dependencies
+
+_Nothing has changed._
+
 # v1.8.0 - Changelog since v.1.7.3
 
 ## Changes by Kind
