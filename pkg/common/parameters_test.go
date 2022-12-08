@@ -91,6 +91,22 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
+			name:       "values from parameters, checking hyperdisk-throughput",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyProvisionedThroughputOnCreate: "1000Mi"},
+			labels:     map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "hyperdisk-throughput",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 map[string]string{},
+				Labels: map[string]string{
+					"key1": "value1",
+					"key2": "value2",
+				},
+				ProvisionedThroughputOnCreate: 1000,
+			},
+		},
+		{
 			name:       "values from parameters, checking balanced pd",
 			parameters: map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key"},
 			labels:     map[string]string{},

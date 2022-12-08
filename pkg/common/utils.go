@@ -281,3 +281,14 @@ func ConvertGiBStringToInt64(str string) (int64, error) {
 	quantity := resource.MustParse(str)
 	return volumehelpers.RoundUpToGiB(quantity)
 }
+
+// ConvertMiBStringToInt64 converts a GiB string to int64
+func ConvertMiBStringToInt64(str string) (int64, error) {
+	// Verify regex before
+	match, _ := regexp.MatchString("^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$", str)
+	if !match {
+		return 0, fmt.Errorf("invalid string %s", str)
+	}
+	quantity := resource.MustParse(str)
+	return volumehelpers.RoundUpToMiB(quantity)
+}
