@@ -478,6 +478,15 @@ func handle() error {
 		return fmt.Errorf("Unknown deployment strategy %s", testParams.deploymentStrategy)
 	}
 
+<<<<<<< HEAD
+=======
+	skipDiskImageSnapshots := false
+	if mustParseVersion(testParams.clusterVersion).lessThan(mustParseVersion("1.22.0")) {
+		// Disk image cloning in only supported from 1.22 on.
+		skipDiskImageSnapshots = true
+	}
+
+>>>>>>> Test pd-extreme k8s integration
 	// Run the tests using the k8sSourceDir kubernetes
 	if len(*storageClassFiles) != 0 {
 		applicableStorageClassFiles := []string{}

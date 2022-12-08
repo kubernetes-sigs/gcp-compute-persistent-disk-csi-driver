@@ -127,7 +127,9 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 		snapshotClassName = "no-volumesnapshotclass"
 	}
 
-	caps = append(caps, "pvcDataSource")
+	if !strings.Contains(testParams.storageClassFile, "sc-extreme") {
+		caps = append(caps, "pvcDataSource")
+	}
 	minimumVolumeSize := "5Gi"
 	numAllowedTopologies := 1
 	if testParams.storageClassFile == regionalPDStorageClass {
