@@ -401,7 +401,7 @@ func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey
 	}
 }
 
-func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
+func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCreate int64) *computebeta.Disk {
 	var dek *computebeta.CustomerEncryptionKey = nil
 
 	if v1Disk.DiskEncryptionKey != nil {
@@ -420,6 +420,9 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 	}
 	if v1Disk.ProvisionedIops > 0 {
 		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
+	}
+	if provisionedThroughputOnCreate > 0 {
+		betaDisk.ProvisionedThroughput = provisionedThroughputOnCreate
 	}
 
 	return betaDisk
@@ -448,11 +451,12 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:        volKey.Name,
-		SizeGb:      common.BytesToGbRoundUp(capBytes),
-		Description: description,
-		Type:        cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
-		Labels:      params.Labels,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     description,
+		Type:            cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 	if snapshotID != "" {
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(snapshotID)
@@ -483,7 +487,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, 0)
 		betaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.betaService.RegionDisks.Insert(project, volKey.Region, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
@@ -594,7 +598,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, params.ProvisionedThroughputOnCreate)
 		betaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.betaService.Disks.Insert(project, volKey.Zone, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
