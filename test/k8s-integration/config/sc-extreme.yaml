@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gcepd
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-extreme
+  provisioned-iops-on-create: '10000Gi'
+  # Add labels for testing.
+  labels: key1=value1,key2=value2
+volumeBindingMode: WaitForFirstConsumer
