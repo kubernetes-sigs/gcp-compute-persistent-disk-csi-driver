@@ -45,19 +45,19 @@ var _ MetadataService = &metadataServiceManager{}
 func NewMetadataService() (MetadataService, error) {
 	zone, err := metadata.Zone()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current zone: %v", err)
+		return nil, fmt.Errorf("failed to get current zone: %w", err)
 	}
 	projectID, err := metadata.ProjectID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get project: %v", err)
+		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
 	name, err := metadata.InstanceName()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get instance name: %v", err)
+		return nil, fmt.Errorf("failed to get instance name: %w", err)
 	}
 	fullMachineType, err := metadata.Get("instance/machine-type")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get machine-type: %v", err)
+		return nil, fmt.Errorf("failed to get machine-type: %w", err)
 	}
 	// Response format: "projects/[NUMERIC_PROJECT_ID]/machineTypes/[MACHINE_TYPE]"
 	splits := strings.Split(fullMachineType, "/")

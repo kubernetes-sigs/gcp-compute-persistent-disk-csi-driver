@@ -372,7 +372,7 @@ func getKubeClusterVersion() (string, error) {
 func mustGetKubeClusterVersion() string {
 	ver, err := getKubeClusterVersion()
 	if err != nil {
-		klog.Fatalf("Error: %w", err)
+		klog.Fatalf("Error: %v", err.Error())
 	}
 	return ver
 }

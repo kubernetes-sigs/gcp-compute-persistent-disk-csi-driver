@@ -107,7 +107,7 @@ func handle() {
 	}
 	extraVolumeLabels, err := common.ConvertLabelsStringToMap(*extraVolumeLabelsStr)
 	if err != nil {
-		klog.Fatalf("Bad extra volume labels: %w", err)
+		klog.Fatalf("Bad extra volume labels: %v", err.Error())
 	}
 
 	gceDriver := driver.GetGCEDriver()
@@ -124,7 +124,7 @@ func handle() {
 	if *runControllerService {
 		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, *computeEndpoint)
 		if err != nil {
-			klog.Fatalf("Failed to get cloud provider: %w", err)
+			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
@@ -138,20 +138,20 @@ func handle() {
 	if *runNodeService {
 		mounter, err := mountmanager.NewSafeMounter()
 		if err != nil {
-			klog.Fatalf("Failed to get safe mounter: %w", err)
+			klog.Fatalf("Failed to get safe mounter: %v", err.Error())
 		}
 		deviceUtils := deviceutils.NewDeviceUtils()
 		statter := mountmanager.NewStatter(mounter)
 		meta, err := metadataservice.NewMetadataService()
 		if err != nil {
-			klog.Fatalf("Failed to set up metadata service: %w", err)
+			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
 	}
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
-		klog.Fatalf("Failed to initialize GCE CSI Driver: %w", err)
+		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}
 
 	gce.AttachDiskBackoff.Duration = *attachDiskBackoffDuration
