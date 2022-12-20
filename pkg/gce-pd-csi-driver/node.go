@@ -339,14 +339,6 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 				devicePath, stagingTargetPath, fstype, options, err.Error()))
 	}
 
-	// Part 4: Resize filesystem.
-	// https://github.com/kubernetes/kubernetes/issues/94929
-	resizer := resizefs.NewResizeFs(ns.Mounter)
-	_, err = ns.DeviceUtils.Resize(resizer, devicePath, stagingTargetPath)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s from device '%s' at path '%s': %v", volumeID, devicePath, stagingTargetPath, err.Error()))
-	}
-
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
