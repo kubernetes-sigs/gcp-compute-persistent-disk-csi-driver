@@ -363,16 +363,6 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err.Error(), stagingTargetPath))
 	}
 
-<<<<<<< HEAD
-=======
-	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
-	if err != nil {
-		klog.Errorf("Failed to find device path for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", volumeID, err.Error())
-	} else if err := ns.DeviceUtils.DisableDevice(devicePath); err != nil {
-		klog.Errorf("Failed to disabled device %s for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", devicePath, volumeID, err.Error())
-	}
-
->>>>>>> Separate user errors from internal errors
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -501,11 +491,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 	resizer := resizefs.NewResizeFs(ns.Mounter)
 	_, err = resizer.Resize(devicePath, volumePath)
 	if err != nil {
-<<<<<<< HEAD
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s: %v", volKey.String(), err))
-=======
 		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s from device '%s' at path '%s': %v", volKey.String(), devicePath, volumePath, err.Error()))
->>>>>>> Separate user errors from internal errors
 
 	}
 
