@@ -50,7 +50,7 @@ specified service account
 
 ```console
 $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
-$ GCE_PD_DRIVER_VERSION=stable                    # Driver version to deploy
+$ GCE_PD_DRIVER_VERSION=stable-master             # Driver version to deploy
 $ ./deploy/kubernetes/deploy-driver.sh
 ```
 
