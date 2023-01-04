@@ -700,7 +700,7 @@ k8s.io/kube-openapi/pkg/validation/spec
 # k8s.io/kubernetes v1.24.1
 ## explicit; go 1.16
 k8s.io/kubernetes/test/e2e/storage/podlogs
-# k8s.io/mount-utils v0.24.1 => k8s.io/mount-utils v0.24.1
+# k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95 => k8s.io/mount-utils v0.24.1
 ## explicit; go 1.16
 k8s.io/mount-utils
 # k8s.io/test-infra v0.0.0-20210730160938-8ad9b8c53bd8
