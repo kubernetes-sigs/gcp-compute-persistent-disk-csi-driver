@@ -46,7 +46,7 @@ github.com/emicklei/go-restful/log
 # github.com/fsnotify/fsnotify v1.5.4
 ## explicit; go 1.16
 github.com/fsnotify/fsnotify
-# github.com/go-logr/logr v1.2.0
+# github.com/go-logr/logr v1.2.3
 ## explicit; go 1.16
 github.com/go-logr/logr
 # github.com/go-openapi/jsonpointer v0.19.5
@@ -149,6 +149,9 @@ github.com/mailru/easyjson/jwriter
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
+# github.com/moby/sys/mountinfo v0.6.2
+## explicit; go 1.16
+github.com/moby/sys/mountinfo
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 ## explicit
 github.com/modern-go/concurrent
@@ -270,7 +273,7 @@ golang.org/x/oauth2/google/internal/externalaccount
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+# golang.org/x/sys v0.3.0
 ## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
@@ -678,11 +681,12 @@ k8s.io/client-go/util/workqueue
 ## explicit; go 1.16
 k8s.io/component-base/metrics
 k8s.io/component-base/version
-# k8s.io/klog/v2 v2.60.1
+# k8s.io/klog/v2 v2.80.1
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/internal/buffer
 k8s.io/klog/v2/internal/clock
+k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
 # k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
@@ -700,8 +704,8 @@ k8s.io/kube-openapi/pkg/validation/spec
 # k8s.io/kubernetes v1.24.1
 ## explicit; go 1.16
 k8s.io/kubernetes/test/e2e/storage/podlogs
-# k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95 => k8s.io/mount-utils v0.24.1
-## explicit; go 1.16
+# k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95 => k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95
+## explicit; go 1.19
 k8s.io/mount-utils
 # k8s.io/test-infra v0.0.0-20210730160938-8ad9b8c53bd8
 ## explicit; go 1.13
@@ -709,8 +713,8 @@ k8s.io/test-infra/prow/config/secret
 k8s.io/test-infra/prow/logrusutil
 k8s.io/test-infra/prow/secretutil
 k8s.io/test-infra/prow/version
-# k8s.io/utils v0.0.0-20220713171938-56c0de1e6f5e
-## explicit; go 1.12
+# k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
+## explicit; go 1.18
 k8s.io/utils/clock
 k8s.io/utils/clock/testing
 k8s.io/utils/exec
@@ -762,7 +766,7 @@ sigs.k8s.io/yaml
 # k8s.io/kubelet => k8s.io/kubelet v0.24.1
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.1
 # k8s.io/metrics => k8s.io/metrics v0.24.1
-# k8s.io/mount-utils => k8s.io/mount-utils v0.24.1
+# k8s.io/mount-utils => k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95
 # k8s.io/node-api => k8s.io/node-api v0.24.1
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.1
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.1

@@ -13,7 +13,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.20.0
 	golang.org/x/oauth2 v0.0.0-20220722155238-128564f6959c
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+	golang.org/x/sys v0.3.0
 	google.golang.org/api v0.86.0
 	google.golang.org/genproto v0.0.0-20220720214146-176da50484ac
 	google.golang.org/grpc v1.48.0
@@ -22,10 +22,10 @@ require (
 	k8s.io/apimachinery v0.24.1
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/component-base v0.24.1
-	k8s.io/klog/v2 v2.60.1
+	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubernetes v1.24.1
 	k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95
-	k8s.io/utils v0.0.0-20220713171938-56c0de1e6f5e
+	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 	sigs.k8s.io/boskos v0.0.0-20220711194915-6cb8a6fb2dd1
 )
 
@@ -41,7 +41,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
-	github.com/go-logr/logr v1.2.0 // indirect
+	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.6 // indirect
 	github.com/go-openapi/swag v0.21.1 // indirect
@@ -60,6 +60,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -114,7 +115,7 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.24.1
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.1
 	k8s.io/metrics => k8s.io/metrics v0.24.1
-	k8s.io/mount-utils => k8s.io/mount-utils v0.24.1
+	k8s.io/mount-utils => k8s.io/mount-utils v0.27.0-alpha.0.0.20221216112627-49433b159e95
 	k8s.io/node-api => k8s.io/node-api v0.24.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.1
