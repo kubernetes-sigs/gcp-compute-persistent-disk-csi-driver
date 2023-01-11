@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	computealpha "google.golang.org/api/compute/v0.alpha"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
@@ -46,6 +47,7 @@ var (
 	testContexts        = []*remote.TestContext{}
 	computeService      *compute.Service
 	computeAlphaService *computealpha.Service
+	computeBetaService  *computebeta.Service
 	kmsClient           *cloudkms.KeyManagementClient
 )
 
@@ -73,6 +75,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil())
 
 	computeAlphaService, err = remote.GetComputeAlphaClient()
+	Expect(err).To(BeNil())
+
+	computeBetaService, err = remote.GetComputeBetaClient()
 	Expect(err).To(BeNil())
 
 	// Create the KMS client.

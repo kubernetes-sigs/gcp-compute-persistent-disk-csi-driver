@@ -196,15 +196,14 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	computeDisk := &computev1.Disk{
-		Name:                  volKey.Name,
-		SizeGb:                common.BytesToGbRoundUp(capBytes),
-		Description:           "Disk created by GCE-PD CSI Driver",
-		Type:                  cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		SourceDiskId:          volumeContentSourceVolumeID,
-		Status:                cloud.mockDiskStatus,
-		Labels:                params.Labels,
-		ProvisionedIops:       params.ProvisionedIOPSOnCreate,
-		ProvisionedThroughput: params.ProvisionedThroughputOnCreate,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     "Disk created by GCE-PD CSI Driver",
+		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		SourceDiskId:    volumeContentSourceVolumeID,
+		Status:          cloud.mockDiskStatus,
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 
 	if snapshotID != "" {
