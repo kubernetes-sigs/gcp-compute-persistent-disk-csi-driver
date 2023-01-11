@@ -28,6 +28,7 @@ import (
 
 	"golang.org/x/oauth2/google"
 	computealpha "google.golang.org/api/compute/v0.alpha"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -71,12 +72,11 @@ func (i *InstanceInfo) GetNodeID() string {
 
 func CreateInstanceInfo(project, instanceArchitecture, instanceZone, name, machineType string, cs *compute.Service) (*InstanceInfo, error) {
 	return &InstanceInfo{
-		project:      project,
-		architecture: instanceArchitecture,
-		zone:         instanceZone,
-		name:         name,
-		machineType:  machineType,
-
+		project:        project,
+		architecture:   instanceArchitecture,
+		zone:           instanceZone,
+		name:           name,
+		machineType:    machineType,
 		computeService: cs,
 	}, nil
 }
@@ -322,6 +322,36 @@ func GetComputeAlphaClient() (*computealpha.Service, error) {
 		}
 
 		cs, err = computealpha.New(client)
+		if err != nil {
+			continue
+		}
+		return cs, nil
+	}
+	return nil, err
+}
+
+func GetComputeBetaClient() (*computebeta.Service, error) {
+	const retries = 10
+	const backoff = time.Second * 6
+
+	klog.V(4).Infof("Getting compute client...")
+
+	// Setup the gce client for provisioning instances
+	// Getting credentials on gce jenkins is flaky, so try a couple times
+	var err error
+	var cs *computebeta.Service
+	for i := 0; i < retries; i++ {
+		if i > 0 {
+			time.Sleep(backoff)
+		}
+
+		var client *http.Client
+		client, err = google.DefaultClient(context.Background(), computebeta.ComputeScope)
+		if err != nil {
+			continue
+		}
+
+		cs, err = computebeta.New(client)
 		if err != nil {
 			continue
 		}

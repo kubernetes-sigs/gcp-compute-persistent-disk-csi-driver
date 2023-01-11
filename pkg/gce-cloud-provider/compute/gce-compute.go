@@ -44,6 +44,7 @@ const (
 )
 
 var pdDiskTypeUnsupportedRegex = regexp.MustCompile(pdDiskTypeUnsupportedPattern)
+var hyperdiskTypes = []string{"hyperdisk-extreme", "hyperdisk-throughput"}
 
 type GCEAPIVersion string
 
@@ -559,7 +560,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
-	if multiWriter {
+	if multiWriter || containsBetaDiskType(hyperdiskTypes, params.DiskType) {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
@@ -1197,4 +1198,14 @@ func encodeTags(tags map[string]string) (string, error) {
 		return "", fmt.Errorf("failed to encodeTags %v: %w", tags, err)
 	}
 	return string(enc), nil
+}
+
+func containsBetaDiskType(betaDiskTypes []string, diskType string) bool {
+	for _, betaDiskType := range betaDiskTypes {
+		if betaDiskType == diskType {
+			return true
+		}
+	}
+
+	return false
 }
