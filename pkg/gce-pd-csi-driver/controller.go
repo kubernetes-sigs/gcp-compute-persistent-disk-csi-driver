@@ -593,7 +593,8 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err.Error())
+			klog.Warningf("Treating volume %v as unpublished because it could not be found", volumeID)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
 		return nil, LoggedError("ControllerUnpublishVolume error repairing underspecified volume key: ", err)
 	}
