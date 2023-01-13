@@ -272,4 +272,64 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
+
+	It("Should complete entire disk lifecycle with underspecified volume ID", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, extremeDiskType)
+
+		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(underSpecifiedID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
+
+	It("Should complete entire publish/unpublish lifecycle with underspecified volume ID and missing volume", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, extremeDiskType)
+		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+		defer func() {
+			// Detach Disk
+			err := instance.DetachDisk(volName)
+			Expect(err).To(BeNil(), "DetachDisk failed")
+
+			// Delete Disk
+			err = client.DeleteVolume(underSpecifiedID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Unpublish Disk
+			err = client.ControllerUnpublishVolume(underSpecifiedID, instance.GetNodeID())
+			Expect(err).To(BeNil(), "ControllerUnpublishVolume failed")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolume(underSpecifiedID, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed")
+	})
 })

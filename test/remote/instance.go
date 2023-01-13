@@ -143,9 +143,9 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 				return err
 			}
 
-			then := time.Now()
+			start := time.Now()
 			err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-				klog.V(2).Infof("Waiting for instance to be deleted. %v elapsed", time.Since(then))
+				klog.V(2).Infof("Waiting for instance to be deleted. %v elapsed", time.Since(start))
 				if curInst, _ = i.computeService.Instances.Get(i.project, i.zone, i.name).Do(); curInst != nil {
 					return false, nil
 				}
@@ -173,9 +173,9 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", newInst.Name)
 	}
 
-	then := time.Now()
+	start := time.Now()
 	err = wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.name, time.Since(then))
+		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.name, time.Since(start))
 
 		instance, err = i.computeService.Instances.Get(i.project, i.zone, i.name).Do()
 		if err != nil {
@@ -221,6 +221,33 @@ func (i *InstanceInfo) DeleteInstance() {
 		}
 		klog.Errorf("Error deleting instance %q: %w", i.name, err)
 	}
+}
+
+func (i *InstanceInfo) DetachDisk(diskName string) error {
+	klog.V(4).Infof("Detaching disk %q", diskName)
+	op, err := i.computeService.Instances.DetachDisk(i.project, i.zone, i.name, diskName).Do()
+	if err != nil {
+		if isGCEError(err, "notFound") {
+			return nil
+		}
+		klog.Errorf("Error deleting disk %q: %w", diskName, err)
+	}
+
+	start := time.Now()
+	if err := wait.Poll(5*time.Second, 1*time.Minute, func() (bool, error) {
+		klog.V(2).Infof("Waiting for disk %q to be detached from instance %q. %v elapsed", diskName, i.name, time.Since(start))
+
+		op, err = i.computeService.ZoneOperations.Get(i.project, i.zone, op.Name).Do()
+		if err != nil {
+			return true, fmt.Errorf("Failed to get operation %q, err: %v", op.Name, err)
+		}
+		return op.Status == "DONE", nil
+	}); err != nil {
+		return err
+	}
+
+	klog.V(4).Infof("Disk %q has been successfully detached from instance %q\n%v", diskName, i.name, op.Error)
+	return nil
 }
 
 func getexternalIP(instance *compute.Instance) string {

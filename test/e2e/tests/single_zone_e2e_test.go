@@ -35,6 +35,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/iterator"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 	fieldmask "google.golang.org/genproto/protobuf/field_mask"
@@ -257,7 +258,6 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			_, err = computeService.Disks.Get(p, zone, volName).Do()
 			Expect(err).To(BeNil(), "Could not find disk in correct zone")
 		}
-
 	})
 
 	It("Should complete entire disk lifecycle with underspecified volume ID", func() {
@@ -284,7 +284,40 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Attach Disk
 		err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
 
+	It("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+		defer func() {
+			// Detach Disk
+			err := instance.DetachDisk(volName)
+			Expect(err).To(BeNil(), "DetachDisk failed")
+
+			// Delete Disk
+			err = client.DeleteVolume(underSpecifiedID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Unpublish Disk
+			err = client.ControllerUnpublishVolume(underSpecifiedID, instance.GetNodeID())
+			Expect(err).To(BeNil(), "ControllerUnpublishVolume failed")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolume(underSpecifiedID, instance.GetNodeID())
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed")
 	})
 
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
@@ -1122,11 +1155,11 @@ func equalWithinEpsilon(a, b, epsiolon int64) bool {
 	return b-a < epsiolon
 }
 
-func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string, diskType string) (volName, volID string) {
+func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
-	var err error
-	volName = testNamePrefix + string(uuid.NewUUID())
-	volID, err = client.CreateVolume(volName, nil, defaultSizeGb,
+	disk := typeToDisk[diskType]
+	volName := testNamePrefix + string(uuid.NewUUID())
+	volID, err := client.CreateVolume(volName, disk.params, defaultSizeGb,
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1139,11 +1172,12 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	// Validate Disk Created
 	cloudDisk, err := computeService.Disks.Get(project, zone, volName).Do()
 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	Expect(cloudDisk.Type).To(ContainSubstring(diskType))
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
-	return
+	disk.validate(cloudDisk)
+
+	return volName, volID
 }
 
 func deleteVolumeOrError(client *remote.CsiClient, volID string) {
@@ -1160,8 +1194,9 @@ func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 
 func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
+	disk := typeToDisk[diskType]
 	volName := testNamePrefix + string(uuid.NewUUID())
-	volID, err := client.CreateVolumeWithCaps(volName, nil, defaultMwSizeGb,
+	volID, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1182,13 +1217,16 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 	// Validate Disk Created
-	cloudDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
-	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	Expect(cloudDisk.Type).To(ContainSubstring(diskType))
+	cloudDisk, err := computeService.Disks.Get(project, zone, volName).Do()
+	Expect(err).To(BeNil(), "Failed to get cloud disk")
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultMwSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
-	Expect(cloudDisk.MultiWriter).To(Equal(true))
+	disk.validate(cloudDisk)
+
+	alphaDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
+	Expect(err).To(BeNil(), "Failed to get cloud disk using alpha API")
+	Expect(alphaDisk.MultiWriter).To(Equal(true))
 
 	return volName, volID
 }
@@ -1246,4 +1284,30 @@ func setupKeyRing(ctx context.Context, parentName string, keyRingId string) (*km
 		keyVersions = append(keyVersions, keyVersion.Name)
 	}
 	return key, keyVersions
+}
+
+type disk struct {
+	params   map[string]string
+	validate func(disk *compute.Disk)
+}
+
+var typeToDisk = map[string]*disk{
+	standardDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType: standardDiskType,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(standardDiskType))
+		},
+	},
+	extremeDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType:                    extremeDiskType,
+			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(extremeDiskType))
+			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
+		},
+	},
 }
