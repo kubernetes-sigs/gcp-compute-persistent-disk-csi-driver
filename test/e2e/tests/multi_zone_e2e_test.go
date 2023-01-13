@@ -157,7 +157,7 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 			testFile := filepath.Join(a.publishDir, "testfile")
 			err := testutils.WriteFile(instance, testFile, testFileContents)
 			if err != nil {
-				return fmt.Errorf("Failed to write file: %v", err)
+				return fmt.Errorf("Failed to write file: %v", err.Error())
 			}
 		}
 		return nil
@@ -168,7 +168,7 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		secondTestFile := filepath.Join(a.publishDir, "testfile")
 		readContents, err := testutils.ReadFile(instance, secondTestFile)
 		if err != nil {
-			return fmt.Errorf("ReadFile failed with error: %v", err)
+			return fmt.Errorf("ReadFile failed with error: %v", err.Error())
 		}
 		if strings.TrimSpace(string(readContents)) != testFileContents {
 			return fmt.Errorf("wanted test file content: %s, got content: %s", testFileContents, readContents)
@@ -184,7 +184,7 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 	// Attach Disk
 	err = client.ControllerPublishVolume(volID, instance.GetNodeID())
 	if err != nil {
-		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error())
 	}
 
 	defer func() {
@@ -232,11 +232,11 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 	}
 
 	if err != nil {
-		return fmt.Errorf("NodePublishVolume failed with error: %v", err)
+		return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error())
 	}
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 	if err != nil {
-		return fmt.Errorf("Chmod failed with error: %v", err)
+		return fmt.Errorf("Chmod failed with error: %v", err.Error())
 	}
 
 	a := verifyArgs{
@@ -251,7 +251,7 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 	// Unmount Disk
 	err = client.NodeUnpublishVolume(volID, publishDir)
 	if err != nil {
-		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err.Error())
 	}
 
 	if secondMountVerify != nil {
@@ -263,7 +263,7 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 			err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
 		}
 		if err != nil {
-			return fmt.Errorf("NodePublishVolume failed with error: %v", err)
+			return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error())
 		}
 		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 		if err != nil {
@@ -275,13 +275,13 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		}
 		err = secondMountVerify(b)
 		if err != nil {
-			return fmt.Errorf("failed to verify after second mount to %s: %v", publishDir, err)
+			return fmt.Errorf("failed to verify after second mount to %s: %v", publishDir, err.Error())
 		}
 
 		// Unmount Disk
 		err = client.NodeUnpublishVolume(volID, secondPublishDir)
 		if err != nil {
-			return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err)
+			return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err.Error())
 		}
 	}
 

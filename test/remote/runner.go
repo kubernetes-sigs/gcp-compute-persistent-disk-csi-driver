@@ -34,13 +34,13 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	// Do not sudo here, so that we can use scp to copy test archive to the directdory.
 	if output, err := i.SSHNoSudo("mkdir", remoteWorkspace); err != nil {
 		// Exit failure with the error
-		return -1, fmt.Errorf("failed to create remoteWorkspace directory %q on i.name %q: %v output: %q", remoteWorkspace, i.name, err, output)
+		return -1, fmt.Errorf("failed to create remoteWorkspace directory %q on i.name %q: %v output: %q", remoteWorkspace, i.name, err.Error(), output)
 	}
 
 	// Copy the archive to the staging directory
 	if output, err := runSSHCommand("scp", archivePath, fmt.Sprintf("%s:%s/", i.GetSSHTarget(), remoteWorkspace)); err != nil {
 		// Exit failure with the error
-		return -1, fmt.Errorf("failed to copy test archive: %v, output: %q", err, output)
+		return -1, fmt.Errorf("failed to copy test archive: %v, output: %q", err.Error(), output)
 	}
 
 	// Extract the archive
@@ -54,7 +54,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	// we want the extracted files to be owned by the current user.
 	if output, err := i.SSHNoSudo("sh", "-c", cmd); err != nil {
 		// Exit failure with the error
-		return -1, fmt.Errorf("failed to extract test archive: %v, output: %q", err, output)
+		return -1, fmt.Errorf("failed to extract test archive: %v, output: %q", err.Error(), output)
 	}
 
 	klog.V(4).Infof("Starting driver on %q", i.name)
@@ -62,7 +62,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	output, err := i.SSH(driverRunCmd)
 	if err != nil {
 		// Exit failure with the error
-		return -1, fmt.Errorf("failed start driver, got output: %v, error: %v", output, err)
+		return -1, fmt.Errorf("failed start driver, got output: %v, error: %v", output, err.Error())
 	}
 
 	// Get the driver PID
@@ -77,12 +77,12 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	driverPIDString, err := i.SSHNoSudo("sh", "-c", driverPIDCmd)
 	if err != nil {
 		// Exit failure with the error
-		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", output, err)
+		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", output, err.Error())
 	}
 
 	driverPID, err := strconv.Atoi(strings.Fields(driverPIDString)[1])
 	if err != nil {
-		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDString, err)
+		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDString, err.Error())
 	}
 
 	return driverPID, nil

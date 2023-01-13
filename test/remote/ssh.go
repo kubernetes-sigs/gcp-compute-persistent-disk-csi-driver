@@ -106,7 +106,7 @@ func runSSHCommand(cmd string, args ...string) (string, error) {
 
 	output, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("command [%s %s] failed with error: %v", cmd, strings.Join(args, " "), err)
+		return string(output), fmt.Errorf("command [%s %s] failed with error: %v", cmd, strings.Join(args, " "), err.Error())
 	}
 	return string(output), nil
 }

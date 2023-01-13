@@ -93,13 +93,13 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 	// Create an SSH tunnel from port to port
 	sshPID, err := instance.CreateSSHTunnel(config.Port, config.Port)
 	if err != nil {
-		return nil, fmt.Errorf("SSH Tunnel pid %v encountered error: %v", sshPID, err)
+		return nil, fmt.Errorf("SSH Tunnel pid %v encountered error: %v", sshPID, err.Error())
 	}
 
 	client := CreateCSIClient(fmt.Sprintf("localhost:%s", config.Port))
 	err = client.AssertCSIConnection()
 	if err != nil {
-		return nil, fmt.Errorf("asserting csi connection failed with: %v", err)
+		return nil, fmt.Errorf("asserting csi connection failed with: %v", err.Error())
 	}
 
 	return &TestContext{
@@ -118,22 +118,22 @@ func TeardownDriverAndClient(context *TestContext) error {
 	// Close the client connection
 	err := context.Client.CloseConn()
 	if err != nil {
-		return fmt.Errorf("failed to close CSI Client connection: %v", err)
+		return fmt.Errorf("failed to close CSI Client connection: %v", err.Error())
 	}
 	// Close the SSH tunnel
 	proc, err := os.FindProcess(context.proc.sshTunnel)
 	if err != nil {
-		return fmt.Errorf("unable to efind process for ssh tunnel %v: %v", context.proc.sshTunnel, err)
+		return fmt.Errorf("unable to efind process for ssh tunnel %v: %v", context.proc.sshTunnel, err.Error())
 	}
 	if err = proc.Kill(); err != nil {
-		return fmt.Errorf("failed to kill ssh tunnel process %v: %v", context.proc.sshTunnel, err)
+		return fmt.Errorf("failed to kill ssh tunnel process %v: %v", context.proc.sshTunnel, err.Error())
 	}
 
 	// Kill the driver process on remote
 	cmd := fmt.Sprintf("kill %v", context.proc.remoteDriver)
 	output, err := context.Instance.SSH(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to kill driver on remote instance, got output %s: %v", output, err)
+		return fmt.Errorf("failed to kill driver on remote instance, got output %s: %v", output, err.Error())
 	}
 
 	return nil

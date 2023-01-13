@@ -85,7 +85,7 @@ func (c *CsiClient) AssertCSIConnection() error {
 			return true, nil
 		})
 		if err != nil || conn == nil {
-			return fmt.Errorf("Failed to get client connection: %v", err)
+			return fmt.Errorf("Failed to get client connection: %v", err.Error())
 		}
 		c.conn = conn
 		c.idClient = csipb.NewIdentityClient(conn)
