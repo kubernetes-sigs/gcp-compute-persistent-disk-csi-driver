@@ -91,7 +91,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 
 	err = i.createDefaultFirewallRule()
 	if err != nil {
-		return fmt.Errorf("Failed to create firewall rule: %v", err)
+		return fmt.Errorf("Failed to create firewall rule: %v", err.Error())
 	}
 
 	newInst := &compute.Instance{
@@ -161,7 +161,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		op, err := i.computeService.Instances.Insert(i.project, i.zone, newInst).Do()
 		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.project, i.zone)
 		if err != nil {
-			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err)
+			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err.Error())
 			if op != nil {
 				ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
 			}
@@ -194,7 +194,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		}
 
 		if sshOut, err := i.SSHCheckAlive(); err != nil {
-			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.name, err)
+			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.name, err.Error())
 			klog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
@@ -262,7 +262,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 				klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
 				return nil
 			}
-			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err)
+			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err.Error())
 		}
 	} else {
 		klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)

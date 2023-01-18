@@ -234,7 +234,7 @@ func handle() error {
 		defer func() {
 			err = setEnvProject(string(oldProject))
 			if err != nil {
-				klog.Errorf("failed to set project environment to %s: %w", oldProject, err)
+				klog.Errorf("failed to set project environment to %s: %w", oldProject, err.Error())
 			}
 		}()
 		project = newproject
@@ -244,7 +244,7 @@ func handle() error {
 		if _, ok := os.LookupEnv("USER"); !ok {
 			err = os.Setenv("USER", "prow")
 			if err != nil {
-				return fmt.Errorf("failed to set user in prow to prow: %v", err)
+				return fmt.Errorf("failed to set user in prow to prow: %v", err.Error())
 			}
 		}
 	}
@@ -254,7 +254,7 @@ func handle() error {
 		klog.Infof("Building GCE PD CSI Driver")
 		err := pushImage(testParams.pkgDir, *stagingImage, testParams.stagingVersion, testParams.platform)
 		if err != nil {
-			return fmt.Errorf("failed pushing image: %v", err)
+			return fmt.Errorf("failed pushing image: %v", err.Error())
 		}
 		defer func() {
 			if *teardownCluster {
@@ -276,11 +276,11 @@ func handle() error {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *kubeVersion)
 		if err != nil {
-			return fmt.Errorf("failed to download Kubernetes source: %v", err)
+			return fmt.Errorf("failed to download Kubernetes source: %v", err.Error())
 		}
 		err = buildKubernetes(testParams.k8sSourceDir, "quick-release")
 		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes: %v", err)
+			return fmt.Errorf("failed to build Kubernetes: %v", err.Error())
 		}
 	} else {
 		testParams.k8sSourceDir = *localK8sDir
@@ -292,20 +292,20 @@ func handle() error {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *testVersion)
 		if err != nil {
-			return fmt.Errorf("failed to download Kubernetes source: %v", err)
+			return fmt.Errorf("failed to download Kubernetes source: %v", err.Error())
 		}
 		err = buildKubernetes(testParams.k8sSourceDir, "WHAT=test/e2e/e2e.test")
 		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes e2e: %v", err)
+			return fmt.Errorf("failed to build Kubernetes e2e: %v", err.Error())
 		}
 		// kubetest relies on ginkgo and kubectl already built in the test k8s directory
 		err = buildKubernetes(testParams.k8sSourceDir, "ginkgo")
 		if err != nil {
-			return fmt.Errorf("failed to build gingko: %v", err)
+			return fmt.Errorf("failed to build gingko: %v", err.Error())
 		}
 		err = buildKubernetes(testParams.k8sSourceDir, "kubectl")
 		if err != nil {
-			return fmt.Errorf("failed to build kubectl: %v", err)
+			return fmt.Errorf("failed to build kubectl: %v", err.Error())
 		}
 	}
 
@@ -361,14 +361,14 @@ func handle() error {
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=windows", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to get windows nodes: %v", err)
+			return fmt.Errorf("failed to get windows nodes: %v", err.Error())
 		}
 		nodes := strings.Fields(string(out))
 		for _, node := range nodes {
 			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os:NoSchedule-")
 			out, err := taintCmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to untaint windows node %s: error %v. output %s", node, err, string(out))
+				return fmt.Errorf("failed to untaint windows node %s: error %v. output %s", node, err.Error(), string(out))
 			}
 			klog.Infof("untaint windows nodes: %s, output %s", node, string(out))
 		}
@@ -382,13 +382,13 @@ func handle() error {
 		}
 		out, err = exec.Command(filepath.Join(testParams.pkgDir, "test", "k8s-integration", "prepull-image.sh")).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err)
+			return fmt.Errorf("failed to prepull images: %s, err: %v", out, err.Error())
 		}
 		out, err = exec.Command("kubectl", "describe", "pods", "-n", getDriverNamespace()).CombinedOutput()
 		klog.Infof("describe pods \n %s", string(out))
 
 		if err != nil {
-			return fmt.Errorf("failed to describe pods: %v", err)
+			return fmt.Errorf("failed to describe pods: %v", err.Error())
 		}
 
 	}
@@ -430,7 +430,7 @@ func handle() error {
 		nodesCmd := exec.Command("kubectl", "get", "nodes", "-l", "kubernetes.io/os=linux", "-o", "name")
 		out, err := nodesCmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to get linux nodes: %v", err)
+			return fmt.Errorf("failed to get linux nodes: %v", err.Error())
 		}
 		nodes := strings.Fields(string(out))
 		testParams.allowedNotReadyNodes = len(nodes)
@@ -438,7 +438,7 @@ func handle() error {
 			taintCmd := exec.Command("kubectl", "taint", "node", node, "node.kubernetes.io/os=linux:NoSchedule", "--overwrite=true")
 			out, err := taintCmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to untaint windows node %s, error %v, output %s", node, err, string(out))
+				return fmt.Errorf("failed to untaint windows node %s, error %v, output %s", node, err.Error(), string(out))
 			}
 			klog.Infof("taint linux nodes: %s, output %s", node, string(out))
 		}
@@ -448,7 +448,7 @@ func handle() error {
 	case "gke":
 		testParams.cloudProviderArgs, err = getGKEKubeTestArgs(*gceZone, *gceRegion, testParams.imageType, *useKubeTest2)
 		if err != nil {
-			return fmt.Errorf("failed to build GKE kubetest args: %v", err)
+			return fmt.Errorf("failed to build GKE kubetest args: %v", err.Error())
 		}
 	case "gce":
 		if *useKubeTest2 {
@@ -652,7 +652,7 @@ func generateGKETestSkip(testParams *testParameters) string {
 func setEnvProject(project string) error {
 	out, err := exec.Command("gcloud", "config", "set", "project", project).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to set gcloud project to %s: %s, err: %v", project, out, err)
+		return fmt.Errorf("failed to set gcloud project to %s: %s, err: %v", project, out, err.Error())
 	}
 
 	err = os.Setenv("PROJECT", project)
@@ -679,13 +679,13 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	if !*useKubeTest2 && len(testParams.k8sSourceDir) > 0 {
 		err := os.Chdir(testParams.k8sSourceDir)
 		if err != nil {
-			return fmt.Errorf("Failed to chdir to k8sSourceDir %s: %w", testParams.k8sSourceDir, err)
+			return fmt.Errorf("failed to chdir to k8sSourceDir %s: %v", testParams.k8sSourceDir, err.Error())
 		}
 	}
 
 	kubeconfig, err := getKubeConfig()
 	if err != nil {
-		return fmt.Errorf("Failed to get kubeconfig: %w", err)
+		return fmt.Errorf("failed to get kubeconfig: %v", err.Error())
 	}
 	os.Setenv("KUBECONFIG", kubeconfig)
 
@@ -695,7 +695,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		if len(reportPrefix) > 0 {
 			kubetestDumpDir = filepath.Join(artifactsDir, reportPrefix)
 			if err := os.MkdirAll(kubetestDumpDir, 0755); err != nil {
-				return fmt.Errorf("failed to make dump dir %s: %w", kubetestDumpDir, err)
+				return fmt.Errorf("failed to make dump dir %s: %v", kubetestDumpDir, err.Error())
 			}
 		} else {
 			kubetestDumpDir = artifactsDir
@@ -767,7 +767,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 			klog.Infof("Copying kubernetes binaries to path=%s to run the tests", kubernetesTestBinariesPath)
 			err := copyKubernetesTestBinaries(testParams.k8sSourceDir, kubernetesTestBinariesPath)
 			if err != nil {
-				return fmt.Errorf("Failed to copy the kubernetes test binaries, err=%v", err)
+				return fmt.Errorf("failed to copy the kubernetes test binaries, err=%v", err.Error())
 			}
 			kubeTest2Args = append(kubeTest2Args, "--use-built-binaries")
 		} else {
@@ -797,7 +797,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		err = runCommand("Running Tests", exec.Command("kubetest", kubeTestArgs...))
 	}
 	if err != nil {
-		return fmt.Errorf("failed to run tests on e2e cluster: %v", err)
+		return fmt.Errorf("failed to run tests on e2e cluster: %v", err.Error())
 	}
 
 	return nil
@@ -821,10 +821,10 @@ func copyKubernetesTestBinaries(kuberoot string, outroot string) error {
 		if _, err := os.Stat(source); err == nil {
 			klog.Infof("copying %s to %s", source, dest)
 			if err := CopyFile(source, dest); err != nil {
-				return fmt.Errorf("failed to copy %s to %s: %v", source, dest, err)
+				return fmt.Errorf("failed to copy %s to %s: %v", source, dest, err.Error())
 			}
 		} else {
-			return fmt.Errorf("could not find %s: %v", source, err)
+			return fmt.Errorf("could not find %s: %v", source, err.Error())
 		}
 	}
 	return nil

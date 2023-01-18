@@ -692,7 +692,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		verifyVolumeStats := func(a verifyArgs) error {
 			available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
 			if err != nil {
-				return fmt.Errorf("failed to get node volume stats: %v", err)
+				return fmt.Errorf("failed to get node volume stats: %v", err.Error())
 			}
 			if available != 0 || capacity != common.GbToBytes(defaultSizeGb) || used != 0 ||
 				inodesFree != 0 || inodes != 0 || inodesUsed != 0 {
@@ -729,7 +729,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		verifyVolumeStats := func(a verifyArgs) error {
 			available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
 			if err != nil {
-				return fmt.Errorf("failed to get node volume stats: %v", err)
+				return fmt.Errorf("failed to get node volume stats: %v", err.Error())
 			}
 			if !equalWithinEpsilon(available, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(capacity, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(used, 0, defaultEpsilon) ||
 				inodesFree == 0 || inodes == 0 || inodesUsed == 0 {
@@ -795,14 +795,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		writeFunc := func(a verifyArgs) error {
 			err := testutils.WriteBlock(instance, a.publishDir, testFileContents)
 			if err != nil {
-				return fmt.Errorf("Failed to write file: %v", err)
+				return fmt.Errorf("Failed to write file: %v", err.Error())
 			}
 			return nil
 		}
 		verifyReadFunc := func(a verifyArgs) error {
 			readContents, err := testutils.ReadBlock(instance, a.publishDir, len(testFileContents))
 			if err != nil {
-				return fmt.Errorf("ReadFile failed with error: %v", err)
+				return fmt.Errorf("ReadFile failed with error: %v", err.Error())
 			}
 			if strings.TrimSpace(string(readContents)) != testFileContents {
 				return fmt.Errorf("wanted test file content: %s, got content: %s", testFileContents, readContents)

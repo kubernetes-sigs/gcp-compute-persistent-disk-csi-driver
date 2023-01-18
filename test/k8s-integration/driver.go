@@ -22,14 +22,14 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 		klog.Infof("Installing kustomize")
 		out, err := exec.Command(filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err)
+			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err.Error())
 		}
 
 		// Edit ci kustomization to use given image tag
 		overlayDir := getOverlayDir(testParams.pkgDir, deployOverlayName)
 		err = os.Chdir(overlayDir)
 		if err != nil {
-			return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err)
+			return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err.Error())
 		}
 
 		// TODO (#138): in a local environment this is going to modify the actual kustomize files.
@@ -41,7 +41,7 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 			"image",
 			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, testParams.stagingVersion)).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err)
+			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err.Error())
 		}
 	}
 
@@ -54,7 +54,7 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 		// Need to copy it to name the file "cloud-sa.json"
 		out, err := exec.Command("cp", *saFile, tmpSaFile).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("error copying service account key: %s, err: %v", out, err)
+			return fmt.Errorf("error copying service account key: %s, err: %v", out, err.Error())
 		}
 		defer shredFile(tmpSaFile)
 
@@ -99,14 +99,14 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 		podsCmd := exec.Command("kubectl", "get", "pods", "-l", "app=gcp-compute-persistent-disk-csi-driver-win", "-o", "name", "-n", getDriverNamespace())
 		out, err = podsCmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to get pd csi pods: %v", err)
+			return fmt.Errorf("failed to get pd csi pods: %v", err.Error())
 		}
 		pods := strings.Fields(string(out))
 		for _, pod := range pods {
 			logCmd := exec.Command("kubectl", "logs", pod, "-n", getDriverNamespace(), "--all-containers=true")
 			out, err := logCmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to get logs from pod %s: %v", pod, err)
+				return fmt.Errorf("failed to get logs from pod %s: %v", pod, err.Error())
 			}
 			klog.Infof("kubectl logs pod: %s, output %s", pod, string(out))
 		}
@@ -123,7 +123,7 @@ func deleteDriver(testParams *testParameters, deployOverlayName string) error {
 	)
 	err := runCommand("Deleting driver", deleteCmd)
 	if err != nil {
-		return fmt.Errorf("failed to delete driver: %v", err)
+		return fmt.Errorf("failed to delete driver: %v", err.Error())
 	}
 	return nil
 }
@@ -146,7 +146,7 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
 		err = runCommand("Building and Pushing GCP Container for Windows", cmd)
 		if err != nil {
-			return fmt.Errorf("failed to run make command for windows: err: %v", err)
+			return fmt.Errorf("failed to run make command for windows: err: %v", err.Error())
 		}
 	} else {
 		cmd = exec.Command("make", "-C", pkgDir, "push-container",
@@ -154,7 +154,7 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
 		err = runCommand("Pushing GCP Container for Linux", cmd)
 		if err != nil {
-			return fmt.Errorf("failed to run make command for linux: err: %v", err)
+			return fmt.Errorf("failed to run make command for linux: err: %v", err.Error())
 		}
 	}
 
@@ -165,7 +165,7 @@ func deleteImage(stagingImage, stagingVersion string) error {
 	cmd := exec.Command("gcloud", "container", "images", "delete", fmt.Sprintf("%s:%s", stagingImage, stagingVersion), "--quiet")
 	err := runCommand("Deleting GCR Container", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err)
+		return fmt.Errorf("failed to delete container image %s:%s: %s", stagingImage, stagingVersion, err.Error())
 	}
 	return nil
 }
@@ -180,7 +180,7 @@ func dumpDriverLogs() (context.CancelFunc, error) {
 	if ok {
 		client, err := getKubeClient()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get kubeclient: %v", err)
+			return nil, fmt.Errorf("failed to get kubeclient: %v", err.Error())
 		}
 		out := podlogs.LogOutput{
 			StatusWriter:  os.Stdout,
@@ -188,7 +188,7 @@ func dumpDriverLogs() (context.CancelFunc, error) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		if err = podlogs.CopyAllLogs(ctx, client, getDriverNamespace(), out); err != nil {
-			return cancel, fmt.Errorf("failed to start pod logger: %v", err)
+			return cancel, fmt.Errorf("failed to start pod logger: %v", err.Error())
 		}
 		return cancel, nil
 	}

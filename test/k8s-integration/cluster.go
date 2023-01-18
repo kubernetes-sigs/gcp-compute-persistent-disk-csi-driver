@@ -54,7 +54,7 @@ func clusterDownGKE(gceZone, gceRegion string) error {
 		locationArg, locationVal, "--quiet")
 	err = runCommand("Bringing Down E2E Cluster on GKE", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err)
+		return fmt.Errorf("failed to bring down kubernetes e2e cluster on gke: %v", err.Error())
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 	cmd.Env = os.Environ()
 	err = runCommand("Starting E2E Cluster on GCE", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err)
+		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err.Error())
 	}
 
 	return nil
@@ -170,7 +170,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 		fmt.Sprintf("name=%s", *gkeTestClusterName)).CombinedOutput()
 
 	if err != nil {
-		return fmt.Errorf("failed to check for previous test cluster: %v %s", err, out)
+		return fmt.Errorf("failed to check for previous test cluster: %v %s", err.Error(), out)
 	}
 	if len(out) > 0 {
 		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", *gkeTestClusterName)
@@ -203,7 +203,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	cmd = exec.Command("gcloud", cmdParams...)
 	err = runCommand("Starting E2E Cluster on GKE", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err)
+		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err.Error())
 	}
 
 	// Because gcloud cannot disable addons on cluster create, the deployment has
@@ -216,7 +216,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 			"--update-addons", "GcePersistentDiskCsiDriver=DISABLED")
 		err = runCommand("Updating E2E Cluster on GKE to disable driver deployment", cmd)
 		if err != nil {
-			return fmt.Errorf("failed to update kubernetes e2e cluster on gke: %v", err)
+			return fmt.Errorf("failed to update kubernetes e2e cluster on gke: %v", err.Error())
 		}
 	}
 
@@ -245,7 +245,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		klog.Info("cloning k8s master")
 		out, err := exec.Command("git", "clone", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to clone kubernetes master: %s, err: %v", out, err)
+			return fmt.Errorf("failed to clone kubernetes master: %s, err: %v", out, err.Error())
 		}
 	} else {
 		// Shallow clone of a release branch.
@@ -253,7 +253,7 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 		klog.Infof("shallow clone of k8s %s", vKubeVersion)
 		out, err := exec.Command("git", "clone", "--depth", "1", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to clone kubernetes %s: %s, err: %v", vKubeVersion, out, err)
+			return fmt.Errorf("failed to clone kubernetes %s: %s, err: %v", vKubeVersion, out, err.Error())
 		}
 	}
 	return nil
@@ -289,7 +289,7 @@ func getGKEKubeTestArgs(gceZone, gceRegion, imageType string, useKubetest2 bool)
 	cmd := exec.Command("gcloud", "config", "get-value", "project")
 	project, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current project: %v", err)
+		return nil, fmt.Errorf("failed to get current project: %v", err.Error())
 	}
 
 	// kubetest arguments
@@ -353,7 +353,7 @@ func getNormalizedVersion(kubeVersion, gkeVersion string) (string, error) {
 func getKubeClusterVersion() (string, error) {
 	out, err := exec.Command("kubectl", "version", "-o=json").Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to obtain cluster version, error: %v; output was %s", err, out)
+		return "", fmt.Errorf("failed to obtain cluster version, error: %v; output was %s", err.Error(), out)
 	}
 	type version struct {
 		ClientVersion *apimachineryversion.Info `json:"clientVersion,omitempty" yaml:"clientVersion,omitempty"`
@@ -363,7 +363,7 @@ func getKubeClusterVersion() (string, error) {
 	var v version
 	err = json.Unmarshal(out, &v)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v", err)
+		return "", fmt.Errorf("Failed to parse kubectl version output, error: %v", err.Error())
 	}
 
 	return v.ServerVersion.GitVersion, nil
@@ -401,11 +401,11 @@ func getKubeClient() (kubernetes.Interface, error) {
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create config: %v", err)
+		return nil, fmt.Errorf("failed to create config: %v", err.Error())
 	}
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %v", err)
+		return nil, fmt.Errorf("failed to create client: %v", err.Error())
 	}
 	return kubeClient, nil
 }
