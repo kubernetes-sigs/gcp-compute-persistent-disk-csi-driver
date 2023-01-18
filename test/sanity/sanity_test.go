@@ -21,6 +21,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -64,7 +65,7 @@ func TestSanity(t *testing.T) {
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute)
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
@@ -90,7 +91,7 @@ func TestSanity(t *testing.T) {
 	}()
 
 	go func() {
-		gceDriver.Run(endpoint)
+		gceDriver.Run(endpoint, 10000)
 	}()
 
 	// TODO(#818): Fix failing tests and remove test skip flag.

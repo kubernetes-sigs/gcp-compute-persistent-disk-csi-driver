@@ -69,7 +69,11 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 	if err != nil {
 		klog.Errorf("%s returned with error: %v", info.FullMethod, err)
 	} else {
-		klog.V(4).Infof("%s returned with response: %s", info.FullMethod, resp)
+		cappedStr := fmt.Sprintf("%v", resp)
+		if len(cappedStr) > maxLogChar {
+			cappedStr = cappedStr[:maxLogChar] + fmt.Sprintf(" [response body too large, log capped to %d chars]", maxLogChar)
+		}
+		klog.V(4).Infof("%s returned with response: %s", info.FullMethod, cappedStr)
 	}
 	return resp, err
 }

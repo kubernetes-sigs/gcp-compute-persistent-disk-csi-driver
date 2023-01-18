@@ -40,8 +40,11 @@ var (
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
 	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
 	metricsPath          = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+	grpcLogCharCap       = flag.Int("grpc-log-char-cap", 10000, "The maximum amount of characters logged for every grpc responses")
 
-	extraVolumeLabelsStr = flag.String("extra-labels", "", "Extra labels to attach to each PD created. It is a comma separated list of key value pairs like '<key1>=<value1>,<key2>=<value2>'. See https://cloud.google.com/compute/docs/labeling-resources for details")
+	errorBackoffInitialDurationMs = flag.Int("backoff-initial-duration-ms", 200, "The amount of ms for the initial duration of the backoff condition for controller publish/unpublish CSI operations. Default is 200.")
+	errorBackoffMaxDurationMs     = flag.Int("backoff-max-duration-ms", 300000, "The amount of ms for the max duration of the backoff condition for controller publish/unpublish CSI operations. Default is 300000 (5m).")
+	extraVolumeLabelsStr          = flag.String("extra-labels", "", "Extra labels to attach to each PD created. It is a comma separated list of key value pairs like '<key1>=<value1>,<key2>=<value2>'. See https://cloud.google.com/compute/docs/labeling-resources for details")
 
 	attachDiskBackoffDuration = flag.Duration("attach-disk-backoff-duration", 5*time.Second, "Duration for attachDisk backoff")
 	attachDiskBackoffFactor   = flag.Float64("attach-disk-backoff-factor", 0.0, "Factor for attachDisk backoff")
@@ -121,7 +124,9 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err)
 		}
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider)
+		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
+		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Microsecond
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -159,5 +164,5 @@ func handle() {
 	gce.WaitForOpBackoff.Steps = *waitForOpBackoffSteps
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
-	gceDriver.Run(*endpoint)
+	gceDriver.Run(*endpoint, *grpcLogCharCap)
 }
