@@ -38,7 +38,7 @@ endif
 all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
-	go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+	go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-linkmode 'external' -extldflags '-static' -X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
 
 gce-pd-driver-windows: require-GCE_PD_CSI_STAGING_VERSION
 ifeq (${GOARCH}, amd64)
