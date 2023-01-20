@@ -1,61 +1,126 @@
 # Kubernetes Development
 
-## Manual
+## Manual deployment
 
 To build and install a development version of the driver:
 
-```
-$ GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
-$ make push-container
+```sh
+GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
+make push-container
 
 # Modify controller.yaml and node.yaml in ./deploy/kubernetes/dev to use dev image
-$ GCE_PD_DRIVER_VERSION=dev
-$ ./deploy/kubernetes/deploy-driver.sh
+GCE_PD_DRIVER_VERSION=dev
+./deploy/kubernetes/deploy-driver.sh
 ```
 
 To bring down driver:
 
+```sh
+./deploy/kubernetes/delete-driver.sh
 ```
-$ ./deploy/kubernetes/delete-driver.sh
-```
+
 ## Testing
 
-### E2E Tests:
+### E2E tests:
+
+The following environment variables will be required for setup and all
+subsequent test runs.
+
+```sh
+export PROJECT=$USER-e2e                                             # GCP project used for testing
+export GCE_PD_SA_NAME=$PROJECT-pd-sa                                 # Service account name
+export IAM_NAME=$GCE_PD_SA_NAME@$PROJECT.iam.gserviceaccount.com     # Service account IAM name
+export GCE_PD_SA_DIR=~/credentials                                   # Service account directory
+export GOOGLE_APPLICATION_CREDENTIALS=$GCE_PD_SA_DIR/cloud-sa.json   # Service account key
+```
 
 #### One time setup
 
-```console
-$ export PROJECT=my-project                               # GCP Project to run tests in
-$ export GCE_PD_SA_NAME=$PROJECT-pd-sa                 # Name of the service account to create
-$ export GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to save the service account key
-$ export ENABLE_KMS=false
-$ ./deploy/setup-project.sh
-```
-#### Ongoing runs
-```console
-$ export PROJECT=my-project                               # GCP Project to run tests in
-$ export GCE_PD_SA_NAME=$PROJECT-pd-sa
-$ export IAM_NAME=$GCE_PD_SA_NAME@$PROJECT.iam.gserviceaccount.com  # IAM SA that was set up in "one time setup"
+The following steps will need to be completed once per project.
 
-$ ./test/run-e2e-local.sh
-```
+##### Create service account
 
-### Sanity Tests
-> **_NOTE:_**  Sanity tests are currently failing, tracked by https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/990.
+To create a service account with correct permissions, your test project must:
 
-Sanity tests can be run from VS Code, etc directly or via the cmd line:
-```
-$ ./test/run-sanity.sh
+1.  Be assigned
+    [Project IAM Admin](https://cloud.google.com/iam/docs/understanding-roles#resourcemanager.projectIamAdmin)
+    and
+    [Role Administrator](https://cloud.google.com/iam/docs/understanding-roles#iam.roleAdmin)
+    IAM roles.
+2.  Be part of an organization that allows creation of service account keys.
+    -   Google developer projects restrict SA keys and will not work for E2E
+        testing.
+
+```sh
+export ENABLE_KMS=false
+./deploy/setup-project.sh
 ```
 
-### Unit Tests
-Unit tests can be run from VS Code, etc directly or via the cmd line:
-```
-$ ./test/run-unit.sh
+##### Create SSH key
+
+1.  Follow instructions to
+    [generate an SSH key](https://cloud.google.com/compute/docs/connect/create-ssh-keys#create_an_ssh_key_pair)
+    with the following parameters:
+    -   `KEY_FILENAME: "google_compute_engine"`
+    -   `USERNAME: "$USER"`
+2.  Add your public key (`cat ~/.ssh/google_compute_engine.pub`) to your
+    [GCP project metatdata](https://cloud.google.com/compute/docs/connect/add-ssh-keys#add_ssh_keys_to_project_metadata).
+
+#### Running tests
+
+```sh
+./test/run-e2e-local.sh
 ```
 
-### Performance Tests
-Performance tests are run in automated testing frameworks, but you may wish to run them locally to benchmark changes. For a given test configuration, you need to modify the `test-config.yaml` file automatically generated from running one of the `run-k8s-integration...` or `run-windows-k8s-integration.sh` scripts to enable performance tests.
+##### Debugging
+
+Local stderr will show you all GCE calls and SSH commands that were performed by
+the test.
+
+###### GCE failures
+
+You may see errors during instance creation. It is likely your service account
+is missing permissions.
+
+1.  Make sure the resources are showing up in pantheon under [Compute Engine >
+    VM Instances].
+2.  Look for errors in pantheon under [Logging > Logs Explorer].
+3.  Double check and re-run the
+    [service account creation](#create-service-account) step.
+
+###### SSH failures
+
+You may see errors during driver deployment.
+
+1.  Double check that you have an [SSH key file](#create-ssh-key) in the correct
+    directory.
+2.  `gcloud compute ssh $VM_NAME --zone $ZONE` into the VM instance and attempt
+    to execute the last few commands and look for errors.
+    -   E.g.
+        [vm and driver have a dependency mismatch](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1113)).
+
+### Sanity tests
+
+> ***NOTE:*** Sanity tests are currently failing, tracked by
+> https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/990.
+
+```
+./test/run-sanity.sh
+```
+
+### Unit tests:
+
+```sh
+./test/run-unit.sh
+```
+
+### Performance tests
+
+Performance tests are run in automated testing frameworks, but you may wish to
+run them locally to benchmark changes. For a given test configuration, you need
+to modify the `test-config.yaml` file automatically generated from running one
+of the `run-k8s-integration...` or `run-windows-k8s-integration.sh` scripts to
+enable performance tests.
 
 ```yaml
 DriverInfo:
@@ -71,11 +136,15 @@ DriverInfo:
 
 You may modify the parameter values to customize the test.
 
-You also need to modify the `StorageClass` file pointed to in `test-config.yaml` to set `volumeBindingMode: Immediate`, as the performance tests only support this mode.
+You also need to modify the `StorageClass` file pointed to in `test-config.yaml`
+to set `volumeBindingMode: Immediate`, as the performance tests only support
+this mode.
 
-We will be running the Kubernetes integration tests directly from its repository. Install `kubetest` and set up a test cluster with the driver installed. Now, cd into `$GOPATH/src/k8s.io/kubernetes` and run
+We will be running the Kubernetes integration tests directly from its
+repository. Install `kubetest` and set up a test cluster with the driver
+installed. Now, cd into `$GOPATH/src/k8s.io/kubernetes` and run
 
-```bash
+```sh
 # pwd=k/k
 kubetest <custom flags based on your provider> \
   --check-version-skew=false \
@@ -83,35 +152,38 @@ kubetest <custom flags based on your provider> \
   --test_args="--ginkgo.focus=External.Storage.*volume-lifecycle-performance --allowed-not-ready-nodes=10 --node-os-distro=<linux or windows> --storage.testdriver=<path-to-test-config>"
 ```
 
-## Dependency Management
+## Dependency management
 
 Use [dep](https://github.com/golang/dep)
-```
-$ dep ensure
+
+```sh
+dep ensure
 ```
 
 To modify dependencies or versions change `./Gopkg.toml`
 
 ## Debugging
 
-We use https://github.com/go-delve/delve and its feature for remote debugging. This feature
-is only available in the PD CSI Controller (which runs in a linux node).
+We use https://github.com/go-delve/delve and its feature for remote debugging.
+This feature is only available in the PD CSI Controller (which runs in a linux
+node).
 
 Requirements:
 
-- https://github.com/go-delve/delve
+-   https://github.com/go-delve/delve
 
 Steps:
 
-- Build the PD CSI driver with additional compiler flags.
+-   Build the PD CSI driver with additional compiler flags.
 
-```
+```sh
 export GCE_PD_CSI_STAGING_VERSION=latest
 export GCE_PD_CSI_STAGING_IMAGE=image/repo/gcp-compute-persistent-disk-csi-driver
 make build-and-push-multi-arch-debug
 ```
 
-- Update `deploy/kubernetes/overlays/noauth-debug/kustomization.yaml` to match the repo you wrote above e.g.
+-   Update `deploy/kubernetes/overlays/noauth-debug/kustomization.yaml` to match
+    the repo you wrote above e.g.
 
 ```yaml
 images:
@@ -120,7 +192,7 @@ images:
   newTag: latest
 ```
 
-- Delete and deploy the driver with this overlay
+-   Delete and deploy the driver with this overlay
 
 ```sh
 ./deploy/kubernetes/delete-driver.sh && \
@@ -135,13 +207,13 @@ API server listening at: [::]:2345
  2021-04-15T18:28:53Z debug layer=debugger continuing
 ```
 
-- Enable port forwading of the PD CSI controller of port 2345
+-   Enable port forwading of the PD CSI controller of port 2345
 
 ```sh
 kubectl -n gce-pd-csi-driver get pods | grep controller | awk '{print $1}' | xargs -I % kubectl -n gce-pd-csi-driver port-forward % 2345:2345
 ```
 
-- Connect to the headless server and issue commands
+-   Connect to the headless server and issue commands
 
 ```sh
 dlv connect localhost:2345
@@ -175,5 +247,6 @@ Command failed: command not available
 (dlv)
 ```
 
-See https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/742 for the implementation details
-
+See
+https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/742
+for the implementation details
