@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -115,7 +115,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+				klog.Errorf("Failed to detach disk: %w", err)
 			}
 
 		}()
@@ -149,12 +149,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %v", err)
+				klog.Errorf("Failed to unstage volume: %w", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+				klog.Errorf("Failed to rm file path %s: %w", fp, err)
 			}
 		}()
 	})
@@ -187,7 +187,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+				klog.Errorf("Failed to detach disk: %w", err)
 			}
 
 		}()
@@ -219,12 +219,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %v", err)
+				klog.Errorf("Failed to unstage volume: %w", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+				klog.Errorf("Failed to rm file path %s: %w", fp, err)
 			}
 		}()
 	})
@@ -1123,6 +1123,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
+
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {

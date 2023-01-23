@@ -23,7 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (string, error) {

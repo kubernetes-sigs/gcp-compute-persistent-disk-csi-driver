@@ -25,7 +25,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -103,7 +103,7 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 		}
 		r, err := common.GetRegionFromZones([]string{cloud.zone})
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to get region from zones: %v", err)
+			return "", nil, fmt.Errorf("failed to get region from zones: %w", err)
 		}
 		volumeKey.Region = r
 		return project, volumeKey, nil

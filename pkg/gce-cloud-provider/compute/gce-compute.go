@@ -28,7 +28,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -115,7 +115,7 @@ func (cloud *CloudProvider) GetDefaultZone() string {
 func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, string, error) {
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to get region from zones: %v", err)
+		return nil, "", fmt.Errorf("failed to get region from zones: %w", err)
 	}
 	zones, err := cloud.ListZones(ctx, region)
 	if err != nil {
@@ -162,7 +162,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 	}
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to get region from zones: %v", err)
+		return "", nil, fmt.Errorf("failed to get region from zones: %w", err)
 	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
@@ -216,7 +216,7 @@ func (cloud *CloudProvider) ListZones(ctx context.Context, region string) ([]str
 	zones := []string{}
 	zoneList, err := cloud.service.Zones.List(cloud.project).Filter(fmt.Sprintf("region eq .*%s$", region)).Do()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list zones in region %s: %v", region, err)
+		return nil, fmt.Errorf("failed to list zones in region %s: %w", region, err)
 	}
 	for _, zone := range zoneList.Items {
 		zones = append(zones, zone.Name)
@@ -493,7 +493,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
-		return status.Error(codes.Internal, fmt.Sprintf("unknown Insert disk error: %v", err))
+		return status.Error(codes.Internal, fmt.Sprintf("unknown Insert disk error: %v", err.Error()))
 	}
 	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
@@ -514,7 +514,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unknown Insert disk operation error: %v", err)
+		return fmt.Errorf("unknown Insert disk operation error: %w", err)
 	}
 	return nil
 }
@@ -604,7 +604,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unknown Insert disk error: %v", err)
+		return fmt.Errorf("unknown Insert disk error: %w", err)
 	}
 	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
@@ -626,7 +626,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unknown Insert disk operation error: %v", err)
+		return fmt.Errorf("unknown Insert disk operation error: %w", err)
 	}
 	return nil
 }
@@ -685,7 +685,7 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 
 	deviceName, err := common.GetDeviceName(volKey)
 	if err != nil {
-		return fmt.Errorf("failed to get device name: %v", err)
+		return fmt.Errorf("failed to get device name: %w", err)
 	}
 	attachedDiskV1 := &computev1.AttachedDisk{
 		DeviceName: deviceName,
@@ -697,13 +697,13 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 
 	op, err := cloud.service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).Do()
 	if err != nil {
-		return fmt.Errorf("failed cloud service attach disk call: %v", err)
+		return fmt.Errorf("failed cloud service attach disk call: %w", err)
 	}
 	klog.V(5).Infof("AttachDisk operation %s for disk %s", op.Name, attachedDiskV1.DeviceName)
 
 	err = cloud.waitForZonalOp(ctx, project, op.Name, instanceZone)
 	if err != nil {
-		return fmt.Errorf("failed when waiting for zonal op: %v", err)
+		return fmt.Errorf("failed when waiting for zonal op: %w", err)
 	}
 	return nil
 }
@@ -814,7 +814,7 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 		klog.V(6).Infof("Polling for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
 		disk, err := cloud.GetDisk(ctx, project, volKey, GCEAPIVersionV1)
 		if err != nil {
-			return false, fmt.Errorf("GetDisk failed to get disk: %v", err)
+			return false, fmt.Errorf("GetDisk failed to get disk: %w", err)
 		}
 
 		if disk == nil {
@@ -946,7 +946,7 @@ func (cloud *CloudProvider) waitForImageCreation(ctx context.Context, project, i
 			klog.V(6).Infof("Checking GCE Image %s.", imageName)
 			image, err := cloud.GetImage(ctx, project, imageName)
 			if err != nil {
-				klog.Warningf("Error in getting image %s, %v", imageName, err)
+				klog.Warningf("Error in getting image %s, %v", imageName, err.Error())
 			} else if image != nil {
 				if image.Status != "PENDING" {
 					klog.V(6).Infof("Image %s status is %s", imageName, image.Status)
@@ -1009,7 +1009,7 @@ func (cloud *CloudProvider) ResizeDisk(ctx context.Context, project string, volK
 	klog.V(5).Infof("Resizing disk %v to size %v", volKey, requestBytes)
 	cloudDisk, err := cloud.GetDisk(ctx, project, volKey, GCEAPIVersionV1)
 	if err != nil {
-		return -1, fmt.Errorf("failed to get disk: %v", err)
+		return -1, fmt.Errorf("failed to get disk: %w", err)
 	}
 
 	sizeGb := cloudDisk.GetSizeGb()
@@ -1037,13 +1037,13 @@ func (cloud *CloudProvider) resizeZonalDisk(ctx context.Context, project string,
 	}
 	op, err := cloud.service.Disks.Resize(project, volKey.Zone, volKey.Name, resizeReq).Context(ctx).Do()
 	if err != nil {
-		return -1, fmt.Errorf("failed to resize zonal volume %v: %v", volKey.String(), err)
+		return -1, fmt.Errorf("failed to resize zonal volume %v: %w", volKey.String(), err)
 	}
 	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
 	if err != nil {
-		return -1, fmt.Errorf("failed waiting for op for zonal resize for %s: %v", volKey.String(), err)
+		return -1, fmt.Errorf("failed waiting for op for zonal resize for %s: %w", volKey.String(), err)
 	}
 
 	return requestGb, nil
@@ -1056,13 +1056,13 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 
 	op, err := cloud.service.RegionDisks.Resize(project, volKey.Region, volKey.Name, resizeReq).Context(ctx).Do()
 	if err != nil {
-		return -1, fmt.Errorf("failed to resize regional volume %v: %v", volKey.String(), err)
+		return -1, fmt.Errorf("failed to resize regional volume %v: %w", volKey.String(), err)
 	}
 	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForRegionalOp(ctx, project, op.Name, volKey.Region)
 	if err != nil {
-		return -1, fmt.Errorf("failed waiting for op for regional resize for %s: %v", volKey.String(), err)
+		return -1, fmt.Errorf("failed waiting for op for regional resize for %s: %w", volKey.String(), err)
 	}
 
 	return requestGb, nil
@@ -1114,7 +1114,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 			klog.V(6).Infof("Checking GCE Snapshot %s.", snapshotName)
 			snapshot, err := cloud.GetSnapshot(ctx, project, snapshotName)
 			if err != nil {
-				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err)
+				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err.Error())
 			} else if snapshot != nil {
 				if snapshot.Status != "CREATING" {
 					klog.V(6).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
@@ -1161,7 +1161,7 @@ func encodeTags(tags map[string]string) (string, error) {
 
 	enc, err := json.Marshal(tags)
 	if err != nil {
-		return "", fmt.Errorf("failed to encodeTags %v: %v", tags, err)
+		return "", fmt.Errorf("failed to encodeTags %v: %w", tags, err)
 	}
 	return string(enc), nil
 }

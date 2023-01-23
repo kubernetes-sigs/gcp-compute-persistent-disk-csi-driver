@@ -57,7 +57,7 @@ func TestSanity(t *testing.T) {
 
 	cloudProvider, err := gce.CreateFakeCloudProvider(project, zone, nil)
 	if err != nil {
-		t.Fatalf("Failed to get cloud provider: %v", err)
+		t.Fatalf("Failed to get cloud provider: %v", err.Error())
 	}
 
 	mounter := mountmanager.NewFakeSafeMounter()
@@ -69,7 +69,7 @@ func TestSanity(t *testing.T) {
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
-		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err)
+		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}
 
 	instance := &compute.Instance{
@@ -80,13 +80,13 @@ func TestSanity(t *testing.T) {
 
 	err = os.MkdirAll(tmpDir, 0755)
 	if err != nil {
-		t.Fatalf("Failed to create sanity temp working dir %s: %v", tmpDir, err)
+		t.Fatalf("Failed to create sanity temp working dir %s: %v", tmpDir, err.Error())
 	}
 
 	defer func() {
 		// Clean up tmp dir
 		if err = os.RemoveAll(tmpDir); err != nil {
-			t.Fatalf("Failed to clean up sanity temp working dir %s: %v", tmpDir, err)
+			t.Fatalf("Failed to clean up sanity temp working dir %s: %v", tmpDir, err.Error())
 		}
 	}()
 
