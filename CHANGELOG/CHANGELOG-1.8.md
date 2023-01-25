@@ -1,3 +1,13 @@
+# v1.8.2 - Changelog since v1.8.1
+
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- Update to go 1.19.4 ([#1103](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1103), [@msau42](https://github.com/msau42))
+
+
 # v1.8.1 - Changelog since v1.8.0
 
 ## Changes by Kind
