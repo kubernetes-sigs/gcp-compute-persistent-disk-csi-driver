@@ -17,7 +17,7 @@ package tests
 import (
 	"path/filepath"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"

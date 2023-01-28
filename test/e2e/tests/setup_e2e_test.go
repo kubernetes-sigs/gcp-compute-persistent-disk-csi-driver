@@ -24,7 +24,7 @@ import (
 	"time"
 
 	cloudkms "cloud.google.com/go/kms/apiv1"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"

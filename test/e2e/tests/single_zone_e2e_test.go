@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	compute "google.golang.org/api/compute/v1"
