@@ -48,11 +48,12 @@ To create a service account with correct permissions, your test project must:
     [Role Administrator](https://cloud.google.com/iam/docs/understanding-roles#iam.roleAdmin)
     IAM roles.
 2.  Be part of an organization that allows creation of service account keys.
-    -   Google developer projects restrict SA keys and will not work for E2E
-        testing.
+    -   For example, a Google internal developer project will not work for E2E
+        testing because the org restricts SA key creation.
 
 ```sh
-export ENABLE_KMS=false
+export ENABLE_KMS=true
+export ENABLE_KMS_ADMIN=true
 ./deploy/setup-project.sh
 ```
 
