@@ -13,7 +13,8 @@
 # PROJECT: GCP project
 # GCE_PD_SA_NAME: Name of the service account to create
 # GCE_PD_SA_DIR: Directory to save the service account key
-# ENABLE_KMS: If true, it will enable Cloud KMS and configure IAM ACLs.
+# ENABLE_KMS: Enable Cloud KMS and configure IAM ACLs.
+# ENABLE_KMS_ADMIN: Add service account permissions to destroy Cloud KMS keys.
 # CREATE_SA_KEY: (Optional) If true, creates a new service account key and
 #   exports it if creating a new service account
 
@@ -27,6 +28,7 @@ source "${PKGDIR}/deploy/common.sh"
 ensure_var PROJECT
 ensure_var GCE_PD_SA_NAME
 ensure_var ENABLE_KMS
+ensure_var ENABLE_KMS_ADMIN
 
 # Allow the user to pass CREATE_SA_KEY=false to skip the SA key creation
 # Ensure the SA directory set, if we're creating the SA_KEY
@@ -35,9 +37,8 @@ if [ "${CREATE_SA_KEY}" = true ]; then
   ensure_var GCE_PD_SA_DIR
 fi
 
-# If the project id includes the org name in the format "org-name:project", the
-# gCloud api will format the project part of the iam email domain as
-# "project.org-name"
+# If the project ID includes the org name in the format "org-name:project",
+# gcloud will format the project in the IAM email domain as "project.org-name"
 if [[ $PROJECT == *":"* ]]; then
   IFS=':' read -ra SPLIT <<< "$PROJECT"
   readonly IAM_PROJECT="${SPLIT[1]}.${SPLIT[0]}"
@@ -90,14 +91,13 @@ fi
 # Create or Update Custom Role
 if gcloud iam roles describe gcp_compute_persistent_disk_csi_driver_custom_role --project "${PROJECT}";
 then
-  gcloud iam roles update gcp_compute_persistent_disk_csi_driver_custom_role --quiet \
-		  --project "${PROJECT}"                                                     \
-		  --file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
+  action=update
 else
-  gcloud iam roles create gcp_compute_persistent_disk_csi_driver_custom_role --quiet \
-	--project "${PROJECT}"                                                           \
-	--file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
+  action=create
 fi
+gcloud iam roles $action gcp_compute_persistent_disk_csi_driver_custom_role --quiet \
+	--project "${PROJECT}"                                                     \
+	--file "${PKGDIR}/deploy/gcp-compute-persistent-disk-csi-driver-custom-role.yaml"
 
 # Bind service account to roles
 for role in ${BIND_ROLES}
@@ -111,6 +111,13 @@ if [ "${ENABLE_KMS}" = true ];
 then
   gcloud services enable cloudkms.googleapis.com --project="${PROJECT}"
   gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"service-${PROJECT_NUMBER}@compute-system.iam.gserviceaccount.com" --role "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+fi
+
+# Authorize SA to destroy Cloud KMS encryption keys.
+if [ "${ENABLE_KMS_ADMIN}" = true ];
+then
+  gcloud services enable cloudkms.googleapis.com --project="${PROJECT}"
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "roles/cloudkms.admin"
 fi
 
 # Export key if needed
