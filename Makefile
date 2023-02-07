@@ -123,10 +123,10 @@ ifndef GCE_PD_CSI_STAGING_VERSION
 endif
 
 init-buildx:
+	$(DOCKER) run --rm --privileged multiarch/qemu-user-static --reset --credential yes --persistent yes
 	# Ensure we use a builder that can leverage it (the default on linux will not)
 	-$(DOCKER) buildx rm multiarch-multiplatform-builder
-	$(DOCKER) buildx create --use --name=multiarch-multiplatform-builder
-	$(DOCKER) run --rm --privileged multiarch/qemu-user-static --reset --credential yes --persistent yes
+	$(DOCKER) buildx create --use --name=multiarch-multiplatform-builder --driver-opt network=host --driver-opt image=moby/buildkit:v0.10.6
 	# Register gcloud as a Docker credential helper.
 	# Required for "docker buildx build --push".
 	gcloud auth configure-docker --quiet
