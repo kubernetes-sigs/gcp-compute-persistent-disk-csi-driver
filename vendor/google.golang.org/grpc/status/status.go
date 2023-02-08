@@ -76,29 +76,22 @@ func FromProto(s *spb.Status) *Status {
 
 // FromError returns a Status representation of err.
 //
-//   - If err was produced by this package or implements the method `GRPCStatus()
-//     *Status`, or if err wraps a type satisfying this, the appropriate Status is
-//     returned.  For wrapped errors, the message returned contains the entire
-//     err.Error() text and not just the wrapped status.
+// - If err was produced by this package or implements the method `GRPCStatus()
+//   *Status`, the appropriate Status is returned.
 //
-//   - If err is nil, a Status is returned with codes.OK and no message.
+// - If err is nil, a Status is returned with codes.OK and no message.
 //
-//   - Otherwise, err is an error not compatible with this package.  In this
-//     case, a Status is returned with codes.Unknown and err's Error() message,
-//     and ok is false.
+// - Otherwise, err is an error not compatible with this package.  In this
+//   case, a Status is returned with codes.Unknown and err's Error() message,
+//   and ok is false.
 func FromError(err error) (s *Status, ok bool) {
 	if err == nil {
 		return nil, true
 	}
-	type grpcstatus interface{ GRPCStatus() *Status }
-	if gs, ok := err.(grpcstatus); ok {
-		return gs.GRPCStatus(), true
-	}
-	var gs grpcstatus
-	if errors.As(err, &gs) {
-		p := gs.GRPCStatus().Proto()
-		p.Message = err.Error()
-		return status.FromProto(p), true
+	if se, ok := err.(interface {
+		GRPCStatus() *Status
+	}); ok {
+		return se.GRPCStatus(), true
 	}
 	return New(codes.Unknown, err.Error()), false
 }
@@ -110,16 +103,19 @@ func Convert(err error) *Status {
 	return s
 }
 
-// Code returns the Code of the error if it is a Status error or if it wraps a
-// Status error. If that is not the case, it returns codes.OK if err is nil, or
-// codes.Unknown otherwise.
+// Code returns the Code of the error if it is a Status error, codes.OK if err
+// is nil, or codes.Unknown otherwise.
 func Code(err error) codes.Code {
 	// Don't use FromError to avoid allocation of OK status.
 	if err == nil {
 		return codes.OK
 	}
-
-	return Convert(err).Code()
+	if se, ok := err.(interface {
+		GRPCStatus() *Status
+	}); ok {
+		return se.GRPCStatus().Code()
+	}
+	return codes.Unknown
 }
 
 // FromContextError converts a context error or wrapped context error into a

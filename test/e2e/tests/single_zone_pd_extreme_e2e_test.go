@@ -32,12 +32,6 @@ import (
 	fieldmask "google.golang.org/genproto/protobuf/field_mask"
 )
 
-const (
-	extremeDiskType            = "pd-extreme"
-	provisionedIOPSOnCreate    = "100000Gi"
-	provisionedIOPSOnCreateInt = int64(100000)
-)
-
 var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 
 	It("Should create and delete pd-extreme disk", func() {
@@ -53,7 +47,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 			common.ParameterKeyType:                    extremeDiskType,
 			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
 		}
-		volID, err := client.CreateVolume(volName, params, defaultSizeGb, nil, nil)
+		volID, err := client.CreateVolume(volName, params, defaultExtremeSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -62,7 +56,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 		Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
 		Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 
 		defer func() {
@@ -90,7 +84,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 			common.ParameterKeyType:                    extremeDiskType,
 			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
 		}
-		volID, err := client.CreateVolume(volName, params, defaultSizeGb, nil, nil)
+		volID, err := client.CreateVolume(volName, params, defaultExtremeSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -99,7 +93,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 		Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
 		Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
 		Expect(cloudDisk.Labels).To(Equal(map[string]string{
 			"key1": "value1",
 			"key2": "value2",
@@ -157,7 +151,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 			common.ParameterKeyDiskEncryptionKmsKey:    key.Name,
 			common.ParameterKeyType:                    extremeDiskType,
 			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
-		}, defaultSizeGb,
+		}, defaultExtremeSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -173,7 +167,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 		Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
 		Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 
 		defer func() {
@@ -250,7 +244,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 			common.ParameterKeyPVName:                  "test-pv-name",
 			common.ParameterKeyType:                    extremeDiskType,
 			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
-		}, defaultSizeGb, nil /* topReq */, nil)
+		}, defaultExtremeSizeGb, nil /* topReq */, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
@@ -259,7 +253,7 @@ var _ = Describe("GCE PD CSI Driver pd-extreme", func() {
 		Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
 		Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
 		Expect(cloudDisk.Status).To(Equal(readyState))
-		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(cloudDisk.Description).To(Equal("{\"kubernetes.io/created-for/pv/name\":\"test-pv-name\",\"kubernetes.io/created-for/pvc/name\":\"test-pvc\",\"kubernetes.io/created-for/pvc/namespace\":\"test-pvc-namespace\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
 		defer func() {

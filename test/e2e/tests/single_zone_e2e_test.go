@@ -43,12 +43,16 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb      int64 = 5
-	defaultRepdSizeGb  int64 = 200
-	defaultMwSizeGb    int64 = 200
-	readyState               = "READY"
-	standardDiskType         = "pd-standard"
-	defaultVolumeLimit int64 = 127
+	defaultSizeGb              int64 = 5
+	defaultExtremeSizeGb       int64 = 500
+	defaultRepdSizeGb          int64 = 200
+	defaultMwSizeGb            int64 = 200
+	defaultVolumeLimit         int64 = 127
+	readyState                       = "READY"
+	standardDiskType                 = "pd-standard"
+	extremeDiskType                  = "pd-extreme"
+	provisionedIOPSOnCreate          = "12345"
+	provisionedIOPSOnCreateInt       = int64(12345)
 
 	defaultEpsilon = 500000000 // 500M
 )

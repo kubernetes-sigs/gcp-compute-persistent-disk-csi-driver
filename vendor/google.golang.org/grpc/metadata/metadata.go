@@ -41,17 +41,16 @@ type MD map[string][]string
 // New creates an MD from a given key-value map.
 //
 // Only the following ASCII characters are allowed in keys:
-//   - digits: 0-9
-//   - uppercase letters: A-Z (normalized to lower)
-//   - lowercase letters: a-z
-//   - special characters: -_.
-//
+//  - digits: 0-9
+//  - uppercase letters: A-Z (normalized to lower)
+//  - lowercase letters: a-z
+//  - special characters: -_.
 // Uppercase letters are automatically converted to lowercase.
 //
 // Keys beginning with "grpc-" are reserved for grpc-internal use only and may
 // result in errors if set in metadata.
 func New(m map[string]string) MD {
-	md := make(MD, len(m))
+	md := MD{}
 	for k, val := range m {
 		key := strings.ToLower(k)
 		md[key] = append(md[key], val)
@@ -63,11 +62,10 @@ func New(m map[string]string) MD {
 // Pairs panics if len(kv) is odd.
 //
 // Only the following ASCII characters are allowed in keys:
-//   - digits: 0-9
-//   - uppercase letters: A-Z (normalized to lower)
-//   - lowercase letters: a-z
-//   - special characters: -_.
-//
+//  - digits: 0-9
+//  - uppercase letters: A-Z (normalized to lower)
+//  - lowercase letters: a-z
+//  - special characters: -_.
 // Uppercase letters are automatically converted to lowercase.
 //
 // Keys beginning with "grpc-" are reserved for grpc-internal use only and may
@@ -76,7 +74,7 @@ func Pairs(kv ...string) MD {
 	if len(kv)%2 == 1 {
 		panic(fmt.Sprintf("metadata: Pairs got the odd number of input pairs for metadata: %d", len(kv)))
 	}
-	md := make(MD, len(kv)/2)
+	md := MD{}
 	for i := 0; i < len(kv); i += 2 {
 		key := strings.ToLower(kv[i])
 		md[key] = append(md[key], kv[i+1])
@@ -91,11 +89,7 @@ func (md MD) Len() int {
 
 // Copy returns a copy of md.
 func (md MD) Copy() MD {
-	out := make(MD, len(md))
-	for k, v := range md {
-		out[k] = copyOf(v)
-	}
-	return out
+	return Join(md)
 }
 
 // Get obtains the values for a given key.
@@ -175,11 +169,8 @@ func AppendToOutgoingContext(ctx context.Context, kv ...string) context.Context 
 	md, _ := ctx.Value(mdOutgoingKey{}).(rawMD)
 	added := make([][]string, len(md.added)+1)
 	copy(added, md.added)
-	kvCopy := make([]string, 0, len(kv))
-	for i := 0; i < len(kv); i += 2 {
-		kvCopy = append(kvCopy, strings.ToLower(kv[i]), kv[i+1])
-	}
-	added[len(added)-1] = kvCopy
+	added[len(added)-1] = make([]string, len(kv))
+	copy(added[len(added)-1], kv)
 	return context.WithValue(ctx, mdOutgoingKey{}, rawMD{md: md.md, added: added})
 }
 
@@ -191,49 +182,17 @@ func FromIncomingContext(ctx context.Context) (MD, bool) {
 	if !ok {
 		return nil, false
 	}
-	out := make(MD, len(md))
+	out := MD{}
 	for k, v := range md {
 		// We need to manually convert all keys to lower case, because MD is a
 		// map, and there's no guarantee that the MD attached to the context is
 		// created using our helper functions.
 		key := strings.ToLower(k)
-		out[key] = copyOf(v)
+		s := make([]string, len(v))
+		copy(s, v)
+		out[key] = s
 	}
 	return out, true
-}
-
-// ValueFromIncomingContext returns the metadata value corresponding to the metadata
-// key from the incoming metadata if it exists. Key must be lower-case.
-//
-// # Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
-func ValueFromIncomingContext(ctx context.Context, key string) []string {
-	md, ok := ctx.Value(mdIncomingKey{}).(MD)
-	if !ok {
-		return nil
-	}
-
-	if v, ok := md[key]; ok {
-		return copyOf(v)
-	}
-	for k, v := range md {
-		// We need to manually convert all keys to lower case, because MD is a
-		// map, and there's no guarantee that the MD attached to the context is
-		// created using our helper functions.
-		if strings.ToLower(k) == key {
-			return copyOf(v)
-		}
-	}
-	return nil
-}
-
-// the returned slice must not be modified in place
-func copyOf(v []string) []string {
-	vals := make([]string, len(v))
-	copy(vals, v)
-	return vals
 }
 
 // FromOutgoingContextRaw returns the un-merged, intermediary contents of rawMD.
@@ -263,18 +222,15 @@ func FromOutgoingContext(ctx context.Context) (MD, bool) {
 		return nil, false
 	}
 
-	mdSize := len(raw.md)
-	for i := range raw.added {
-		mdSize += len(raw.added[i]) / 2
-	}
-
-	out := make(MD, mdSize)
+	out := MD{}
 	for k, v := range raw.md {
 		// We need to manually convert all keys to lower case, because MD is a
 		// map, and there's no guarantee that the MD attached to the context is
 		// created using our helper functions.
 		key := strings.ToLower(k)
-		out[key] = copyOf(v)
+		s := make([]string, len(v))
+		copy(s, v)
+		out[key] = s
 	}
 	for _, added := range raw.added {
 		if len(added)%2 == 1 {

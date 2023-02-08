@@ -12,6 +12,7 @@ import (
 	"net"
 	"syscall"
 
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 )
 
@@ -19,9 +20,6 @@ const (
 	// defaultTCPUserTimeout is the default TCP_USER_TIMEOUT socket option. By
 	// default is 20 seconds.
 	tcpUserTimeoutMilliseconds = 20000
-
-	// Copied from golang.org/x/sys/unix.TCP_USER_TIMEOUT.
-	tcpUserTimeoutOp = 0x12
 )
 
 func init() {
@@ -35,7 +33,7 @@ func dialTCPUserTimeout(ctx context.Context, addr string) (net.Conn, error) {
 		var syscallErr error
 		controlErr := c.Control(func(fd uintptr) {
 			syscallErr = syscall.SetsockoptInt(
-				int(fd), syscall.IPPROTO_TCP, tcpUserTimeoutOp, tcpUserTimeoutMilliseconds)
+				int(fd), syscall.IPPROTO_TCP, unix.TCP_USER_TIMEOUT, tcpUserTimeoutMilliseconds)
 		})
 		if syscallErr != nil {
 			return syscallErr

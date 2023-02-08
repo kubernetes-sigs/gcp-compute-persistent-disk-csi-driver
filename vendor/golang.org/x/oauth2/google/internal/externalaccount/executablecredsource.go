@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -179,7 +178,7 @@ type executableResponse struct {
 	Message        string `json:"message,omitempty"`
 }
 
-func (cs executableCredentialSource) parseSubjectTokenFromSource(response []byte, source string, now int64) (string, error) {
+func parseSubjectTokenFromSource(response []byte, source string, now int64) (string, error) {
 	var result executableResponse
 	if err := json.Unmarshal(response, &result); err != nil {
 		return "", jsonParsingError(source, string(response))
@@ -204,7 +203,7 @@ func (cs executableCredentialSource) parseSubjectTokenFromSource(response []byte
 		return "", unsupportedVersionError(source, result.Version)
 	}
 
-	if result.ExpirationTime == 0 && cs.OutputFile != "" {
+	if result.ExpirationTime == 0 {
 		return "", missingFieldError(source, "expiration_time")
 	}
 
@@ -212,7 +211,7 @@ func (cs executableCredentialSource) parseSubjectTokenFromSource(response []byte
 		return "", missingFieldError(source, "token_type")
 	}
 
-	if result.ExpirationTime != 0 && result.ExpirationTime < now {
+	if result.ExpirationTime < now {
 		return "", tokenExpiredError()
 	}
 
@@ -254,13 +253,13 @@ func (cs executableCredentialSource) getTokenFromOutputFile() (token string, err
 	}
 	defer file.Close()
 
-	data, err := ioutil.ReadAll(io.LimitReader(file, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(file, 1<<20))
 	if err != nil || len(data) == 0 {
 		// Cachefile exists, but no data found. Get new credential.
 		return "", nil
 	}
 
-	token, err = cs.parseSubjectTokenFromSource(data, outputFileSource, cs.env.now().Unix())
+	token, err = parseSubjectTokenFromSource(data, outputFileSource, cs.env.now().Unix())
 	if err != nil {
 		if _, ok := err.(nonCacheableError); ok {
 			// If the cached token is expired we need a new token,
@@ -305,5 +304,5 @@ func (cs executableCredentialSource) getTokenFromExecutableCommand() (string, er
 	if err != nil {
 		return "", err
 	}
-	return cs.parseSubjectTokenFromSource(output, executableSource, cs.env.now().Unix())
+	return parseSubjectTokenFromSource(output, executableSource, cs.env.now().Unix())
 }

@@ -5,7 +5,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-extreme
-  provisioned-iops-on-create: '10000Gi'
+  provisioned-iops-on-create: '10000'
   # Add labels for testing.
   labels: key1=value1,key2=value2
 volumeBindingMode: WaitForFirstConsumer

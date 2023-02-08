@@ -39,7 +39,6 @@ import (
 	imetadata "google.golang.org/grpc/internal/metadata"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/serviceconfig"
-	istatus "google.golang.org/grpc/internal/status"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -141,13 +140,13 @@ type ClientStream interface {
 // To ensure resources are not leaked due to the stream returned, one of the following
 // actions must be performed:
 //
-//  1. Call Close on the ClientConn.
-//  2. Cancel the context provided.
-//  3. Call RecvMsg until a non-nil error is returned. A protobuf-generated
-//     client-streaming RPC, for instance, might use the helper function
-//     CloseAndRecv (note that CloseSend does not Recv, therefore is not
-//     guaranteed to release all resources).
-//  4. Receive a non-nil, non-io.EOF error from Header or SendMsg.
+//      1. Call Close on the ClientConn.
+//      2. Cancel the context provided.
+//      3. Call RecvMsg until a non-nil error is returned. A protobuf-generated
+//         client-streaming RPC, for instance, might use the helper function
+//         CloseAndRecv (note that CloseSend does not Recv, therefore is not
+//         guaranteed to release all resources).
+//      4. Receive a non-nil, non-io.EOF error from Header or SendMsg.
 //
 // If none of the above happen, a goroutine and a context will be leaked, and grpc
 // will not call the optionally-configured stats handler with a stats.End message.
@@ -168,18 +167,9 @@ func NewClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 }
 
 func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, method string, opts ...CallOption) (_ ClientStream, err error) {
-	if md, added, ok := metadata.FromOutgoingContextRaw(ctx); ok {
-		// validate md
+	if md, _, ok := metadata.FromOutgoingContextRaw(ctx); ok {
 		if err := imetadata.Validate(md); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
-		}
-		// validate added
-		for _, kvs := range added {
-			for i := 0; i < len(kvs); i += 2 {
-				if err := imetadata.ValidatePair(kvs[i], kvs[i+1]); err != nil {
-					return nil, status.Error(codes.Internal, err.Error())
-				}
-			}
 		}
 	}
 	if channelz.IsOn() {
@@ -205,13 +195,6 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	rpcInfo := iresolver.RPCInfo{Context: ctx, Method: method}
 	rpcConfig, err := cc.safeConfigSelector.SelectConfig(rpcInfo)
 	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			// Restrict the code to the list allowed by gRFC A54.
-			if istatus.IsRestrictedControlPlaneCode(st) {
-				err = status.Errorf(codes.Internal, "config selector returned illegal status: %v", err)
-			}
-			return nil, err
-		}
 		return nil, toRPCErr(err)
 	}
 
@@ -318,13 +301,12 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 	if !cc.dopts.disableRetry {
 		cs.retryThrottler = cc.retryThrottler.Load().(*retryThrottler)
 	}
-	if ml := binarylog.GetMethodLogger(method); ml != nil {
-		cs.binlogs = append(cs.binlogs, ml)
-	}
-	if cc.dopts.binaryLogger != nil {
-		if ml := cc.dopts.binaryLogger.GetMethodLogger(method); ml != nil {
-			cs.binlogs = append(cs.binlogs, ml)
-		}
+	cs.binlog = binarylog.GetMethodLogger(method)
+
+	cs.attempt, err = cs.newAttemptLocked(false /* isTransparent */)
+	if err != nil {
+		cs.finish(err)
+		return nil, err
 	}
 
 	// Pick the transport to use and create a new stream on the transport.
@@ -346,7 +328,7 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 		return nil, err
 	}
 
-	if len(cs.binlogs) != 0 {
+	if cs.binlog != nil {
 		md, _ := metadata.FromOutgoingContext(ctx)
 		logEntry := &binarylog.ClientHeader{
 			OnClientSide: true,
@@ -360,9 +342,7 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 				logEntry.Timeout = 0
 			}
 		}
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, logEntry)
-		}
+		cs.binlog.Log(logEntry)
 	}
 
 	if desc != unaryStreamDesc {
@@ -425,7 +405,7 @@ func (cs *clientStream) newAttemptLocked(isTransparent bool) (*csAttempt, error)
 		ctx = trace.NewContext(ctx, trInfo.tr)
 	}
 
-	if cs.cc.parsedTarget.URL.Scheme == "xds" {
+	if cs.cc.parsedTarget.Scheme == "xds" {
 		// Add extra metadata (metadata that will be added by transport) to context
 		// so the balancer can see them.
 		ctx = grpcutil.WithExtraMetadata(ctx, metadata.Pairs(
@@ -447,7 +427,7 @@ func (a *csAttempt) getTransport() error {
 	cs := a.cs
 
 	var err error
-	a.t, a.pickResult, err = cs.cc.getTransport(a.ctx, cs.callInfo.failFast, cs.callHdr.Method)
+	a.t, a.done, err = cs.cc.getTransport(a.ctx, cs.callInfo.failFast, cs.callHdr.Method)
 	if err != nil {
 		if de, ok := err.(dropError); ok {
 			err = de.error
@@ -464,25 +444,6 @@ func (a *csAttempt) getTransport() error {
 func (a *csAttempt) newStream() error {
 	cs := a.cs
 	cs.callHdr.PreviousAttempts = cs.numRetries
-
-	// Merge metadata stored in PickResult, if any, with existing call metadata.
-	// It is safe to overwrite the csAttempt's context here, since all state
-	// maintained in it are local to the attempt. When the attempt has to be
-	// retried, a new instance of csAttempt will be created.
-	if a.pickResult.Metatada != nil {
-		// We currently do not have a function it the metadata package which
-		// merges given metadata with existing metadata in a context. Existing
-		// function `AppendToOutgoingContext()` takes a variadic argument of key
-		// value pairs.
-		//
-		// TODO: Make it possible to retrieve key value pairs from metadata.MD
-		// in a form passable to AppendToOutgoingContext(), or create a version
-		// of AppendToOutgoingContext() that accepts a metadata.MD.
-		md, _ := metadata.FromOutgoingContext(a.ctx)
-		md = metadata.Join(md, a.pickResult.Metatada)
-		a.ctx = metadata.NewOutgoingContext(a.ctx, md)
-	}
-
 	s, err := a.t.NewStream(a.ctx, cs.callHdr)
 	if err != nil {
 		nse, ok := err.(*transport.NewStreamError)
@@ -525,7 +486,7 @@ type clientStream struct {
 
 	retryThrottler *retryThrottler // The throttler active when the RPC began.
 
-	binlogs []binarylog.MethodLogger
+	binlog binarylog.MethodLogger // Binary logger, can be nil.
 	// serverHeaderBinlogged is a boolean for whether server header has been
 	// logged. Server header will be logged when the first time one of those
 	// happens: stream.Header(), stream.Recv().
@@ -557,12 +518,12 @@ type clientStream struct {
 // csAttempt implements a single transport stream attempt within a
 // clientStream.
 type csAttempt struct {
-	ctx        context.Context
-	cs         *clientStream
-	t          transport.ClientTransport
-	s          *transport.Stream
-	p          *parser
-	pickResult balancer.PickResult
+	ctx  context.Context
+	cs   *clientStream
+	t    transport.ClientTransport
+	s    *transport.Stream
+	p    *parser
+	done func(balancer.DoneInfo)
 
 	finished  bool
 	dc        Decompressor
@@ -743,18 +704,6 @@ func (cs *clientStream) withRetry(op func(a *csAttempt) error, onSuccess func())
 			// already be status errors.
 			return toRPCErr(op(cs.attempt))
 		}
-		if len(cs.buffer) == 0 {
-			// For the first op, which controls creation of the stream and
-			// assigns cs.attempt, we need to create a new attempt inline
-			// before executing the first op.  On subsequent ops, the attempt
-			// is created immediately before replaying the ops.
-			var err error
-			if cs.attempt, err = cs.newAttemptLocked(false /* isTransparent */); err != nil {
-				cs.mu.Unlock()
-				cs.finish(err)
-				return err
-			}
-		}
 		a := cs.attempt
 		cs.mu.Unlock()
 		err := op(a)
@@ -780,25 +729,17 @@ func (cs *clientStream) withRetry(op func(a *csAttempt) error, onSuccess func())
 
 func (cs *clientStream) Header() (metadata.MD, error) {
 	var m metadata.MD
-	noHeader := false
 	err := cs.withRetry(func(a *csAttempt) error {
 		var err error
 		m, err = a.s.Header()
-		if err == transport.ErrNoHeaders {
-			noHeader = true
-			return nil
-		}
 		return toRPCErr(err)
 	}, cs.commitAttemptLocked)
-
 	if err != nil {
 		cs.finish(err)
 		return nil, err
 	}
-
-	if len(cs.binlogs) != 0 && !cs.serverHeaderBinlogged && !noHeader {
-		// Only log if binary log is on and header has not been logged, and
-		// there is actually headers to log.
+	if cs.binlog != nil && !cs.serverHeaderBinlogged {
+		// Only log if binary log is on and header has not been logged.
 		logEntry := &binarylog.ServerHeader{
 			OnClientSide: true,
 			Header:       m,
@@ -807,10 +748,8 @@ func (cs *clientStream) Header() (metadata.MD, error) {
 		if peer, ok := peer.FromContext(cs.Context()); ok {
 			logEntry.PeerAddr = peer.Addr
 		}
+		cs.binlog.Log(logEntry)
 		cs.serverHeaderBinlogged = true
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, logEntry)
-		}
 	}
 	return m, nil
 }
@@ -884,44 +823,38 @@ func (cs *clientStream) SendMsg(m interface{}) (err error) {
 		return a.sendMsg(m, hdr, payload, data)
 	}
 	err = cs.withRetry(op, func() { cs.bufferForRetryLocked(len(hdr)+len(payload), op) })
-	if len(cs.binlogs) != 0 && err == nil {
-		cm := &binarylog.ClientMessage{
+	if cs.binlog != nil && err == nil {
+		cs.binlog.Log(&binarylog.ClientMessage{
 			OnClientSide: true,
 			Message:      data,
-		}
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, cm)
-		}
+		})
 	}
 	return err
 }
 
 func (cs *clientStream) RecvMsg(m interface{}) error {
-	if len(cs.binlogs) != 0 && !cs.serverHeaderBinlogged {
+	if cs.binlog != nil && !cs.serverHeaderBinlogged {
 		// Call Header() to binary log header if it's not already logged.
 		cs.Header()
 	}
 	var recvInfo *payloadInfo
-	if len(cs.binlogs) != 0 {
+	if cs.binlog != nil {
 		recvInfo = &payloadInfo{}
 	}
 	err := cs.withRetry(func(a *csAttempt) error {
 		return a.recvMsg(m, recvInfo)
 	}, cs.commitAttemptLocked)
-	if len(cs.binlogs) != 0 && err == nil {
-		sm := &binarylog.ServerMessage{
+	if cs.binlog != nil && err == nil {
+		cs.binlog.Log(&binarylog.ServerMessage{
 			OnClientSide: true,
 			Message:      recvInfo.uncompressedBytes,
-		}
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, sm)
-		}
+		})
 	}
 	if err != nil || !cs.desc.ServerStreams {
 		// err != nil or non-server-streaming indicates end of stream.
 		cs.finish(err)
 
-		if len(cs.binlogs) != 0 {
+		if cs.binlog != nil {
 			// finish will not log Trailer. Log Trailer here.
 			logEntry := &binarylog.ServerTrailer{
 				OnClientSide: true,
@@ -934,9 +867,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 			if peer, ok := peer.FromContext(cs.Context()); ok {
 				logEntry.PeerAddr = peer.Addr
 			}
-			for _, binlog := range cs.binlogs {
-				binlog.Log(cs.ctx, logEntry)
-			}
+			cs.binlog.Log(logEntry)
 		}
 	}
 	return err
@@ -957,13 +888,10 @@ func (cs *clientStream) CloseSend() error {
 		return nil
 	}
 	cs.withRetry(op, func() { cs.bufferForRetryLocked(0, op) })
-	if len(cs.binlogs) != 0 {
-		chc := &binarylog.ClientHalfClose{
+	if cs.binlog != nil {
+		cs.binlog.Log(&binarylog.ClientHalfClose{
 			OnClientSide: true,
-		}
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, chc)
-		}
+		})
 	}
 	// We never returned an error here for reasons.
 	return nil
@@ -980,9 +908,6 @@ func (cs *clientStream) finish(err error) {
 		return
 	}
 	cs.finished = true
-	for _, onFinish := range cs.callInfo.onFinish {
-		onFinish(err)
-	}
 	cs.commitAttemptLocked()
 	if cs.attempt != nil {
 		cs.attempt.finish(err)
@@ -999,13 +924,10 @@ func (cs *clientStream) finish(err error) {
 	//
 	// Only one of cancel or trailer needs to be logged. In the cases where
 	// users don't call RecvMsg, users must have already canceled the RPC.
-	if len(cs.binlogs) != 0 && status.Code(err) == codes.Canceled {
-		c := &binarylog.Cancel{
+	if cs.binlog != nil && status.Code(err) == codes.Canceled {
+		cs.binlog.Log(&binarylog.Cancel{
 			OnClientSide: true,
-		}
-		for _, binlog := range cs.binlogs {
-			binlog.Log(cs.ctx, c)
-		}
+		})
 	}
 	if err == nil {
 		cs.retryThrottler.successfulRPC()
@@ -1077,7 +999,6 @@ func (a *csAttempt) recvMsg(m interface{}, payInfo *payloadInfo) (err error) {
 			}
 			return io.EOF // indicates successful end of stream.
 		}
-
 		return toRPCErr(err)
 	}
 	if a.trInfo != nil {
@@ -1093,10 +1014,9 @@ func (a *csAttempt) recvMsg(m interface{}, payInfo *payloadInfo) (err error) {
 			RecvTime: time.Now(),
 			Payload:  m,
 			// TODO truncate large payload.
-			Data:             payInfo.uncompressedBytes,
-			WireLength:       payInfo.compressedLength + headerLen,
-			CompressedLength: payInfo.compressedLength,
-			Length:           len(payInfo.uncompressedBytes),
+			Data:       payInfo.uncompressedBytes,
+			WireLength: payInfo.wireLength + headerLen,
+			Length:     len(payInfo.uncompressedBytes),
 		})
 	}
 	if channelz.IsOn() {
@@ -1135,12 +1055,12 @@ func (a *csAttempt) finish(err error) {
 		tr = a.s.Trailer()
 	}
 
-	if a.pickResult.Done != nil {
+	if a.done != nil {
 		br := false
 		if a.s != nil {
 			br = a.s.BytesReceived()
 		}
-		a.pickResult.Done(balancer.DoneInfo{
+		a.done(balancer.DoneInfo{
 			Err:           err,
 			Trailer:       tr,
 			BytesSent:     a.s != nil,
@@ -1496,9 +1416,6 @@ type ServerStream interface {
 	// It is safe to have a goroutine calling SendMsg and another goroutine
 	// calling RecvMsg on the same stream at the same time, but it is not safe
 	// to call SendMsg on the same stream in different goroutines.
-	//
-	// It is not safe to modify the message after calling SendMsg. Tracing
-	// libraries and stats handlers may use the message lazily.
 	SendMsg(m interface{}) error
 	// RecvMsg blocks until it receives a message into m or the stream is
 	// done. It returns io.EOF when the client has performed a CloseSend. On
@@ -1524,15 +1441,13 @@ type serverStream struct {
 	comp   encoding.Compressor
 	decomp encoding.Compressor
 
-	sendCompressorName string
-
 	maxReceiveMessageSize int
 	maxSendMessageSize    int
 	trInfo                *traceInfo
 
 	statsHandler []stats.Handler
 
-	binlogs []binarylog.MethodLogger
+	binlog binarylog.MethodLogger
 	// serverHeaderBinlogged indicates whether server header has been logged. It
 	// will happen when one of the following two happens: stream.SendHeader(),
 	// stream.Send().
@@ -1566,15 +1481,12 @@ func (ss *serverStream) SendHeader(md metadata.MD) error {
 	}
 
 	err = ss.t.WriteHeader(ss.s, md)
-	if len(ss.binlogs) != 0 && !ss.serverHeaderBinlogged {
+	if ss.binlog != nil && !ss.serverHeaderBinlogged {
 		h, _ := ss.s.Header()
-		sh := &binarylog.ServerHeader{
+		ss.binlog.Log(&binarylog.ServerHeader{
 			Header: h,
-		}
+		})
 		ss.serverHeaderBinlogged = true
-		for _, binlog := range ss.binlogs {
-			binlog.Log(ss.ctx, sh)
-		}
 	}
 	return err
 }
@@ -1618,13 +1530,6 @@ func (ss *serverStream) SendMsg(m interface{}) (err error) {
 		}
 	}()
 
-	// Server handler could have set new compressor by calling SetSendCompressor.
-	// In case it is set, we need to use it for compressing outbound message.
-	if sendCompressorsName := ss.s.SendCompress(); sendCompressorsName != ss.sendCompressorName {
-		ss.comp = encoding.GetCompressor(sendCompressorsName)
-		ss.sendCompressorName = sendCompressorsName
-	}
-
 	// load hdr, payload, data
 	hdr, payload, data, err := prepareMsg(m, ss.codec, ss.cp, ss.comp)
 	if err != nil {
@@ -1638,23 +1543,17 @@ func (ss *serverStream) SendMsg(m interface{}) (err error) {
 	if err := ss.t.Write(ss.s, hdr, payload, &transport.Options{Last: false}); err != nil {
 		return toRPCErr(err)
 	}
-	if len(ss.binlogs) != 0 {
+	if ss.binlog != nil {
 		if !ss.serverHeaderBinlogged {
 			h, _ := ss.s.Header()
-			sh := &binarylog.ServerHeader{
+			ss.binlog.Log(&binarylog.ServerHeader{
 				Header: h,
-			}
+			})
 			ss.serverHeaderBinlogged = true
-			for _, binlog := range ss.binlogs {
-				binlog.Log(ss.ctx, sh)
-			}
 		}
-		sm := &binarylog.ServerMessage{
+		ss.binlog.Log(&binarylog.ServerMessage{
 			Message: data,
-		}
-		for _, binlog := range ss.binlogs {
-			binlog.Log(ss.ctx, sm)
-		}
+		})
 	}
 	if len(ss.statsHandler) != 0 {
 		for _, sh := range ss.statsHandler {
@@ -1693,16 +1592,13 @@ func (ss *serverStream) RecvMsg(m interface{}) (err error) {
 		}
 	}()
 	var payInfo *payloadInfo
-	if len(ss.statsHandler) != 0 || len(ss.binlogs) != 0 {
+	if len(ss.statsHandler) != 0 || ss.binlog != nil {
 		payInfo = &payloadInfo{}
 	}
 	if err := recv(ss.p, ss.codec, ss.s, ss.dc, m, ss.maxReceiveMessageSize, payInfo, ss.decomp); err != nil {
 		if err == io.EOF {
-			if len(ss.binlogs) != 0 {
-				chc := &binarylog.ClientHalfClose{}
-				for _, binlog := range ss.binlogs {
-					binlog.Log(ss.ctx, chc)
-				}
+			if ss.binlog != nil {
+				ss.binlog.Log(&binarylog.ClientHalfClose{})
 			}
 			return err
 		}
@@ -1717,20 +1613,16 @@ func (ss *serverStream) RecvMsg(m interface{}) (err error) {
 				RecvTime: time.Now(),
 				Payload:  m,
 				// TODO truncate large payload.
-				Data:             payInfo.uncompressedBytes,
-				Length:           len(payInfo.uncompressedBytes),
-				WireLength:       payInfo.compressedLength + headerLen,
-				CompressedLength: payInfo.compressedLength,
+				Data:       payInfo.uncompressedBytes,
+				WireLength: payInfo.wireLength + headerLen,
+				Length:     len(payInfo.uncompressedBytes),
 			})
 		}
 	}
-	if len(ss.binlogs) != 0 {
-		cm := &binarylog.ClientMessage{
+	if ss.binlog != nil {
+		ss.binlog.Log(&binarylog.ClientMessage{
 			Message: payInfo.uncompressedBytes,
-		}
-		for _, binlog := range ss.binlogs {
-			binlog.Log(ss.ctx, cm)
-		}
+		})
 	}
 	return nil
 }

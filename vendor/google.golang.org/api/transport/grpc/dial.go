@@ -9,6 +9,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log"
 	"net"
@@ -20,9 +21,10 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/api/internal"
 	"google.golang.org/api/option"
+	"google.golang.org/api/transport/internal/dca"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	grpcgoogle "google.golang.org/grpc/credentials/google"
-	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/credentials/oauth"
 
 	// Install grpclb, which is required for direct path.
@@ -120,25 +122,14 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 	if o.GRPCConn != nil {
 		return o.GRPCConn, nil
 	}
-	transportCreds, endpoint, err := internal.GetGRPCTransportConfigAndEndpoint(o)
+	clientCertSource, endpoint, err := dca.GetClientCertificateSourceAndEndpoint(o)
 	if err != nil {
 		return nil, err
 	}
-
+	var grpcOpts []grpc.DialOption
 	if insecure {
-		transportCreds = grpcinsecure.NewCredentials()
-	}
-
-	// Initialize gRPC dial options with transport-level security options.
-	grpcOpts := []grpc.DialOption{
-		grpc.WithTransportCredentials(transportCreds),
-	}
-
-	// Authentication can only be sent when communicating over a secure connection.
-	//
-	// TODO: Should we be more lenient in the future and allow sending credentials
-	// when dialing an insecure connection?
-	if !o.NoAuth && !insecure {
+		grpcOpts = []grpc.DialOption{grpc.WithInsecure()}
+	} else if !o.NoAuth {
 		if o.APIKey != "" {
 			log.Print("API keys are not supported for gRPC APIs. Remove the WithAPIKey option from your client-creating call.")
 		}
@@ -147,29 +138,24 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 			return nil, err
 		}
 
-		grpcOpts = append(grpcOpts,
-			grpc.WithPerRPCCredentials(grpcTokenSource{
-				TokenSource:   oauth.TokenSource{creds.TokenSource},
-				quotaProject:  internal.GetQuotaProject(creds, o.QuotaProject),
-				requestReason: o.RequestReason,
-			}),
-		)
+		if o.QuotaProject == "" {
+			o.QuotaProject = internal.QuotaProjectFromCreds(creds)
+		}
 
 		// Attempt Direct Path:
 		if isDirectPathEnabled(endpoint, o) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
-			// Overwrite all of the previously specific DialOptions, DirectPath uses its own set of credentials and certificates.
 			grpcOpts = []grpc.DialOption{
 				grpc.WithCredentialsBundle(grpcgoogle.NewDefaultCredentialsWithOptions(grpcgoogle.DefaultCredentialsOptions{oauth.TokenSource{creds.TokenSource}}))}
 			if timeoutDialerOption != nil {
 				grpcOpts = append(grpcOpts, timeoutDialerOption)
 			}
 			// Check if google-c2p resolver is enabled for DirectPath
-			if isDirectPathXdsUsed(o) {
+			if strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
 				// google-c2p resolver target must not have a port number
 				if addr, _, err := net.SplitHostPort(endpoint); err == nil {
-					endpoint = "google-c2p:///" + addr
+					endpoint = "google-c2p-experimental:///" + addr
 				} else {
-					endpoint = "google-c2p:///" + endpoint
+					endpoint = "google-c2p-experimental:///" + endpoint
 				}
 			} else {
 				if !strings.HasPrefix(endpoint, "dns:///") {
@@ -183,6 +169,18 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 					grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"grpclb":{"childPolicy":[{"pick_first":{}}]}}]}`))
 			}
 			// TODO(cbro): add support for system parameters (quota project, request reason) via chained interceptor.
+		} else {
+			tlsConfig := &tls.Config{
+				GetClientCertificate: clientCertSource,
+			}
+			grpcOpts = []grpc.DialOption{
+				grpc.WithPerRPCCredentials(grpcTokenSource{
+					TokenSource:   oauth.TokenSource{creds.TokenSource},
+					quotaProject:  o.QuotaProject,
+					requestReason: o.RequestReason,
+				}),
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			}
 		}
 	}
 
@@ -249,19 +247,6 @@ func isDirectPathEnabled(endpoint string, o *internal.DialSettings) bool {
 		return false
 	}
 	return true
-}
-
-func isDirectPathXdsUsed(o *internal.DialSettings) bool {
-	// Method 1: Enable DirectPath xDS by env;
-	if strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
-		return true
-	}
-	// Method 2: Enable DirectPath xDS by option;
-	if o.EnableDirectPathXds {
-		return true
-	}
-	return false
-
 }
 
 func isTokenSourceDirectPathCompatible(ts oauth2.TokenSource, o *internal.DialSettings) bool {

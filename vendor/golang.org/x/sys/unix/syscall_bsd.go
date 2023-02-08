@@ -245,7 +245,8 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 				break
 			}
 		}
-		sa.Name = string(unsafe.Slice((*byte)(unsafe.Pointer(&pp.Path[0])), n))
+		bytes := (*[len(pp.Path)]byte)(unsafe.Pointer(&pp.Path[0]))[0:n]
+		sa.Name = string(bytes)
 		return sa, nil
 
 	case AF_INET:
@@ -362,7 +363,7 @@ func sendmsgN(fd int, iov []Iovec, oob []byte, ptr unsafe.Pointer, salen _Sockle
 	var empty bool
 	if len(oob) > 0 {
 		// send at least one normal byte
-		empty = emptyIovecs(iov)
+		empty := emptyIovecs(iov)
 		if empty {
 			var iova [1]Iovec
 			iova[0].Base = &dummy
