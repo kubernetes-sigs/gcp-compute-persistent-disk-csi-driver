@@ -144,13 +144,13 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 				p.Labels[labelKey] = labelValue
 			}
 		case ParameterKeyProvisionedIOPSOnCreate:
-			paramProvisionedIOPSOnCreate, err := ConvertGiBStringToInt64(v)
+			paramProvisionedIOPSOnCreate, err := ConvertStringToInt64(v)
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid provisionedIOPSOnCreate parameter: %w", err)
 			}
 			p.ProvisionedIOPSOnCreate = paramProvisionedIOPSOnCreate
 		case ParameterKeyProvisionedThroughputOnCreate:
-			paramProvisionedThroughputOnCreate, err := ConvertMiBStringToInt64(v)
+			paramProvisionedThroughputOnCreate, err := ConvertMiStringToInt64(v)
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}

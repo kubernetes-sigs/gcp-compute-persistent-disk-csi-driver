@@ -40,16 +40,14 @@ import (
 )
 
 const (
-	testNamePrefix = "gcepd-csi-e2e-"
-
+	testNamePrefix           = "gcepd-csi-e2e-"
 	defaultSizeGb      int64 = 5
 	defaultRepdSizeGb  int64 = 200
 	defaultMwSizeGb    int64 = 200
+	defaultVolumeLimit int64 = 127
 	readyState               = "READY"
 	standardDiskType         = "pd-standard"
-	defaultVolumeLimit int64 = 127
-
-	defaultEpsilon = 500000000 // 500M
+	defaultEpsilon           = 500000000 // 500M
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
