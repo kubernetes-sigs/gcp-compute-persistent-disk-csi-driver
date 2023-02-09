@@ -51,7 +51,7 @@ const (
 	readyState                       = "READY"
 	standardDiskType                 = "pd-standard"
 	extremeDiskType                  = "pd-extreme"
-	provisionedIOPSOnCreate          = "100000Gi"
+	provisionedIOPSOnCreate          = "100000"
 	provisionedIOPSOnCreateInt       = int64(100000)
 
 	defaultEpsilon = 500000000 // 500M
