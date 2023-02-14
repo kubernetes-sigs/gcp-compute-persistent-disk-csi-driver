@@ -260,8 +260,8 @@ func ConvertStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToB(quantity)
 }
 
-// ConvertMiBStringToInt64 converts a GiB string to int64
-func ConvertMiBStringToInt64(str string) (int64, error) {
+// ConvertMiStringToInt64 converts a GiB string to int64
+func ConvertMiStringToInt64(str string) (int64, error) {
 	quantity, err := resource.ParseQuantity(str)
 	if err != nil {
 		return -1, err
