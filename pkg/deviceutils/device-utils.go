@@ -223,7 +223,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		var innerErr error
 		devicePath, innerErr = existingDevicePath(devicePaths)
 		if innerErr != nil {
-			e := fmt.Errorf("For disk %s failed to check for existing device path: %w", deviceName, innerErr)
+			e := fmt.Errorf("for disk %s failed to check for existing device path: %w", deviceName, innerErr)
 			klog.Errorf(e.Error())
 			return false, e
 		}
@@ -256,7 +256,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 
 		devFsSerial, innerErr := getDevFsSerial(devFsPath)
 		if innerErr != nil {
-			e := fmt.Errorf("Couldn't get serial number for disk %s at device path %s: %w", deviceName, devFsPath, innerErr)
+			e := fmt.Errorf("couldn't get serial number for disk %s at device path %s: %w", deviceName, devFsPath, innerErr)
 			klog.Errorf(e.Error())
 			return false, e
 		}
@@ -270,7 +270,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		// A /dev/* path exists, but is either not a recognized /dev prefix type
 		// (/dev/nvme* or /dev/sd*) or devicePath is not mapped to the correct disk.
 		// Attempt a repair
-		klog.V(4).Infof("For disk %s and device path %s with mismatched serial number %q calling udevadmTriggerForDiskIfExists", deviceName, devFsPath, devFsSerial)
+		klog.Warningf("For disk %s and device path %s with mismatched serial number %q calling udevadmTriggerForDiskIfExists", deviceName, devFsPath, devFsSerial)
 		innerErr = udevadmTriggerForDiskIfExists(deviceName)
 		if innerErr != nil {
 			e := fmt.Errorf("failed to trigger udevadm fix of misconfigured disk for %q: %w", deviceName, innerErr)
