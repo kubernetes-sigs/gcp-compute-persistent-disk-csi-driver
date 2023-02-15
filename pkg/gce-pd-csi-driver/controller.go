@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp"
-	"runtime/debug"
 	"sort"
 	"time"
 
@@ -412,13 +411,11 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 
 	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
-	debug.PrintStack()
 	if err != nil {
 		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err.Error())
 		gceCS.errorBackoff.next(backoffId)
 	} else {
 		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
-		debug.PrintStack()
 		gceCS.errorBackoff.reset(backoffId)
 	}
 	return resp, err
