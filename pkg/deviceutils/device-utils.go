@@ -219,22 +219,25 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 	if err != nil {
 		return "", err
 	}
-
 	err = wait.Poll(pollInterval, pollTimeout, func() (bool, error) {
 		var innerErr error
-
 		devicePath, innerErr = existingDevicePath(devicePaths)
 		if innerErr != nil {
-			return false, fmt.Errorf("failed to check for existing device path: %w", innerErr)
+			e := fmt.Errorf("For disk %s failed to check for existing device path: %w", deviceName, innerErr)
+			klog.Errorf(e.Error())
+			return false, e
 		}
 
 		if len(devicePath) == 0 {
 			// Couldn't find a /dev/disk/by-id path for this deviceName, so we need to
 			// find a /dev/* with a serial that matches deviceName. Then we attempt
 			// to repair the symlink.
+			klog.Warningf("For disk %s couldn't find a device path, calling udevadmTriggerForDiskIfExists", deviceName)
 			innerErr := udevadmTriggerForDiskIfExists(deviceName)
 			if innerErr != nil {
-				return false, fmt.Errorf("failed to trigger udevadm fix of non existent disk for %q: %w", deviceName, innerErr)
+				e := fmt.Errorf("for disk %s failed to trigger udevadm fix of non existent device path: %w", deviceName, innerErr)
+				klog.Errorf(e.Error())
+				return false, e
 			}
 			// Go to next retry loop to get the deviceName again after
 			// potentially fixing it with the udev command
@@ -244,15 +247,20 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		// If there exists a devicePath we make sure disk at /dev/* matches the
 		// expected disk at devicePath by matching device Serial to the disk name
 		devFsPath, innerErr := filepath.EvalSymlinks(devicePath)
-		klog.V(4).Infof("For disk %s the /dev/* path is %s", deviceName, devFsPath)
 		if innerErr != nil {
-			return false, fmt.Errorf("filepath.EvalSymlinks(%q) failed with %w", devicePath, innerErr)
+			e := fmt.Errorf("filepath.EvalSymlinks(%q) failed: %w", devicePath, innerErr)
+			klog.Errorf(e.Error())
+			return false, e
 		}
+		klog.V(4).Infof("For disk %s the /dev/* path is %s for disk/by-id path %s", deviceName, devFsPath, devicePath)
 
 		devFsSerial, innerErr := getDevFsSerial(devFsPath)
 		if innerErr != nil {
-			return false, fmt.Errorf("couldn't get serial number for disk %s at path %s: %w", deviceName, devFsPath, innerErr)
+			e := fmt.Errorf("Couldn't get serial number for disk %s at device path %s: %w", deviceName, devFsPath, innerErr)
+			klog.Errorf(e.Error())
+			return false, e
 		}
+		klog.V(4).Infof("For disk %s, device path %s, found serial number %s", deviceName, devFsPath, devFsSerial)
 		// SUCCESS! devicePath points to a /dev/* path that has a serial
 		// equivalent to our disk name
 		if len(devFsSerial) != 0 && devFsSerial == deviceName {
@@ -262,9 +270,12 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		// A /dev/* path exists, but is either not a recognized /dev prefix type
 		// (/dev/nvme* or /dev/sd*) or devicePath is not mapped to the correct disk.
 		// Attempt a repair
+		klog.V(4).Infof("For disk %s and device path %s with mismatched serial number %q calling udevadmTriggerForDiskIfExists", deviceName, devFsPath, devFsSerial)
 		innerErr = udevadmTriggerForDiskIfExists(deviceName)
 		if innerErr != nil {
-			return false, fmt.Errorf("failed to trigger udevadm fix of misconfigured disk for %q: %w", deviceName, innerErr)
+			e := fmt.Errorf("failed to trigger udevadm fix of misconfigured disk for %q: %w", deviceName, innerErr)
+			klog.Errorf(e.Error())
+			return false, e
 		}
 		// Go to next retry loop to get the deviceName again after
 		// potentially fixing it with the udev command
@@ -318,23 +329,23 @@ func udevadmTriggerForDiskIfExists(deviceName string) error {
 		if err != nil || len(devFsSerial) == 0 {
 			// If we get an error, ignore. Either this isn't a block device, or it
 			// isn't something we can get a serial number from
-			klog.V(7).Infof("failed to get Serial num for disk %s at path %s: %v", deviceName, devFsPath, err.Error())
+			klog.Errorf("failed to get serial num for disk %s at device path %s: %v", deviceName, devFsPath, err.Error())
 			continue
 		}
+		klog.V(4).Infof("device path %s, serial number %v", devFsPath, devFsSerial)
 		devFsPathToSerial[devFsPath] = devFsSerial
 		if devFsSerial == deviceName {
 			// Found the disk that we're looking for so run a trigger on it
 			// to resolve its /dev/by-id/ path
-			klog.Warningf("udevadm --trigger running to fix disk at path %s which has serial numberID %s", devFsPath, devFsSerial)
+			klog.Warningf("udevadm --trigger running to fix disk at path %s which has serial number %s", devFsPath, devFsSerial)
 			err := udevadmChangeToDrive(devFsPath)
 			if err != nil {
-				return fmt.Errorf("failed to fix disk which has serial numberID %s: %w", devFsSerial, err)
+				return fmt.Errorf("udevadm --trigger failed to fix device path %s which has serial number %s: %w", devFsPath, devFsSerial, err)
 			}
 			return nil
 		}
 	}
-	klog.Warningf("udevadm --trigger requested to fix disk %s but no such disk was found in %v", deviceName, devFsPathToSerial)
-	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found", deviceName)
+	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found in device path %v", deviceName, devFsPathToSerial)
 }
 
 // Calls "udevadm trigger --action=change" on the specified drive. drivePath
@@ -347,13 +358,15 @@ func udevadmTriggerForDiskIfExists(deviceName string) error {
 // the change
 func udevadmChangeToDrive(devFsPath string) error {
 	// Call "udevadm trigger --action=change --property-match=DEVNAME=/dev/..."
-	out, err := exec.Command(
+	cmd := exec.Command(
 		"udevadm",
 		"trigger",
 		"--action=change",
-		fmt.Sprintf("--property-match=DEVNAME=%s", devFsPath)).CombinedOutput()
+		fmt.Sprintf("--property-match=DEVNAME=%s", devFsPath))
+	klog.V(4).Infof("Running command: %s", cmd.String())
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("udevadmChangeToDrive: udevadm trigger failed for drive %q with output %s: %w.", devFsPath, string(out), err)
+		return fmt.Errorf("udevadmChangeToDrive: udevadm trigger failed for drive %q with output %s: %v", devFsPath, string(out), err)
 	}
 	return nil
 }
