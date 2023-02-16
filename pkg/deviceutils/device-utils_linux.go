@@ -20,9 +20,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"k8s.io/klog/v2"
 )
 
 func (_ *deviceUtils) DisableDevice(devicePath string) error {
 	deviceName := filepath.Base(devicePath)
-	return os.WriteFile(fmt.Sprintf("/sys/block/%s/device/state", deviceName), []byte("offline"), 0644)
+	f := fmt.Sprintf("/sys/block/%s/device/state", deviceName)
+	klog.Infof("DisableDevice called with device path %s device name %s, target filepath %s", devicePath, deviceName, f)
+	return os.WriteFile(f, []byte("offline"), 0644)
 }
