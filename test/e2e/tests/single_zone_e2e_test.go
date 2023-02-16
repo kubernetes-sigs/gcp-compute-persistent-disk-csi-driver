@@ -519,7 +519,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 			// The resource name of the key rings.
 			parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
-			keyRingId := "gce-pd-csi-test-ring"
+			keyRingId := "gce-pd-csi-test-ring-" + diskType
 
 			key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
 
