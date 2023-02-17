@@ -24,7 +24,7 @@ ADD . .
 RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION make gce-pd-driver
 
 # Start from Kubernetes Debian base.
-FROM k8s.gcr.io/build-image/debian-base:buster-v1.9.0 as debian
+FROM registry.k8s.io/build-image/debian-base:buster-v1.9.0 as debian
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash
