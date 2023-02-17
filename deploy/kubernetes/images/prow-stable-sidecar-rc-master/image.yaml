@@ -15,7 +15,7 @@ metadata:
   name: imagetag-csi-attacher-prow-rc
 imageTag:
   name: k8s.gcr.io/sig-storage/csi-attacher
-  newTag: "v3.5.0"
+  newTag: "v4.2.0"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
