@@ -1,0 +1,5 @@
+# Set max-grpc-log-length for attacher sidecar.
+- op: add
+  path: /spec/template/spec/containers/1/args/-
+  value: "--max-grpc-log-length=10000"
+  

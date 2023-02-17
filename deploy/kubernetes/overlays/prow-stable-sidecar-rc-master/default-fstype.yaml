@@ -1,0 +1,5 @@
+# Set default-fstype for attacher sidecar.
+- op: add
+  path: /spec/template/spec/containers/1/args/-
+  value: "--default-fstype=ext4"
+  
