@@ -13,6 +13,12 @@
 ### Bug or Regression
 
 - Add udevadm binary in the container image. ([#1072](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1072), [@jenting](https://github.com/jenting))
+- Remove debug.PrintStack() ([#1135](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1135), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+### Other (Cleanup or Flake)
+
+- Improve logging for device path verification ([#1142](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1142), [@saikat-royc](https://github.com/saikat-royc))
+- Update csi-attacher to v4.2.0 ([#1144](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1144), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
 
 ## Dependencies
 

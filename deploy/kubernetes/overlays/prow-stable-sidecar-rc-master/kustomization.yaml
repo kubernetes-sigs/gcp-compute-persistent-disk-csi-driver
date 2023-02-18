@@ -12,5 +12,17 @@ patchesJson6902:
     kind: Deployment
     name: csi-gce-pd-controller
   path: disk_labels.yaml
+- path: max-grpc-log-length.yaml
+  target:
+    group: apps
+    kind: Deployment
+    name: csi-gce-pd-controller
+    version: v1
+- path: default-fstype.yaml
+  target:
+    group: apps
+    kind: Deployment
+    name: csi-gce-pd-controller
+    version: v1
 transformers:
 - ../../images/prow-stable-sidecar-rc-master

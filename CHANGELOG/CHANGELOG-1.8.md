@@ -6,6 +6,9 @@
 ### Other (Cleanup or Flake)
 
 - Update to go 1.19.4 ([#1103](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1103), [@msau42](https://github.com/msau42))
+- limit grpc loging info to a configurable char limit ([#1111](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1111), [@leiyiz](https://github.com/leiyiz))
+- Upgrade klog v1 to v2 and fix error wrapping & separate user errors from internal errors ([#1115](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1115), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Add debugging log for the mapping of a PD name to /dev/* path ([#1115](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1115), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
 
 
 # v1.8.1 - Changelog since v1.8.0
