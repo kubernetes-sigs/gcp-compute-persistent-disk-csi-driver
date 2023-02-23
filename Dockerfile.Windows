@@ -13,7 +13,11 @@
 # limitations under the License.
 
 ARG BASE_IMAGE
+<<<<<<< HEAD
 FROM --platform=$BUILDPLATFORM golang:1.18.9 AS builder
+=======
+FROM --platform=$BUILDPLATFORM golang:1.19.6 AS builder
+>>>>>>> go version updates
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
