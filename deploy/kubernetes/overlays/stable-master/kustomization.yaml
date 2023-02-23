@@ -4,5 +4,18 @@ namespace:
   gce-pd-csi-driver
 resources:
 - ../../base/
+patchesJson6902:
+- path: max-grpc-log-length.yaml
+  target:
+    group: apps
+    kind: Deployment
+    name: csi-gce-pd-controller
+    version: v1
+- path: default-fstype.yaml
+  target:
+    group: apps
+    kind: Deployment
+    name: csi-gce-pd-controller
+    version: v1
 transformers:
 - ../../images/stable-master
