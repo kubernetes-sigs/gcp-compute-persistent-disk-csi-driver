@@ -19,6 +19,7 @@
 
 - Improve logging for device path verification ([#1142](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1142), [@saikat-royc](https://github.com/saikat-royc))
 - Update csi-attacher to v4.2.0 ([#1144](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1144), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Update sidecar based on internal versions ([#1154](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1154), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
 
 ## Dependencies
 
