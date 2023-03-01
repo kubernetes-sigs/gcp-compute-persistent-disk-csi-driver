@@ -1129,9 +1129,13 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 
 // kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.
 // fetchedKMSKey - key returned by the server
-//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}/cryptoKeyVersions/{4}
+//
+//	example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}/cryptoKeyVersions/{4}
+//
 // storageClassKMSKey - key as provided by the client
-//        example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
+//
+//	example: projects/{0}/locations/{1}/keyRings/{2}/cryptoKeys/{3}
+//
 // cryptoKeyVersions should be disregarded if the rest of the key is identical.
 func KmsKeyEqual(fetchedKMSKey, storageClassKMSKey string) bool {
 	return removeCryptoKeyVersion(fetchedKMSKey) == removeCryptoKeyVersion(storageClassKMSKey)
