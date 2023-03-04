@@ -158,7 +158,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			}
 			p.ProvisionedIOPSOnCreate = paramProvisionedIOPSOnCreate
 		case ParameterKeyProvisionedThroughputOnCreate:
-			paramProvisionedThroughputOnCreate, err := ConvertMiBStringToInt64(v)
+			paramProvisionedThroughputOnCreate, err := ConvertMiStringToInt64(v)
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}
