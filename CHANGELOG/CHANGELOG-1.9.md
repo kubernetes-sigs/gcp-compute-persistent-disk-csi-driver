@@ -1,3 +1,15 @@
+# v1.9.1 - Changelog since v1.9.0
+
+## Changes by Kind
+
+### Feature
+
+- go version updates ([#1158](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1158), [@saikat-royc](https://github.com/saikat-royc))
+
+- Fix for CVEs - update base image ([#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162), [@saikat-royc](https://github.com/sunnylovestiramisu))
+
+- Fix multiarch build ([#1165](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1165), [@saikat-royc](https://github.com/sunnylovestiramisu))
+
 # v1.9.0 - Changelog since v1.8.2
 
 ## Changes by Kind
