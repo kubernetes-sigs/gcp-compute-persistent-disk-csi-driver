@@ -24,9 +24,9 @@ require (
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/cloud-provider v0.24.1
 	k8s.io/component-base v0.24.1
-	k8s.io/klog/v2 v2.60.1
-	k8s.io/mount-utils v0.24.1
-	k8s.io/utils v0.0.0-20220713171938-56c0de1e6f5e
+	k8s.io/klog/v2 v2.90.1
+	k8s.io/mount-utils v0.27.0-alpha.3
+	k8s.io/utils v0.0.0-20230209194617-a36077c30491
 	sigs.k8s.io/boskos v0.0.0-20220711194915-6cb8a6fb2dd1
 )
 
@@ -61,6 +61,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
