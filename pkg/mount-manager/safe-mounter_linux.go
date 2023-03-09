@@ -17,16 +17,13 @@ limitations under the License.
 package mountmanager
 
 import (
+	"time"
+
 	"k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 )
 
-func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
-	realMounter := mount.New("")
-	realExec := exec.New()
-	return &mount.SafeFormatAndMount{
-		Interface: realMounter,
-		Exec:      realExec,
-	}, nil
-
+func NewSafeMounter(maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
+	opt := mount.WithMaxConcurrentFormat(maxConcurrentFormat, concurrentFormatTimeout)
+	return mount.NewSafeFormatAndMount(mount.New(""), exec.New(), opt), nil
 }
