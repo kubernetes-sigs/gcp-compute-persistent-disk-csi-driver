@@ -1,3 +1,12 @@
+# v1.9.2 - Changelog since v1.9.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Revert feature to add PV, PVC and namespace name as labels to the PD [#1090](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1090) ([#1174](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1174), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+
 # v1.9.1 - Changelog since v1.9.0
 
 ## Changes by Kind
