@@ -139,7 +139,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
-				Labels:               map[string]string{labelKeyCreatedForClaimName: "testPVCName", labelKeyCreatedForClaimNamespace: "testPVCNamespace", labelKeyCreatedForVolumeName: "testPVName"},
+				Labels:               map[string]string{},
 			},
 		},
 		{
@@ -178,30 +178,18 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				Labels:               map[string]string{"key1": "value1", "label-1": "value-a", "label-2": "label-value-2"},
 			},
 		},
-		{
-			name:       "PVC labels",
-			parameters: map[string]string{ParameterKeyPVCName: "testPVCName", ParameterKeyPVCNamespace: "testPVCNamespace", ParameterKeyPVName: "testPVName"},
-			labels:     map[string]string{},
-			expectParams: DiskParameters{
-				DiskType:             "pd-standard",
-				ReplicationType:      "none",
-				DiskEncryptionKMSKey: "",
-				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
-				Labels:               map[string]string{labelKeyCreatedForClaimName: "testPVCName", labelKeyCreatedForClaimNamespace: "testPVCNamespace", labelKeyCreatedForVolumeName: "testPVName"},
-			},
-		},
-		{
-			name:       "PVC labels-override",
-			parameters: map[string]string{ParameterKeyPVCName: "testPVCName", ParameterKeyPVCNamespace: "testPVCNamespace", ParameterKeyPVName: "testPVName"},
-			labels:     map[string]string{labelKeyCreatedForClaimNamespace: "test-override"},
-			expectParams: DiskParameters{
-				DiskType:             "pd-standard",
-				ReplicationType:      "none",
-				DiskEncryptionKMSKey: "",
-				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
-				Labels:               map[string]string{labelKeyCreatedForClaimName: "testPVCName", labelKeyCreatedForClaimNamespace: "testPVCNamespace", labelKeyCreatedForVolumeName: "testPVName"},
-			},
-		},
+        {
+            name:       "PVC labels",
+            parameters: map[string]string{ParameterKeyPVCName: "testPVCName", ParameterKeyPVCNamespace: "testPVCNamespace", ParameterKeyPVName: "testPVName"},
+            labels:     map[string]string{},
+            expectParams: DiskParameters{
+                DiskType:             "pd-standard",
+                ReplicationType:      "none",
+                DiskEncryptionKMSKey: "",
+                Tags:                 map[string]string{},
+                Labels:               map[string]string{labelKeyCreatedForClaimName: "testPVCName", labelKeyCreatedForClaimNamespace: "testPVCNamespace", labelKeyCreatedForVolumeName: "testPVName"},
+            },
+        },
 	}
 
 	for _, tc := range tests {

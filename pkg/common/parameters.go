@@ -133,15 +133,15 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		case ParameterKeyDiskEncryptionKmsKey:
 			// Resource names (e.g. "keyRings", "cryptoKeys", etc.) are case sensitive, so do not change case
 			p.DiskEncryptionKMSKey = v
-		case ParameterKeyPVCName:
-			p.Tags[tagKeyCreatedForClaimName] = v
-			p.Labels[labelKeyCreatedForClaimName] = v
-		case ParameterKeyPVCNamespace:
-			p.Tags[tagKeyCreatedForClaimNamespace] = v
-			p.Labels[labelKeyCreatedForClaimNamespace] = v
-		case ParameterKeyPVName:
-			p.Tags[tagKeyCreatedForVolumeName] = v
-			p.Labels[labelKeyCreatedForVolumeName] = v
+        case ParameterKeyPVCName:
+            p.Tags[tagKeyCreatedForClaimName] = v
+            p.Labels[labelKeyCreatedForClaimName] = v
+        case ParameterKeyPVCNamespace:
+            p.Tags[tagKeyCreatedForClaimNamespace] = v
+            p.Labels[labelKeyCreatedForClaimNamespace] = v
+        case ParameterKeyPVName:
+            p.Tags[tagKeyCreatedForVolumeName] = v
+            p.Labels[labelKeyCreatedForVolumeName] = v
 		case ParameterKeyLabels:
 			paramLabels, err := ConvertLabelsStringToMap(v)
 			if err != nil {
