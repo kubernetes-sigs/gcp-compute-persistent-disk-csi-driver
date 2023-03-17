@@ -58,11 +58,6 @@ const (
 	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
 	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
 	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
-
-	// Keys for labels to tag to PV
-	labelKeyCreatedForClaimNamespace = "kubernetes_io_created-for_pvc_namespace"
-	labelKeyCreatedForClaimName      = "kubernetes_io_created-for_pvc_name"
-	labelKeyCreatedForVolumeName     = "kubernetes_io_created-for_pv_name"
 )
 
 // DiskParameters contains normalized and defaulted disk parameters
@@ -133,15 +128,12 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		case ParameterKeyDiskEncryptionKmsKey:
 			// Resource names (e.g. "keyRings", "cryptoKeys", etc.) are case sensitive, so do not change case
 			p.DiskEncryptionKMSKey = v
-        case ParameterKeyPVCName:
-            p.Tags[tagKeyCreatedForClaimName] = v
-            p.Labels[labelKeyCreatedForClaimName] = v
-        case ParameterKeyPVCNamespace:
-            p.Tags[tagKeyCreatedForClaimNamespace] = v
-            p.Labels[labelKeyCreatedForClaimNamespace] = v
-        case ParameterKeyPVName:
-            p.Tags[tagKeyCreatedForVolumeName] = v
-            p.Labels[labelKeyCreatedForVolumeName] = v
+		case ParameterKeyPVCName:
+			p.Tags[tagKeyCreatedForClaimName] = v
+		case ParameterKeyPVCNamespace:
+			p.Tags[tagKeyCreatedForClaimNamespace] = v
+		case ParameterKeyPVName:
+			p.Tags[tagKeyCreatedForVolumeName] = v
 		case ParameterKeyLabels:
 			paramLabels, err := ConvertLabelsStringToMap(v)
 			if err != nil {
