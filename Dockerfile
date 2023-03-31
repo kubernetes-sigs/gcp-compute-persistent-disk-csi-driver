@@ -93,6 +93,7 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libuuid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libacl.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libattr.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libedit.so.2 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicudata.so.67 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.67 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.67 \
