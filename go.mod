@@ -1,6 +1,6 @@
 module sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
-go 1.19
+go 1.20
 
 require (
 	cloud.google.com/go/compute v1.7.0
