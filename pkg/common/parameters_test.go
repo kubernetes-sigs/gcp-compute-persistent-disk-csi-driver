@@ -191,7 +191,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
-			name:       "pv labels",
+			name:       "pv labels valid",
 			parameters: map[string]string{ParameterKeyPVCNamespace: "test-namespace-name-with-label-restrictions-allow_-and-63char", ParameterKeyPVName: "test-pv-name-with-label-restrictions-allow_-and-63char", ParameterKeyPVCName: "test-pvc-name-as-label-with-label-restriction-allow_-and-63char"},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
