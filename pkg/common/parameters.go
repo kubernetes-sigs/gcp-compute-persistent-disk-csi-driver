@@ -19,6 +19,8 @@ package common
 import (
 	"fmt"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -58,6 +60,11 @@ const (
 	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
 	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
 	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
+
+	// Keys for labels to tag to PV
+	labelKeyCreatedForClaimNamespace = "kubernetes_io_created_for_pvc_namespace"
+	labelKeyCreatedForVolumeName     = "kubernetes_io_created_for_pv_name"
+	labelKeyCreatedForClaimName      = "kubernetes_io_created_for_pvc_name"
 )
 
 // DiskParameters contains normalized and defaulted disk parameters
@@ -130,10 +137,40 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.DiskEncryptionKMSKey = v
 		case ParameterKeyPVCName:
 			p.Tags[tagKeyCreatedForClaimName] = v
+			// Verify that the parameters satisfy label restrictions before adding them as label
+			var pvc_name = strings.ToLower(v)
+			if len(pvc_name) > 63 {
+				pvc_name = pvc_name[:63]
+			}
+			_, err := ConvertLabelsStringToMap(labelKeyCreatedForClaimNamespace + "=" + pvc_name)
+			if err != nil {
+				klog.V(4).Info("Unable to add PVC name as a label", err)
+			} else {
+				p.Labels[labelKeyCreatedForClaimName] = pvc_name
+			}
 		case ParameterKeyPVCNamespace:
 			p.Tags[tagKeyCreatedForClaimNamespace] = v
+			// Verify that the parameters satisfy label restrictions before adding them as label
+			var namespace_name = strings.ToLower(v)
+			_, err := ConvertLabelsStringToMap(labelKeyCreatedForClaimNamespace + "=" + namespace_name)
+			if err != nil {
+				klog.V(4).Info("Unable to add Namespace name as a label", err)
+			} else {
+				p.Labels[labelKeyCreatedForClaimNamespace] = namespace_name
+			}
 		case ParameterKeyPVName:
 			p.Tags[tagKeyCreatedForVolumeName] = v
+			// Verify that the parameters satisfy label restrictions before adding them as label
+			var pv_name = strings.ToLower(v)
+			if len(pv_name) > 63 {
+				pv_name = pv_name[:63]
+			}
+			_, err := ConvertLabelsStringToMap(labelKeyCreatedForVolumeName + "=" + pv_name)
+			if err != nil {
+				klog.V(4).Info("Unable to add PV name as a label", err)
+			} else {
+				p.Labels[labelKeyCreatedForVolumeName] = pv_name
+			}
 		case ParameterKeyLabels:
 			paramLabels, err := ConvertLabelsStringToMap(v)
 			if err != nil {

@@ -139,7 +139,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
-				Labels:               map[string]string{},
+				Labels:               map[string]string{labelKeyCreatedForClaimNamespace: "testpvcnamespace", labelKeyCreatedForVolumeName: "testpvname", labelKeyCreatedForClaimName: "testpvcname"},
 			},
 		},
 		{
@@ -176,6 +176,30 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{"key1": "value1", "label-1": "value-a", "label-2": "label-value-2"},
+			},
+		},
+		{
+			name:       "pv labels invalid",
+			parameters: map[string]string{ParameterKeyPVCNamespace: "test-namespace-name-as-labels-with-label-restrictions-does-not-allow*_--and-63+char", ParameterKeyPVName: "test-pv-name-as-label-with-label-restriction-truncate-char-at63-these-are-additional_with*+", ParameterKeyPVCName: "test-pvc-name-as-labels-with-label-restrictions-does-not-allow*_--and-63+char"},
+			labels:     map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{tagKeyCreatedForClaimNamespace: "test-namespace-name-as-labels-with-label-restrictions-does-not-allow*_--and-63+char", tagKeyCreatedForVolumeName: "test-pv-name-as-label-with-label-restriction-truncate-char-at63-these-are-additional_with*+", tagKeyCreatedForClaimName: "test-pvc-name-as-labels-with-label-restrictions-does-not-allow*_--and-63+char", tagKeyCreatedBy: "testDriver"},
+				Labels:               map[string]string{labelKeyCreatedForVolumeName: "test-pv-name-as-label-with-label-restriction-truncate-char-at63"},
+			},
+		},
+		{
+			name:       "pv labels",
+			parameters: map[string]string{ParameterKeyPVCNamespace: "test-namespace-name-with-label-restrictions-allow_-and-63char", ParameterKeyPVName: "test-pv-name-with-label-restrictions-allow_-and-63char", ParameterKeyPVCName: "test-pvc-name-as-label-with-label-restriction-allow_-and-63char"},
+			labels:     map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{tagKeyCreatedForClaimNamespace: "test-namespace-name-with-label-restrictions-allow_-and-63char", tagKeyCreatedForVolumeName: "test-pv-name-with-label-restrictions-allow_-and-63char", tagKeyCreatedForClaimName: "test-pvc-name-as-label-with-label-restriction-allow_-and-63char", tagKeyCreatedBy: "testDriver"},
+				Labels:               map[string]string{labelKeyCreatedForClaimNamespace: "test-namespace-name-with-label-restrictions-allow_-and-63char", labelKeyCreatedForVolumeName: "test-pv-name-with-label-restrictions-allow_-and-63char", labelKeyCreatedForClaimName: "test-pvc-name-as-label-with-label-restriction-allow_-and-63char"},
 			},
 		},
 	}
