@@ -139,9 +139,6 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.Tags[tagKeyCreatedForClaimName] = v
 			// Verify that the parameters satisfy label restrictions before adding them as label
 			var pvc_name = strings.ToLower(v)
-			if len(pvc_name) > 63 {
-				pvc_name = pvc_name[:63]
-			}
 			_, err := ConvertLabelsStringToMap(labelKeyCreatedForClaimNamespace + "=" + pvc_name)
 			if err != nil {
 				klog.V(4).Info("Unable to add PVC name as a label", err)
@@ -162,9 +159,6 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.Tags[tagKeyCreatedForVolumeName] = v
 			// Verify that the parameters satisfy label restrictions before adding them as label
 			var pv_name = strings.ToLower(v)
-			if len(pv_name) > 63 {
-				pv_name = pv_name[:63]
-			}
 			_, err := ConvertLabelsStringToMap(labelKeyCreatedForVolumeName + "=" + pv_name)
 			if err != nil {
 				klog.V(4).Info("Unable to add PV name as a label", err)
