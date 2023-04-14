@@ -572,6 +572,9 @@ func generateGCETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
 
+	// Snapshot and restore test fixes which is added in driver version 1.9+.
+	skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
+
 	return skipString
 }
 
@@ -620,6 +623,10 @@ func generateGKETestSkip(testParams *testParameters) string {
 		(!testParams.useGKEManagedDriver && (*curVer).lessThan(mustParseVersion("1.17.0"))) {
 		skipString = skipString + "|VolumeSnapshotDataSource"
 	}
+
+	// Snapshot and restore test fixes which is added in driver version 1.9+.
+	skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
+
 	return skipString
 }
 
