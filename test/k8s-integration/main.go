@@ -581,6 +581,9 @@ func generateGCETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
 
+	// Snapshot and restore test fixes which is added in driver version 1.9+.
+	skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
+
 	return skipString
 }
 
@@ -597,6 +600,9 @@ func generateGKETestSkip(testParams *testParameters) string {
 	if curVer.lessThan(mustParseVersion("1.24.0")) {
 		skipString = skipString + "|pvc.data.source"
 	}
+
+	// Snapshot and restore test fixes which is added in driver version 1.9+.
+	skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
