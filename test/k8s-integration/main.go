@@ -589,6 +589,11 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|pvc.data.source"
 	}
 
+	// Snapshot and restore test fixes were introduced after 1.26 in PR#972.
+	if curVer.lessThan(mustParseVersion("1.26.0")) {
+		skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
+	}
+
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
 	// (https://github.com/kubernetes/kubernetes/pull/81163)
 	// bug-fix introduced in 1.16
