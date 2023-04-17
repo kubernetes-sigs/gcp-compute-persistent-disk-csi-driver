@@ -1,3 +1,12 @@
+# v1.7.5 - Changelog since v.1.7.4
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- go version updates ([#1158](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1158), [@saikat-royc](https://github.com/saikat-royc))
+- Fix for CVEs - update base image ([#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162), [@saikat-royc](https://github.com/sunnylovestiramisu))
+
 # v1.7.4 - Changelog since v.1.7.3
 
 ## Changes by Kind
