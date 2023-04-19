@@ -1,3 +1,11 @@
+# v1.7.6 - Changelog since v.1.7.5
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fix missing shared library libedit.so.2 caused from updating base image in [#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162) ([#1177](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1177), [@sunnylovestiramisu ](https://github.com/sunnylovestiramisu))
+
 # v1.7.5 - Changelog since v.1.7.4
 
 ## Changes by Kind
