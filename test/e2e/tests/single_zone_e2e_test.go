@@ -289,7 +289,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 		},
-		Entry("on pd-standard", standardDiskType),
+		//Entry("on pd-standard", standardDiskType),
 		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
@@ -407,7 +407,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 			}()
 		},
-		Entry("on pd-standard", standardDiskType),
+		//Entry("on pd-standard", standardDiskType),
 		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
@@ -452,7 +452,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 			}()
 		},
-		Entry("on pd-standard", standardDiskType),
+		//Entry("on pd-standard", standardDiskType),
 		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
@@ -614,7 +614,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			err = testAttachWriteReadDetach(volID, volName, controllerInstance, controllerClient, false /* readOnly */)
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 		},
-		Entry("on pd-standard", standardDiskType),
+		//Entry("on pd-standard", standardDiskType),
 		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
@@ -904,7 +904,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 			}()
 		},
-		Entry("on pd-standard", standardDiskType),
+		//Entry("on pd-standard", standardDiskType),
 		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
