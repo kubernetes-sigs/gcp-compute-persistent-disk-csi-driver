@@ -4,7 +4,7 @@ metadata:
   name: csi-gcepd
 provisioner: pd.csi.storage.gke.io
 parameters:
-  type: pd-extreme
+  type: hyperdisk-extreme
   provisioned-iops-on-create: '10000'
   # Add labels for testing.
   labels: key1=value1,key2=value2

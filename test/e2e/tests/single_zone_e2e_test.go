@@ -44,15 +44,15 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb              int64 = 5
+	defaultSizeGb              int64 = 64
 	defaultRepdSizeGb          int64 = 200
 	defaultMwSizeGb            int64 = 200
 	defaultVolumeLimit         int64 = 127
 	readyState                       = "READY"
 	standardDiskType                 = "pd-standard"
-	extremeDiskType                  = "pd-extreme"
-	provisionedIOPSOnCreate          = "100000"
-	provisionedIOPSOnCreateInt       = int64(100000)
+	extremeDiskType                  = "hyperdisk-extreme"
+	provisionedIOPSOnCreate          = "76800"
+	provisionedIOPSOnCreateInt       = int64(76800)
 
 	defaultEpsilon = 500000000 // 500M
 )
@@ -290,7 +290,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
@@ -328,7 +328,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "ControllerPublishVolume failed")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
@@ -408,7 +408,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	DescribeTable("Should create and delete disk with labels",
@@ -453,7 +453,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	It("Should create and delete snapshot for the volume with default zone", func() {
@@ -615,7 +615,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	It("Should create disks, attach them places, and verify List returns correct results", func() {
@@ -905,7 +905,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-extreme", extremeDiskType),
 	)
 
 	// Use the region of the test location.

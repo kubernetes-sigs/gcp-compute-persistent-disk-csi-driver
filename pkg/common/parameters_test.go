@@ -75,11 +75,11 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
-			name:       "values from parameters, checking pd-extreme",
-			parameters: map[string]string{ParameterKeyType: "pd-extreme", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyProvisionedIOPSOnCreate: "10k"},
+			name:       "values from parameters, checking hyperdisk-extreme",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-extreme", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyProvisionedIOPSOnCreate: "10k"},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
-				DiskType:             "pd-extreme",
+				DiskType:             "hyperdisk-extreme",
 				ReplicationType:      "none",
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 map[string]string{},
