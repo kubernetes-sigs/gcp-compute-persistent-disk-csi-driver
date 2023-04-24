@@ -24,11 +24,11 @@ RUN CGO_ENABLED=0 go install -ldflags "-s -w -extldflags '-static'" github.com/g
 RUN GOARCH="$(echo $TARGETPLATFORM | cut -f2 -d '/')" GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION GCE_PD_CSI_DEBUG=1 make gce-pd-driver
 
 # MAD HACKS: Build a version first so we can take the scsi_id bin and put it somewhere else in our real build
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.5.0 as mad-hack
+FROM registry.k8s.io/build-image/debian-base-amd64:buster-v1.5.0 as mad-hack
 RUN clean-install udev
 
 # Start from Kubernetes Debian base
-FROM k8s.gcr.io/build-image/debian-base-amd64:buster-v1.5.0
+FROM registry.k8s.io/build-image/debian-base-amd64:buster-v1.5.0
 
 # Copy source code too to correlate the binary and the breakpoints
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
