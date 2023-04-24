@@ -359,8 +359,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -677,8 +676,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -1071,6 +1069,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
+		// Validate the the clone disk zone matches the source disk zone.
+		_, srcKey, err := common.VolumeIDToKey(srcVolID)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
+		Expect(zoneFromURL(cloudDisk.Zone)).To(Equal(srcKey.Zone))
 		defer func() {
 			// Delete Disk
 			controllerClient.DeleteVolume(volID)
@@ -1122,9 +1124,77 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		replicaZonesCompatible := false
+		_, srcKey, err := common.VolumeIDToKey(srcVolID)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
+			if actualZone == srcKey.Zone {
+				replicaZonesCompatible = true
+			}
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		// Validate that one of the replicaZones of the clone matches the zone of the source disk.
+		Expect(replicaZonesCompatible).To(Equal(true))
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should successfully create RePD from a RePD VolumeContentSource", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Source Disk
+		srcVolName := testNamePrefix + string(uuid.NewUUID())
+		srcVolID, err := controllerClient.CreateVolume(srcVolName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil, nil)
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil,
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: srcVolID,
+					},
+				},
+			})
+
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		// Validate that the replicaZones of the clone match the replicaZones of the source disk.
+		srcCloudDisk, err := computeService.RegionDisks.Get(p, region, srcVolName).Do()
+		Expect(err).To(BeNil(), "Could not get source disk from cloud directly")
+		Expect(srcCloudDisk.ReplicaZones).To(Equal(cloudDisk.ReplicaZones))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -1261,6 +1331,16 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 func cleanSelfLink(selfLink string) string {
 	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
 	return r.ReplaceAllString(selfLink, "")
+}
+
+// Returns the zone from the URL with the format https://compute.googleapis.com/compute/v1/projects/{project}/zones/{zone}.
+// Returns the empty string if the zone cannot be abstracted from the URL.
+func zoneFromURL(url string) string {
+	tokens := strings.Split(url, "/")
+	if len(tokens) == 0 {
+		return ""
+	}
+	return tokens[len(tokens)-1]
 }
 
 func setupKeyRing(ctx context.Context, parentName string, keyRingId string) (*kmspb.CryptoKey, []string) {

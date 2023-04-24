@@ -17,6 +17,8 @@ limitations under the License.
 package mountmanager
 
 import (
+	"time"
+
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
@@ -58,7 +60,7 @@ type CSIProxyMounter interface {
 	GetDiskTotalBytes(devicePath string) (int64, error)
 }
 
-func NewSafeMounter() (*mount.SafeFormatAndMount, error) {
+func NewSafeMounter(int, time.Duration) (*mount.SafeFormatAndMount, error) {
 	csiProxyMounterV1, err := NewCSIProxyMounterV1()
 	if err == nil {
 		klog.V(4).Infof("using CSIProxyMounterV1, %s", csiProxyMounterV1.GetAPIVersions())

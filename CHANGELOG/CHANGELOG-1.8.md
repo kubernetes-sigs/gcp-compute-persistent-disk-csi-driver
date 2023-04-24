@@ -1,3 +1,14 @@
+# v1.8.4 - Changelog since v1.8.2
+
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- go version updates ([#1158](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1158), [@saikat-royc](https://github.com/saikat-royc))
+- Fix for CVEs - update base image ([#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Fix missing shared library libedit.so.2 caused from updating base image in [#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162) ([#1177](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1177), [@sunnylovestiramisu ](https://github.com/sunnylovestiramisu))
+
 # v1.8.2 - Changelog since v1.8.1
 
 

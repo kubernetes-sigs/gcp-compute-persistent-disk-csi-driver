@@ -331,3 +331,17 @@ func (mounter *CSIProxyMounterV1Beta) MountSensitiveWithoutSystemd(source string
 func (mounter *CSIProxyMounterV1Beta) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
 	return errors.New("MountSensitiveWithoutSystemd is not implemented")
 }
+
+// CanSafelySkipMountPointCheck always returns false on Windows.
+func (mounter *CSIProxyMounterV1Beta) CanSafelySkipMountPointCheck() bool {
+	return false
+}
+
+// IsMountPoint returns true if a directory is a mountpoint.
+func (mounter *CSIProxyMounterV1Beta) IsMountPoint(file string) (bool, error) {
+	isNotMnt, err := mounter.IsLikelyNotMountPoint(file)
+	if err != nil {
+		return false, err
+	}
+	return !isNotMnt, nil
+}

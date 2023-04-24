@@ -1,3 +1,33 @@
+# v1.9.3 - Changelog since v1.9.2
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fix missing libedit.so.2 error ([#1177](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1177), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Update go version to 1.20.3 for k/k 1.27 ([#1180](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1180), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+# v1.9.2 - Changelog since v1.9.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Revert feature to add PV, PVC and namespace name as labels to the PD [#1090](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1090) ([#1174](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1174), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+
+# v1.9.1 - Changelog since v1.9.0
+
+## Changes by Kind
+
+### Feature
+
+- go version updates ([#1158](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1158), [@saikat-royc](https://github.com/saikat-royc))
+
+- Fix for CVEs - update base image ([#1162](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1162), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+- Fix multiarch build ([#1165](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1165), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
 # v1.9.0 - Changelog since v1.8.2
 
 ## Changes by Kind
