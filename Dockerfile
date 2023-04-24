@@ -87,6 +87,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre.so.3 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libz.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libbsd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libinih.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \         
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libudev.so.1 \
@@ -98,6 +99,7 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.67 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.67 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkmod.so.2 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre2-8.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
 
