@@ -1,3 +1,11 @@
+# v1.9.4 - Changelog since v1.9.3
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add missing libraries, libbsd and libmd, that are dependencies for XFS volume expansion. ([#1204](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1204), [@nberlee](https://github.com/nberlee))
+
 # v1.9.3 - Changelog since v1.9.2
 
 ## Changes by Kind
