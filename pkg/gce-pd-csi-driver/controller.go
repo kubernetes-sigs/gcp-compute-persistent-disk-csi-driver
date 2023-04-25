@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -449,6 +450,15 @@ func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx con
 	return project, volKey, nil
 }
 
+func parseMachineFamily(machineTypeUrl string) string {
+	machineFamily, parseErr := common.ParseMachineFamily(machineTypeUrl)
+	if parseErr != nil {
+		// Parse errors represent an unexpected API change with instance.MachineType; log a warning.
+		klog.Warningf("ParseMachineFamily(%v): %v", machineTypeUrl, parseErr)
+	}
+	return machineFamily
+}
+
 func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	project, volKey, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
 
@@ -525,6 +535,13 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	}
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
+		var udErr *gce.UnsupportedDiskError
+		if errors.As(err, &udErr) {
+			// If we encountered an UnsupportedDiskError, rewrite the error message to be more user friendly.
+			// The error message from GCE is phrased around disk create on VM creation, not runtime attach.
+			machineFamily := parseMachineFamily(instance.MachineType)
+			return nil, status.Errorf(codes.Internal, "'%s' is not a compatible disk type with the machine family '%s', please review the GKE online documentation for available persistent disk options", udErr.DiskType, machineFamily)
+		}
 		return nil, status.Errorf(codes.Internal, "unknown Attach error: %v", err.Error())
 	}
 
