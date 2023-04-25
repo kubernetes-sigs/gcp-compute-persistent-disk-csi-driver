@@ -40,7 +40,7 @@ const (
 	diskKind                       = "compute#disk"
 	cryptoKeyVerDelimiter          = "/cryptoKeyVersions"
 	// Example message: "[pd-standard] features are not compatible for creating instance"
-	pdDiskTypeUnsupportedPattern   = `\[([a-z-]+)\] features are not compatible for creating instance`
+	pdDiskTypeUnsupportedPattern = `\[([a-z-]+)\] features are not compatible for creating instance`
 )
 
 var hyperdiskTypes = []string{"hyperdisk-extreme", "hyperdisk-throughput"}
