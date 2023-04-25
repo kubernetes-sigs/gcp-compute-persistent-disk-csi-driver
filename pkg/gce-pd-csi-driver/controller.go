@@ -548,7 +548,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 			// If we encountered an UnsupportedDiskError, rewrite the error message to be more user friendly.
 			// The error message from GCE is phrased around disk create on VM creation, not runtime attach.
 			machineFamily := parseMachineFamily(instance.MachineType)
-			return nil, status.Errorf(codes.Internal, "'%s' is not a compatible disk type with the machine family '%s', please review the GKE online documentation for available persistent disk options", udErr.DiskType, machineFamily)
+			return nil, status.Errorf(codes.InvalidArgument, "'%s' is not a compatible disk type with the machine family '%s', please review the GCP online documentation for available persistent disk options", udErr.DiskType, machineFamily)
 		}
 		return nil, status.Errorf(codes.Internal, "unknown Attach error: %v", err.Error())
 	}
