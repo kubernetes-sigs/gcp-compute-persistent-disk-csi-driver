@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,7 +39,11 @@ const (
 	waitForImageCreationTimeOut    = 5 * time.Minute
 	diskKind                       = "compute#disk"
 	cryptoKeyVerDelimiter          = "/cryptoKeyVersions"
+	// Example message: "[pd-standard] features are not compatible for creating instance"
+	pdDiskTypeUnsupportedPattern   = `\[([a-z-]+)\] features are not compatible for creating instance`
 )
+
+var pdDiskTypeUnsupportedRegex = regexp.MustCompile(pdDiskTypeUnsupportedPattern)
 
 type GCEAPIVersion string
 
@@ -66,6 +71,15 @@ var WaitForOpBackoff = wait.Backoff{
 	Jitter:   0.0,
 	Steps:    100,
 	Cap:      0}
+
+// Custom error type to propagate error messages up to clients.
+type UnsupportedDiskError struct {
+	DiskType string
+}
+
+func (udErr *UnsupportedDiskError) Error() string {
+	return ""
+}
 
 type GCECompute interface {
 	// Metadata information
@@ -830,12 +844,23 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 	})
 }
 
+func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
+	if opErr.Code == "UNSUPPORTED_OPERATION" {
+		if diskType := pdDiskTypeUnsupportedRegex.FindStringSubmatch(opErr.Message); diskType != nil {
+			return &UnsupportedDiskError{
+				DiskType: diskType[1],
+			}
+		}
+	}
+	return fmt.Errorf("operation %v failed (%v): %v", name, opErr.Code, opErr.Message)
+}
+
 func opIsDone(op *computev1.Operation) (bool, error) {
 	if op == nil || op.Status != operationStatusDone {
 		return false, nil
 	}
 	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
-		return true, fmt.Errorf("operation %v failed (%v): %v", op.Name, op.Error.Errors[0].Code, op.Error.Errors[0].Message)
+		return true, wrapOpErr(op.Name, op.Error.Errors[0])
 	}
 	return true, nil
 }
