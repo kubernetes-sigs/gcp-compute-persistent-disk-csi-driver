@@ -787,3 +787,57 @@ func TestConvertMiBStringToInt64(t *testing.T) {
 		})
 	}
 }
+
+func TestParseMachineFamily(t *testing.T) {
+	tests := []struct {
+		desc                  string
+		inputMachineTypeUrl   string
+		expectedMachineFamily string
+		expectError           bool
+	}{
+		{
+			desc:                  "full URL machine family",
+			inputMachineTypeUrl:   "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/machineTypes/c3-highcpu-4",
+			expectedMachineFamily: "c3",
+		},
+		{
+			desc:                  "partial URL machine family",
+			inputMachineTypeUrl:   "zones/us-central1-c/machineTypes/n2-standard-4",
+			expectedMachineFamily: "n2",
+		},
+		{
+			desc:                  "custom partial URL machine family",
+			inputMachineTypeUrl:   "zones/us-central1-c/machineTypes/e2-custom-2-4096",
+			expectedMachineFamily: "e2",
+		},
+		{
+			desc:                "incorrect URL",
+			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/psch-gke-dev/zones/us-central1-c",
+			expectError:         true,
+		},
+		{
+			desc:                "incorrect partial URL",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/",
+			expectError:         true,
+		},
+		{
+			desc:                "missing zone",
+			inputMachineTypeUrl: "zones//machineTypes/n2-standard-4",
+			expectError:         true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualMachineFamily, err := ParseMachineFamily(tc.inputMachineTypeUrl)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v parsing machine family %s; expect no error", err, tc.inputMachineTypeUrl)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error parsing machine family %s; expect an error", tc.inputMachineTypeUrl)
+			}
+			if err == nil && actualMachineFamily != tc.expectedMachineFamily {
+				t.Errorf("Got %s parsing machine family; expect %s", actualMachineFamily, tc.expectedMachineFamily)
+			}
+		})
+	}
+}
