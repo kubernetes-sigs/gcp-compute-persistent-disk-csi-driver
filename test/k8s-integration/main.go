@@ -651,6 +651,9 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|provisioning.should.mount.multiple.PV.pointing.to.the.same.storage.on.the.same.node"
 	}
 
+	// Skip mount options test until we fix the invalid mount options for xfs.
+	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
+
 	return skipString
 }
 
