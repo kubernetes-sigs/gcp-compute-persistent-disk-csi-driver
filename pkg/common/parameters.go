@@ -141,6 +141,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			var pvc_name = strings.ToLower(v)
 			if len(pvc_name) > 63 {
 				pvc_name = pvc_name[:63]
+				klog.V(4).Info("The disk label for PVC-name is truncated to match label restriction (<64 characters allowed)")
 			}
 			_, err := ConvertLabelsStringToMap(labelKeyCreatedForClaimNamespace + "=" + pvc_name)
 			if err != nil {
@@ -164,6 +165,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			var pv_name = strings.ToLower(v)
 			if len(pv_name) > 63 {
 				pv_name = pv_name[:63]
+				klog.V(4).Info("The disk label for PV-name is truncated to match label restriction (<64 characters allowed)")
 			}
 			_, err := ConvertLabelsStringToMap(labelKeyCreatedForVolumeName + "=" + pv_name)
 			if err != nil {
