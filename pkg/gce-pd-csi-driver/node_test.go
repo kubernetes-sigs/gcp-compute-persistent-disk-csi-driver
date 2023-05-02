@@ -427,6 +427,18 @@ func TestNodeStageVolume(t *testing.T) {
 			expResize:   true,
 		},
 		{
+			name: "Valid request, no resize bc readonly capability",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			deviceSize:  5,
+			blockExtSize:     1,
+			readonlyBit: "0",
+			expResize:   false,
+		},
+		{
 			name: "Invalid request (Bad Access Mode)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
