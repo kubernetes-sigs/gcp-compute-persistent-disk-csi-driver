@@ -17,12 +17,16 @@ package deviceutils
 import "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 
 type fakeDeviceUtils struct {
+	skipResize bool
 }
 
-var _ DeviceUtils = &fakeDeviceUtils{}
+var _ DeviceUtils = &fakeDeviceUtils{
+}
 
-func NewFakeDeviceUtils() *fakeDeviceUtils {
-	return &fakeDeviceUtils{}
+func NewFakeDeviceUtils(skipResize bool) *fakeDeviceUtils {
+	return &fakeDeviceUtils{
+		skipResize: skipResize,
+	}
 }
 
 // Returns list of all /dev/disk/by-id/* paths for given PD.
@@ -41,6 +45,9 @@ func (_ *fakeDeviceUtils) DisableDevice(devicePath string) error {
 	return nil
 }
 
-func (_ *fakeDeviceUtils) Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error) {
-	return false, nil
+func (du *fakeDeviceUtils) Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error) {
+	if du.skipResize {
+		return false, nil
+	}
+	return resizer.Resize(devicePath, deviceMountPath)
 }
