@@ -20,8 +20,7 @@ type fakeDeviceUtils struct {
 	skipResize bool
 }
 
-var _ DeviceUtils = &fakeDeviceUtils{
-}
+var _ DeviceUtils = &fakeDeviceUtils{}
 
 func NewFakeDeviceUtils(skipResize bool) *fakeDeviceUtils {
 	return &fakeDeviceUtils{

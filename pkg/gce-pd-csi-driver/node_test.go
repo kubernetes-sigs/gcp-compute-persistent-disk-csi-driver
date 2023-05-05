@@ -382,13 +382,13 @@ func TestNodeStageVolume(t *testing.T) {
 	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
 	testCases := []struct {
-		name          string
-		req           *csi.NodeStageVolumeRequest
-		deviceSize    int
-		blockExtSize       int
-		readonlyBit   string
-		expResize     bool
-		expErrCode    codes.Code
+		name         string
+		req          *csi.NodeStageVolumeRequest
+		deviceSize   int
+		blockExtSize int
+		readonlyBit  string
+		expResize    bool
+		expErrCode   codes.Code
 	}{
 		{
 			name: "Valid request, no resize bc size",
@@ -397,10 +397,10 @@ func TestNodeStageVolume(t *testing.T) {
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
-			deviceSize:  1,
-			blockExtSize:     1,
-			readonlyBit: "0",
-			expResize:   false,
+			deviceSize:   1,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    false,
 		},
 		{
 			name: "Valid request, no resize bc readonly",
@@ -409,10 +409,10 @@ func TestNodeStageVolume(t *testing.T) {
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
-			deviceSize:  1,
-			blockExtSize:     1,
-			readonlyBit: "1",
-			expResize:   false,
+			deviceSize:   1,
+			blockExtSize: 1,
+			readonlyBit:  "1",
+			expResize:    false,
 		},
 		{
 			name: "Valid request, resize bc size",
@@ -421,10 +421,10 @@ func TestNodeStageVolume(t *testing.T) {
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
-			deviceSize:  5,
-			blockExtSize:     1,
-			readonlyBit: "0",
-			expResize:   true,
+			deviceSize:   5,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    true,
 		},
 		{
 			name: "Valid request, no resize bc readonly capability",
@@ -433,10 +433,10 @@ func TestNodeStageVolume(t *testing.T) {
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
 			},
-			deviceSize:  5,
-			blockExtSize:     1,
-			readonlyBit: "0",
-			expResize:   false,
+			deviceSize:   5,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    false,
 		},
 		{
 			name: "Invalid request (Bad Access Mode)",
