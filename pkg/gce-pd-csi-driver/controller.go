@@ -41,6 +41,9 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 )
 
+const hyperdiskDriverName = "hyperdisk.csi.storage.gke.io"
+const pdcsiDriverName = "pd.csi.storage.gke.io"
+
 type GCEControllerServer struct {
 	Driver        *GCEDriver
 	CloudProvider gce.GCECompute
@@ -600,6 +603,14 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	}
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
+		// Emit metric for error
+		if strings.Contains(diskToPublish.GetPDType(), "hyperdisk") {
+			gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
+
+		if strings.Contains(diskToPublish.GetPDType(), "pd") {
+			gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
 		var udErr *gce.UnsupportedDiskError
 		if errors.As(err, &udErr) {
 			// If we encountered an UnsupportedDiskError, rewrite the error message to be more user friendly.
