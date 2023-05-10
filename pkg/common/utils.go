@@ -277,14 +277,14 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToMiB(quantity)
 }
 
-// ParseMachineTypeFromUrl returns an extracted machineType from a URL, or empty if not found.
+// ParseMachineType returns an extracted machineType from a URL, or empty if not found.
 // machineTypeUrl: Full or partial URL of the machine type resource, in the format:
 //
 //	zones/zone/machineTypes/machine-type
-func ParseMachineFamily(machineTypeUrl string) (string, error) {
+func ParseMachineType(machineTypeUrl string) (string, error) {
 	machineType := machineTypeRegex.FindStringSubmatch(machineTypeUrl)
 	if machineType == nil {
-		return "", fmt.Errorf("failed to parse machineTypeUrl. expected suffix zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
+		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
 	}
-	return strings.Split(machineType[1], "-")[0], nil
+	return machineType[1], nil
 }
