@@ -25,7 +25,7 @@ import (
 	"regexp"
 	"strings"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 /*
@@ -78,7 +78,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 	for _, dir := range sourceDirectories {
 		files, err := ioutil.ReadDir(dir)
 		if err != nil {
-			klog.Errorf("Failed to read juint directory %s: %v", dir, err)
+			klog.Errorf("Failed to read juint directory %s: %w", dir, err)
 			mergeErrors = append(mergeErrors, err.Error())
 			continue
 		}

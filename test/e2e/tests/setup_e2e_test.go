@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/gomega"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	compute "google.golang.org/api/compute/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -96,29 +96,29 @@ var _ = BeforeSuite(func() {
 
 			i, err := remote.SetupInstance(*project, *architecture, curZone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
 			if err != nil {
-				klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
+				klog.Fatalf("Failed to setup instance %v: %w", nodeID, err)
 			}
 
 			err = testutils.MkdirAll(i, "/lib/udev_containerized")
 			if err != nil {
-				klog.Fatalf("Could not make scsi_id containerized directory: %v", err)
+				klog.Fatalf("Could not make scsi_id containerized directory: %w", err)
 			}
 
 			err = testutils.CopyFile(i, "/lib/udev/scsi_id", "/lib/udev_containerized/scsi_id")
 			if err != nil {
-				klog.Fatalf("could not copy scsi_id to containerized directory: %v", err)
+				klog.Fatalf("could not copy scsi_id to containerized directory: %w", err)
 			}
 
 			err = testutils.CopyFile(i, "/lib/udev/google_nvme_id", "/lib/udev_containerized/google_nvme_id")
 			if err != nil {
-				klog.Fatalf("could not copy google_nvme_id to containerized directory: %v", err)
+				klog.Fatalf("could not copy google_nvme_id to containerized directory: %w", err)
 			}
 
 			klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 			// Create new driver and client
 			testContext, err := testutils.GCEClientAndDriverSetup(i)
 			if err != nil {
-				klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+				klog.Fatalf("Failed to set up Test Context for instance %v: %w", i.GetName(), err)
 			}
 			tcc <- testContext
 		}(zone)
