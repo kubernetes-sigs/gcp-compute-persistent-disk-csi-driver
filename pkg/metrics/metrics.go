@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,7 +31,9 @@ import (
 const (
 	// envGKEPDCSIVersion is an environment variable set in the PDCSI controller manifest
 	// with the current version of the GKE component.
-	envGKEPDCSIVersion = "GKE_PDCSI_VERSION"
+	envGKEPDCSIVersion  = "GKE_PDCSI_VERSION"
+	hyperdiskDriverName = "hyperdisk.csi.storage.gke.io"
+	pdcsiDriverName     = "pd.csi.storage.gke.io"
 )
 
 var (
@@ -86,11 +89,18 @@ func (mm *MetricsManager) recordComponentVersionMetric() error {
 	return nil
 }
 
-func (mm *MetricsManager) RecordOperationErrorMetrics(driverName string,
+func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
 	diskType string) {
-	pdcsiOperationErrorsMetric.WithLabelValues(driverName, operationName, getErrorCode(operationErr), diskType).Set(1.0)
+	var driverName string
+	if strings.Contains(diskType, "hyperdisk") {
+		driverName = hyperdiskDriverName
+	}
+	if strings.Contains(diskType, "pd") {
+		driverName = pdcsiDriverName
+	}
+	pdcsiOperationErrorsMetric.WithLabelValues(driverName, "/csi.v1.Controller/"+operationName, getErrorCode(operationErr), diskType).Set(1.0)
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
