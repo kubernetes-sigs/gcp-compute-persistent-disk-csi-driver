@@ -91,10 +91,14 @@ func handle() {
 	}
 	klog.V(2).Infof("Driver vendor version %v", version)
 
-	if *runControllerService && *httpEndpoint != "" && metrics.IsGKEComponentVersionAvailable() {
+	if *runControllerService && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
-		mm.EmitGKEComponentVersion()
+		mm.RegisterHyperdiskMetric()
+
+		if metrics.IsGKEComponentVersionAvailable() {
+			mm.EmitGKEComponentVersion()
+		}
 	}
 
 	if len(*extraVolumeLabelsStr) > 0 && !*runControllerService {
