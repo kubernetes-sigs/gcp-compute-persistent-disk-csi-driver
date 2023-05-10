@@ -37,11 +37,16 @@ import (
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 )
+
+const hyperdiskDriverName = "hyperdisk.csi.storage.gke.io"
+const pdcsiDriverName = "pd.csi.storage.gke.io"
 
 type GCEControllerServer struct {
 	Driver        *GCEDriver
 	CloudProvider gce.GCECompute
+	Metrics       metrics.MetricsManager
 
 	disks []*compute.Disk
 	seen  map[string]int
@@ -390,6 +395,14 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter)
 		if err != nil {
+			// Emit metric for error
+			if strings.Contains(existingDisk.GetPDType(), "hyperdisk") {
+				gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/CreateVolume", err, existingDisk.GetPDType())
+			}
+
+			if strings.Contains(existingDisk.GetPDType(), "pd") {
+				gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/CreateVolume", err, existingDisk.GetPDType())
+			}
 			return nil, LoggedError("CreateVolume failed to create single zonal disk "+name+": ", err)
 		}
 	case replicationTypeRegionalPD:
@@ -398,6 +411,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter)
 		if err != nil {
+			// Emit metric for error
+			if strings.Contains(params.DiskType, "pd") {
+				gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/CreateVolume", err, existingDisk.GetPDType())
+			}
 			return nil, LoggedError("CreateVolume failed to create regional disk "+name+": ", err)
 		}
 	default:
@@ -537,8 +554,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID)
 	}
 	defer gceCS.volumeLocks.Release(lockingVolumeID)
-
-	_, err = gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
+	diskToPublish, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error())
@@ -582,11 +598,27 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	}
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
+		// Emit metric for error
+		if strings.Contains(diskToPublish.GetPDType(), "hyperdisk") {
+			gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
+
+		if strings.Contains(diskToPublish.GetPDType(), "pd") {
+			gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
 		return nil, status.Errorf(codes.Internal, "unknown Attach error: %v", err.Error())
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
+		// Emit metric for error
+		if strings.Contains(diskToPublish.GetPDType(), "hyperdisk") {
+			gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
+
+		if strings.Contains(diskToPublish.GetPDType(), "pd") {
+			gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/ControllerPublishVolume", err, diskToPublish.GetPDType())
+		}
 		return nil, status.Errorf(codes.Internal, "unknown WaitForAttach error: %v", err.Error())
 	}
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
@@ -687,9 +719,17 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v. Already not attached.", volKey, nodeID)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
-
+	diskToUnpublish, _ := gceCS.CloudProvider.GetDisk(ctx, gceCS.CloudProvider.GetDefaultProject(), volKey, gce.GCEAPIVersionV1)
 	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 	if err != nil {
+		// Emit metric for error
+		if strings.Contains(diskToUnpublish.GetPDType(), "hyperdisk") {
+			gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/ControllerUnpublishVolume", err, diskToUnpublish.GetPDType())
+		}
+
+		if strings.Contains(diskToUnpublish.GetPDType(), "pd") {
+			gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/ControllerUnpublishVolume", err, diskToUnpublish.GetPDType())
+		}
 		return nil, LoggedError("unknown detach error: ", err)
 	}
 
@@ -907,7 +947,7 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid volume key: %v", volKey)
 	}
-
+	sourceDisk, _ := gceCS.CloudProvider.GetDisk(ctx, gceCS.CloudProvider.GetDefaultProject(), volKey, gce.GCEAPIVersionV1)
 	// Check if PD snapshot already exists
 	var snapshot *compute.Snapshot
 	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
@@ -920,6 +960,14 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 		if err != nil {
 			if gce.IsGCEError(err, "notFound") {
 				return nil, status.Errorf(codes.NotFound, "Could not find volume with ID %v: %v", volKey.String(), err.Error())
+			}
+			// Emit metric for error
+			if strings.Contains(sourceDisk.GetPDType(), "hyperdisk") {
+				gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/CreateSnapshot", err, sourceDisk.GetPDType())
+			}
+
+			if strings.Contains(sourceDisk.GetPDType(), "pd") {
+				gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/CreateSnapshot", err, sourceDisk.GetPDType())
 			}
 			return nil, LoggedError("Unknown create snapshot error: ", err)
 		}
@@ -1186,9 +1234,17 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 		}
 		return nil, LoggedError("ControllerExpandVolume error repairing underspecified volume key: ", err)
 	}
-
+	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
 	if err != nil {
+		// Emit metric for error
+		if strings.Contains(sourceDisk.GetPDType(), "hyperdisk") {
+			gceCS.Metrics.RecordOperationErrorMetrics(hyperdiskDriverName, "/csi.v1.Controller/ControllerExpandVolume", err, sourceDisk.GetPDType())
+		}
+
+		if strings.Contains(sourceDisk.GetPDType(), "pd") {
+			gceCS.Metrics.RecordOperationErrorMetrics(pdcsiDriverName, "/csi.v1.Controller/ControllerExpandVolume", err, sourceDisk.GetPDType())
+		}
 		return nil, LoggedError("ControllerExpandVolume failed to resize disk: ", err)
 	}
 
