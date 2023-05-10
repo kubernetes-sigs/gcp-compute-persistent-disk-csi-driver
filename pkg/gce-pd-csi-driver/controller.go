@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -163,19 +165,19 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	capBytes, err := getRequestCapacity(capacityRange)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume Request Capacity is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume Request Capacity is invalid: %v", err.Error())
 	}
 
 	err = validateVolumeCapabilities(volumeCapabilities)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapabilities is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "VolumeCapabilities is invalid: %v", err.Error())
 	}
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
 	// Determine multiWriter
 	gceAPIVersion := gce.GCEAPIVersionV1
@@ -190,30 +192,30 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	case replicationTypeNone:
 		zones, err = pickZones(ctx, gceCS, req.GetAccessibilityRequirements(), 1)
 		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to pick zones for disk: %v", err))
+			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to pick zones for disk: %v", err.Error())
 		}
 		if len(zones) != 1 {
-			return nil, status.Errorf(codes.Internal, fmt.Sprintf("Failed to pick exactly 1 zone for zonal disk, got %v instead", len(zones)))
+			return nil, status.Errorf(codes.Internal, "Failed to pick exactly 1 zone for zonal disk, got %v instead", len(zones))
 		}
 		volKey = meta.ZonalKey(name, zones[0])
 
 	case replicationTypeRegionalPD:
 		zones, err = pickZones(ctx, gceCS, req.GetAccessibilityRequirements(), 2)
 		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to pick zones for disk: %v", err))
+			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to pick zones for disk: %v", err.Error())
 		}
 		region, err := common.GetRegionFromZones(zones)
 		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume failed to get region from zones: %v", err))
+			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to get region from zones: %v", err.Error())
 		}
 		volKey = meta.RegionalKey(name, region)
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", params.ReplicationType))
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume replication type '%s' is not supported", params.ReplicationType)
 	}
 
 	volumeID, err := common.KeyToVolumeID(volKey, gceCS.CloudProvider.GetDefaultProject())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to convert volume key to volume ID: %v", err)
+		return nil, LoggedError("Failed to convert volume key to volume ID: ", err)
 	}
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
@@ -224,7 +226,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, gceCS.CloudProvider.GetDefaultProject(), volKey, gceAPIVersion)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume unknown get disk error when validating: %v", err))
+			return nil, LoggedError("CreateVolume unknown get disk error when validating: ", err)
 		}
 	}
 	if err == nil {
@@ -234,15 +236,15 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			int64(capacityRange.GetLimitBytes()),
 			multiWriter)
 		if err != nil {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("CreateVolume disk already exists with same name and is incompatible: %v", err))
+			return nil, status.Errorf(codes.AlreadyExists, "CreateVolume disk already exists with same name and is incompatible: %v", err.Error())
 		}
 
 		ready, err := isDiskReady(existingDisk)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v had error checking ready status: %v", volKey, err))
+			return nil, LoggedError("CreateVolume disk "+volKey.String()+" had error checking ready status: ", err)
 		}
 		if !ready {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume existing disk %v is not ready", volKey))
+			return nil, status.Errorf(codes.Internal, "CreateVolume existing disk %v is not ready", volKey)
 		}
 
 		// If there is no validation error, immediately return success
@@ -260,7 +262,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			// Verify that snapshot exists
 			sl, err := gceCS.getSnapshotByID(ctx, snapshotID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "CreateVolume failed to get snapshot %s: %v", snapshotID, err)
+				return nil, LoggedError("CreateVolume failed to get snapshot "+snapshotID+": ", err)
 			} else if len(sl.Entries) == 0 {
 				return nil, status.Errorf(codes.NotFound, "CreateVolume source snapshot %s does not exist", snapshotID)
 			}
@@ -271,7 +273,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			// Verify that the source VolumeID is in the correct format.
 			project, sourceVolKey, err := common.VolumeIDToKey(volumeContentSourceVolumeID)
 			if err != nil {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume source volume id is invalid: %v", err))
+				return nil, status.Errorf(codes.InvalidArgument, "CreateVolume source volume id is invalid: %v", err.Error())
 			}
 
 			// Verify that the volume in VolumeContentSource exists.
@@ -280,7 +282,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 				if gce.IsGCEError(err, "notFound") {
 					return nil, status.Errorf(codes.NotFound, "CreateVolume source volume %s does not exist", volumeContentSourceVolumeID)
 				} else {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume unknown get disk error when validating: %v", err))
+					return nil, LoggedError("CreateVolume unknown get disk error when validating: ", err)
 				}
 			}
 
@@ -318,10 +320,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			// Verify the source disk is ready.
 			ready, err := isDiskReady(diskFromSourceVolume)
 			if err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk from source volume %v had error checking ready status: %v", sourceVolKey, err))
+				return nil, LoggedError("CreateVolume disk from source volume "+sourceVolKey.String()+"  had error checking ready status: ", err)
 			}
 			if !ready {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk from source volume %v is not ready", sourceVolKey))
+				return nil, status.Errorf(codes.Internal, "CreateVolume disk from source volume %v is not ready", sourceVolKey)
 			}
 		}
 	} else { // if VolumeContentSource is nil, validate access mode is not read only
@@ -335,30 +337,30 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	switch params.ReplicationType {
 	case replicationTypeNone:
 		if len(zones) != 1 {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones))
+			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones)
 		}
 		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create single zonal disk %#v: %v", name, err))
+			return nil, LoggedError("CreateVolume failed to create single zonal disk "+name+": ", err)
 		}
 	case replicationTypeRegionalPD:
 		if len(zones) != 2 {
-			return nil, status.Errorf(codes.Internal, fmt.Sprintf("CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones))
+			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones)
 		}
 		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume failed to create regional disk %#v: %v", name, err))
+			return nil, LoggedError("CreateVolume failed to create regional disk "+name+": ", err)
 		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateVolume replication type '%s' is not supported", params.ReplicationType))
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume replication type '%s' is not supported", params.ReplicationType)
 	}
 
 	ready, err := isDiskReady(disk)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v had error checking ready status: %v", volKey, err))
+		return nil, status.Errorf(codes.Internal, "CreateVolume disk %v had error checking ready status: %v", volKey, err.Error())
 	}
 	if !ready {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateVolume disk %v is not ready", volKey))
+		return nil, status.Errorf(codes.Internal, "CreateVolume disk %v is not ready", volKey)
 	}
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
@@ -377,17 +379,17 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 	if err != nil {
 		// Cannot find volume associated with this ID because VolumeID is not in
 		// correct format, this is a success according to the Spec
-		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %w", volumeID, err)
+		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %v", volumeID, err.Error())
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %w", volumeID, err)
+			klog.Warningf("DeleteVolume treating volume as deleted because cannot find volume %v: %v", volumeID, err.Error())
 			return &csi.DeleteVolumeResponse{}, nil
 		}
-		return nil, status.Errorf(codes.Internal, "DeleteVolume error repairing underspecified volume key: %v", err)
+		return nil, LoggedError("DeleteVolume error repairing underspecified volume key: ", err)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -397,7 +399,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 	err = gceCS.CloudProvider.DeleteDisk(ctx, project, volKey)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete disk error: %v", err))
+		return nil, LoggedError("unknown Delete disk error: ", err)
 	}
 
 	klog.V(4).Infof("DeleteVolume succeeded for disk %v", volKey)
@@ -418,7 +420,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	resp, err := gceCS.executeControllerPublishVolume(ctx, req)
 	if err != nil {
-		klog.Infof("For node %s adding backoff due to error for volume %s: %w", req.NodeId, req.VolumeId, err)
+		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err.Error())
 		gceCS.errorBackoff.next(backoffId)
 	} else {
 		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
@@ -444,12 +446,12 @@ func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx con
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerPublishVolume volume ID is invalid: %v", err))
+		return "", nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume volume ID is invalid: %v", err.Error())
 	}
 
 	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 	if err = validateVolumeCapability(volumeCapability); err != nil {
-		return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("VolumeCapabilities is invalid: %v", err))
+		return "", nil, status.Errorf(codes.InvalidArgument, "VolumeCapabilities is invalid: %v", err.Error())
 	}
 
 	return project, volKey, nil
@@ -474,9 +476,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err)
+			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "ControllerPublishVolume error repairing underspecified volume key: %v", err)
+		return nil, LoggedError("ControllerPublishVolume error repairing underspecified volume key: ", err)
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
@@ -490,20 +492,20 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	_, err = gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.String(), err))
+			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
+		return nil, status.Errorf(codes.Internal, "Unknown get disk error: %v", err.Error())
 	}
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("could not split nodeID: %v", err))
+		return nil, status.Errorf(codes.NotFound, "could not split nodeID: %v", err.Error())
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find instance %v: %v", nodeID, err))
+			return nil, status.Errorf(codes.NotFound, "Could not find instance %v: %v", nodeID, err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get instance error: %v", err))
+		return nil, status.Errorf(codes.Internal, "Unknown get instance error: %v", err.Error())
 	}
 
 	readWrite := "READ_WRITE"
@@ -513,12 +515,12 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 
 	deviceName, err := common.GetDeviceName(volKey)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
+		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error())
 	}
 
 	attached, err := diskIsAttachedAndCompatible(deviceName, instance, volumeCapability, readWrite)
 	if err != nil {
-		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Disk %v already published to node %v but incompatbile: %v", volKey.Name, nodeID, err))
+		return nil, status.Errorf(codes.AlreadyExists, "Disk %v already published to node %v but incompatible: %v", volKey.Name, nodeID, err.Error())
 	}
 	if attached {
 		// Volume is attached to node. Success!
@@ -527,16 +529,16 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	}
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error())
 	}
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Attach error: %v", err))
+		return nil, status.Errorf(codes.Internal, "unknown Attach error: %v", err.Error())
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown WaitForAttach error: %v", err))
+		return nil, status.Errorf(codes.Internal, "unknown WaitForAttach error: %v", err.Error())
 	}
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
 	return pubVolResp, nil
@@ -578,7 +580,7 @@ func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx c
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerUnpublishVolume Volume ID is invalid: %v", err))
+		return "", nil, status.Errorf(codes.InvalidArgument, "ControllerUnpublishVolume Volume ID is invalid: %v", err.Error())
 	}
 
 	return project, volKey, nil
@@ -596,9 +598,9 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err)
+			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "ControllerUnpublishVolume error repairing underspecified volume key: %v", err)
+		return nil, LoggedError("ControllerUnpublishVolume error repairing underspecified volume key: ", err)
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
@@ -611,7 +613,7 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("could not split nodeID: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error())
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
@@ -620,12 +622,12 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 			klog.Warningf("Treating volume %v as unpublished because node %v could not be found", volKey.String(), instanceName)
 			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting instance: %v", err))
+		return nil, status.Errorf(codes.Internal, "error getting instance: %v", err.Error())
 	}
 
 	deviceName, err := common.GetDeviceName(volKey)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error getting device name: %v", err))
+		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error())
 	}
 
 	attached := diskIsAttached(deviceName, instance)
@@ -638,7 +640,7 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 
 	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("unknown detach error: %v", err))
+		return nil, LoggedError("unknown detach error: ", err)
 	}
 
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
@@ -655,15 +657,15 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Volume ID is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "Volume ID is invalid: %v", err.Error())
 	}
 
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ValidateVolumeCapabilities could not find volume with ID %v: %v", volumeID, err)
+			return nil, status.Errorf(codes.NotFound, "ValidateVolumeCapabilities could not find volume with ID %v: %v", volumeID, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "ValidateVolumeCapabilities error repairing underspecified volume key: %v", err)
+		return nil, LoggedError("ValidateVolumeCapabilities error repairing underspecified volume key: ", err)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -674,9 +676,9 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find disk %v: %v", volKey.Name, err))
+			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.Name, err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get disk error: %v", err))
+		return nil, LoggedError("Unknown get disk error: ", err)
 	}
 
 	// Check Volume Context is Empty
@@ -686,16 +688,16 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 
 	// Check volume capabilities supported by PD. These are the same for any PD
 	if err := validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
-		return generateFailedValidationMessage("VolumeCapabilities not valid: %v", err), nil
+		return generateFailedValidationMessage("VolumeCapabilities not valid: %v", err.Error()), nil
 	}
 
 	// Validate the disk parameters match the disk we GET
 	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
 	if err := gce.ValidateDiskParameters(disk, params); err != nil {
-		return generateFailedValidationMessage("Parameters %v do not match given disk %s: %v", req.GetParameters(), disk.GetName(), err), nil
+		return generateFailedValidationMessage("Parameters %v do not match given disk %s: %v", req.GetParameters(), disk.GetName(), err.Error()), nil
 	}
 
 	// Ignore secrets
@@ -727,8 +729,8 @@ func generateFailedValidationMessage(format string, a ...interface{}) *csi.Valid
 func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	// https://cloud.google.com/compute/docs/reference/beta/disks/list
 	if req.MaxEntries < 0 {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
-			"ListVolumes got max entries request %v. GCE only supports values >0", req.MaxEntries))
+		return nil, status.Errorf(codes.InvalidArgument,
+			"ListVolumes got max entries request %v. GCE only supports values >0", req.MaxEntries)
 	}
 
 	offset := 0
@@ -737,16 +739,16 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 		diskList, _, err := gceCS.CloudProvider.ListDisks(ctx)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
-				return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid request: %v", err))
+				return nil, status.Errorf(codes.Aborted, "ListVolumes error with invalid request: %v", err.Error())
 			}
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list disk error: %v", err))
+			return nil, LoggedError("Unknown list disk error: ", err)
 		}
 		gceCS.disks = diskList
 		gceCS.seen = map[string]int{}
 	} else {
 		offset, ok = gceCS.seen[req.StartingToken]
 		if !ok {
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListVolumes error with invalid startingToken: %s", req.StartingToken))
+			return nil, status.Errorf(codes.Aborted, "ListVolumes error with invalid startingToken: %s", req.StartingToken)
 		}
 	}
 
@@ -808,7 +810,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	}
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("CreateSnapshot Volume ID is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "CreateSnapshot Volume ID is invalid: %v", err.Error())
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -820,14 +822,14 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	_, err = gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Error(codes.NotFound, fmt.Sprintf("CreateSnapshot could not find disk %v: %v", volKey.String(), err))
+			return nil, status.Errorf(codes.NotFound, "CreateSnapshot could not find disk %v: %v", volKey.String(), err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("CreateSnapshot unknown get disk error: %v", err))
+		return nil, LoggedError("CreateSnapshot unknown get disk error: ", err)
 	}
 
 	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot parameters: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid snapshot parameters: %v", err.Error())
 	}
 
 	var snapshot *csi.Snapshot
@@ -843,7 +845,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			return nil, err
 		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid snapshot type: %s", snapshotParams.SnapshotType))
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid snapshot type: %s", snapshotParams.SnapshotType)
 	}
 
 	klog.V(4).Infof("CreateSnapshot succeeded for snapshot %s on volume %s", snapshot.SnapshotId, volumeID)
@@ -853,7 +855,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*csi.Snapshot, error) {
 	volumeID, err := common.KeyToVolumeID(volKey, project)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume key: %v", volKey))
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid volume key: %v", volKey)
 	}
 
 	// Check if PD snapshot already exists
@@ -861,31 +863,31 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get snapshot error: %v", err))
+			return nil, status.Errorf(codes.Internal, "Unknown get snapshot error: %v", err.Error())
 		}
 		// If we could not find the snapshot, we create a new one
 		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 		if err != nil {
 			if gce.IsGCEError(err, "notFound") {
-				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
+				return nil, status.Errorf(codes.NotFound, "Could not find volume with ID %v: %v", volKey.String(), err.Error())
 			}
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown create snapshot error: %v", err))
+			return nil, LoggedError("Unknown create snapshot error: ", err)
 		}
 	}
 
 	err = gceCS.validateExistingSnapshot(snapshot, volKey)
 	if err != nil {
-		return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("Error in creating snapshot: %v", err))
+		return nil, status.Errorf(codes.AlreadyExists, "Error in creating snapshot: %v", err.Error())
 	}
 
 	timestamp, err := parseTimestamp(snapshot.CreationTimestamp)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
+		return nil, status.Errorf(codes.Internal, "Failed to covert creation timestamp: %v", err.Error())
 	}
 
 	ready, err := isCSISnapshotReady(snapshot.Status)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Snapshot had error checking ready status: %v", err))
+		return nil, status.Errorf(codes.Internal, "Snapshot had error checking ready status: %v", err.Error())
 	}
 
 	return &csi.Snapshot{
@@ -900,7 +902,7 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 func (gceCS *GCEControllerServer) createImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*csi.Snapshot, error) {
 	volumeID, err := common.KeyToVolumeID(volKey, project)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume key: %v", volKey))
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid volume key: %v", volKey)
 	}
 
 	// Check if image already exists
@@ -908,31 +910,31 @@ func (gceCS *GCEControllerServer) createImage(ctx context.Context, project strin
 	image, err = gceCS.CloudProvider.GetImage(ctx, project, imageName)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown get image error: %v", err))
+			return nil, LoggedError("Unknown get image error: ", err)
 		}
 		// create a new image
 		image, err = gceCS.CloudProvider.CreateImage(ctx, project, volKey, imageName, snapshotParams)
 		if err != nil {
 			if gce.IsGCEError(err, "notFound") {
-				return nil, status.Error(codes.NotFound, fmt.Sprintf("Could not find volume with ID %v: %v", volKey.String(), err))
+				return nil, status.Errorf(codes.NotFound, "Could not find volume with ID %v: %v", volKey.String(), err.Error())
 			}
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown create image error: %v", err))
+			return nil, LoggedError("Unknown create image error: ", err)
 		}
 	}
 
 	err = gceCS.validateExistingImage(image, volKey)
 	if err != nil {
-		return nil, status.Errorf(codes.AlreadyExists, fmt.Sprintf("Error in creating snapshot: %v", err))
+		return nil, status.Errorf(codes.AlreadyExists, "Error in creating snapshot: %v", err.Error())
 	}
 
 	timestamp, err := parseTimestamp(image.CreationTimestamp)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to covert creation timestamp: %v", err))
+		return nil, status.Errorf(codes.Internal, "Failed to covert creation timestamp: %v", err.Error())
 	}
 
 	ready, err := isImageReady(image.Status)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("Failed to check image status: %v", err))
+		return nil, status.Errorf(codes.Internal, "Failed to check image status: %v", err.Error())
 	}
 
 	return &csi.Snapshot{
@@ -951,7 +953,7 @@ func (gceCS *GCEControllerServer) validateExistingImage(image *compute.Image, vo
 
 	_, sourceKey, err := common.VolumeIDToKey(cleanSelfLink(image.SourceDisk))
 	if err != nil {
-		return fmt.Errorf("fail to get source disk key %s, %v", image.SourceDisk, err)
+		return fmt.Errorf("fail to get source disk key %s, %w", image.SourceDisk, err)
 	}
 
 	if sourceKey.String() != volKey.String() {
@@ -1002,7 +1004,7 @@ func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Sna
 
 	_, sourceKey, err := common.VolumeIDToKey(cleanSelfLink(snapshot.SourceDisk))
 	if err != nil {
-		return fmt.Errorf("fail to get source disk key %s, %v", snapshot.SourceDisk, err)
+		return fmt.Errorf("fail to get source disk key %s, %w", snapshot.SourceDisk, err)
 	}
 
 	if sourceKey.String() != volKey.String() {
@@ -1046,15 +1048,15 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 	case common.DiskSnapshotType:
 		err = gceCS.CloudProvider.DeleteSnapshot(ctx, project, key)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete snapshot error: %v", err))
+			return nil, LoggedError("unknown Delete snapshot error: ", err)
 		}
 	case common.DiskImageType:
 		err = gceCS.CloudProvider.DeleteImage(ctx, project, key)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("unknown Delete image error: %v", err))
+			return nil, LoggedError("unknown Delete image error: ", err)
 		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("unknown snapshot type %s", snapshotType))
+		return nil, status.Errorf(codes.InvalidArgument, "unknown snapshot type %s", snapshotType)
 	}
 
 	return &csi.DeleteSnapshotResponse{}, nil
@@ -1069,8 +1071,8 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 	// case 2: no SnapshotId is set, so we return all the snapshots that satify the reqeust.
 	var maxEntries int = int(req.MaxEntries)
 	if maxEntries < 0 {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
-			"ListSnapshots got max entries request %v. GCE only supports values >0", maxEntries))
+		return nil, status.Errorf(codes.InvalidArgument,
+			"ListSnapshots got max entries request %v. GCE only supports values >0", maxEntries)
 	}
 
 	var offset int
@@ -1081,16 +1083,16 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 		snapshotList, err := gceCS.getSnapshots(ctx, req)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
-				return nil, status.Error(codes.Aborted, fmt.Sprintf("ListSnapshots error with invalid request: %v", err))
+				return nil, status.Errorf(codes.Aborted, "ListSnapshots error with invalid request: %v", err.Error())
 			}
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshots error: %v", err))
+			return nil, LoggedError("Unknown list snapshots error: ", err)
 		}
 		gceCS.snapshots = snapshotList
 		gceCS.snapshotTokens = map[string]int{}
 	} else {
 		offset, ok = gceCS.snapshotTokens[req.StartingToken]
 		if !ok {
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("ListSnapshots error with invalid startingToken: %s", req.StartingToken))
+			return nil, status.Errorf(codes.Aborted, "ListSnapshots error with invalid startingToken: %s", req.StartingToken)
 		}
 	}
 
@@ -1119,25 +1121,25 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	capacityRange := req.GetCapacityRange()
 	reqBytes, err := getRequestCapacity(capacityRange)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume capacity range is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "ControllerExpandVolume capacity range is invalid: %v", err.Error())
 	}
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("ControllerExpandVolume Volume ID is invalid: %v", err))
+		return nil, status.Errorf(codes.InvalidArgument, "ControllerExpandVolume Volume ID is invalid: %v", err.Error())
 	}
 
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerExpandVolume could not find volume with ID %v: %v", volumeID, err)
+			return nil, status.Errorf(codes.NotFound, "ControllerExpandVolume could not find volume with ID %v: %v", volumeID, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "ControllerExpandVolume error repairing underspecified volume key: %v", err)
+		return nil, LoggedError("ControllerExpandVolume error repairing underspecified volume key: ", err)
 	}
 
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume failed to resize disk: %v", err))
+		return nil, LoggedError("ControllerExpandVolume failed to resize disk: ", err)
 	}
 
 	klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, resizedGb)
@@ -1158,17 +1160,17 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 	snapshots, _, err = gceCS.CloudProvider.ListSnapshots(ctx, filter)
 	if err != nil {
 		if gce.IsGCEError(err, "invalid") {
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("Invalid error: %v", err))
+			return nil, status.Errorf(codes.Aborted, "Invalid error: %v", err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
+		return nil, LoggedError("Unknown list snapshot error: ", err)
 	}
 
 	images, _, err = gceCS.CloudProvider.ListImages(ctx, filter)
 	if err != nil {
 		if gce.IsGCEError(err, "invalid") {
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("Invalid error: %v", err))
+			return nil, status.Errorf(codes.Aborted, "Invalid error: %v", err.Error())
 		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list image error: %v", err))
+		return nil, LoggedError("Unknown list image error: ", err)
 	}
 
 	entries := []*csi.ListSnapshotsResponse_Entry{}
@@ -1176,7 +1178,7 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 	for _, snapshot := range snapshots {
 		entry, err := generateDiskSnapshotEntry(snapshot)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+			return nil, fmt.Errorf("failed to generate snapshot entry: %w", err)
 		}
 		entries = append(entries, entry)
 	}
@@ -1184,7 +1186,7 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 	for _, image := range images {
 		entry, err := generateDiskImageEntry(image)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate image entry: %v", err)
+			return nil, fmt.Errorf("failed to generate image entry: %w", err)
 		}
 		entries = append(entries, entry)
 	}
@@ -1209,11 +1211,11 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 				// return empty list if no snapshot is found
 				return &csi.ListSnapshotsResponse{}, nil
 			}
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
+			return nil, LoggedError("Unknown list snapshot error: ", err)
 		}
 		e, err := generateDiskSnapshotEntry(snapshot)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+			return nil, fmt.Errorf("failed to generate snapshot entry: %w", err)
 		}
 		entries = []*csi.ListSnapshotsResponse_Entry{e}
 	case common.DiskImageType:
@@ -1226,7 +1228,7 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 		}
 		e, err := generateImageEntry(image)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate image entry: %v", err)
+			return nil, fmt.Errorf("failed to generate image entry: %w", err)
 		}
 		entries = []*csi.ListSnapshotsResponse_Entry{e}
 	}
@@ -1241,9 +1243,9 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, snapshot.CreationTimestamp)
 
-	tp, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	tp := timestamppb.New(t)
+	if err := tp.CheckValid(); err != nil {
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %w", err)
 	}
 
 	// We ignore the error intentionally here since we are just listing snapshots
@@ -1266,9 +1268,9 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 func generateDiskImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
 	t, _ := time.Parse(time.RFC3339, image.CreationTimestamp)
 
-	tp, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+	tp := timestamppb.New(t)
+	if err := tp.CheckValid(); err != nil {
+		return nil, fmt.Errorf("failed to covert creation timestamp: %w", err)
 	}
 
 	ready, _ := isImageReady(image.Status)
@@ -1288,7 +1290,7 @@ func generateDiskImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_En
 func generateImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
 	timestamp, err := parseTimestamp(image.CreationTimestamp)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %v", err)
+		return nil, fmt.Errorf("Failed to covert creation timestamp: %w", err)
 	}
 
 	// ignore the error intentionally here since we are just listing images
@@ -1366,11 +1368,11 @@ func diskIsAttachedAndCompatible(deviceName string, instance *compute.Instance, 
 func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int) ([]string, error) {
 	reqZones, err := getZonesFromTopology(top.GetRequisite())
 	if err != nil {
-		return nil, fmt.Errorf("could not get zones from requisite topology: %v", err)
+		return nil, fmt.Errorf("could not get zones from requisite topology: %w", err)
 	}
 	prefZones, err := getZonesFromTopology(top.GetPreferred())
 	if err != nil {
-		return nil, fmt.Errorf("could not get zones from preferred topology: %v", err)
+		return nil, fmt.Errorf("could not get zones from preferred topology: %w", err)
 	}
 
 	if numZones <= len(prefZones) {
@@ -1408,7 +1410,7 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 		// GCE PD cloud provider Create has no restrictions so just create in top preferred zone
 		zone, err := getZoneFromSegment(top.GetSegments())
 		if err != nil {
-			return nil, fmt.Errorf("could not get zone from preferred topology: %v", err)
+			return nil, fmt.Errorf("could not get zone from preferred topology: %w", err)
 		}
 		zones = append(zones, zone)
 	}
@@ -1437,12 +1439,12 @@ func pickZones(ctx context.Context, gceCS *GCEControllerServer, top *csi.Topolog
 	if top != nil {
 		zones, err = pickZonesFromTopology(top, numZones)
 		if err != nil {
-			return nil, fmt.Errorf("failed to pick zones from topology: %v", err)
+			return nil, fmt.Errorf("failed to pick zones from topology: %w", err)
 		}
 	} else {
 		zones, err = getDefaultZonesInRegion(ctx, gceCS, []string{gceCS.CloudProvider.GetDefaultZone()}, numZones)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get default %v zones in region: %v", numZones, err)
+			return nil, fmt.Errorf("failed to get default %v zones in region: %w", numZones, err)
 		}
 		klog.Warningf("No zones have been specified in either topology or params, picking default zone: %v", zones)
 
@@ -1453,12 +1455,12 @@ func pickZones(ctx context.Context, gceCS *GCEControllerServer, top *csi.Topolog
 func getDefaultZonesInRegion(ctx context.Context, gceCS *GCEControllerServer, existingZones []string, numZones int) ([]string, error) {
 	region, err := common.GetRegionFromZones(existingZones)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get region from zones: %v", err)
+		return nil, fmt.Errorf("failed to get region from zones: %w", err)
 	}
 	needToGet := numZones - len(existingZones)
 	totZones, err := gceCS.CloudProvider.ListZones(ctx, region)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list zones from cloud provider: %v", err)
+		return nil, fmt.Errorf("failed to list zones from cloud provider: %w", err)
 	}
 	remainingZones := sets.NewString(totZones...).Difference(sets.NewString(existingZones...))
 	l := remainingZones.List()
@@ -1536,7 +1538,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	project := cloudProvider.GetDefaultProject()
 	region, err := common.GetRegionFromZones(zones)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get region from zones: %v", err)
+		return nil, fmt.Errorf("failed to get region from zones: %w", err)
 	}
 
 	fullyQualifiedReplicaZones := []string{}
@@ -1547,7 +1549,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 
 	err = cloudProvider.InsertDisk(ctx, project, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to insert regional disk: %v", err)
+		return nil, fmt.Errorf("failed to insert regional disk: %w", err)
 	}
 
 	gceAPIVersion := gce.GCEAPIVersionV1
@@ -1557,7 +1559,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.RegionalKey(name, region), gceAPIVersion)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get disk after creating regional disk: %v", err)
+		return nil, fmt.Errorf("failed to get disk after creating regional disk: %w", err)
 	}
 	return disk, nil
 }
@@ -1570,7 +1572,7 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	diskZone := zones[0]
 	err := cloudProvider.InsertDisk(ctx, project, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID, volumeContentSourceVolumeID, multiWriter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to insert zonal disk: %v", err)
+		return nil, fmt.Errorf("failed to insert zonal disk: %w", err)
 	}
 
 	gceAPIVersion := gce.GCEAPIVersionV1
