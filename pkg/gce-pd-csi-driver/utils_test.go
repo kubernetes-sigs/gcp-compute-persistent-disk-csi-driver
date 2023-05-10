@@ -18,14 +18,9 @@ limitations under the License.
 package gceGCEDriver
 
 import (
-	"errors"
-	"net/http"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/api/googleapi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var (
@@ -293,63 +288,6 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 			if tc.expVal != val {
 				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
 			}
-		}
-	}
-}
-
-func TestCodeForError(t *testing.T) {
-	internalErrorCode := codes.Internal
-	userErrorCode := codes.InvalidArgument
-	testCases := []struct {
-		name     string
-		inputErr error
-		expCode  *codes.Code
-	}{
-		{
-			name:     "Not googleapi.Error",
-			inputErr: errors.New("I am not a googleapi.Error"),
-			expCode:  &internalErrorCode,
-		},
-		{
-			name:     "User error",
-			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
-			expCode:  &userErrorCode,
-		},
-		{
-			name:     "googleapi.Error but not a user error",
-			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
-			expCode:  &internalErrorCode,
-		},
-		{
-			name:     "context canceled error",
-			inputErr: context.Canceled,
-			expCode:  errCodePtr(codes.Canceled),
-		},
-		{
-			name:     "context deadline exceeded error",
-			inputErr: context.DeadlineExceeded,
-			expCode:  errCodePtr(codes.DeadlineExceeded),
-		},
-		{
-			name:     "status error with Aborted error code",
-			inputErr: status.Error(codes.Aborted, "aborted error"),
-			expCode:  errCodePtr(codes.Aborted),
-		},
-		{
-			name:     "nil error",
-			inputErr: nil,
-			expCode:  nil,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Logf("Running test: %v", tc.name)
-		errCode := CodeForError(tc.inputErr)
-		if (tc.expCode == nil) != (errCode == nil) {
-			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
-		}
-		if tc.expCode != nil && *errCode != *tc.expCode {
-			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}
 	}
 }

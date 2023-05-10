@@ -17,11 +17,17 @@ limitations under the License.
 package common
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -851,5 +857,165 @@ func TestConvertMiStringToInt64(t *testing.T) {
 				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
 			}
 		})
+	}
+}
+
+func TestParseMachineType(t *testing.T) {
+	tests := []struct {
+		desc                string
+		inputMachineTypeUrl string
+		expectedMachineType string
+		expectError         bool
+	}{
+		{
+			desc:                "full URL machine type",
+			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/machineTypes/c3-highcpu-4",
+			expectedMachineType: "c3-highcpu-4",
+		},
+		{
+			desc:                "partial URL machine type",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/n2-standard-4",
+			expectedMachineType: "n2-standard-4",
+		},
+		{
+			desc:                "custom partial URL machine type",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/e2-custom-2-4096",
+			expectedMachineType: "e2-custom-2-4096",
+		},
+		{
+			desc:                "incorrect URL",
+			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/psch-gke-dev/zones/us-central1-c",
+			expectError:         true,
+		},
+		{
+			desc:                "incorrect partial URL",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/",
+			expectError:         true,
+		},
+		{
+			desc:                "missing zone",
+			inputMachineTypeUrl: "zones//machineTypes/n2-standard-4",
+			expectError:         true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualMachineFamily, err := ParseMachineType(tc.inputMachineTypeUrl)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v parsing machine type %s; expect no error", err, tc.inputMachineTypeUrl)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error parsing machine type %s; expect an error", tc.inputMachineTypeUrl)
+			}
+			if err == nil && actualMachineFamily != tc.expectedMachineType {
+				t.Errorf("Got %s parsing machine type; expect %s", actualMachineFamily, tc.expectedMachineType)
+			}
+		})
+	}
+}
+
+func TestCodeForError(t *testing.T) {
+	internalErrorCode := codes.Internal
+	userErrorCode := codes.InvalidArgument
+	testCases := []struct {
+		name     string
+		inputErr error
+		expCode  *codes.Code
+	}{
+		{
+			name:     "Not googleapi.Error",
+			inputErr: errors.New("I am not a googleapi.Error"),
+			expCode:  &internalErrorCode,
+		},
+		{
+			name:     "User error",
+			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
+			expCode:  &userErrorCode,
+		},
+		{
+			name:     "googleapi.Error but not a user error",
+			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
+			expCode:  &internalErrorCode,
+		},
+		{
+			name:     "context canceled error",
+			inputErr: context.Canceled,
+			expCode:  errCodePtr(codes.Canceled),
+		},
+		{
+			name:     "context deadline exceeded error",
+			inputErr: context.DeadlineExceeded,
+			expCode:  errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:     "status error with Aborted error code",
+			inputErr: status.Error(codes.Aborted, "aborted error"),
+			expCode:  errCodePtr(codes.Aborted),
+		},
+		{
+			name:     "nil error",
+			inputErr: nil,
+			expCode:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		errCode := CodeForError(tc.inputErr)
+		if (tc.expCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
+		}
+		if tc.expCode != nil && *errCode != *tc.expCode {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
+		}
+	}
+}
+
+func TestIsContextError(t *testing.T) {
+	cases := []struct {
+		name            string
+		err             error
+		expectedErrCode *codes.Code
+	}{
+		{
+			name:            "deadline exceeded error",
+			err:             context.DeadlineExceeded,
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "contains 'context deadline exceeded'",
+			err:             fmt.Errorf("got error: %w", context.DeadlineExceeded),
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "context canceled error",
+			err:             context.Canceled,
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "contains 'context canceled'",
+			err:             fmt.Errorf("got error: %w", context.Canceled),
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "does not contain 'context canceled' or 'context deadline exceeded'",
+			err:             fmt.Errorf("unknown error"),
+			expectedErrCode: nil,
+		},
+		{
+			name:            "nil error",
+			err:             nil,
+			expectedErrCode: nil,
+		},
+	}
+
+	for _, test := range cases {
+		errCode := isContextError(test.err)
+		if (test.expectedErrCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
+		if test.expectedErrCode != nil && *errCode != *test.expectedErrCode {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
 	}
 }
