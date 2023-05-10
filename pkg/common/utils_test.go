@@ -578,27 +578,27 @@ func TestSnapshotStorageLocations(t *testing.T) {
 	}
 }
 
-func TestParseMachineFamily(t *testing.T) {
+func TestParseMachineType(t *testing.T) {
 	tests := []struct {
-		desc                  string
-		inputMachineTypeUrl   string
-		expectedMachineFamily string
-		expectError           bool
+		desc                string
+		inputMachineTypeUrl string
+		expectedMachineType string
+		expectError         bool
 	}{
 		{
-			desc:                  "full URL machine family",
-			inputMachineTypeUrl:   "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/machineTypes/c3-highcpu-4",
-			expectedMachineFamily: "c3",
+			desc:                "full URL machine type",
+			inputMachineTypeUrl: "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/machineTypes/c3-highcpu-4",
+			expectedMachineType: "c3-highcpu-4",
 		},
 		{
-			desc:                  "partial URL machine family",
-			inputMachineTypeUrl:   "zones/us-central1-c/machineTypes/n2-standard-4",
-			expectedMachineFamily: "n2",
+			desc:                "partial URL machine type",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/n2-standard-4",
+			expectedMachineType: "n2-standard-4",
 		},
 		{
-			desc:                  "custom partial URL machine family",
-			inputMachineTypeUrl:   "zones/us-central1-c/machineTypes/e2-custom-2-4096",
-			expectedMachineFamily: "e2",
+			desc:                "custom partial URL machine type",
+			inputMachineTypeUrl: "zones/us-central1-c/machineTypes/e2-custom-2-4096",
+			expectedMachineType: "e2-custom-2-4096",
 		},
 		{
 			desc:                "incorrect URL",
@@ -618,15 +618,15 @@ func TestParseMachineFamily(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			actualMachineFamily, err := ParseMachineFamily(tc.inputMachineTypeUrl)
+			actualMachineFamily, err := ParseMachineType(tc.inputMachineTypeUrl)
 			if err != nil && !tc.expectError {
-				t.Errorf("Got error %v parsing machine family %s; expect no error", err, tc.inputMachineTypeUrl)
+				t.Errorf("Got error %v parsing machine type %s; expect no error", err, tc.inputMachineTypeUrl)
 			}
 			if err == nil && tc.expectError {
-				t.Errorf("Got no error parsing machine family %s; expect an error", tc.inputMachineTypeUrl)
+				t.Errorf("Got no error parsing machine type %s; expect an error", tc.inputMachineTypeUrl)
 			}
-			if err == nil && actualMachineFamily != tc.expectedMachineFamily {
-				t.Errorf("Got %s parsing machine family; expect %s", actualMachineFamily, tc.expectedMachineFamily)
+			if err == nil && actualMachineFamily != tc.expectedMachineType {
+				t.Errorf("Got %s parsing machine type; expect %s", actualMachineFamily, tc.expectedMachineType)
 			}
 		})
 	}
