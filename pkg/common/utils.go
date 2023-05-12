@@ -59,11 +59,19 @@ const (
 	multiRegionalLocationFmt = "^[a-z]+$"
 	// Example: us-east1
 	regionalLocationFmt = "^[a-z]+-[a-z]+[0-9]$"
+
+	// Full or partial URL of the machine type resource, in the format:
+	//   zones/zone/machineTypes/machine-type
+	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
 )
 
 var (
 	multiRegionalPattern = regexp.MustCompile(multiRegionalLocationFmt)
 	regionalPattern      = regexp.MustCompile(regionalLocationFmt)
+
+	// Full or partial URL of the machine type resource, in the format:
+	//   zones/zone/machineTypes/machine-type
+	machineTypeRegex = regexp.MustCompile(machineTypePattern)
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -267,4 +275,16 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 		return -1, err
 	}
 	return volumehelpers.RoundUpToMiB(quantity)
+}
+
+// ParseMachineType returns an extracted machineType from a URL, or empty if not found.
+// machineTypeUrl: Full or partial URL of the machine type resource, in the format:
+//
+//	zones/zone/machineTypes/machine-type
+func ParseMachineType(machineTypeUrl string) (string, error) {
+	machineType := machineTypeRegex.FindStringSubmatch(machineTypeUrl)
+	if machineType == nil {
+		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
+	}
+	return machineType[1], nil
 }
