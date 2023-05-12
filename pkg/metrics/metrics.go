@@ -17,11 +17,13 @@ limitations under the License.
 package metrics
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
+	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/component-base/metrics"
@@ -100,7 +102,7 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	if strings.Contains(diskType, "pd") {
 		driverName = pdcsiDriverName
 	}
-	pdcsiOperationErrorsMetric.WithLabelValues(driverName, "/csi.v1.Controller/"+operationName, getErrorCode(operationErr), diskType).Set(1.0)
+	pdcsiOperationErrorsMetric.WithLabelValues(driverName, "/csi.v1.Controller/"+operationName, LoggedError(operationErr).Error(), diskType).Set(1.0)
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -112,19 +114,36 @@ func (mm *MetricsManager) EmitGKEComponentVersion() error {
 	return nil
 }
 
-func getErrorCode(err error) string {
-	if err == nil {
-		return codes.OK.String()
+// CodeForError returns a pointer to the grpc error code that maps to the http
+// error code for the passed in user googleapi error. Returns codes.Internal if
+// the given error is not a googleapi error caused by the user. The following
+// http error codes are considered user errors:
+// (1) http 400 Bad Request, returns grpc InvalidArgument,
+// (2) http 403 Forbidden, returns grpc PermissionDenied,
+// (3) http 404 Not Found, returns grpc NotFound
+// (4) http 429 Too Many Requests, returns grpc ResourceExhausted
+func CodeForError(err error) *codes.Code {
+	internalErrorCode := codes.Internal
+	// Upwrap the error
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
+		return &internalErrorCode
 	}
 
-	st, ok := status.FromError(err)
-	if !ok {
-		// This is not gRPC error. The operation must have failed before gRPC
-		// method was called, otherwise we would get gRPC error.
-		return "unknown-non-grpc"
+	userErrors := map[int]codes.Code{
+		http.StatusForbidden:       codes.PermissionDenied,
+		http.StatusBadRequest:      codes.InvalidArgument,
+		http.StatusTooManyRequests: codes.ResourceExhausted,
+		http.StatusNotFound:        codes.NotFound,
 	}
+	if code, ok := userErrors[apiErr.Code]; ok {
+		return &code
+	}
+	return &internalErrorCode
+}
 
-	return st.Code().String()
+func LoggedError(err error) error {
+	return status.Errorf(*CodeForError(err), "error code"+err.Error())
 }
 
 // Server represents any type that could serve HTTP requests for the metrics
