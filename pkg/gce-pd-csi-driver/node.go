@@ -15,11 +15,11 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
-
-	"context"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -375,8 +375,12 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
 	if err != nil {
 		klog.Errorf("Failed to find device path for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", volumeID, err.Error())
-	} else if err := ns.DeviceUtils.DisableDevice(devicePath); err != nil {
-		klog.Errorf("Failed to disabled device %s for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", devicePath, volumeID, err.Error())
+	} else {
+		if devFsPath, err := filepath.EvalSymlinks(devicePath); err != nil {
+			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to disable device: %w (ignored, unstaging continues)", devicePath, err)
+		} else if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
+			klog.Errorf("Failed to disabled device %s for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %w", devicePath, volumeID, err)
+		}
 	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
