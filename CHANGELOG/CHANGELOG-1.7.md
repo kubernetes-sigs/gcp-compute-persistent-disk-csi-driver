@@ -1,3 +1,12 @@
+# v1.7.8 - Changelog since v1.7.7
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Separate user errors from internal errors. ([#1092](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1092), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Upgrade klog v1 to v2 and fix error wrapping. ([#1084](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1084), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
 # v1.7.7 - Changelog since v1.7.6
 
 ## Changes by Kind
