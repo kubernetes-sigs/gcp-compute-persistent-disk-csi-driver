@@ -20,19 +20,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 const (
 	// envGKEPDCSIVersion is an environment variable set in the PDCSI controller manifest
 	// with the current version of the GKE component.
-	envGKEPDCSIVersion  = "GKE_PDCSI_VERSION"
-	hyperdiskDriverName = "hyperdisk.csi.storage.gke.io"
-	pdcsiDriverName     = "pd.csi.storage.gke.io"
+	envGKEPDCSIVersion = "GKE_PDCSI_VERSION"
+	pdcsiDriverName    = "pd.csi.storage.gke.io"
 )
 
 var (
@@ -42,15 +41,14 @@ var (
 		Help: "Metric to expose the version of the PDCSI GKE component.",
 	}, []string{"component_version"})
 
-	pdcsiOperationErrorsMetric = metrics.NewGaugeVec(
-		&metrics.GaugeOpts{
+	pdcsiOperationErrorsMetric = metrics.NewCounterVec(
+		&metrics.CounterOpts{
 			Subsystem:      "csidriver",
-			Name:           "pdcsi_operation_errors",
+			Name:           "operation_errors",
 			Help:           "CSI server side error metrics",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type"},
-	)
+		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type"})
 )
 
 type MetricsManager struct {
@@ -72,7 +70,7 @@ func (mm *MetricsManager) registerComponentVersionMetric() {
 	mm.registry.MustRegister(gkeComponentVersion)
 }
 
-func (mm *MetricsManager) RegisterHyperdiskMetric() {
+func (mm *MetricsManager) RegisterPDCSIMetric() {
 	mm.registry.MustRegister(pdcsiOperationErrorsMetric)
 }
 
@@ -92,14 +90,7 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
 	diskType string) {
-	var driverName string
-	if strings.Contains(diskType, "hyperdisk") {
-		driverName = hyperdiskDriverName
-	}
-	if strings.Contains(diskType, "pd") {
-		driverName = pdcsiDriverName
-	}
-	pdcsiOperationErrorsMetric.WithLabelValues(driverName, "/csi.v1.Controller/"+operationName, common.CodeForError(operationErr).String(), diskType).Set(1.0)
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, common.CodeForError(operationErr).String(), diskType).Inc()
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -154,4 +145,14 @@ func IsGKEComponentVersionAvailable() bool {
 	}
 
 	return true
+}
+
+func GetDiskType(disk *gce.CloudDisk) string {
+	var diskType string
+	if disk != nil {
+		diskType = disk.GetPDType()
+	} else {
+		diskType = ""
+	}
+	return diskType
 }
