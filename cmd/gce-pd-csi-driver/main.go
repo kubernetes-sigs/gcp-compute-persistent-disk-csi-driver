@@ -101,7 +101,7 @@ func handle() {
 	if *runControllerService && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
-		mm.RegisterHyperdiskMetric()
+		mm.RegisterPDCSIMetric()
 
 		if metrics.IsGKEComponentVersionAvailable() {
 			mm.EmitGKEComponentVersion()
