@@ -18,7 +18,9 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -319,6 +321,16 @@ func TestCodeForError(t *testing.T) {
 			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
 			expCode:  &internalErrorCode,
 		},
+		{
+			name:     "context canceled error",
+			inputErr: context.Canceled,
+			expCode:  errCodePtr(codes.Canceled),
+		},
+		{
+			name:     "context deadline exceeded error",
+			inputErr: context.DeadlineExceeded,
+			expCode:  errCodePtr(codes.DeadlineExceeded),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -326,6 +338,55 @@ func TestCodeForError(t *testing.T) {
 		actualCode := *CodeForError(tc.inputErr)
 		if *tc.expCode != actualCode {
 			t.Fatalf("Expected error code '%v' but got '%v'", tc.expCode, actualCode)
+		}
+	}
+}
+
+func TestIsContextError(t *testing.T) {
+	cases := []struct {
+		name            string
+		err             error
+		expectedErrCode *codes.Code
+	}{
+		{
+			name:            "deadline exceeded error",
+			err:             context.DeadlineExceeded,
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "contains 'context deadline exceeded'",
+			err:             fmt.Errorf("got error: %w", context.DeadlineExceeded),
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "context canceled error",
+			err:             context.Canceled,
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "contains 'context canceled'",
+			err:             fmt.Errorf("got error: %w", context.Canceled),
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "does not contain 'context canceled' or 'context deadline exceeded'",
+			err:             fmt.Errorf("unknown error"),
+			expectedErrCode: nil,
+		},
+		{
+			name:            "nil error",
+			err:             nil,
+			expectedErrCode: nil,
+		},
+	}
+
+	for _, test := range cases {
+		errCode := isContextError(test.err)
+		if (test.expectedErrCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
+		if test.expectedErrCode != nil && *errCode != *test.expectedErrCode {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
 		}
 	}
 }
