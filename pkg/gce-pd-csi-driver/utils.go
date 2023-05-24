@@ -227,6 +227,17 @@ func containsZone(zones []string, zone string) bool {
 // (3) http 404 Not Found, returns grpc NotFound
 // (4) http 429 Too Many Requests, returns grpc ResourceExhausted
 func CodeForError(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+
+	if errCode := existingErrorCode(err); errCode != nil {
+		return errCode
+	}
+	if code := isContextError(err); code != nil {
+		return code
+	}
+
 	internalErrorCode := codes.Internal
 	// Upwrap the error
 	var apiErr *googleapi.Error
@@ -244,6 +255,38 @@ func CodeForError(err error) *codes.Code {
 		return &code
 	}
 	return &internalErrorCode
+}
+
+func existingErrorCode(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+	if status, ok := status.FromError(err); ok {
+		return errCodePtr(status.Code())
+	}
+	return nil
+}
+
+// isContextError returns a pointer to the grpc error code DeadlineExceeded
+// if the passed in error contains the "context deadline exceeded" string and returns
+// the grpc error code Canceled if the error contains the "context canceled" string.
+func isContextError(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+
+	errStr := err.Error()
+	if strings.Contains(errStr, context.DeadlineExceeded.Error()) {
+		return errCodePtr(codes.DeadlineExceeded)
+	}
+	if strings.Contains(errStr, context.Canceled.Error()) {
+		return errCodePtr(codes.Canceled)
+	}
+	return nil
+}
+
+func errCodePtr(code codes.Code) *codes.Code {
+	return &code
 }
 
 func LoggedError(msg string, err error) error {
