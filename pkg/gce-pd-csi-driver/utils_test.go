@@ -27,6 +27,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -331,13 +332,26 @@ func TestCodeForError(t *testing.T) {
 			inputErr: context.DeadlineExceeded,
 			expCode:  errCodePtr(codes.DeadlineExceeded),
 		},
+		{
+			name:     "status error with Aborted error code",
+			inputErr: status.Error(codes.Aborted, "aborted error"),
+			expCode:  errCodePtr(codes.Aborted),
+		},
+		{
+			name:     "nil error",
+			inputErr: nil,
+			expCode:  nil,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Logf("Running test: %v", tc.name)
-		actualCode := *CodeForError(tc.inputErr)
-		if *tc.expCode != actualCode {
-			t.Fatalf("Expected error code '%v' but got '%v'", tc.expCode, actualCode)
+		errCode := CodeForError(tc.inputErr)
+		if (tc.expCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
+		}
+		if tc.expCode != nil && *errCode != *tc.expCode {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}
 	}
 }

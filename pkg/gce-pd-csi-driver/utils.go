@@ -231,6 +231,13 @@ func containsZone(zones []string, zone string) bool {
 // (1) "context deadline exceeded", returns grpc DeadlineExceeded,
 // (2) "context canceled", returns grpc Canceled
 func CodeForError(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+
+	if errCode := existingErrorCode(err); errCode != nil {
+		return errCode
+	}
 	if code := isContextError(err); code != nil {
 		return code
 	}
@@ -253,6 +260,16 @@ func CodeForError(err error) *codes.Code {
 	}
 
 	return &internalErrorCode
+}
+
+func existingErrorCode(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+	if status, ok := status.FromError(err); ok {
+		return errCodePtr(status.Code())
+	}
+	return nil
 }
 
 // isContextError returns a pointer to the grpc error code DeadlineExceeded
