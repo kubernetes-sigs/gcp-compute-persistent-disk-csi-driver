@@ -598,8 +598,11 @@ func TestNodeStageVolume(t *testing.T) {
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
 		}
-		if tc.expResize != resizeCalled {
-			t.Fatalf("Test expected resize to be called: %t but was it called: %t", tc.expResize, resizeCalled)
+		if tc.expResize == true && resizeCalled == false {
+			t.Fatalf("Test did not call resize, but it was expected.")
+		}
+		if tc.expResize == false && resizeCalled == true {
+			t.Fatalf("Test called resize, but it was not expected.")
 		}
 	}
 }
