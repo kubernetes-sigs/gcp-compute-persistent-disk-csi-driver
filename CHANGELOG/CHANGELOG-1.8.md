@@ -1,3 +1,11 @@
+# v1.8.6 - Changelog since v1.8.5
+
+## Changes by Kind 
+
+### Cleanup
+
+- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1223](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1223), [@pwschuurman](https://github.com/pwschuurman))
+
 # v1.8.5 - Changelog since v1.8.4
 
 ## Changes by Kind
