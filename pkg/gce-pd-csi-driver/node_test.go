@@ -391,7 +391,7 @@ func TestNodeStageVolume(t *testing.T) {
 		expErrCode   codes.Code
 	}{
 		{
-                        name: "Valid request, no resize because block and filesystem sizes match",
+			name: "Valid request, no resize because block and filesystem sizes match",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
