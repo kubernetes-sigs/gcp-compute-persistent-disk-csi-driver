@@ -541,10 +541,10 @@ func parseMachineType(machineTypeUrl string) string {
 }
 
 func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error, string) {
-	diskToPublish := ""
+	diskType := ""
 	project, volKey, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
 	if err != nil {
-		return nil, err, diskToPublish
+		return nil, err, diskType
 	}
 
 	volumeID := req.GetVolumeId()
@@ -559,36 +559,36 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err.Error()), diskToPublish
+			return nil, status.Errorf(codes.NotFound, "ControllerPublishVolume could not find volume with ID %v: %v", volumeID, err.Error()), diskType
 		}
-		return nil, common.LoggedError("ControllerPublishVolume error repairing underspecified volume key: ", err), diskToPublish
+		return nil, common.LoggedError("ControllerPublishVolume error repairing underspecified volume key: ", err), diskType
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
 	// to publish the same volume onto different nodes concurrently
 	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
 	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID), diskToPublish
+		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID), diskType
 	}
 	defer gceCS.volumeLocks.Release(lockingVolumeID)
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskToPublish = metrics.GetDiskType(disk)
+	diskType = metrics.GetDiskType(disk)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error()), diskToPublish
+			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error()), diskType
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to getDisk: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.Internal, "Failed to getDisk: %v", err.Error()), diskType
 	}
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "could not split nodeID: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.NotFound, "could not split nodeID: %v", err.Error()), diskType
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "Could not find instance %v: %v", nodeID, err.Error()), diskToPublish
+			return nil, status.Errorf(codes.NotFound, "Could not find instance %v: %v", nodeID, err.Error()), diskType
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to get instance: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.Internal, "Failed to get instance: %v", err.Error()), diskType
 	}
 
 	readWrite := "READ_WRITE"
@@ -598,21 +598,21 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 
 	deviceName, err := common.GetDeviceName(volKey)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error()), diskType
 	}
 
 	attached, err := diskIsAttachedAndCompatible(deviceName, instance, volumeCapability, readWrite)
 	if err != nil {
-		return nil, status.Errorf(codes.AlreadyExists, "Disk %v already published to node %v but incompatible: %v", volKey.Name, nodeID, err.Error()), diskToPublish
+		return nil, status.Errorf(codes.AlreadyExists, "Disk %v already published to node %v but incompatible: %v", volKey.Name, nodeID, err.Error()), diskType
 	}
 	if attached {
 		// Volume is attached to node. Success!
 		klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v, already attached.", volKey, nodeID)
-		return pubVolResp, nil, diskToPublish
+		return pubVolResp, nil, diskType
 	}
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), diskType
 	}
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
 	if err != nil {
@@ -621,18 +621,18 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 			// If we encountered an UnsupportedDiskError, rewrite the error message to be more user friendly.
 			// The error message from GCE is phrased around disk create on VM creation, not runtime attach.
 			machineType := parseMachineType(instance.MachineType)
-			return nil, status.Errorf(codes.InvalidArgument, "'%s' is not a compatible disk type with the machine type %s, please review the GCP online documentation for available persistent disk options", udErr.DiskType, machineType), diskToPublish
+			return nil, status.Errorf(codes.InvalidArgument, "'%s' is not a compatible disk type with the machine type %s, please review the GCP online documentation for available persistent disk options", udErr.DiskType, machineType), diskType
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to Attach: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.Internal, "Failed to Attach: %v", err.Error()), diskType
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Errored during WaitForAttach: %v", err.Error()), diskToPublish
+		return nil, status.Errorf(codes.Internal, "Errored during WaitForAttach: %v", err.Error()), diskType
 	}
 
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
-	return pubVolResp, nil, diskToPublish
+	return pubVolResp, nil, diskType
 }
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
@@ -643,18 +643,17 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 			gceCS.Metrics.RecordOperationErrorMetrics("ControllerUnpublishVolume", err, diskTypeForMetric)
 		}
 	}()
-	project, volKey, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
+	_, _, err = gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	err = status.Errorf(codes.InvalidArgument, "error message")
 	// Only valid requests will be queued
 	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId)
 	if gceCS.errorBackoff.blocking(backoffId) {
 		return nil, status.Errorf(codes.Unavailable, "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
-	diskToUnpublish, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskTypeForMetric = metrics.GetDiskType(diskToUnpublish)
-	resp, err := gceCS.executeControllerUnpublishVolume(ctx, req)
+	resp, err, diskTypeForMetric := gceCS.executeControllerUnpublishVolume(ctx, req)
 	if err != nil {
 		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
 		gceCS.errorBackoff.next(backoffId)
@@ -684,11 +683,12 @@ func (gceCS *GCEControllerServer) validateControllerUnpublishVolumeRequest(ctx c
 	return project, volKey, nil
 }
 
-func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error, string) {
+	var diskType string
 	project, volKey, err := gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 
 	if err != nil {
-		return nil, err
+		return nil, err, diskType
 	}
 
 	volumeID := req.GetVolumeId()
@@ -696,36 +696,38 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
-			return nil, status.Errorf(codes.NotFound, "ControllerUnpublishVolume could not find volume with ID %v: %v", volumeID, err.Error())
+			klog.Warningf("Treating volume %v as unpublished because it could not be found", volumeID)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil, diskType
 		}
-		return nil, common.LoggedError("ControllerUnpublishVolume error repairing underspecified volume key: ", err)
+		return nil, common.LoggedError("ControllerUnpublishVolume error repairing underspecified volume key: ", err), diskType
 	}
 
 	// Acquires the lock for the volume on that node only, because we need to support the ability
 	// to unpublish the same volume from different nodes concurrently
 	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
 	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID)
+		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, lockingVolumeID), diskType
 	}
 	defer gceCS.volumeLocks.Release(lockingVolumeID)
-
+	diskToUnpublish, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
+	diskType = metrics.GetDiskType(diskToUnpublish)
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), diskType
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			// Node not existing on GCE means that disk has been detached
 			klog.Warningf("Treating volume %v as unpublished because node %v could not be found", volKey.String(), instanceName)
-			return &csi.ControllerUnpublishVolumeResponse{}, nil
+			return &csi.ControllerUnpublishVolumeResponse{}, nil, diskType
 		}
-		return nil, status.Errorf(codes.Internal, "error getting instance: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "error getting instance: %v", err.Error()), diskType
 	}
 
 	deviceName, err := common.GetDeviceName(volKey)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error()), diskType
 	}
 
 	attached := diskIsAttached(deviceName, instance)
@@ -733,15 +735,15 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	if !attached {
 		// Volume is not attached to node. Success!
 		klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v. Already not attached.", volKey, nodeID)
-		return &csi.ControllerUnpublishVolumeResponse{}, nil
+		return &csi.ControllerUnpublishVolumeResponse{}, nil, diskType
 	}
 	err = gceCS.CloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 	if err != nil {
-		return nil, common.LoggedError("Failed to detach: ", err)
+		return nil, common.LoggedError("Failed to detach: ", err), diskType
 	}
 
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
+	return &csi.ControllerUnpublishVolumeResponse{}, nil, diskType
 }
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {

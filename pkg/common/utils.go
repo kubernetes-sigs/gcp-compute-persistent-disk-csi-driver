@@ -266,18 +266,6 @@ func ValidateSnapshotType(snapshotType string) error {
 	}
 }
 
-// ParseMachineType returns an extracted machineType from a URL, or empty if not found.
-// machineTypeUrl: Full or partial URL of the machine type resource, in the format:
-//
-//	zones/zone/machineTypes/machine-type
-func ParseMachineType(machineTypeUrl string) (string, error) {
-	machineType := machineTypeRegex.FindStringSubmatch(machineTypeUrl)
-	if machineType == nil {
-		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
-	}
-	return machineType[1], nil
-}
-
 // ConvertStringToInt64 converts a string to int64
 func ConvertStringToInt64(str string) (int64, error) {
 	quantity, err := resource.ParseQuantity(str)
