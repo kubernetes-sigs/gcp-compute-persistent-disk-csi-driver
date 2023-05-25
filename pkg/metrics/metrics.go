@@ -151,8 +151,6 @@ func GetDiskType(disk *gce.CloudDisk) string {
 	var diskType string
 	if disk != nil {
 		diskType = disk.GetPDType()
-	} else {
-		diskType = ""
 	}
 	return diskType
 }
