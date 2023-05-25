@@ -415,8 +415,8 @@ func generateMetadataWithPublicKey(pubKeyFile string) (*compute.Metadata, error)
 // isGCEError returns true if given error is a googleapi.Error with given
 // reason (e.g. "resourceInUseByAnotherResource")
 func isGCEError(err error, reason string) bool {
-	apiErr, ok := err.(*googleapi.Error)
-	if !ok {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
 		return false
 	}
 

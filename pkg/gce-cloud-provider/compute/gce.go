@@ -16,6 +16,7 @@ package gcecloudprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -248,8 +249,8 @@ func getProjectAndZone(config *ConfigFile) (string, string, error) {
 // isGCEError returns true if given error is a googleapi.Error with given
 // reason (e.g. "resourceInUseByAnotherResource")
 func IsGCEError(err error, reason string) bool {
-	apiErr, ok := err.(*googleapi.Error)
-	if !ok {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
 		return false
 	}
 
