@@ -1,3 +1,13 @@
+# v1.9.5 - Changelog since v1.9.4
+
+### Bug or Regression
+
+- Add libraries needed for determining XFS volume expansion ([#1204](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1204), [@nberlee](https://github.com/nberlee))
+
+### Cleanup
+
+- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1222](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1222), [@pwschuurman](https://github.com/pwschuurman))
+
 # v1.9.4 - Changelog since v1.9.3
 
 ## Changes by Kind
