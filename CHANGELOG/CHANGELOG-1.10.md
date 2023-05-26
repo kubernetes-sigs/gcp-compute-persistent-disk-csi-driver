@@ -1,3 +1,15 @@
+# v1.10.2 - Changelog since v1.10.1
+
+### Bug or Regression
+
+- Add libraries needed for determining XFS volume expansion ([#1204](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1204), [@nberlee](https://github.com/nberlee))
+
+### Cleanup
+
+- Add metrics for CSI server side error count ([#1237](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1237), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1221](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1221), [@pwschuurman](https://github.com/pwschuurman))
+- Use errors.As so we can detect wrapped errors, and check for existing error codes in CodesForError ([#1233](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1233), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.10.1 - Changelog since v1.10.0
 
 ## Changes by Kind
