@@ -631,3 +631,225 @@ func TestParseMachineType(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertStringToInt64(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
+	}{
+		{
+			desc:        "valid number string",
+			inputStr:    "10000",
+			expInt64:    10000,
+			expectError: false,
+		},
+		{
+			desc:        "round M to number",
+			inputStr:    "1M",
+			expInt64:    1000000,
+			expectError: false,
+		},
+		{
+			desc:        "round m to number",
+			inputStr:    "1m",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round k to number",
+			inputStr:    "1k",
+			expInt64:    1000,
+			expectError: false,
+		},
+		{
+			desc:        "invalid empty string",
+			inputStr:    "",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid string",
+			inputStr:    "ew%65",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid KiB string",
+			inputStr:    "10KiB",
+			expInt64:    10000,
+			expectError: true,
+		},
+		{
+			desc:        "invalid GB string",
+			inputStr:    "10GB",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "round Ki to number",
+			inputStr:    "1Ki",
+			expInt64:    1024,
+			expectError: false,
+		},
+		{
+			desc:        "round k to number",
+			inputStr:    "10k",
+			expInt64:    10000,
+			expectError: false,
+		},
+		{
+			desc:        "round Mi to number",
+			inputStr:    "10Mi",
+			expInt64:    10485760,
+			expectError: false,
+		},
+		{
+			desc:        "round M to number",
+			inputStr:    "10M",
+			expInt64:    10000000,
+			expectError: false,
+		},
+		{
+			desc:        "round G to number",
+			inputStr:    "10G",
+			expInt64:    10000000000,
+			expectError: false,
+		},
+		{
+			desc:        "round Gi to number",
+			inputStr:    "100Gi",
+			expInt64:    107374182400,
+			expectError: false,
+		},
+		{
+			desc:        "round decimal to number",
+			inputStr:    "1.2Gi",
+			expInt64:    1288490189,
+			expectError: false,
+		},
+		{
+			desc:        "round big value to number",
+			inputStr:    "8191Pi",
+			expInt64:    9222246136947933184,
+			expectError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualInt64, err := ConvertStringToInt64(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
+			}
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
+			}
+		})
+	}
+}
+
+func TestConvertMiStringToInt64(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
+	}{
+		{
+			desc:        "valid number string",
+			inputStr:    "10000",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round Ki to MiB",
+			inputStr:    "1000Ki",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round k to MiB",
+			inputStr:    "1000k",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round Mi to MiB",
+			inputStr:    "1000Mi",
+			expInt64:    1000,
+			expectError: false,
+		},
+		{
+			desc:        "round M to MiB",
+			inputStr:    "1000M",
+			expInt64:    954,
+			expectError: false,
+		},
+		{
+			desc:        "round G to MiB",
+			inputStr:    "1000G",
+			expInt64:    953675,
+			expectError: false,
+		},
+		{
+			desc:        "round Gi to MiB",
+			inputStr:    "10000Gi",
+			expInt64:    10240000,
+			expectError: false,
+		},
+		{
+			desc:        "round decimal to MiB",
+			inputStr:    "1.2Gi",
+			expInt64:    1229,
+			expectError: false,
+		},
+		{
+			desc:        "round big value to MiB",
+			inputStr:    "8191Pi",
+			expInt64:    8795019280384,
+			expectError: false,
+		},
+		{
+			desc:        "invalid empty string",
+			inputStr:    "",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid KiB string",
+			inputStr:    "10KiB",
+			expInt64:    10000,
+			expectError: true,
+		},
+		{
+			desc:        "invalid GB string",
+			inputStr:    "10GB",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid string",
+			inputStr:    "ew%65",
+			expInt64:    0,
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualInt64, err := ConvertMiStringToInt64(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
+			}
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
+			}
+		})
+	}
+}

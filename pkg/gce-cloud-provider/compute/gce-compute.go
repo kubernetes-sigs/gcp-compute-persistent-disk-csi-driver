@@ -44,6 +44,7 @@ const (
 )
 
 var pdDiskTypeUnsupportedRegex = regexp.MustCompile(pdDiskTypeUnsupportedPattern)
+var hyperdiskTypes = []string{"hyperdisk-extreme", "hyperdisk-throughput"}
 
 type GCEAPIVersion string
 
@@ -401,7 +402,7 @@ func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey
 	}
 }
 
-func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
+func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCreate int64) *computebeta.Disk {
 	var dek *computebeta.CustomerEncryptionKey = nil
 
 	if v1Disk.DiskEncryptionKey != nil {
@@ -409,7 +410,7 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 	}
 
 	// Note: this is an incomplete list. It only includes the fields we use for disk creation.
-	return &computebeta.Disk{
+	betaDisk := &computebeta.Disk{
 		Name:              v1Disk.Name,
 		SizeGb:            v1Disk.SizeGb,
 		Description:       v1Disk.Description,
@@ -418,6 +419,11 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 		ReplicaZones:      v1Disk.ReplicaZones,
 		DiskEncryptionKey: dek,
 	}
+	if provisionedThroughputOnCreate > 0 {
+		betaDisk.ProvisionedThroughput = provisionedThroughputOnCreate
+	}
+
+	return betaDisk
 }
 
 func (cloud *CloudProvider) insertRegionalDisk(
@@ -443,11 +449,12 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:        volKey.Name,
-		SizeGb:      common.BytesToGbRoundUp(capBytes),
-		Description: description,
-		Type:        cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
-		Labels:      params.Labels,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     description,
+		Type:            cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 	if snapshotID != "" {
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(snapshotID)
@@ -478,7 +485,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, 0)
 		betaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.betaService.RegionDisks.Insert(project, volKey.Region, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
@@ -550,7 +557,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
-	if multiWriter {
+	if multiWriter || containsBetaDiskType(hyperdiskTypes, params.DiskType) {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
@@ -588,7 +595,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, params.ProvisionedThroughputOnCreate)
 		betaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.betaService.Disks.Insert(project, volKey.Zone, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
@@ -1189,4 +1196,14 @@ func encodeTags(tags map[string]string) (string, error) {
 		return "", fmt.Errorf("failed to encodeTags %v: %w", tags, err)
 	}
 	return string(enc), nil
+}
+
+func containsBetaDiskType(betaDiskTypes []string, diskType string) bool {
+	for _, betaDiskType := range betaDiskTypes {
+		if betaDiskType == diskType {
+			return true
+		}
+	}
+
+	return false
 }
