@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"k8s.io/utils/exec"
@@ -40,11 +41,11 @@ const defaultTargetPath = "/mnt/test"
 const defaultStagingPath = "/staging"
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
-	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(), metadataservice.NewFakeService())
+	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService())
 }
 
 func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount) *GCEDriver {
-	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(), metadataservice.NewFakeService())
+	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService())
 }
 
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
@@ -60,7 +61,7 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
-	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
@@ -381,26 +382,61 @@ func TestNodeStageVolume(t *testing.T) {
 	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
 	testCases := []struct {
-		name       string
-		req        *csi.NodeStageVolumeRequest
-		expErrCode codes.Code
+		name         string
+		req          *csi.NodeStageVolumeRequest
+		deviceSize   int
+		blockExtSize int
+		readonlyBit  string
+		expResize    bool
+		expErrCode   codes.Code
 	}{
 		{
-			name: "Valid request",
+			name: "Valid request, no resize because block and filesystem sizes match",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 			},
+			deviceSize:   1,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    false,
 		},
 		{
-			name: "Invalid request (Bad Access Mode)",
+			name: "Valid request, no resize bc readonly",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
-				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_UNKNOWN),
+				VolumeCapability:  stdVolCap,
 			},
-			expErrCode: codes.InvalidArgument,
+			deviceSize:   1,
+			blockExtSize: 1,
+			readonlyBit:  "1",
+			expResize:    false,
+		},
+		{
+			name: "Valid request, resize bc size",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  stdVolCap,
+			},
+			deviceSize:   5,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    true,
+		},
+		{
+			name: "Valid request, no resize bc readonly capability",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  createVolumeCapability(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			deviceSize:   5,
+			blockExtSize: 1,
+			readonlyBit:  "0",
+			expResize:    false,
 		},
 		{
 			name: "Invalid request (Bad Access Mode)",
@@ -448,6 +484,7 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
+		resizeCalled := false
 		actionList := []testingexec.FakeCommandAction{
 			makeFakeCmd(
 				&testingexec.FakeCmd{
@@ -458,26 +495,40 @@ func TestNodeStageVolume(t *testing.T) {
 					},
 				},
 				"blkid",
+				strings.Split("-p -s TYPE -s PTTYPE -o export /dev/disk/fake-path", " ")...,
 			),
 			makeFakeCmd(
 				&testingexec.FakeCmd{
 					CombinedOutputScript: []testingexec.FakeAction{
 						func() ([]byte, []byte, error) {
-							return []byte("1"), nil, nil
+							return []byte(""), nil, nil
 						},
 					},
 				},
-				"blockdev",
+				"fsck",
+				strings.Split("-a /dev/disk/fake-path", " ")...,
 			),
 			makeFakeCmd(
 				&testingexec.FakeCmd{
 					CombinedOutputScript: []testingexec.FakeAction{
 						func() ([]byte, []byte, error) {
-							return []byte("1"), nil, nil
+							return []byte(tc.readonlyBit), nil, nil
 						},
 					},
 				},
 				"blockdev",
+				strings.Split("--getro /dev/disk/fake-path", " ")...,
+			),
+			makeFakeCmd(
+				&testingexec.FakeCmd{
+					CombinedOutputScript: []testingexec.FakeAction{
+						func() ([]byte, []byte, error) {
+							return []byte(fmt.Sprintf("%d", tc.deviceSize)), nil, nil
+						},
+					},
+				},
+				"blockdev",
+				strings.Split("--getsize64 /dev/disk/fake-path", " ")...,
 			),
 			makeFakeCmd(
 				&testingexec.FakeCmd{
@@ -488,17 +539,47 @@ func TestNodeStageVolume(t *testing.T) {
 					},
 				},
 				"blkid",
+				strings.Split("-p -s TYPE -s PTTYPE -o export /dev/disk/fake-path", " ")...,
 			),
 			makeFakeCmd(
 				&testingexec.FakeCmd{
 					CombinedOutputScript: []testingexec.FakeAction{
 						func() ([]byte, []byte, error) {
-							return []byte(fmt.Sprintf("block size: 1\nblock count: 1")), nil, nil
+							return []byte(fmt.Sprintf("block size: %d\nblock count: 1", tc.blockExtSize)), nil, nil
 						},
 					},
 				},
 				"dumpe2fs",
+				strings.Split("-h /dev/disk/fake-path", " ")...,
 			),
+		}
+
+		if tc.expResize {
+			actionList = append(actionList, []testingexec.FakeCommandAction{
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						CombinedOutputScript: []testingexec.FakeAction{
+							func() ([]byte, []byte, error) {
+								return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+							},
+						},
+					},
+					"blkid",
+					strings.Split("-p -s TYPE -s PTTYPE -o export /dev/disk/fake-path", " ")...,
+				),
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						CombinedOutputScript: []testingexec.FakeAction{
+							func() ([]byte, []byte, error) {
+								resizeCalled = true
+								return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+							},
+						},
+					},
+					"resize2fs",
+					strings.Split("/dev/disk/fake-path", " ")...,
+				),
+			}...)
 		}
 		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
 		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
@@ -516,6 +597,12 @@ func TestNodeStageVolume(t *testing.T) {
 		}
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+		if tc.expResize == true && resizeCalled == false {
+			t.Fatalf("Test did not call resize, but it was expected.")
+		}
+		if tc.expResize == false && resizeCalled == true {
+			t.Fatalf("Test called resize, but it was not expected.")
 		}
 	}
 }

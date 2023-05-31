@@ -62,7 +62,7 @@ func TestSanity(t *testing.T) {
 	}
 
 	mounter := mountmanager.NewFakeSafeMounter()
-	deviceUtils := deviceutils.NewFakeDeviceUtils()
+	deviceUtils := deviceutils.NewFakeDeviceUtils(true)
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)

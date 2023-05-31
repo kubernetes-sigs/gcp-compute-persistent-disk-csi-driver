@@ -342,10 +342,12 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// Part 4: Resize filesystem.
 	// https://github.com/kubernetes/kubernetes/issues/94929
-	resizer := resizefs.NewResizeFs(ns.Mounter)
-	_, err = ns.DeviceUtils.Resize(resizer, devicePath, stagingTargetPath)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s from device '%s' at path '%s': %v", volumeID, devicePath, stagingTargetPath, err.Error()))
+	if !readonly {
+		resizer := resizefs.NewResizeFs(ns.Mounter)
+		_, err = ns.DeviceUtils.Resize(resizer, devicePath, stagingTargetPath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("error when resizing volume %s from device '%s' at path '%s': %v", volumeID, devicePath, stagingTargetPath, err.Error()))
+		}
 	}
 
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
@@ -503,6 +505,15 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 		if blk := volumeCapability.GetBlock(); blk != nil {
 			// Noop for Block NodeExpandVolume
 			klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, volumePath)
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+
+		readonly, err := getReadOnlyFromCapability(volumeCapability)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to check if capability for volume %s is readonly: %v", volumeID, err))
+		}
+		if readonly {
+			klog.V(4).Infof("NodeExpandVolume succeeded on %v to %s, capability access is readonly so this is a no-op", volumeID, volumePath)
 			return &csi.NodeExpandVolumeResponse{}, nil
 		}
 	}

@@ -102,9 +102,6 @@ You may see errors during driver deployment.
 
 ### Sanity tests
 
-> ***NOTE:*** Sanity tests are currently failing, tracked by
-> https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/990.
-
 ```
 ./test/run-sanity.sh
 ```
