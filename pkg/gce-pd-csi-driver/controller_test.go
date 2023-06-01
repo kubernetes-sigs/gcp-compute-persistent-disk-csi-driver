@@ -1121,8 +1121,112 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 	}
 }
 
+func TestCloningLocationRequirements(t *testing.T) {
+	testSourceVolumeName := "test-volume-source-name"
+	testZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, testSourceVolumeName)
+	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
+
+	testCases := []struct {
+		name                         string
+		sourceVolumeID               string
+		nilVolumeContentSource       bool
+		reqParameters                map[string]string
+		requestCapacityRange         *csi.CapacityRange
+		replicationType              string
+		expectedLocationRequirements *locationRequirements
+		expectedErr                  bool
+	}{
+		{
+			name:                 "success zonal disk clone of zonal source disk",
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyReplicationType: replicationTypeNone,
+			},
+			replicationType:              replicationTypeNone,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeNone},
+			expectedErr:                  false,
+		},
+		{
+			name:                 "success regional disk clone of regional source disk",
+			sourceVolumeID:       testRegionalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+			},
+			replicationType:              replicationTypeRegionalPD,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: "", srcReplicationType: replicationTypeRegionalPD, cloneReplicationType: replicationTypeRegionalPD},
+			expectedErr:                  false,
+		},
+		{
+			name:                 "success regional disk clone of zonal data source",
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+			},
+			replicationType:              replicationTypeRegionalPD,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
+			expectedErr:                  false,
+		},
+		{
+			name:                   "non-cloning CreateVolumeRequest",
+			nilVolumeContentSource: true,
+			requestCapacityRange:   stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+			},
+			replicationType:              replicationTypeRegionalPD,
+			expectedLocationRequirements: nil,
+			expectedErr:                  false,
+		},
+		{
+			name:                 "failure invalid volumeID",
+			sourceVolumeID:       fmt.Sprintf("projects/%s/disks/%s", project, testSourceVolumeName),
+			requestCapacityRange: stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyReplicationType: replicationTypeNone,
+			},
+			replicationType:              replicationTypeNone,
+			expectedLocationRequirements: nil,
+			expectedErr:                  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		req := &csi.CreateVolumeRequest{
+			Name:               name,
+			CapacityRange:      tc.requestCapacityRange,
+			VolumeCapabilities: stdVolCaps,
+			Parameters:         tc.reqParameters,
+			VolumeContentSource: &csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: tc.sourceVolumeID,
+					},
+				},
+			},
+		}
+		if tc.nilVolumeContentSource {
+			req.VolumeContentSource = nil
+		}
+
+		locationRequirements, err := cloningLocationRequirements(req, tc.replicationType)
+
+		if err != nil != tc.expectedErr {
+			t.Fatalf("Got error %v, expected error %t", err, tc.expectedErr)
+		}
+		input := fmt.Sprintf("cloningLocationRequirements(%v, %s", req, tc.replicationType)
+		if fmt.Sprintf("%v", tc.expectedLocationRequirements) != fmt.Sprintf("%v", locationRequirements) {
+			t.Fatalf("%s returned unexpected diff got: %v, want %v", input, locationRequirements, tc.expectedLocationRequirements)
+		}
+	}
+}
+
 func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testSourceVolumeName := "test-volume-source-name"
+	testCloneVolumeName := "test-volume-clone"
 	testZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, testSourceVolumeName)
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
 	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
@@ -1134,14 +1238,33 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
-	topology := &csi.TopologyRequirement{
-		Requisite: []*csi.Topology{
-			{
-				Segments: map[string]string{common.TopologyKeyZone: zone},
-			},
-			{
-				Segments: map[string]string{common.TopologyKeyZone: secondZone},
-			},
+	requisiteTopology := []*csi.Topology{
+		{
+			Segments: map[string]string{common.TopologyKeyZone: zone},
+		},
+		{
+			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+		},
+	}
+
+	requisiteAllRegionZonesTopology := []*csi.Topology{
+		{
+			Segments: map[string]string{common.TopologyKeyZone: "country-region-fakethirdzone"},
+		},
+		{
+			Segments: map[string]string{common.TopologyKeyZone: zone},
+		},
+		{
+			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+		},
+	}
+
+	prefTopology := []*csi.Topology{
+		{
+			Segments: map[string]string{common.TopologyKeyZone: zone},
+		},
+		{
+			Segments: map[string]string{common.TopologyKeyZone: secondZone},
 		},
 	}
 
@@ -1157,39 +1280,326 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		requestCapacityRange *csi.CapacityRange
 		sourceTopology       *csi.TopologyRequirement
 		requestTopology      *csi.TopologyRequirement
+		expCloneKey          *meta.Key
+		// Accessible topologies validates that the replica zones are valid for regional disk clones.
+		expAccessibleTop []*csi.Topology
 	}{
+
 		{
-			name:                 "success zonal disk clone of zonal source disk",
+			name:                 "success zonal -> zonal cloning, nil topology: immediate binding w/ no allowedTopologies",
 			volumeOnCloud:        true,
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters:  zonalParams,
-			sourceTopology:       topology,
-			requestTopology:      topology,
+			// Source volume will be in the zone that is the first element of preferred topologies (country-region-zone)
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: nil,
+			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+			},
 		},
 		{
-			name:                 "success regional disk clone of regional source disk",
+			name:                 "success zonal -> zonal cloning, req = allowedTopologies, pref = req w/ randomly selected zone as first element: immediate binding w/ allowedTopologies",
 			volumeOnCloud:        true,
-			sourceVolumeID:       testRegionalVolumeSourceID,
+			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			sourceCapacityRange:  stdCapRange,
-			reqParameters:        regionalParams,
-			sourceReqParameters:  regionalParams,
-			sourceTopology:       topology,
-			requestTopology:      topology,
+			reqParameters:        zonalParams,
+			sourceReqParameters:  zonalParams,
+			// Source volume will be in the zone that is the first element of preferred topologies (country-region-zone)
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+			},
 		},
 		{
-			name:                 "success regional disk clone of zonal data source",
+			name:                 "success zonal -> zonal cloning, req = allowedTopologies, pref = req w/ src zone as first element: delayed binding w/ allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        zonalParams,
+			sourceReqParameters:  zonalParams,
+			// Source volume will be in the zone that is the first element of preferred topologies (country-region-zone)
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+			},
+		},
+		{
+			name:                 "success zonal -> zonal cloning, req = all zones in region, pref = req w/ src zone as first element: delayed binding without allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        zonalParams,
+			sourceReqParameters:  zonalParams,
+			// Source volume will be in the zone that is the first element of preferred topologies (country-region-zone)
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteAllRegionZonesTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+			},
+		},
+		{
+			name:                 "success zonal -> regional cloning, nil topology: immediate binding w/ no allowedTopologies",
 			volumeOnCloud:        true,
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        regionalParams,
 			sourceReqParameters:  zonalParams,
-			sourceTopology:       topology,
-			requestTopology:      topology,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: nil,
+			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success zonal -> regional cloning, req = allowedTopologies, pref = req w/ randomly selected zone as first element: immediate binding w/ allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  zonalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success zonal -> regional cloning, req = allowedTopologies, pref = req w/ src zone as first element: delayed binding w/ allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  zonalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success zonal -> regional cloning, req = all zones in region, pref = req w/ src zone as first element: delayed binding without allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  zonalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteAllRegionZonesTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success regional -> regional cloning, nil topology: immediate binding w/ no allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testRegionalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  regionalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: nil,
+			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success regional -> regional cloning, req = allowedTopologies, pref = req w/ randomly selected zone as first element: immediate binding w/ allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testRegionalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  regionalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success regional -> regional cloning, req = allowedTopologies, pref = req w/ src zone as first element: delayed binding w/ allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testRegionalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  regionalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
+		},
+		{
+			name:                 "success regional -> regional cloning, req = all zones in region, pref = req w/ src zone as first element: delayed binding without allowedTopologies",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testRegionalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters:        regionalParams,
+			sourceReqParameters:  regionalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
+			expAccessibleTop: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+				},
+			},
 		},
 		{
 			name:                 "fail regional disk clone with no matching replica zone of zonal data source",
@@ -1200,7 +1610,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        regionalParams,
 			sourceReqParameters:  zonalParams,
-			sourceTopology:       topology,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 			requestTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -1223,8 +1636,14 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceReqParameters: map[string]string{
 				common.ParameterKeyType: "different-type",
 			},
-			sourceTopology:  topology,
-			requestTopology: topology,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 		{
 			name:                 "fail zonal disk clone with different DiskEncryptionKMSKey",
@@ -1238,8 +1657,14 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
 				common.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
 			},
-			sourceTopology:  topology,
-			requestTopology: topology,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 		{
 			name:                 "fail zonal disk clone with different zone",
@@ -1260,7 +1685,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 					},
 				},
 			},
-			requestTopology: topology,
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 		{
 			name:                 "fail zonal disk clone of regional data source",
@@ -1271,8 +1699,14 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters:  regionalParams,
-			sourceTopology:       topology,
-			requestTopology:      topology,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 
 		{
@@ -1284,7 +1718,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        stdParams,
 			sourceReqParameters:  stdParams,
-			requestTopology:      topology,
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 		{
 			name:                 "fail invalid source disk volume id format",
@@ -1295,7 +1732,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        stdParams,
 			sourceReqParameters:  stdParams,
-			requestTopology:      topology,
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
 		},
 		{
 			name:                 "fail zonal disk clone with smaller disk capacity",
@@ -1308,16 +1748,23 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			},
 			reqParameters:       zonalParams,
 			sourceReqParameters: zonalParams,
-			sourceTopology:      topology,
-			requestTopology:     topology,
-		}}
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+		},
+	}
 
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		gceDriver := initGCEDriver(t, nil)
 
 		req := &csi.CreateVolumeRequest{
-			Name:               name,
+			Name:               testCloneVolumeName,
 			CapacityRange:      tc.requestCapacityRange,
 			VolumeCapabilities: stdVolCaps,
 			Parameters:         tc.reqParameters,
@@ -1352,7 +1799,6 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		}
 
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), req)
-		t.Logf("response: %v err: %v", resp, err)
 		if err != nil {
 			serverError, ok := status.FromError(err)
 			if !ok {
@@ -1368,12 +1814,37 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		}
 
 		// Make sure the response has the source volume.
-		sourceVolume := resp.GetVolume()
-		if sourceVolume.ContentSource == nil || sourceVolume.ContentSource.Type == nil ||
-			sourceVolume.ContentSource.GetVolume() == nil || sourceVolume.ContentSource.GetVolume().VolumeId == "" {
+		respVolume := resp.GetVolume()
+		if respVolume.ContentSource == nil || respVolume.ContentSource.Type == nil ||
+			respVolume.ContentSource.GetVolume() == nil || respVolume.ContentSource.GetVolume().VolumeId == "" {
 			t.Fatalf("Expected volume content source to have volume ID, got none")
 		}
+		// Validate that the cloned volume is in the region/zone that we expect
+		cloneVolID := respVolume.VolumeId
+		_, cloneVolKey, err := common.VolumeIDToKey(cloneVolID)
+		if err != nil {
+			t.Fatalf("failed to get key from volume id %q: %v", cloneVolID, err)
+		}
+		if cloneVolKey.String() != tc.expCloneKey.String() {
+			t.Fatalf("got clone volume key: %q, expected clone volume key: %q", cloneVolKey.String(), tc.expCloneKey.String())
+		}
+		if !accessibleTopologiesEqual(respVolume.AccessibleTopology, tc.expAccessibleTop) {
+			t.Fatalf("got accessible topology: %q, expected accessible topology: %q", fmt.Sprintf("%+v", respVolume.AccessibleTopology), fmt.Sprintf("%+v", tc.expAccessibleTop))
+
+		}
 	}
+}
+
+func sortTopologies(in []*csi.Topology) {
+	sort.Slice(in, func(i, j int) bool {
+		return in[i].Segments[common.TopologyKeyZone] < in[j].Segments[common.TopologyKeyZone]
+	})
+}
+
+func accessibleTopologiesEqual(got []*csi.Topology, expected []*csi.Topology) bool {
+	sortTopologies(got)
+	sortTopologies(expected)
+	return fmt.Sprintf("%+v", got) == fmt.Sprintf("%+v", expected)
 }
 
 func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
@@ -1806,10 +2277,93 @@ func TestGetZonesFromTopology(t *testing.T) {
 	}
 }
 
+func TestPickZonesInRegion(t *testing.T) {
+	testCases := []struct {
+		name     string
+		region   string
+		zones    []string
+		expZones []string
+	}{
+		{
+			name:     "all zones in region",
+			region:   "us-central1",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name:     "removes zones not in region",
+			region:   "us-central1",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-east1-a, us-west1-a"},
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name:     "region not in zones",
+			region:   "us-west1",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			expZones: []string{},
+		},
+		{
+			name:     "empty zones",
+			region:   "us-central1",
+			zones:    []string{},
+			expZones: []string{},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotZones := pickZonesInRegion(tc.region, tc.zones)
+		if !sets.NewString(gotZones...).Equal(sets.NewString(tc.expZones...)) {
+			t.Errorf("Got zones: %v, expected: %v", gotZones, tc.expZones)
+		}
+	}
+}
+
+func TestPrependZone(t *testing.T) {
+	testCases := []struct {
+		name     string
+		zone     string
+		zones    []string
+		expZones []string
+	}{
+		{
+			name:     "zone already at index 0",
+			zone:     "us-central1-a",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name:     "zone at index 1",
+			zone:     "us-central1-b",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			expZones: []string{"us-central1-b", "us-central1-a", "us-central1-c"},
+		},
+		{
+			name:     "zone not in zones",
+			zone:     "us-central1-f",
+			zones:    []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			expZones: []string{"us-central1-f", "us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name:     "empty zones",
+			zone:     "us-central1-a",
+			zones:    []string{},
+			expZones: []string{"us-central1-a"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gotZones := prependZone(tc.zone, tc.zones)
+		if !zonesEqual(gotZones, tc.expZones) {
+			t.Errorf("Got zones: %v, expected: %v", gotZones, tc.expZones)
+		}
+	}
+}
+
 func TestPickZonesFromTopology(t *testing.T) {
 	testCases := []struct {
 		name     string
 		top      *csi.TopologyRequirement
+		locReq   *locationRequirements
 		numZones int
 		expZones []string
 		expErr   bool
@@ -1842,6 +2396,36 @@ func TestPickZonesFromTopology(t *testing.T) {
 			},
 			numZones: 2,
 			expZones: []string{"topology-zone2", "topology-zone3"},
+		},
+		{
+			name: "success: preferred, locationRequirements[region:us-central1, zone:us-central1-a, srcReplicationType:none, cloneReplicationType:none]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeNone},
+			numZones: 1,
+			expZones: []string{"us-central1-a"},
 		},
 		{
 			name: "success: preferred and requisite",
@@ -1879,6 +2463,72 @@ func TestPickZonesFromTopology(t *testing.T) {
 			expZones: []string{"topology-zone2", "topology-zone3", "topology-zone1", "topology-zone5", "topology-zone6"},
 		},
 		{
+			name: "success: preferred and requisite, locationRequirements[region:us-central1, zone:us-central1-a, srcReplicationType:regional-pd, cloneReplicationType:regional-pd]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeRegionalPD, cloneReplicationType: replicationTypeRegionalPD},
+			numZones: 5,
+			expZones: []string{"us-central1-b", "us-central1-c", "us-central1-a", "us-central1-d", "us-central1-f"},
+		},
+		{
+			name: "success: preferred and requisite, locationRequirements[region:us-central1, zone:us-central1-a, srcReplicationType:none, cloneReplicationType:regional-pd]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
+			numZones: 5,
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-central1-d", "us-central1-f"},
+		},
+		{
 			name: "fail: not enough topologies",
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -1908,6 +2558,114 @@ func TestPickZonesFromTopology(t *testing.T) {
 			expErr:   true,
 		},
 		{
+			name: "fail: no topologies that match locationRequirment, locationRequirements[region:us-east1, zone:us-east1-a, replicationType:none]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneReplicationType: replicationTypeNone},
+			numZones: 1,
+			expErr:   true,
+		},
+		{
+			name: "fail: no topologies that match locationRequirment, locationRequirements[region:us-east1, zone:us-east1-a, replicationType:regional-pd]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneReplicationType: replicationTypeRegionalPD},
+			numZones: 2,
+			expErr:   true,
+		},
+		{
+			name: "fail: not enough topologies, locationRequirements[region:us-central1, zone:us-central1-a, replicationType:regional-pd]",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", cloneReplicationType: replicationTypeRegionalPD},
+			numZones: 4,
+			expErr:   true,
+		},
+		{
+			name: "success: only requisite, locationRequirements[region:us-central1, zone:us-central1-a, replicationType:regional-pd",
+			top: &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+					},
+				},
+			},
+			numZones: 3,
+			expZones: []string{"us-central1-b", "us-central1-c", "us-central1-a"},
+		},
+		{
 			name: "success: only requisite",
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -1928,17 +2686,29 @@ func TestPickZonesFromTopology(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gotZones, err := pickZonesFromTopology(tc.top, tc.numZones)
+		gotZones, err := pickZonesFromTopology(tc.top, tc.numZones, tc.locReq)
 		if err != nil && !tc.expErr {
-			t.Errorf("Did not expect error but got: %v", err)
+			t.Errorf("got error: %v, but did not expect error", err)
 		}
 		if err == nil && tc.expErr {
-			t.Errorf("Expected error but got none")
+			t.Errorf("got no error, but expected error")
 		}
 		if !sets.NewString(gotZones...).Equal(sets.NewString(tc.expZones...)) {
 			t.Errorf("Expected zones: %v, but got: %v", tc.expZones, gotZones)
 		}
 	}
+}
+
+func zonesEqual(gotZones, expectedZones []string) bool {
+	if len(gotZones) != len(expectedZones) {
+		return false
+	}
+	for i := 0; i < len(gotZones); i++ {
+		if gotZones[i] != expectedZones[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestPickRandAndConsecutive(t *testing.T) {

@@ -17,17 +17,12 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"net/http"
-
-	"context"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 )
 
@@ -216,37 +211,4 @@ func containsZone(zones []string, zone string) bool {
 	}
 
 	return false
-}
-
-// CodeForError returns a pointer to the grpc error code that maps to the http
-// error code for the passed in user googleapi error. Returns codes.Internal if
-// the given error is not a googleapi error caused by the user. The following
-// http error codes are considered user errors:
-// (1) http 400 Bad Request, returns grpc InvalidArgument,
-// (2) http 403 Forbidden, returns grpc PermissionDenied,
-// (3) http 404 Not Found, returns grpc NotFound
-// (4) http 429 Too Many Requests, returns grpc ResourceExhausted
-func CodeForError(err error) *codes.Code {
-	internalErrorCode := codes.Internal
-	// Upwrap the error
-	var apiErr *googleapi.Error
-	if !errors.As(err, &apiErr) {
-		return &internalErrorCode
-	}
-
-	userErrors := map[int]codes.Code{
-		http.StatusForbidden:       codes.PermissionDenied,
-		http.StatusBadRequest:      codes.InvalidArgument,
-		http.StatusTooManyRequests: codes.ResourceExhausted,
-		http.StatusNotFound:        codes.NotFound,
-	}
-	if code, ok := userErrors[apiErr.Code]; ok {
-		return &code
-	}
-	return &internalErrorCode
-}
-
-func LoggedError(msg string, err error) error {
-	klog.Errorf(msg+"%v", err.Error())
-	return status.Errorf(*CodeForError(err), msg+"%v", err.Error())
 }
