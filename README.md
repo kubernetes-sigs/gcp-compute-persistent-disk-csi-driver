@@ -21,34 +21,28 @@ Latest stable image: `registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-
 | Driver Version | Kubernetes Version | Test Status |
 |----------------|--------------------|-------------|
 | HEAD Latest | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Latest) |
-| 0.7.x stable | HEAD | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Release%200.7/tests_status" />](https://https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Release%200.7) |
-| HEAD Latest | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Latest/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Latest) |
-| HEAD stable-master | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Migration%20Kubernetes%20Master%20Driver%20Stable/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Migration%20Kubernetes%20Master%20Driver%20Stable) |
+| HEAD stable-master | HEAD (Migration ON) | [<img alt="Test Status" src="https://testgrid.k8s.io/q/summary/provider-gcp-compute-persistent-disk-csi-driver/Kubernetes%20Master%20Driver%20Latest%20Release/tests_status" />](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver#Kubernetes%20Master%20Driver%20Latest%20Release) |
 
 ### CSI Compatibility
 
 This plugin is compatible with CSI versions [v1.2.0](https://github.com/container-storage-interface/spec/blob/v1.2.0/spec.md), [v1.1.0](https://github.com/container-storage-interface/spec/blob/v1.1.0/spec.md), and [v1.0.0](https://github.com/container-storage-interface/spec/blob/v1.0.0/spec.md)
 
-### Kubernetes Compatibility
-The following table captures the compatibility matrix of the core persistent disk driver binary
-`gke.gcr.io/gcp-compute-persistent-disk-csi-driver`
+### Kubernetes Version Recommendations
 
-| GCE PD CSI Driver\Kubernetes Version | 1.17+ |
-|--------------------------------------|-------|
-| v0.7.x (beta)                        | yes   |
-| v1.0.x (ga)                          | yes   |
-| dev                                  | yes   |
+The latest stable of this driver is recommended for the latest stable Kubernetes
+version. For previous Kubernetes versions, we recommend the following driver
+versions.
+
+| Kubernetes Version | PD CSI Driver Version |
+|--------------------|-----------------------|
+| HEAD               | v1.10.x               |
+| 1.27               | v1.10.x               |
+| 1.26               | v1.9.x                |
+| 1.25               | v1.8.x                |
 
 The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
-csi driver object, rbacs, pod security policies etc) can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory. We structure the overlays directory, per minor version of kubernetes because not all driver components can be used with all kubernetes versions.
-
-Example:
-
-`stable-1-21` overlays bundle can be used to deploy all the components of the driver on kubernetes 1.21.
-
-`stable-master` overlays bundle can be used to deploy all the components of the driver on kubernetes master.
-
-For more details about per k8s minor version overlays, please check this [doc](docs/release/overlays.md)
+csi driver object, rbacs, pod security policies etc) for the lastest stable
+release can be picked up from the master branch [overlays](deploy/kubernetes/overlays) directory.
 
 ### Known Issues
 
