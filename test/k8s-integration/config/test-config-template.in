@@ -22,7 +22,6 @@ DriverInfo:
     NumRestarts: 10
   SupportedMountOption:
     debug:
-    nouid32:
   SupportedSizeRange:
     Min: {{.MinimumVolumeSize}}
     Max: 64Ti
