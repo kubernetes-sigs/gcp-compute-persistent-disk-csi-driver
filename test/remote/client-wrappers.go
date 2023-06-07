@@ -99,7 +99,7 @@ func (c *CsiClient) CloseConn() error {
 	return c.conn.Close()
 }
 
-func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, caps []*csipb.VolumeCapability, volContentSrc *csipb.VolumeContentSource) (string, error) {
+func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, caps []*csipb.VolumeCapability, volContentSrc *csipb.VolumeContentSource) (*csipb.Volume, error) {
 	capRange := &csipb.CapacityRange{
 		RequiredBytes: common.GbToBytes(sizeInGb),
 	}
@@ -117,12 +117,12 @@ func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]strin
 	}
 	cresp, err := c.ctrlClient.CreateVolume(context.Background(), cvr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return cresp.GetVolume().GetVolumeId(), nil
+	return cresp.Volume, nil
 }
 
-func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, volContentSrc *csipb.VolumeContentSource) (string, error) {
+func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, volContentSrc *csipb.VolumeContentSource) (*csipb.Volume, error) {
 	return c.CreateVolumeWithCaps(volName, params, sizeInGb, topReq, stdVolCaps, volContentSrc)
 }
 
@@ -134,12 +134,17 @@ func (c *CsiClient) DeleteVolume(volId string) error {
 	return err
 }
 
-func (c *CsiClient) ControllerPublishVolume(volId, nodeId string) error {
+func (c *CsiClient) ControllerPublishVolume(volId, nodeId string, forceAttach bool) error {
 	cpreq := &csipb.ControllerPublishVolumeRequest{
 		VolumeId:         volId,
 		NodeId:           nodeId,
 		VolumeCapability: stdVolCap,
 		Readonly:         false,
+	}
+	if forceAttach {
+		cpreq.VolumeContext = map[string]string{
+			"force-attach": "true",
+		}
 	}
 	_, err := c.ctrlClient.ControllerPublishVolume(context.Background(), cpreq)
 	return err

@@ -806,6 +806,114 @@ func TestConvertMiStringToInt64(t *testing.T) {
 	}
 }
 
+func TestConvertStringToBool(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expected    bool
+		expectError bool
+	}{
+		{
+			desc:        "valid true",
+			inputStr:    "true",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case true",
+			inputStr:    "True",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			desc:        "valid false",
+			inputStr:    "false",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case false",
+			inputStr:    "False",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			desc:        "invalid",
+			inputStr:    "yes",
+			expected:    false,
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := ConvertStringToBool(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to bool %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to bool %s; expect an error", tc.inputStr)
+			}
+			if err == nil && got != tc.expected {
+				t.Errorf("Got %v for converting string to bool; expect %v", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestConvertStringToAvailabilityClass(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expected    string
+		expectError bool
+	}{
+		{
+			desc:        "valid none",
+			inputStr:    "none",
+			expected:    ParameterNoAvailabilityClass,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case none",
+			inputStr:    "None",
+			expected:    ParameterNoAvailabilityClass,
+			expectError: false,
+		},
+		{
+			desc:        "valid failover",
+			inputStr:    "regional-hard-failover",
+			expected:    ParameterRegionalHardFailoverClass,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case failover",
+			inputStr:    "Regional-Hard-Failover",
+			expected:    ParameterRegionalHardFailoverClass,
+			expectError: false,
+		},
+		{
+			desc:        "invalid",
+			inputStr:    "yes",
+			expected:    "",
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := ConvertStringToAvailabilityClass(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to availablity class %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to availablity class %s; expect an error", tc.inputStr)
+			}
+			if err == nil && got != tc.expected {
+				t.Errorf("Got %v for converting string to availablity class; expect %v", got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestParseMachineType(t *testing.T) {
 	tests := []struct {
 		desc                string
