@@ -111,6 +111,11 @@ type locationRequirements struct {
 	cloneReplicationType string
 }
 
+// PDCSIContext is the extracted VolumeContext from controller requests.
+type PDCSIContext struct {
+	ForceAttach bool
+}
+
 var _ csi.ControllerServer = &GCEControllerServer{}
 
 const (
@@ -130,6 +135,9 @@ const (
 	// but 500 is a good proxy (gives ~8KB of data per ListVolumesResponse#Entry)
 	// See https://github.com/grpc/grpc/blob/master/include/grpc/impl/codegen/grpc_types.h#L503)
 	maxListVolumesResponseEntries = 500
+
+	// Keys in the volume context.
+	contextForceAttach = "force-attach"
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
@@ -236,6 +244,11 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 
+	// Verify that the regional availability class is only used on regional disks.
+	if params.ForceAttach && params.ReplicationType != replicationTypeRegionalPD {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid availabilty class for zonal disk")
+	}
+
 	var locationTopReq *locationRequirements
 	if useVolumeCloning(req) {
 		locationTopReq, err = cloningLocationRequirements(req, params.ReplicationType)
@@ -309,7 +322,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 		// If there is no validation error, immediately return success
 		klog.V(4).Infof("CreateVolume succeeded for disk %v, it already exists and was compatible", volKey)
-		return generateCreateVolumeResponse(existingDisk, zones), nil
+		return generateCreateVolumeResponse(existingDisk, zones, params), nil
 	}
 
 	snapshotID := ""
@@ -424,7 +437,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	}
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
-	return generateCreateVolumeResponse(disk, zones), nil
+	return generateCreateVolumeResponse(disk, zones, params), nil
 
 }
 
@@ -483,7 +496,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 		}
 	}()
 	// Only valid requests will be accepted
-	_, _, err = gceCS.validateControllerPublishVolumeRequest(ctx, req)
+	_, _, _, err = gceCS.validateControllerPublishVolumeRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -504,32 +517,37 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	return resp, err
 }
 
-func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (string, *meta.Key, error) {
+func (gceCS *GCEControllerServer) validateControllerPublishVolumeRequest(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (string, *meta.Key, *PDCSIContext, error) {
 	// Validate arguments
 	volumeID := req.GetVolumeId()
 	nodeID := req.GetNodeId()
 	volumeCapability := req.GetVolumeCapability()
 	if len(volumeID) == 0 {
-		return "", nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume ID must be provided")
+		return "", nil, nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume ID must be provided")
 	}
 	if len(nodeID) == 0 {
-		return "", nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Node ID must be provided")
+		return "", nil, nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Node ID must be provided")
 	}
 	if volumeCapability == nil {
-		return "", nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume capability must be provided")
+		return "", nil, nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume capability must be provided")
 	}
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
-		return "", nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume volume ID is invalid: %v", err.Error())
+		return "", nil, nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume volume ID is invalid: %v", err.Error())
 	}
 
 	// TODO(#253): Check volume capability matches for ALREADY_EXISTS
 	if err = validateVolumeCapability(volumeCapability); err != nil {
-		return "", nil, status.Errorf(codes.InvalidArgument, "VolumeCapabilities is invalid: %v", err.Error())
+		return "", nil, nil, status.Errorf(codes.InvalidArgument, "VolumeCapabilities is invalid: %v", err.Error())
 	}
 
-	return project, volKey, nil
+	var pdcsiContext *PDCSIContext
+	if pdcsiContext, err = extractVolumeContext(req.VolumeContext); err != nil {
+		return "", nil, nil, status.Errorf(codes.InvalidArgument, "Invalid volume context: %v", err.Error())
+	}
+
+	return project, volKey, pdcsiContext, nil
 }
 
 func parseMachineType(machineTypeUrl string) string {
@@ -543,7 +561,7 @@ func parseMachineType(machineTypeUrl string) string {
 
 func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error, string) {
 	diskType := ""
-	project, volKey, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
+	project, volKey, pdcsiContext, err := gceCS.validateControllerPublishVolumeRequest(ctx, req)
 	if err != nil {
 		return nil, err, diskType
 	}
@@ -615,7 +633,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), diskType
 	}
-	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName)
+	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName, pdcsiContext.ForceAttach)
 	if err != nil {
 		var udErr *gce.UnsupportedDiskError
 		if errors.As(err, &udErr) {
@@ -786,11 +804,6 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.Name, err.Error())
 		}
 		return nil, common.LoggedError("Failed to getDisk: ", err)
-	}
-
-	// Check Volume Context is Empty
-	if len(req.GetVolumeContext()) != 0 {
-		return generateFailedValidationMessage("VolumeContext expected to be empty but got %v", req.GetVolumeContext()), nil
 	}
 
 	// Check volume capabilities supported by PD. These are the same for any PD
@@ -1667,7 +1680,35 @@ func getDefaultZonesInRegion(ctx context.Context, gceCS *GCEControllerServer, ex
 	return ret, nil
 }
 
-func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.CreateVolumeResponse {
+func paramsToVolumeContext(params common.DiskParameters) map[string]string {
+	context := map[string]string{}
+	if params.ForceAttach {
+		context[contextForceAttach] = "true"
+	}
+	if len(context) > 0 {
+		return context
+	}
+	return nil
+}
+
+func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
+	info := &PDCSIContext{}
+	// Note that sidecars may inject values in the context (eg,
+	// csiProvisionerIdentity). So we don't validate that all keys are known.
+	for key, val := range context {
+		switch key {
+		case contextForceAttach:
+			b, err := common.ConvertStringToBool(val)
+			if err != nil {
+				return nil, fmt.Errorf("Bad volume context force attach: %v", err)
+			}
+			info.ForceAttach = b
+		}
+	}
+	return info, nil
+}
+
+func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params common.DiskParameters) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
@@ -1679,7 +1720,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) *csi.Crea
 		Volume: &csi.Volume{
 			CapacityBytes:      realDiskSizeBytes,
 			VolumeId:           cleanSelfLink(disk.GetSelfLink()),
-			VolumeContext:      nil,
+			VolumeContext:      paramsToVolumeContext(params),
 			AccessibleTopology: tops,
 		},
 	}

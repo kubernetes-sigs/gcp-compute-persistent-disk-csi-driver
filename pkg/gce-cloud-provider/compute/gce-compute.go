@@ -92,7 +92,7 @@ type GCECompute interface {
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
 	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
-	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error
+	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	GetDiskSourceURI(project string, volKey *meta.Key) string
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
@@ -700,7 +700,7 @@ func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, project, reg
 	return nil
 }
 
-func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
 	klog.V(5).Infof("Attaching disk %v to %s", volKey, instanceName)
 	source := cloud.GetDiskSourceURI(project, volKey)
 
@@ -714,9 +714,13 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 		Mode:       readWrite,
 		Source:     source,
 		Type:       diskType,
+		// This parameter is ignored in the call, the ForceAttach decorator
+		// (query parameter) is the important one. We'll set it in both places
+		// in case that behavior changes.
+		ForceAttach: forceAttach,
 	}
 
-	op, err := cloud.service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).Do()
+	op, err := cloud.service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).ForceAttach(forceAttach).Do()
 	if err != nil {
 		return fmt.Errorf("failed cloud service attach disk call: %w", err)
 	}

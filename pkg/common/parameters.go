@@ -29,6 +29,7 @@ const (
 	ParameterKeyLabels                        = "labels"
 	ParameterKeyProvisionedIOPSOnCreate       = "provisioned-iops-on-create"
 	ParameterKeyProvisionedThroughputOnCreate = "provisioned-throughput-on-create"
+	ParameterAvailabilityClass                = "availability-class"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -37,6 +38,10 @@ const (
 	DiskSnapshotType             = "snapshots"
 	DiskImageType                = "images"
 	replicationTypeNone          = "none"
+
+	// Parameters for AvailabilityClass
+	ParameterNoAvailabilityClass       = "none"
+	ParameterRegionalHardFailoverClass = "regional-hard-failover"
 
 	// Keys for PV and PVC parameters as reported by external-provisioner
 	ParameterKeyPVCName      = "csi.storage.k8s.io/pvc/name"
@@ -83,6 +88,8 @@ type DiskParameters struct {
 	// Values: {int64}
 	// Default: none
 	ProvisionedThroughputOnCreate int64
+	// Default: false
+	ForceAttach bool
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -155,6 +162,14 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 				return p, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}
 			p.ProvisionedThroughputOnCreate = paramProvisionedThroughputOnCreate
+		case ParameterAvailabilityClass:
+			paramAvailabilityClass, err := ConvertStringToAvailabilityClass(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid availability class parameter: %w", err)
+			}
+			if paramAvailabilityClass == ParameterRegionalHardFailoverClass {
+				p.ForceAttach = true
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}

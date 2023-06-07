@@ -3117,9 +3117,11 @@ func TestControllerUnpublishSucceedsIfNotFound(t *testing.T) {
 
 func TestControllerPublishBackoff(t *testing.T) {
 	for desc, tc := range map[string]struct {
-		config *backoffDriverConfig
+		config      *backoffDriverConfig
+		forceAttach bool
 	}{
-		"success": {},
+		"success":      {},
+		"force attach": {forceAttach: true},
 		"missing instance": {
 			config: &backoffDriverConfig{
 				mockMissingInstance: true,
@@ -3148,6 +3150,12 @@ func TestControllerPublishBackoff(t *testing.T) {
 				t.Errorf("expected no error on different unpublish, got %v", err)
 			}
 
+			var volumeContext map[string]string
+			if tc.forceAttach {
+				volumeContext = map[string]string{
+					contextForceAttach: "true",
+				}
+			}
 			pubreq := &csi.ControllerPublishVolumeRequest{
 				VolumeId: testVolumeID,
 				NodeId:   testNodeID,
@@ -3159,6 +3167,7 @@ func TestControllerPublishBackoff(t *testing.T) {
 						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 					},
 				},
+				VolumeContext: volumeContext,
 			}
 			// For the first 199 ms, the backoff condition is true. All controller publish request will be denied with 'Unavailable' error code.
 			for i := 0; i < 199; i++ {
@@ -3220,6 +3229,18 @@ func TestControllerPublishBackoff(t *testing.T) {
 			// Now mock a successful ControllerUnpublish request, where DetachDisk call succeeds.
 			if err := runPublishRequest(pubreq, false); err != nil {
 				t.Errorf("unexpected error")
+			}
+
+			if tc.forceAttach {
+				instance, err := driver.cs.CloudProvider.GetInstanceOrError(context.Background(), zone, node)
+				if err != nil {
+					t.Fatalf("%s instance not found: %v", node, err)
+				}
+				for _, disk := range instance.Disks {
+					if !disk.ForceAttach {
+						t.Errorf("Expected %s to be force attached", disk.DeviceName)
+					}
+				}
 			}
 
 			// Driver is expected to remove the node key from the backoff map.
