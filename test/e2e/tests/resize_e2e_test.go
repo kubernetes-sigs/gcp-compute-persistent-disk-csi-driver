@@ -38,7 +38,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+		volume, err := client.CreateVolume(volName, nil, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -58,7 +58,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volID)
+			client.DeleteVolume(volume.VolumeId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -67,12 +67,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err = client.ControllerPublishVolume(volID, instance.GetNodeID())
+		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
 			// Detach Disk
-			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			err = client.ControllerUnpublishVolume(volume.VolumeId, instance.GetNodeID())
 			if err != nil {
 				klog.Errorf("Failed to detach disk: %w", err)
 			}
@@ -80,12 +80,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
 			// Unstage Disk
-			err = client.NodeUnstageVolume(volID, stageDir)
+			err = client.NodeUnstageVolume(volume.VolumeId, stageDir)
 			if err != nil {
 				klog.Errorf("Failed to unstage volume: %w", err)
 			}
@@ -98,12 +98,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Mount Disk
 		publishDir := filepath.Join("/tmp/", volName, "mount")
-		err = client.NodePublishVolume(volID, stageDir, publishDir)
+		err = client.NodePublishVolume(volume.VolumeId, stageDir, publishDir)
 		Expect(err).To(BeNil(), "Node publish volume failed")
 
 		defer func() {
 			// Unmount Disk
-			err = client.NodeUnpublishVolume(volID, publishDir)
+			err = client.NodeUnpublishVolume(volume.VolumeId, publishDir)
 			if err != nil {
 				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
@@ -116,7 +116,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Resize controller
 		var newSizeGb int64 = 10
-		err = client.ControllerExpandVolume(volID, newSizeGb)
+		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
 
 		Expect(err).To(BeNil(), "Controller expand volume failed")
 
@@ -126,7 +126,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
 
 		// Resize node
-		_, err = client.NodeExpandVolume(volID, publishDir, newSizeGb)
+		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
 		Expect(err).To(BeNil(), "Node expand volume failed")
 
 		// Verify disk size
@@ -145,7 +145,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+		volume, err := client.CreateVolume(volName, nil, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -165,7 +165,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volID)
+			client.DeleteVolume(volume.VolumeId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -174,12 +174,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Volume should be attached/formatted/mounted/unmounted/detached
-		err = testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
+		err = testAttachWriteReadDetach(volume.VolumeId, volName, instance, client, false /* readOnly */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Resize controller
 		var newSizeGb int64 = 10
-		err = client.ControllerExpandVolume(volID, newSizeGb)
+		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
 
 		Expect(err).To(BeNil(), "Controller expand volume failed")
 
@@ -189,12 +189,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
 
 		// Attach and mount again
-		err = client.ControllerPublishVolume(volID, instance.GetNodeID())
+		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
 			// Detach Disk
-			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			err = client.ControllerUnpublishVolume(volume.VolumeId, instance.GetNodeID())
 			if err != nil {
 				klog.Errorf("Failed to detach disk: %w", err)
 			}
@@ -203,12 +203,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
 			// Unstage Disk
-			err = client.NodeUnstageVolume(volID, stageDir)
+			err = client.NodeUnstageVolume(volume.VolumeId, stageDir)
 			if err != nil {
 				klog.Errorf("Failed to unstage volume: %w", err)
 			}
@@ -221,19 +221,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Mount Disk
 		publishDir := filepath.Join("/tmp/", volName, "mount")
-		err = client.NodePublishVolume(volID, stageDir, publishDir)
+		err = client.NodePublishVolume(volume.VolumeId, stageDir, publishDir)
 		Expect(err).To(BeNil(), "Node publish volume failed")
 
 		defer func() {
 			// Unmount Disk
-			err = client.NodeUnpublishVolume(volID, publishDir)
+			err = client.NodeUnpublishVolume(volume.VolumeId, publishDir)
 			if err != nil {
 				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
 		}()
 
 		// Resize node
-		_, err = client.NodeExpandVolume(volID, publishDir, newSizeGb)
+		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
 		Expect(err).To(BeNil(), "Node expand volume failed")
 
 		// Verify disk size
@@ -252,7 +252,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volID, err := client.CreateVolume(volName, nil, defaultSizeGb,
+		volume, err := client.CreateVolume(volName, nil, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -272,7 +272,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			client.DeleteVolume(volID)
+			client.DeleteVolume(volume.VolumeId)
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -281,12 +281,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err = client.ControllerPublishVolume(volID, instance.GetNodeID())
+		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
 			// Detach Disk
-			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			err = client.ControllerUnpublishVolume(volume.VolumeId, instance.GetNodeID())
 			if err != nil {
 				klog.Errorf("Failed to detach disk: %w", err)
 			}
@@ -295,12 +295,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageBlockVolume(volID, stageDir)
+		err = client.NodeStageBlockVolume(volume.VolumeId, stageDir)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
 			// Unstage Disk
-			err = client.NodeUnstageVolume(volID, stageDir)
+			err = client.NodeUnstageVolume(volume.VolumeId, stageDir)
 			if err != nil {
 				klog.Errorf("Failed to unstage volume: %w", err)
 			}
@@ -313,12 +313,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Mount Disk
 		publishDir := filepath.Join("/tmp/", volName, "mount")
-		err = client.NodePublishBlockVolume(volID, stageDir, publishDir)
+		err = client.NodePublishBlockVolume(volume.VolumeId, stageDir, publishDir)
 		Expect(err).To(BeNil(), "Node publish volume failed")
 
 		defer func() {
 			// Unmount Disk
-			err = client.NodeUnpublishVolume(volID, publishDir)
+			err = client.NodeUnpublishVolume(volume.VolumeId, publishDir)
 			if err != nil {
 				klog.Errorf("NodeUnpublishVolume failed with error: %w", err)
 			}
@@ -331,7 +331,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Resize controller
 		var newSizeGb int64 = 10
-		err = client.ControllerExpandVolume(volID, newSizeGb)
+		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
 
 		Expect(err).To(BeNil(), "Controller expand volume failed")
 
@@ -341,7 +341,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
 
 		// Resize node
-		resp, err := client.NodeExpandVolume(volID, publishDir, newSizeGb)
+		resp, err := client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
 		Expect(err).To(BeNil(), "Node expand volume failed")
 		Expect(resp.CapacityBytes).To(Equal(common.GbToBytes(newSizeGb)), "Node expand should not do anything")
 
