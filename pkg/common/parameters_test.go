@@ -178,6 +178,27 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				Labels:               map[string]string{"key1": "value1", "label-1": "value-a", "label-2": "label-value-2"},
 			},
 		},
+		{
+			name:       "availability class parameters",
+			parameters: map[string]string{ParameterAvailabilityClass: ParameterRegionalHardFailoverClass},
+			expectParams: DiskParameters{
+				DiskType:        "pd-standard",
+				ReplicationType: "none",
+				ForceAttach:     true,
+				Tags:            map[string]string{},
+				Labels:          map[string]string{},
+			},
+		},
+		{
+			name:       "no force attach parameters",
+			parameters: map[string]string{ParameterAvailabilityClass: ParameterNoAvailabilityClass},
+			expectParams: DiskParameters{
+				DiskType:        "pd-standard",
+				ReplicationType: "none",
+				Tags:            map[string]string{},
+				Labels:          map[string]string{},
+			},
+		},
 	}
 
 	for _, tc := range tests {

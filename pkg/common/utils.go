@@ -284,6 +284,28 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToMiB(quantity)
 }
 
+// ConvertStringToBool converts a string to a boolean.
+func ConvertStringToBool(str string) (bool, error) {
+	switch strings.ToLower(str) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	return false, fmt.Errorf("Unexpected boolean string %s", str)
+}
+
+// ConvertStringToAvailabilityClass converts a string to an availability class string.
+func ConvertStringToAvailabilityClass(str string) (string, error) {
+	switch strings.ToLower(str) {
+	case ParameterNoAvailabilityClass:
+		return ParameterNoAvailabilityClass, nil
+	case ParameterRegionalHardFailoverClass:
+		return ParameterRegionalHardFailoverClass, nil
+	}
+	return "", fmt.Errorf("Unexpected boolean string %s", str)
+}
+
 // ParseMachineType returns an extracted machineType from a URL, or empty if not found.
 // machineTypeUrl: Full or partial URL of the machine type resource, in the format:
 //

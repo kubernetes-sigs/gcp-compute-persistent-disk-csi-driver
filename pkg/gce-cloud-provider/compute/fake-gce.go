@@ -246,15 +246,16 @@ func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, 
 	return nil
 }
 
-func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
 	source := cloud.GetDiskSourceURI(project, volKey)
 
 	attachedDiskV1 := &computev1.AttachedDisk{
-		DeviceName: volKey.Name,
-		Kind:       diskKind,
-		Mode:       readWrite,
-		Source:     source,
-		Type:       diskType,
+		DeviceName:  volKey.Name,
+		Kind:        diskKind,
+		Mode:        readWrite,
+		Source:      source,
+		Type:        diskType,
+		ForceAttach: forceAttach,
 	}
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
@@ -538,14 +539,14 @@ func (cloud *FakeBlockingCloudProvider) DetachDisk(ctx context.Context, project,
 	return cloud.FakeCloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 }
 
-func (cloud *FakeBlockingCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string) error {
+func (cloud *FakeBlockingCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
 	execute := make(chan Signal)
 	cloud.ReadyToExecute <- execute
 	val := <-execute
 	if val.ReportError {
 		return fmt.Errorf("force mock error for AttachDisk: volkey %s", volKey)
 	}
-	return cloud.FakeCloudProvider.AttachDisk(ctx, project, volKey, readWrite, diskType, instanceZone, instanceName)
+	return cloud.FakeCloudProvider.AttachDisk(ctx, project, volKey, readWrite, diskType, instanceZone, instanceName, forceAttach)
 }
 
 func notFoundError() *googleapi.Error {

@@ -59,7 +59,9 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	}
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=4 --endpoint=%s %s --extra-labels=%s=%s 2> %s/prog.out < /dev/null > /dev/null &'",
+	// Log at V(6) as the compute API calls are emitted at that level and it's
+	// useful to see what's happening when debugging tests.
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s --extra-labels=%s=%s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, computeFlag, DiskLabelKey, DiskLabelValue, workspace)
 
 	config := &remote.ClientConfig{
