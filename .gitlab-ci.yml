@@ -1,0 +1,6 @@
+include: https://gitlab-templates.ddbuild.io/compute-delivery/v2/compute-delivery.yml
+
+build-docker-image:
+  variables:
+    EXTRA_ARGS: "--build-arg=BUILDPLATFORM=linux --build-arg=STAGINGVERSION=$CI_COMMIT_TAG"
+  extends: .build-docker-image
