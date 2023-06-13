@@ -183,7 +183,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	var cmd *exec.Cmd
 	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType}
+		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType, "--no-enable-autoupgrade"}
 	if isVariableSet(gkeClusterVer) {
 		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
 	} else {
