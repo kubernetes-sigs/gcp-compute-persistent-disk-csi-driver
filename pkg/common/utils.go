@@ -70,6 +70,9 @@ const (
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type
 	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
+
+	// Will catch ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS also
+	stockoutError = "ZONE_RESOURCE_POOL_EXHAUSTED"
 )
 
 var (
@@ -340,6 +343,9 @@ func CodeForError(err error) *codes.Code {
 	if code := isContextError(err); code != nil {
 		return code
 	}
+	if code := isStockoutError(err); code != nil {
+		return code
+	}
 
 	internalErrorCode := codes.Internal
 	// Upwrap the error
@@ -359,6 +365,19 @@ func CodeForError(err error) *codes.Code {
 	}
 
 	return &internalErrorCode
+}
+
+// isStockout returns a pointer to the grpc error code ResourceExhausted
+// if the passed in error contains the "ZONE_RESOURCE_POOL_EXHAUSTED"
+func isStockoutError(err error) *codes.Code {
+	if err == nil {
+		return nil
+	}
+
+	if strings.Contains(err.Error(), stockoutError) {
+		return errCodePtr(codes.DeadlineExceeded)
+	}
+	return nil
 }
 
 // isContextError returns a pointer to the grpc error code DeadlineExceeded

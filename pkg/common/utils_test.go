@@ -1002,6 +1002,11 @@ func TestCodeForError(t *testing.T) {
 			expCode:  errCodePtr(codes.DeadlineExceeded),
 		},
 		{
+			name:     "stockout error",
+			inputErr: fmt.Errorf("(ZONE_RESOURCE_POOL_EXHAUSTED): The zone 'us-central1-c' does not have enough resources available to fulfill the request. Try a different zone, or try again later."),
+			expCode:  errCodePtr(codes.ResourceExhausted),
+		},
+		{
 			name:     "status error with Aborted error code",
 			inputErr: status.Error(codes.Aborted, "aborted error"),
 			expCode:  errCodePtr(codes.Aborted),
