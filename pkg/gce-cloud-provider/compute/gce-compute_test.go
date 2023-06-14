@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	computev1 "google.golang.org/api/compute/v1"
+	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -98,6 +99,78 @@ func TestValidateDiskParameters(t *testing.T) {
 		}
 		if tc.expectErr && err == nil {
 			t.Fatalf("Test case #%v: ValidateDiskParameters expected error, but got no error", i)
+		}
+	}
+}
+
+func TestCodeForGCEOpError(t *testing.T) {
+	testCases := []struct {
+		name     string
+		inputErr computev1.OperationErrorErrors
+		expCode  codes.Code
+	}{
+		{
+			name:     "RESOURCE_NOT_FOUND error",
+			inputErr: computev1.OperationErrorErrors{Code: "RESOURCE_NOT_FOUND"},
+			expCode:  codes.NotFound,
+		},
+		{
+			name:     "RESOURCE_ALREADY_EXISTS error",
+			inputErr: computev1.OperationErrorErrors{Code: "RESOURCE_ALREADY_EXISTS"},
+			expCode:  codes.AlreadyExists,
+		},
+		{
+			name:     "OPERATION_CANCELED_BY_USER error",
+			inputErr: computev1.OperationErrorErrors{Code: "OPERATION_CANCELED_BY_USER"},
+			expCode:  codes.Aborted,
+		},
+		{
+			name:     "QUOTA_EXCEEDED error",
+			inputErr: computev1.OperationErrorErrors{Code: "QUOTA_EXCEEDED"},
+			expCode:  codes.ResourceExhausted,
+		},
+		{
+			name:     "ZONE_RESOURCE_POOL_EXHAUSTED error",
+			inputErr: computev1.OperationErrorErrors{Code: "ZONE_RESOURCE_POOL_EXHAUSTED"},
+			expCode:  codes.Unavailable,
+		},
+		{
+			name:     "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS error",
+			inputErr: computev1.OperationErrorErrors{Code: "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"},
+			expCode:  codes.Unavailable,
+		},
+		{
+			name:     "REGION_QUOTA_EXCEEDED error",
+			inputErr: computev1.OperationErrorErrors{Code: "REGION_QUOTA_EXCEEDED"},
+			expCode:  codes.ResourceExhausted,
+		},
+		{
+			name:     "RATE_LIMIT_EXCEEDED error",
+			inputErr: computev1.OperationErrorErrors{Code: "RATE_LIMIT_EXCEEDED"},
+			expCode:  codes.ResourceExhausted,
+		},
+		{
+			name:     "INVALID_USAGE error",
+			inputErr: computev1.OperationErrorErrors{Code: "INVALID_USAGE"},
+			expCode:  codes.InvalidArgument,
+		},
+		{
+			name:     "RESOURCE_IN_USE_BY_ANOTHER_RESOURCE error",
+			inputErr: computev1.OperationErrorErrors{Code: "RESOURCE_IN_USE_BY_ANOTHER_RESOURCE"},
+			expCode:  codes.InvalidArgument,
+		},
+		{
+			name:     "UNSUPPORTED_OPERATION error",
+			inputErr: computev1.OperationErrorErrors{Code: "UNSUPPORTED_OPERATION"},
+			expCode:  codes.Internal,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		errCode := codeForGCEOpError(tc.inputErr)
+		if errCode != tc.expCode {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}
 	}
 }
