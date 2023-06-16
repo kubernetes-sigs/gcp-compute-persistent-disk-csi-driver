@@ -282,7 +282,6 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// Validate if disk already exists
 	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, gceCS.CloudProvider.GetDefaultProject(), volKey, gceAPIVersion)
-	diskTypeForMetric = metrics.GetDiskType(existingDisk)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
 			return nil, common.LoggedError("CreateVolume, failed to getDisk when validating: ", err)
