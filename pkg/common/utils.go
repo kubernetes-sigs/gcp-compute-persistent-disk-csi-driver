@@ -72,7 +72,7 @@ const (
 	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
 
 	// User-caused quota exceeded messages
-	stockoutError1 = "QUOTA_EXCEEDED"
+	stockoutError = "QUOTA_EXCEEDED"
 )
 
 var (
@@ -374,7 +374,7 @@ func isStockoutError(err error) *codes.Code {
 		return nil
 	}
 
-	if strings.Contains(err.Error(), stockoutError1){
+	if strings.Contains(err.Error(), stockoutError) {
 		return errCodePtr(codes.ResourceExhausted)
 	}
 	return nil
