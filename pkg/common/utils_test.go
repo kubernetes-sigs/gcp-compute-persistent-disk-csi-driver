@@ -1002,8 +1002,8 @@ func TestCodeForError(t *testing.T) {
 			expCode:  errCodePtr(codes.DeadlineExceeded),
 		},
 		{
-			name:     "stockout error",
-			inputErr: fmt.Errorf("(ZONE_RESOURCE_POOL_EXHAUSTED): The zone 'us-central1-c' does not have enough resources available to fulfill the request. Try a different zone, or try again later."),
+			name:     "user-caused stockout error",
+			inputErr: fmt.Errorf("csi.v1.Controller/CreateVolume returned with error: rpc error: code = Internal desc = CreateVolume failed to create single zonal disk test-pvc: failed to insert zonal disk: unknown Insert disk operation error: operation CreateDisk failed (QUOTA_EXCEEDED): Quota 'SSD_TOTAL_GB' exceeded. Limit: 100.00 in region us-central1."),
 			expCode:  errCodePtr(codes.ResourceExhausted),
 		},
 		{

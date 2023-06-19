@@ -71,8 +71,8 @@ const (
 	//   zones/zone/machineTypes/machine-type
 	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
 
-	// Will catch ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS also
-	stockoutError = "ZONE_RESOURCE_POOL_EXHAUSTED"
+	// User-caused quota exceeded messages
+	stockoutError1 = "QUOTA_EXCEEDED"
 )
 
 var (
@@ -374,8 +374,8 @@ func isStockoutError(err error) *codes.Code {
 		return nil
 	}
 
-	if strings.Contains(err.Error(), stockoutError) {
-		return errCodePtr(codes.DeadlineExceeded)
+	if strings.Contains(err.Error(), stockoutError1){
+		return errCodePtr(codes.ResourceExhausted)
 	}
 	return nil
 }
