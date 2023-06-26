@@ -204,9 +204,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("CreateVolume", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("CreateVolume", err, diskTypeForMetric)
 	}()
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
@@ -439,9 +437,7 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("DeleteVolume", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("DeleteVolume", err, diskTypeForMetric)
 	}()
 	// Validate arguments
 	volumeID := req.GetVolumeId()
@@ -485,9 +481,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("ControllerPublishVolume", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("ControllerPublishVolume", err, diskTypeForMetric)
 	}()
 	// Only valid requests will be accepted
 	_, _, err = gceCS.validateControllerPublishVolumeRequest(ctx, req)
@@ -647,9 +641,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("ControllerUnpublishVolume", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("ControllerUnpublishVolume", err, diskTypeForMetric)
 	}()
 	_, _, err = gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 	if err != nil {
@@ -758,9 +750,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("ValidateVolumeCapabilities", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("ValidateVolumeCapabilities", err, diskTypeForMetric)
 	}()
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities must be provided")
@@ -917,9 +907,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("CreateSnapshot", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("CreateSnapshot", err, diskTypeForMetric)
 	}()
 	// Validate arguments
 	volumeID := req.GetSourceVolumeId()
@@ -1154,9 +1142,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("DeleteSnapshot", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("DeleteSnapshot", err, diskTypeForMetric)
 	}()
 	// Validate arguments
 	snapshotID := req.GetSnapshotId()
@@ -1245,9 +1231,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	var err error
 	diskTypeForMetric := ""
 	defer func() {
-		if err != nil {
-			gceCS.Metrics.RecordOperationErrorMetrics("ControllerExpandVolume", err, diskTypeForMetric)
-		}
+		gceCS.Metrics.RecordOperationErrorMetrics("ControllerExpandVolume", err, diskTypeForMetric)
 	}()
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {

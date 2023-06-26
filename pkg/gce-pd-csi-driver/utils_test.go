@@ -18,19 +18,9 @@ limitations under the License.
 package gceGCEDriver
 
 import (
-<<<<<<< HEAD
-	"errors"
-	"net/http"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/api/googleapi"
-	"google.golang.org/grpc/codes"
-=======
-	"testing"
-
-	csi "github.com/container-storage-interface/spec/lib/go/csi"
->>>>>>> Adding new metric pdcsi_operation_errors to fetch error count
 )
 
 var (

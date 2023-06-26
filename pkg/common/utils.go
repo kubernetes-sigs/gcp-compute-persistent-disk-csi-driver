@@ -297,20 +297,6 @@ func ConvertMiBStringToInt64(str string) (int64, error) {
 	quantity := resource.MustParse(str)
 	return volumehelpers.RoundUpToMiB(quantity)
 }
-<<<<<<< HEAD
-=======
-
-// ParseMachineType returns an extracted machineType from a URL, or empty if not found.
-// machineTypeUrl: Full or partial URL of the machine type resource, in the format:
-//
-//	zones/zone/machineTypes/machine-type
-func ParseMachineType(machineTypeUrl string) (string, error) {
-	machineType := machineTypeRegex.FindStringSubmatch(machineTypeUrl)
-	if machineType == nil {
-		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
-	}
-	return machineType[1], nil
-}
 
 // CodeForError returns a pointer to the grpc error code that maps to the http
 // error code for the passed in user googleapi error or context error. Returns
@@ -391,4 +377,3 @@ func LoggedError(msg string, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
 	return status.Errorf(*CodeForError(err), msg+"%v", err.Error())
 }
->>>>>>> Adding new metric pdcsi_operation_errors to fetch error count
