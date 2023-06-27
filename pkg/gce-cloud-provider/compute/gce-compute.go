@@ -419,6 +419,9 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCrea
 		ReplicaZones:      v1Disk.ReplicaZones,
 		DiskEncryptionKey: dek,
 	}
+	if v1Disk.ProvisionedIops > 0 {
+		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
+	}
 	if provisionedThroughputOnCreate > 0 {
 		betaDisk.ProvisionedThroughput = provisionedThroughputOnCreate
 	}
@@ -449,12 +452,11 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:            volKey.Name,
-		SizeGb:          common.BytesToGbRoundUp(capBytes),
-		Description:     description,
-		Type:            cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
-		Labels:          params.Labels,
-		ProvisionedIops: params.ProvisionedIOPSOnCreate,
+		Name:        volKey.Name,
+		SizeGb:      common.BytesToGbRoundUp(capBytes),
+		Description: description,
+		Type:        cloud.GetDiskTypeURI(cloud.project, volKey, params.DiskType),
+		Labels:      params.Labels,
 	}
 	if snapshotID != "" {
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(snapshotID)
@@ -562,11 +564,12 @@ func (cloud *CloudProvider) insertZonalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:        volKey.Name,
-		SizeGb:      common.BytesToGbRoundUp(capBytes),
-		Description: description,
-		Type:        cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		Labels:      params.Labels,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     description,
+		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 
 	if snapshotID != "" {

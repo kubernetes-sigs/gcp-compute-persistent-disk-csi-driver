@@ -1175,7 +1175,12 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 	Expect(cloudDisk.Type).To(ContainSubstring(diskType))
 	Expect(cloudDisk.Status).To(Equal(readyState))
-	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+	if diskType == "pd-extreme" {
+		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
+	} else {
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+	}
+
 	Expect(cloudDisk.Name).To(Equal(volName))
 	return
 }
