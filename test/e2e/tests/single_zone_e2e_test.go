@@ -45,14 +45,15 @@ const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
 	defaultSizeGb              int64 = 5
+	defaultExtremeSizeGb       int64 = 500
 	defaultRepdSizeGb          int64 = 200
 	defaultMwSizeGb            int64 = 200
 	defaultVolumeLimit         int64 = 127
 	readyState                       = "READY"
 	standardDiskType                 = "pd-standard"
 	extremeDiskType                  = "pd-extreme"
-	provisionedIOPSOnCreate          = "100000"
-	provisionedIOPSOnCreateInt       = int64(100000)
+	provisionedIOPSOnCreate          = "12345"
+	provisionedIOPSOnCreateInt       = int64(12345)
 
 	defaultEpsilon = 500000000 // 500M
 )
@@ -386,14 +387,21 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Create Disk
 			disk := typeToDisk[diskType]
 			volName := testNamePrefix + string(uuid.NewUUID())
-			volID, err := client.CreateVolume(volName, disk.params, defaultSizeGb, nil, nil)
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+
+			volID, err := client.CreateVolume(volName, disk.params, diskSize, nil, nil)
+
 			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 			// Validate Disk Created
 			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 			Expect(cloudDisk.Status).To(Equal(readyState))
-			Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
 			Expect(cloudDisk.Name).To(Equal(volName))
 			disk.validate(cloudDisk)
 
@@ -425,14 +433,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			params := merge(disk.params, map[string]string{
 				common.ParameterKeyLabels: "key1=value1,key2=value2",
 			})
-			volID, err := client.CreateVolume(volName, params, defaultSizeGb, nil, nil)
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+			volID, err := client.CreateVolume(volName, params, diskSize, nil, nil)
 			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 			// Validate Disk Created
 			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 			Expect(cloudDisk.Status).To(Equal(readyState))
-			Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
 			Expect(cloudDisk.Labels).To(Equal(map[string]string{
 				"key1": "value1",
 				"key2": "value2",
@@ -547,14 +560,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 					},
 				},
 			}
-			volID, err := controllerClient.CreateVolume(volName, params, defaultSizeGb, topology, nil)
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+			volID, err := controllerClient.CreateVolume(volName, params, diskSize, topology, nil)
 			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 			// Validate Disk Created
 			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 			Expect(cloudDisk.Status).To(Equal(readyState))
-			Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
 			Expect(cloudDisk.Name).To(Equal(volName))
 			disk.validate(cloudDisk)
 
@@ -872,6 +890,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			controllerInstance := testContext.Instance
 			controllerClient := testContext.Client
 
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+
 			p, z, _ := controllerInstance.GetIdentity()
 
 			// Create Disk
@@ -882,14 +905,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				common.ParameterKeyPVCNamespace: "test-pvc-namespace",
 				common.ParameterKeyPVName:       "test-pv-name",
 			})
-			volID, err := controllerClient.CreateVolume(volName, params, defaultSizeGb, nil /* topReq */, nil)
+			volID, err := controllerClient.CreateVolume(volName, params, diskSize, nil /* topReq */, nil)
 			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 			// Validate Disk Created
 			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 			Expect(cloudDisk.Status).To(Equal(readyState))
-			Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
 			Expect(cloudDisk.Name).To(Equal(volName))
 			Expect(cloudDisk.Description).To(Equal("{\"kubernetes.io/created-for/pv/name\":\"test-pv-name\",\"kubernetes.io/created-for/pvc/name\":\"test-pvc\",\"kubernetes.io/created-for/pvc/namespace\":\"test-pvc-namespace\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
 			disk.validate(cloudDisk)
@@ -1256,7 +1279,12 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	// Create Disk
 	disk := typeToDisk[diskType]
 	volName := testNamePrefix + string(uuid.NewUUID())
-	volID, err := client.CreateVolume(volName, disk.params, defaultSizeGb,
+
+	diskSize := defaultSizeGb
+	if diskType == extremeDiskType {
+		diskSize = defaultExtremeSizeGb
+	}
+	volID, err := client.CreateVolume(volName, disk.params, diskSize,
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1270,7 +1298,7 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	cloudDisk, err := computeService.Disks.Get(project, zone, volName).Do()
 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
 	Expect(cloudDisk.Status).To(Equal(readyState))
-	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+	Expect(cloudDisk.SizeGb).To(Equal(diskSize))
 	Expect(cloudDisk.Name).To(Equal(volName))
 	disk.validate(cloudDisk)
 

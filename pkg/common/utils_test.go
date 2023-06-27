@@ -598,6 +598,12 @@ func TestConvertStringToInt64(t *testing.T) {
 			expectError: false,
 		},
 		{
+			desc:        "test higher number",
+			inputStr:    "15000",
+			expInt64:    15000,
+			expectError: false,
+		},
+		{
 			desc:        "round M to number",
 			inputStr:    "1M",
 			expInt64:    1000000,
