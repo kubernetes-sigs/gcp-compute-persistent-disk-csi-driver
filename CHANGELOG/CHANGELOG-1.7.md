@@ -1,3 +1,13 @@
+# v1.7.9 - Changelog since v1.7.8
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- Separate user errors from internal errors ([#1219](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1219), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Update go version to 1.19.10 ([#1273](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1273), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1224](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1224), [@pwschuurman](https://github.com/pwschuurman))
+
 # v1.7.8 - Changelog since v1.7.7
 
 ## Changes by Kind
