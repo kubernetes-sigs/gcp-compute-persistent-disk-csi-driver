@@ -1,3 +1,19 @@
+# v1.10.4 - Changelog since v1.10.3
+
+## Changes by Kind
+
+## Features
+
+- Add alpha-level force attach storage class parameter. ([#1257](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1257), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+## Bug or Regression
+
+- Bugfix for empty disk type being registered in metric for Create volume function. ([#1267](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1267), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+### Cleanup
+
+- Update go version to 1.20.5 to address CVE fixes ([#1265](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1265), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- [release-1.10] Update Docker.Windows to 1.20.5 ([#1272](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1272), [@saikat-royc](https://github.com/saikat-royc))
+
 # v1.10.3 - Changelog since v1.10.2
 
 ### Feature
