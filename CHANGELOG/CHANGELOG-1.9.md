@@ -1,3 +1,18 @@
+# v1.9.6 - Changelog since v1.9.5
+
+## Changes by Kind
+
+## Bug or Regression
+
+- Bugfix for empty disk type being registered in metric for Create volume function. ([#1268](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1268), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+### Cleanup
+
+- Automated cherry pick of #1150: satisfy volume cloning topology requirements when choosing zone for CreateVolume, #1232: Use errors.As so we can detect wrapped errors, #1227: Adding new metric pdcsi_operation_errors to fetch error ([#1240](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1240), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Update go version to 1.20.5 to address CVE fixes ([#1266](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1266), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1222](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1222), [@pwschuurman](https://github.com/pwschuurman))
+- [release-1.10] Update Docker.Windows to 1.20.5 ([#1274](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1274), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.9.5 - Changelog since v1.9.4
 
 ### Bug or Regression
