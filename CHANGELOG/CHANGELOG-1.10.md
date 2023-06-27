@@ -1,3 +1,14 @@
+# v1.10.3 - Changelog since v1.10.2
+
+### Feature
+
+- Add alpha-level force attach storage class parameter. ([#1257](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1257), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+### Cleanup
+
+- Add metrics for CSI server side error count ([#1237](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1237), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+
 # v1.10.2 - Changelog since v1.10.1
 
 ### Bug or Regression
