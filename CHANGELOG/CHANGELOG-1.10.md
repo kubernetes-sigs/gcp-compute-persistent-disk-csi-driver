@@ -7,6 +7,7 @@
 - Add alpha-level force attach storage class parameter. ([#1257](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1257), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
 ## Bug or Regression
 
+- Fix provisioned-iops-on-create passing logic([1282](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1282))
 - Bugfix for empty disk type being registered in metric for Create volume function. ([#1267](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1267), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
 
 ### Cleanup
