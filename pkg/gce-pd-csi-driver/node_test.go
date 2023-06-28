@@ -18,7 +18,6 @@ package gceGCEDriver
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,7 +81,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
 
-	tempDir, err := ioutil.TempDir("", "ngvs")
+	tempDir, err := os.MkdirTemp("", "ngvs")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}
@@ -213,7 +212,7 @@ func TestNodePublishVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
 
-	tempDir, err := ioutil.TempDir("", "npv")
+	tempDir, err := os.MkdirTemp("", "npv")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}
@@ -312,7 +311,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
 
-	tempDir, err := ioutil.TempDir("", "nupv")
+	tempDir, err := os.MkdirTemp("", "nupv")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}
@@ -374,7 +373,7 @@ func TestNodeStageVolume(t *testing.T) {
 		AccessType: blockCap,
 	}
 
-	tempDir, err := ioutil.TempDir("", "nsv")
+	tempDir, err := os.MkdirTemp("", "nsv")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}
@@ -785,7 +784,7 @@ func makeFakeCmd(fakeCmd *testingexec.FakeCmd, cmd string, args ...string) testi
 func TestNodeUnstageVolume(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
-	tempDir, err := ioutil.TempDir("", "nusv")
+	tempDir, err := os.MkdirTemp("", "nusv")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}
@@ -853,7 +852,7 @@ func TestConcurrentNodeOperations(t *testing.T) {
 	readyToExecute := make(chan chan struct{}, 1)
 	gceDriver := getTestBlockingGCEDriver(t, readyToExecute)
 	ns := gceDriver.ns
-	tempDir, err := ioutil.TempDir("", "cno")
+	tempDir, err := os.MkdirTemp("", "cno")
 	if err != nil {
 		t.Fatalf("Failed to set up temp dir: %v", err)
 	}

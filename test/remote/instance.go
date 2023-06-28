@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -388,7 +387,7 @@ func GetComputeBetaClient() (*computebeta.Service, error) {
 }
 
 func generateMetadataWithPublicKey(pubKeyFile string) (*compute.Metadata, error) {
-	publicKeyByte, err := ioutil.ReadFile(pubKeyFile)
+	publicKeyByte, err := os.ReadFile(pubKeyFile)
 	if err != nil {
 		return nil, err
 	}

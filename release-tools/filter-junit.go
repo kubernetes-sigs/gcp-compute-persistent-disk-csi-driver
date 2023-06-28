@@ -24,7 +24,6 @@ package main
 import (
 	"encoding/xml"
 	"flag"
-	"io/ioutil"
 	"os"
 	"regexp"
 )
@@ -95,7 +94,7 @@ func main() {
 			}
 		} else {
 			var err error
-			data, err = ioutil.ReadFile(input)
+			data, err = os.ReadFile(input)
 			if err != nil {
 				panic(err)
 			}
@@ -142,7 +141,7 @@ func main() {
 			panic(err)
 		}
 	} else {
-		if err := ioutil.WriteFile(*output, data, 0644); err != nil {
+		if err := os.WriteFile(*output, data, 0644); err != nil {
 			panic(err)
 		}
 	}

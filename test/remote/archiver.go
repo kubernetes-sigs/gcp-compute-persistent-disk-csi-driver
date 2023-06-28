@@ -18,7 +18,6 @@ package remote
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +27,7 @@ import (
 
 func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (string, error) {
 	klog.V(2).Infof("Building archive...")
-	tarDir, err := ioutil.TempDir("", "driver-temp-archive")
+	tarDir, err := os.MkdirTemp("", "driver-temp-archive")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory %v", err.Error())
 	}
