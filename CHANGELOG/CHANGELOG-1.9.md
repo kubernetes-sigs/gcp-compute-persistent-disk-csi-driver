@@ -4,6 +4,7 @@
 
 ### Bug or Regression
 
+- Fix provisioned-iops-on-create passing logic([1282](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1282))
 - Bugfix for empty disk type being registered in metric for Create volume function. ([#1268](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1268), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
 
 ### Cleanup
