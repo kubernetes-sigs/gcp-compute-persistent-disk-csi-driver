@@ -167,7 +167,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create block file at target path %v: %v", targetPath, err.Error()))
 		}
 	} else {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodePublishVolume volume capability must specify either mount or block mode"))
+		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume volume capability must specify either mount or block mode")
 	}
 
 	err = ns.Mounter.Interface.Mount(sourcePath, targetPath, fstype, options)
