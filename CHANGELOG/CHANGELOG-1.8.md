@@ -1,5 +1,10 @@
 # v1.8.7 - Changelog since v1.8.6
 
+### Bug or Regression
+
+- Fix provisioned-iops-on-create passing logic([1282](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1282))
+- Bugfix for empty disk type being registered in metric for Create volume function. ([#1269](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1269), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 ### Cleanup
 
 - #1079: Add provisionedIops for pd-extreme
@@ -8,9 +13,7 @@
 - #1150: fix bug where volume cloning topology requirements are
   #1232: Use errors.As so we can detect wrapped errors, and check for
   #1227: Adding new metric pdcsi_operation_errors to fetch error ([#1244](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1244), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
-- Bugfix for empty disk type being registered in metric for Create volume function. ([#1269](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1269), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
 - Update go version to 1.19.10 ([#1271](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1271), [@saikat-royc](https://github.com/saikat-royc))
-- Updates error message to be more user friendly when PD CSI Driver encounters an disk type UNSUPPORTED_OPERATION on ControllerPublishVolume ([#1223](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1223), [@pwschuurman](https://github.com/pwschuurman))
 
 # v1.8.6 - Changelog since v1.8.5
 
