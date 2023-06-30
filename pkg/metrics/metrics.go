@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 
+	"google.golang.org/grpc/codes"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -90,7 +91,11 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
 	diskType string) {
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, common.CodeForError(operationErr).String(), diskType).Inc()
+	err := codes.OK.String()
+	if operationErr != nil {
+		err = common.CodeForError(operationErr).String()
+	}
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType).Inc()
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
