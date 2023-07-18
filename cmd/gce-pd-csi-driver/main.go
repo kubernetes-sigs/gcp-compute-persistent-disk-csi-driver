@@ -61,6 +61,9 @@ var (
 
 	maxprocs = flag.Int("maxprocs", 1, "GOMAXPROCS override")
 
+	maxConcurrentFormatAndMount = flag.Int("max-concurrent-format-and-mount", 1, "If set then format and mount operations are serialized on each node. This is stronger than max-concurrent-format as it includes fsck and other mount operations")
+	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
+
 	version string
 )
 
@@ -151,6 +154,9 @@ func handle() {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
+		if *maxConcurrentFormatAndMount > 0 {
+			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
+		}
 	}
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, identityServer, controllerServer, nodeServer)
