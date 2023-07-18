@@ -257,7 +257,6 @@ func TestDeleteSnapshot(t *testing.T) {
 		_, err := gceDriver.cs.DeleteSnapshot(context.Background(), tc.req)
 		if err != nil {
 			serverError, ok := status.FromError(err)
-			t.Logf("get server error %v", serverError)
 			if !ok {
 				t.Fatalf("Could not get error status code from err: %v", serverError)
 			}
@@ -2979,7 +2978,7 @@ type backoffDriverConfig struct {
 
 func newFakeCSIErrorBackoff(tc *clock.FakeClock) *csiErrorBackoff {
 	backoff := flowcontrol.NewFakeBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration, tc)
-	return &csiErrorBackoff{backoff}
+	return &csiErrorBackoff{backoff, make(map[csiErrorBackoffId]codes.Code)}
 }
 
 func TestControllerUnpublishBackoff(t *testing.T) {
@@ -3019,7 +3018,7 @@ func TestControllerUnpublishBackoff(t *testing.T) {
 			}
 
 			// Mock an active backoff condition on the node.
-			driver.cs.errorBackoff.next(backoffId)
+			driver.cs.errorBackoff.next(backoffId, codes.Unavailable)
 
 			tc.config.clock.Step(step)
 			// A requst for a a different volume should succeed. This volume is not
@@ -3037,7 +3036,9 @@ func TestControllerUnpublishBackoff(t *testing.T) {
 				VolumeId: testVolumeID,
 				NodeId:   testNodeID,
 			}
-			// For the first 199 ms, the backoff condition is true. All controller publish request will be denied with 'Unavailable' error code.
+			// For the first 199 ms, the backoff condition is true. All controller publish
+			// request will be denied with the same unavailable error code as was set on
+			// the original error.
 			for i := 0; i < 199; i++ {
 				var err error
 				_, err = driver.cs.ControllerUnpublishVolume(context.Background(), unpubreq)
@@ -3061,18 +3062,23 @@ func TestControllerUnpublishBackoff(t *testing.T) {
 				return
 			}
 
-			// Mock an error
+			// Mock an error. This will produce an Internal error, which is different from
+			// the default error and what's used in the failure above, so that the correct
+			// error code can be confirmed.
 			if err := runUnpublishRequest(unpubreq, true); err == nil {
 				t.Errorf("expected error")
 			}
 
-			// The above failure should cause driver to call Backoff.Next() again and a backoff duration of 400 ms duration is set starting at the 200th millisecond.
-			// For the 200-599 ms, the backoff condition is true, and new controller publish requests will be deined.
+			// The above failure should cause driver to call backoff.next() again and a
+			// backoff duration of 400 ms duration is set starting at the 200th
+			// millisecond.  For the 200-599 ms, the backoff condition is true, with an
+			// internal error this time, and new controller publish requests will be
+			// denied.
 			for i := 0; i < 399; i++ {
 				tc.config.clock.Step(step)
 				var err error
 				_, err = driver.cs.ControllerUnpublishVolume(context.Background(), unpubreq)
-				if !isUnavailableError(err) {
+				if !isInternalError(err) {
 					t.Errorf("unexpected error %v", err)
 				}
 			}
@@ -3148,8 +3154,8 @@ func TestControllerPublishBackoff(t *testing.T) {
 			backoffId := driver.cs.errorBackoff.backoffId(testNodeID, testVolumeID)
 			step := 1 * time.Millisecond
 
-			// Mock an active backoff condition on the node.
-			driver.cs.errorBackoff.next(backoffId)
+			// Mock an active bakcoff condition on the node.
+			driver.cs.errorBackoff.next(backoffId, codes.Unavailable)
 
 			// A detach request for a different disk should succeed. As this disk is not
 			// on the instance, the detach will succeed without calling the gce detach
@@ -3222,13 +3228,16 @@ func TestControllerPublishBackoff(t *testing.T) {
 				t.Errorf("expected error")
 			}
 
-			// The above failure should cause driver to call Backoff.Next() again and a backoff duration of 400 ms duration is set starting at the 200th millisecond.
-			// For the 200-599 ms, the backoff condition is true, and new controller publish requests will be deined.
+			// The above failure should cause driver to call backoff.next() again and a
+			// backoff duration of 400 ms duration is set starting at the 200th
+			// millisecond.  For the 200-599 ms, the backoff condition is true, with an
+			// internal error this time, and new controller publish requests will be
+			// denied.
 			for i := 0; i < 399; i++ {
 				tc.config.clock.Step(step)
 				var err error
 				_, err = driver.cs.ControllerPublishVolume(context.Background(), pubreq)
-				if !isUnavailableError(err) {
+				if !isInternalError(err) {
 					t.Errorf("unexpected error %v", err)
 				}
 			}
@@ -3439,4 +3448,17 @@ func isUnavailableError(err error) bool {
 	}
 
 	return st.Code().String() == "Unavailable"
+}
+
+func isInternalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return st.Code().String() == "Internal"
 }
