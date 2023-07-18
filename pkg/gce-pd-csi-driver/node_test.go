@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
@@ -57,10 +58,22 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 	return gceDriver
 }
 
-func getTestBlockingGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
+func getTestBlockingMountGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
 	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nodeServer)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+	return gceDriver
+}
+
+func getTestBlockingFormatAndMountGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
+	gceDriver := GetGCEDriver()
+	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter)).WithSerializedFormatAndMount(5*time.Second, 1)
+
 	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
@@ -762,9 +775,7 @@ func TestNodeGetCapabilities(t *testing.T) {
 	}
 }
 
-func TestConcurrentNodeOperations(t *testing.T) {
-	readyToExecute := make(chan chan struct{}, 1)
-	gceDriver := getTestBlockingGCEDriver(t, readyToExecute)
+func runBlockingFormatAndMount(t *testing.T, gceDriver *GCEDriver, readyToExecute chan chan struct{}) {
 	ns := gceDriver.ns
 	tempDir, err := ioutil.TempDir("", "cno")
 	if err != nil {
@@ -843,4 +854,16 @@ func TestConcurrentNodeOperations(t *testing.T) {
 	if err := <-vol1PublishTargetAResp; err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
+}
+
+func TestBlockingMount(t *testing.T) {
+	readyToExecute := make(chan chan struct{}, 1)
+	gceDriver := getTestBlockingMountGCEDriver(t, readyToExecute)
+	runBlockingFormatAndMount(t, gceDriver, readyToExecute)
+}
+
+func TestBlockingFormatAndMount(t *testing.T) {
+	readyToExecute := make(chan chan struct{}, 1)
+	gceDriver := getTestBlockingFormatAndMountGCEDriver(t, readyToExecute)
+	runBlockingFormatAndMount(t, gceDriver, readyToExecute)
 }
