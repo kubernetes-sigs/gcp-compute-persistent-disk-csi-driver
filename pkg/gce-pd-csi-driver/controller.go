@@ -92,10 +92,12 @@ type GCEControllerServer struct {
 	errorBackoff *csiErrorBackoff
 }
 
-type csiErrorBackoff struct {
-	backoff *flowcontrol.Backoff
-}
 type csiErrorBackoffId string
+
+type csiErrorBackoff struct {
+	backoff    *flowcontrol.Backoff
+	errorCodes map[csiErrorBackoffId]codes.Code
+}
 
 type workItem struct {
 	ctx          context.Context
@@ -483,13 +485,13 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 
 	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId)
 	if gceCS.errorBackoff.blocking(backoffId) {
-		return nil, status.Errorf(codes.Unavailable, "ControllerPublish not permitted on node %q due to backoff condition", req.NodeId)
+		return nil, status.Errorf(gceCS.errorBackoff.code(backoffId), "ControllerPublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 
 	resp, err, diskTypeForMetric := gceCS.executeControllerPublishVolume(ctx, req)
 	if err != nil {
-		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err.Error())
-		gceCS.errorBackoff.next(backoffId)
+		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
+		gceCS.errorBackoff.next(backoffId, common.CodeForError(err))
 	} else {
 		klog.Infof("For node %s clear backoff due to successful publish of volume %v", req.NodeId, req.VolumeId)
 		gceCS.errorBackoff.reset(backoffId)
@@ -643,12 +645,12 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 	// Only valid requests will be queued
 	backoffId := gceCS.errorBackoff.backoffId(req.NodeId, req.VolumeId)
 	if gceCS.errorBackoff.blocking(backoffId) {
-		return nil, status.Errorf(codes.Unavailable, "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
+		return nil, status.Errorf(gceCS.errorBackoff.code(backoffId), "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 	resp, err, diskTypeForMetric := gceCS.executeControllerUnpublishVolume(ctx, req)
 	if err != nil {
-		klog.Infof("For node %s adding backoff due to error for volume %s", req.NodeId, req.VolumeId)
-		gceCS.errorBackoff.next(backoffId)
+		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
+		gceCS.errorBackoff.next(backoffId, common.CodeForError(err))
 	} else {
 		klog.Infof("For node %s clear backoff due to successful unpublish of volume %v", req.NodeId, req.VolumeId)
 		gceCS.errorBackoff.reset(backoffId)
@@ -1775,7 +1777,7 @@ func pickRandAndConsecutive(slice []string, n int) ([]string, error) {
 }
 
 func newCsiErrorBackoff(initialDuration, errorBackoffMaxDuration time.Duration) *csiErrorBackoff {
-	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration)}
+	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration), make(map[csiErrorBackoffId]codes.Code)}
 }
 
 func (_ *csiErrorBackoff) backoffId(nodeId, volumeId string) csiErrorBackoffId {
@@ -1787,10 +1789,22 @@ func (b *csiErrorBackoff) blocking(id csiErrorBackoffId) bool {
 	return blk
 }
 
-func (b *csiErrorBackoff) next(id csiErrorBackoffId) {
+func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
+	if code, ok := b.errorCodes[id]; ok {
+		return code
+	}
+	// If we haven't recorded a code, return unavailable, which signals a problem with the driver
+	// (ie, next() wasn't called correctly).
+	klog.Errorf("using default code for %s", id)
+	return codes.Unavailable
+}
+
+func (b *csiErrorBackoff) next(id csiErrorBackoffId, code codes.Code) {
 	b.backoff.Next(string(id), b.backoff.Clock.Now())
+	b.errorCodes[id] = code
 }
 
 func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
 	b.backoff.Reset(string(id))
+	delete(b.errorCodes, id)
 }

@@ -855,57 +855,51 @@ func TestParseMachineType(t *testing.T) {
 }
 
 func TestCodeForError(t *testing.T) {
-	internalErrorCode := codes.Internal
-	userErrorCode := codes.InvalidArgument
 	testCases := []struct {
 		name     string
 		inputErr error
-		expCode  *codes.Code
+		expCode  codes.Code
 	}{
 		{
 			name:     "Not googleapi.Error",
 			inputErr: errors.New("I am not a googleapi.Error"),
-			expCode:  &internalErrorCode,
+			expCode:  codes.Internal,
 		},
 		{
 			name:     "User error",
 			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
-			expCode:  &userErrorCode,
+			expCode:  codes.InvalidArgument,
 		},
 		{
 			name:     "googleapi.Error but not a user error",
 			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
-			expCode:  &internalErrorCode,
+			expCode:  codes.Internal,
 		},
 		{
 			name:     "context canceled error",
 			inputErr: context.Canceled,
-			expCode:  errCodePtr(codes.Canceled),
+			expCode:  codes.Canceled,
 		},
 		{
 			name:     "context deadline exceeded error",
 			inputErr: context.DeadlineExceeded,
-			expCode:  errCodePtr(codes.DeadlineExceeded),
+			expCode:  codes.DeadlineExceeded,
 		},
 		{
 			name:     "status error with Aborted error code",
 			inputErr: status.Error(codes.Aborted, "aborted error"),
-			expCode:  errCodePtr(codes.Aborted),
+			expCode:  codes.Aborted,
 		},
 		{
 			name:     "nil error",
 			inputErr: nil,
-			expCode:  nil,
+			expCode:  codes.Internal,
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Logf("Running test: %v", tc.name)
 		errCode := CodeForError(tc.inputErr)
-		if (tc.expCode == nil) != (errCode == nil) {
-			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
-		}
-		if tc.expCode != nil && *errCode != *tc.expCode {
+		if errCode != tc.expCode {
 			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}
 	}
@@ -915,46 +909,48 @@ func TestIsContextError(t *testing.T) {
 	cases := []struct {
 		name            string
 		err             error
-		expectedErrCode *codes.Code
+		expectedErrCode codes.Code
+		expectError     bool
 	}{
 		{
 			name:            "deadline exceeded error",
 			err:             context.DeadlineExceeded,
-			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+			expectedErrCode: codes.DeadlineExceeded,
 		},
 		{
 			name:            "contains 'context deadline exceeded'",
 			err:             fmt.Errorf("got error: %w", context.DeadlineExceeded),
-			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+			expectedErrCode: codes.DeadlineExceeded,
 		},
 		{
 			name:            "context canceled error",
 			err:             context.Canceled,
-			expectedErrCode: errCodePtr(codes.Canceled),
+			expectedErrCode: codes.Canceled,
 		},
 		{
 			name:            "contains 'context canceled'",
 			err:             fmt.Errorf("got error: %w", context.Canceled),
-			expectedErrCode: errCodePtr(codes.Canceled),
+			expectedErrCode: codes.Canceled,
 		},
 		{
-			name:            "does not contain 'context canceled' or 'context deadline exceeded'",
-			err:             fmt.Errorf("unknown error"),
-			expectedErrCode: nil,
+			name:        "does not contain 'context canceled' or 'context deadline exceeded'",
+			err:         fmt.Errorf("unknown error"),
+			expectError: true,
 		},
 		{
-			name:            "nil error",
-			err:             nil,
-			expectedErrCode: nil,
+			name:        "nil error",
+			err:         nil,
+			expectError: true,
 		},
 	}
 
 	for _, test := range cases {
-		errCode := isContextError(test.err)
-		if (test.expectedErrCode == nil) != (errCode == nil) {
-			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
-		}
-		if test.expectedErrCode != nil && *errCode != *test.expectedErrCode {
+		errCode, err := isContextError(test.err)
+		if test.expectError {
+			if err == nil {
+				t.Errorf("test %v failed, expected error, got %v", test.name, errCode)
+			}
+		} else if errCode != test.expectedErrCode {
 			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
 		}
 	}
