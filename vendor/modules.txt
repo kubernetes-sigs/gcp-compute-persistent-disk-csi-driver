@@ -615,11 +615,12 @@ k8s.io/client-go/util/workqueue
 ## explicit; go 1.16
 k8s.io/component-base/metrics
 k8s.io/component-base/version
-# k8s.io/klog/v2 v2.60.1
+# k8s.io/klog/v2 v2.80.1
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/internal/buffer
 k8s.io/klog/v2/internal/clock
+k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
 # k8s.io/kubernetes v1.22.0
@@ -635,14 +636,15 @@ k8s.io/test-infra/boskos/common
 k8s.io/test-infra/boskos/storage
 k8s.io/test-infra/prow/config/secret
 k8s.io/test-infra/prow/logrusutil
-# k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
-## explicit; go 1.12
+# k8s.io/utils v0.0.0-20230711102312-30195339c3c7
+## explicit; go 1.18
 k8s.io/utils/exec
 k8s.io/utils/exec/testing
 k8s.io/utils/integer
 k8s.io/utils/io
 k8s.io/utils/keymutex
 k8s.io/utils/path
+k8s.io/utils/strings/slices
 # sigs.k8s.io/structured-merge-diff/v4 v4.1.2
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath

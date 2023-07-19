@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1286,92 +1287,4 @@ func zoneFromURL(url string) string {
 		return ""
 	}
 	return tokens[len(tokens)-1]
-}
-
-func setupKeyRing(ctx context.Context, parentName string, keyRingId string) (*kmspb.CryptoKey, []string) {
-	// Create KeyRing
-	ringReq := &kmspb.CreateKeyRingRequest{
-		Parent:    parentName,
-		KeyRingId: keyRingId,
-	}
-	keyRing, err := kmsClient.CreateKeyRing(ctx, ringReq)
-	if !gce.IsGCEError(err, "alreadyExists") {
-		getKeyRingReq := &kmspb.GetKeyRingRequest{
-			Name: fmt.Sprintf("%s/keyRings/%s", parentName, keyRingId),
-		}
-		keyRing, err = kmsClient.GetKeyRing(ctx, getKeyRingReq)
-
-	}
-	Expect(err).To(BeNil(), "Failed to create or get key ring %v", keyRingId)
-
-	// Create CryptoKey in KeyRing
-	keyId := "test-key-" + string(uuid.NewUUID())
-	keyReq := &kmspb.CreateCryptoKeyRequest{
-		Parent:      keyRing.Name,
-		CryptoKeyId: keyId,
-		CryptoKey: &kmspb.CryptoKey{
-			Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
-			VersionTemplate: &kmspb.CryptoKeyVersionTemplate{
-				Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
-			},
-		},
-	}
-	key, err := kmsClient.CreateCryptoKey(ctx, keyReq)
-	Expect(err).To(BeNil(), "Failed to create crypto key %v in key ring %v", keyId, keyRing.Name)
-
-	keyVersions := []string{}
-	keyVersionReq := &kmspb.ListCryptoKeyVersionsRequest{
-		Parent: key.Name,
-	}
-
-	it := kmsClient.ListCryptoKeyVersions(ctx, keyVersionReq)
-
-	for {
-		keyVersion, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		Expect(err).To(BeNil(), "Failed to list crypto key versions")
-
-		keyVersions = append(keyVersions, keyVersion.Name)
-	}
-	return key, keyVersions
-}
-
-type disk struct {
-	params   map[string]string
-	validate func(disk *compute.Disk)
-}
-
-var typeToDisk = map[string]*disk{
-	standardDiskType: {
-		params: map[string]string{
-			common.ParameterKeyType: standardDiskType,
-		},
-		validate: func(disk *compute.Disk) {
-			Expect(disk.Type).To(ContainSubstring(standardDiskType))
-		},
-	},
-	extremeDiskType: {
-		params: map[string]string{
-			common.ParameterKeyType:                    extremeDiskType,
-			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
-		},
-		validate: func(disk *compute.Disk) {
-			Expect(disk.Type).To(ContainSubstring(extremeDiskType))
-			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
-		},
-	},
-}
-
-func merge(a, b map[string]string) map[string]string {
-	res := map[string]string{}
-	for k, v := range a {
-		res[k] = v
-	}
-	for k, v := range b {
-		res[k] = v
-	}
-	return res
->>>>>>> b9028774 (fix bug where volume cloning topology requirements are ignored when chosing the location of the volume)
 }

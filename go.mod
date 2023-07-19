@@ -22,12 +22,14 @@ require (
 	k8s.io/apimachinery v0.22.0
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/component-base v0.22.0
-	k8s.io/klog/v2 v2.60.1
+	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubernetes v1.22.0
 	k8s.io/mount-utils v0.22.0
 	k8s.io/test-infra v0.0.0-20200115230622-70a5174aa78d
-	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	k8s.io/utils v0.0.0-20230711102312-30195339c3c7
 )
+
+require google.golang.org/protobuf v1.26.0
 
 require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
@@ -65,7 +67,6 @@ require (
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
