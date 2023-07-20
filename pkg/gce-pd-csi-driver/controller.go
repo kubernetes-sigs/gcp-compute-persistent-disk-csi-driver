@@ -1745,7 +1745,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params co
 }
 
 func cleanSelfLink(selfLink string) string {
-	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
+	r, _ := regexp.Compile(`https://www.*apis.com/[^/]+/(v1|beta|alpha)/`)
 	return r.ReplaceAllString(selfLink, "")
 }
 

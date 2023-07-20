@@ -3304,6 +3304,16 @@ func TestCleanSelfLink(t *testing.T) {
 			in:   "https://www.partnerapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
+		{
+			name: "project name contains keyword",
+			in:   "https://www.partnerapis.com/compute/alpha/projects/proj-alpha/zones/zone/disks/disk",
+			want: "projects/proj-alpha/zones/zone/disks/disk",
+		},
+		{
+			name: "project name contains keyword 2",
+			in:   "https://www.partnerapis.com/compute/v1/projects/proj-alpha/zones/zone/disks/disk",
+			want: "projects/proj-alpha/zones/zone/disks/disk",
+		},
 	}
 
 	for _, tc := range testCases {
