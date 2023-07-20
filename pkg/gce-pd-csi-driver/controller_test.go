@@ -930,7 +930,11 @@ func TestListVolumePagination(t *testing.T) {
 			var d []*gce.CloudDisk
 			for i := 0; i < tc.diskCount; i++ {
 				// Create diskCount dummy disks
-				d = append(d, gce.CloudDiskFromV1(&compute.Disk{Name: fmt.Sprintf("%v", i)}))
+				name := fmt.Sprintf("disk-%v", i)
+				d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+					Name:     name,
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
+				}))
 			}
 			gceDriver := initGCEDriver(t, d)
 			tok := ""
@@ -988,7 +992,11 @@ func TestListVolumeArgs(t *testing.T) {
 			var d []*gce.CloudDisk
 			for i := 0; i < diskCount; i++ {
 				// Create 600 dummy disks
-				d = append(d, gce.CloudDiskFromV1(&compute.Disk{Name: fmt.Sprintf("%v", i)}))
+				name := fmt.Sprintf("disk-%v", i)
+				d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+					Name:     name,
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
+				}))
 			}
 			gceDriver := initGCEDriver(t, d)
 			lvr := &csi.ListVolumesRequest{
@@ -1887,7 +1895,8 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 
 func createZonalCloudDisk(name string) *gce.CloudDisk {
 	return gce.CloudDiskFromV1(&compute.Disk{
-		Name: name,
+		Name:     name,
+		SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/name/%s", name),
 	})
 }
 
@@ -3231,11 +3240,12 @@ func TestControllerPublishBackoff(t *testing.T) {
 	}
 }
 
-func TestCleanSelfLink(t *testing.T) {
+func TestGetResource(t *testing.T) {
 	testCases := []struct {
-		name string
-		in   string
-		want string
+		name  string
+		in    string
+		want  string
+		error bool
 	}{
 		{
 			name: "v1 full standard w/ endpoint prefix",
@@ -3253,24 +3263,38 @@ func TestCleanSelfLink(t *testing.T) {
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
-			name: "no prefix",
-			in:   "projects/project/zones/zone/disks/disk",
-			want: "projects/project/zones/zone/disks/disk",
-		},
-
-		{
-			name: "no prefix + project omitted",
-			in:   "zones/zone/disks/disk",
-			want: "zones/zone/disks/disk",
+			name:  "no prefix",
+			in:    "projects/project/zones/zone/disks/disk",
+			error: true,
 		},
 		{
-			name: "Compute prefix, google api",
+			name:  "no prefix + project omitted",
+			in:    "zones/zone/disks/disk",
+			error: true,
+		},
+		{
+			name: "Compute prefix, www google api",
 			in:   "https://www.compute.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
 			name: "Compute prefix, partner api",
-			in:   "https://www.compute.PARTNERapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			in:   "https://www.compute.partnerapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Compute, alternate googleapis host",
+			in:   "https://content-compute.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Compute, partner host",
+			in:   "https://compute.blahapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name: "Alternate partner host with mtls domain",
+			in:   "https://content-compute.us-central1.rep.mtls.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
 		{
@@ -3283,13 +3307,66 @@ func TestCleanSelfLink(t *testing.T) {
 			in:   "https://www.partnerapis.com/compute/alpha/projects/project/zones/zone/disks/disk",
 			want: "projects/project/zones/zone/disks/disk",
 		},
+		{
+			name: "alpha project",
+			in:   "https://www.googleapis.com/compute/alpha/projects/alphaproject/zones/zone/disks/disk",
+			want: "projects/alphaproject/zones/zone/disks/disk",
+		},
+		{
+			name: "beta project",
+			in:   "https://www.googleapis.com/compute/alpha/projects/betabeta/zones/zone/disks/disk",
+			want: "projects/betabeta/zones/zone/disks/disk",
+		},
+		{
+			name: "v1 project",
+			in:   "https://www.googleapis.com/compute/alpha/projects/projectv1/zones/zone/disks/disk",
+			want: "projects/projectv1/zones/zone/disks/disk",
+		},
+		{
+			name: "random host",
+			in:   "https://npr.org/compute/v1/projects/project/zones/zone/disks/disk",
+			want: "projects/project/zones/zone/disks/disk",
+		},
+		{
+			name:  "no prefix",
+			in:    "projects/project/zones/zone/disks/disk",
+			error: true,
+		},
+		{
+			name:  "bad scheme",
+			in:    "ftp://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			error: true,
+		},
+		{
+			name:  "insecure scheme",
+			in:    "http://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk",
+			error: true,
+		},
+		{
+			name:  "bad service",
+			in:    "https://www.googleapis.com/computers/v1/projects/project/zones/zone/disks/disk",
+			error: true,
+		},
+		{
+			name:  "bad version",
+			in:    "https://www..googleapis.com/compute/zeta/projects/project/zones/zone/disks/disk",
+			error: true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := cleanSelfLink(tc.in)
-			if got != tc.want {
-				t.Errorf("Expected cleaned self link: %v, got: %v", tc.want, got)
+			got, err := getResourceId(tc.in)
+			if tc.error {
+				if err == nil {
+					t.Errorf("Expected error, but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error %v", err)
+				} else if got != tc.want {
+					t.Errorf("Expected cleaned self link: %v, got: %v", tc.want, got)
+				}
 			}
 		})
 	}
