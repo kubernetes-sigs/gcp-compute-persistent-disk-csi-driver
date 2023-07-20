@@ -37,10 +37,10 @@ import (
 
 const (
 	TokenURL                        = "https://accounts.google.com/o/oauth2/token"
-	diskSourceURITemplateSingleZone = "%s/zones/%s/disks/%s"       // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
-	diskSourceURITemplateRegional   = "%s/regions/%s/disks/%s"     //{gce.projectID}/regions/{disk.Region}/disks/repd"
-	diskTypeURITemplateSingleZone   = "%s/zones/%s/diskTypes/%s"   // {gce.projectID}/zones/{disk.Zone}/diskTypes/{disk.Type}"
-	diskTypeURITemplateRegional     = "%s/regions/%s/diskTypes/%s" // {gce.projectID}/regions/{disk.Region}/diskTypes/{disk.Type}"
+	diskSourceURITemplateSingleZone = "projects/%s/zones/%s/disks/%s"       // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
+	diskSourceURITemplateRegional   = "projects/%s/regions/%s/disks/%s"     //{gce.projectID}/regions/{disk.Region}/disks/repd"
+	diskTypeURITemplateSingleZone   = "projects/%s/zones/%s/diskTypes/%s"   // {gce.projectID}/zones/{disk.Zone}/diskTypes/{disk.Type}"
+	diskTypeURITemplateRegional     = "projects/%s/regions/%s/diskTypes/%s" // {gce.projectID}/regions/{disk.Region}/diskTypes/{disk.Type}"
 
 	regionURITemplate = "projects/%s/regions/%s"
 
@@ -48,7 +48,7 @@ const (
 	GCEComputeBetaAPIEndpoint  = "https://www.googleapis.com/compute/beta/"
 	GCEComputeAlphaAPIEndpoint = "https://www.googleapis.com/compute/alpha/"
 
-	replicaZoneURITemplateSingleZone = "%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
+	replicaZoneURITemplateSingleZone = "projects/%s/zones/%s" // projects/{gce.projectID}/zones/{disk.Zone}
 )
 
 type CloudProvider struct {

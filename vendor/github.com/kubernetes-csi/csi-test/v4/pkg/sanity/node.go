@@ -310,9 +310,11 @@ var _ = DescribeSanity("Node Service", func(sc *TestContext) {
 		nodeExpansionSupported = isNodeCapabilitySupported(n, csi.NodeServiceCapability_RPC_EXPAND_VOLUME)
 		controllerExpansionSupported = isControllerCapabilitySupported(cl, csi.ControllerServiceCapability_RPC_EXPAND_VOLUME)
 		r = &Resources{
-			Context:          sc,
-			ControllerClient: cl,
-			NodeClient:       n,
+			Context:                    sc,
+			ControllerClient:           cl,
+			NodeClient:                 n,
+			ControllerPublishSupported: controllerPublishSupported,
+			NodeStageSupported:         nodeStageSupported,
 		}
 	})
 
@@ -339,8 +341,6 @@ var _ = DescribeSanity("Node Service", func(sc *TestContext) {
 				case csi.NodeServiceCapability_RPC_GET_VOLUME_STATS:
 				case csi.NodeServiceCapability_RPC_EXPAND_VOLUME:
 				case csi.NodeServiceCapability_RPC_VOLUME_CONDITION:
-				case csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER:
-				case csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP:
 				default:
 					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetRpc().GetType()))
 				}

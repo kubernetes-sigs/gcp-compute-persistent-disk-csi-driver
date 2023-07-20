@@ -65,6 +65,8 @@ type Resources struct {
 	// directly if automatic cleanup is not desired and cannot be avoided
 	// otherwise.
 	csi.NodeClient
+	ControllerPublishSupported bool
+	NodeStageSupported         bool
 
 	// mutex protects access to managedResourceInfos.
 	mutex                sync.Mutex
@@ -277,7 +279,7 @@ func (cl *Resources) cleanupVolume(ctx context.Context, offset int, volumeID str
 			errs = append(errs, fmt.Errorf("NodeUnpublishVolume for volume ID %s failed: %s", volumeID, err))
 		}
 
-		if isNodeCapabilitySupported(cl, csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME) {
+		if cl.NodeStageSupported {
 			if _, err := cl.NodeUnstageVolume(
 				ctx,
 				&csi.NodeUnstageVolumeRequest{
@@ -290,7 +292,7 @@ func (cl *Resources) cleanupVolume(ctx context.Context, offset int, volumeID str
 		}
 	}
 
-	if info.NodeID != "" {
+	if cl.ControllerPublishSupported && info.NodeID != "" {
 		if _, err := cl.ControllerClient.ControllerUnpublishVolume(
 			ctx,
 			&csi.ControllerUnpublishVolumeRequest{
