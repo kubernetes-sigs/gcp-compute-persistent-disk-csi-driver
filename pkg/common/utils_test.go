@@ -17,11 +17,17 @@ limitations under the License.
 package common
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -755,5 +761,201 @@ func TestConvertStringToInt64(t *testing.T) {
 				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
 			}
 		})
+	}
+}
+
+func TestConvertMiBStringToInt64(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
+	}{
+		{
+			"valid number string",
+			"10000",
+			1,
+			false,
+		},
+		{
+			"round Ki to MiB",
+			"1000Ki",
+			1,
+			false,
+		},
+		{
+			"round k to MiB",
+			"1000k",
+			1,
+			false,
+		},
+		{
+			"round Mi to MiB",
+			"1000Mi",
+			1000,
+			false,
+		},
+		{
+			"round M to MiB",
+			"1000M",
+			954,
+			false,
+		},
+		{
+			"round G to MiB",
+			"1000G",
+			953675,
+			false,
+		},
+		{
+			"round Gi to MiB",
+			"10000Gi",
+			10240000,
+			false,
+		},
+		{
+			"round decimal to MiB",
+			"1.2Gi",
+			1229,
+			false,
+		},
+		{
+			"round big value to MiB",
+			"8191Pi",
+			8795019280384,
+			false,
+		},
+		{
+			"invalid empty string",
+			"",
+			10000,
+			true,
+		},
+		{
+			"invalid string",
+			"ew%65",
+			10000,
+			true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualInt64, err := ConvertMiBStringToInt64(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
+			}
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
+			}
+		})
+	}
+}
+
+func TestCodeForError(t *testing.T) {
+	internalErrorCode := codes.Internal
+	userErrorCode := codes.InvalidArgument
+	testCases := []struct {
+		name     string
+		inputErr error
+		expCode  *codes.Code
+	}{
+		{
+			name:     "Not googleapi.Error",
+			inputErr: errors.New("I am not a googleapi.Error"),
+			expCode:  &internalErrorCode,
+		},
+		{
+			name:     "User error",
+			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
+			expCode:  &userErrorCode,
+		},
+		{
+			name:     "googleapi.Error but not a user error",
+			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
+			expCode:  &internalErrorCode,
+		},
+		{
+			name:     "context canceled error",
+			inputErr: context.Canceled,
+			expCode:  errCodePtr(codes.Canceled),
+		},
+		{
+			name:     "context deadline exceeded error",
+			inputErr: context.DeadlineExceeded,
+			expCode:  errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:     "status error with Aborted error code",
+			inputErr: status.Error(codes.Aborted, "aborted error"),
+			expCode:  errCodePtr(codes.Aborted),
+		},
+		{
+			name:     "nil error",
+			inputErr: nil,
+			expCode:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		errCode := CodeForError(tc.inputErr)
+		if (tc.expCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
+		}
+		if tc.expCode != nil && *errCode != *tc.expCode {
+			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
+		}
+	}
+}
+
+func TestIsContextError(t *testing.T) {
+	cases := []struct {
+		name            string
+		err             error
+		expectedErrCode *codes.Code
+	}{
+		{
+			name:            "deadline exceeded error",
+			err:             context.DeadlineExceeded,
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "contains 'context deadline exceeded'",
+			err:             fmt.Errorf("got error: %w", context.DeadlineExceeded),
+			expectedErrCode: errCodePtr(codes.DeadlineExceeded),
+		},
+		{
+			name:            "context canceled error",
+			err:             context.Canceled,
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "contains 'context canceled'",
+			err:             fmt.Errorf("got error: %w", context.Canceled),
+			expectedErrCode: errCodePtr(codes.Canceled),
+		},
+		{
+			name:            "does not contain 'context canceled' or 'context deadline exceeded'",
+			err:             fmt.Errorf("unknown error"),
+			expectedErrCode: nil,
+		},
+		{
+			name:            "nil error",
+			err:             nil,
+			expectedErrCode: nil,
+		},
+	}
+
+	for _, test := range cases {
+		errCode := isContextError(test.err)
+		if (test.expectedErrCode == nil) != (errCode == nil) {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
+		if test.expectedErrCode != nil && *errCode != *test.expectedErrCode {
+			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
 	}
 }
