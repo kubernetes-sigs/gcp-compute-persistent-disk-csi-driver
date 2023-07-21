@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"regexp"
+	neturl "net/url"
 	"sort"
 	"strings"
 	"time"
@@ -140,6 +140,14 @@ const (
 
 	// Keys in the volume context.
 	contextForceAttach = "force-attach"
+
+	resourceApiScheme  = "https"
+	resourceApiService = "compute"
+	resourceProject    = "projects"
+)
+
+var (
+	validResourceApiVersions = map[string]bool{"v1": true, "alpha": true, "beta": true}
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
@@ -321,7 +329,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 		// If there is no validation error, immediately return success
 		klog.V(4).Infof("CreateVolume succeeded for disk %v, it already exists and was compatible", volKey)
-		return generateCreateVolumeResponse(existingDisk, zones, params), nil
+		return generateCreateVolumeResponse(existingDisk, zones, params)
 	}
 
 	snapshotID := ""
@@ -436,7 +444,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	}
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
-	return generateCreateVolumeResponse(disk, zones, params), nil
+	return generateCreateVolumeResponse(disk, zones, params)
 
 }
 
@@ -871,13 +879,23 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 	entries := []*csi.ListVolumesResponse_Entry{}
 	for i := 0; i+offset < len(gceCS.disks) && i < maxEntries; i++ {
 		d := gceCS.disks[i+offset]
+		diskRsrc, err := getResourceId(d.SelfLink)
+		if err != nil {
+			klog.Warningf("Bad ListVolumes disk resource %s, skipped: %v (%+v)", d.SelfLink, err, d)
+			continue
+		}
 		users := []string{}
 		for _, u := range d.Users {
-			users = append(users, cleanSelfLink(u))
+			rsrc, err := getResourceId(u)
+			if err != nil {
+				klog.Warningf("Bad ListVolumes user %s, skipped: %v", u, err)
+			} else {
+				users = append(users, rsrc)
+			}
 		}
 		entries = append(entries, &csi.ListVolumesResponse_Entry{
 			Volume: &csi.Volume{
-				VolumeId: cleanSelfLink(d.SelfLink),
+				VolumeId: diskRsrc,
 			},
 			Status: &csi.ListVolumesResponse_VolumeStatus{
 				PublishedNodeIds: users,
@@ -990,6 +1008,10 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 			return nil, common.LoggedError("Failed to create snapshot: ", err)
 		}
 	}
+	snapshotId, err := getResourceId(snapshot.SelfLink)
+	if err != nil {
+		return nil, common.LoggedError(fmt.Sprintf("Cannot extract resource id from snapshot %s", snapshot.SelfLink), err)
+	}
 
 	err = gceCS.validateExistingSnapshot(snapshot, volKey)
 	if err != nil {
@@ -1008,7 +1030,7 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 
 	return &csi.Snapshot{
 		SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
-		SnapshotId:     cleanSelfLink(snapshot.SelfLink),
+		SnapshotId:     snapshotId,
 		SourceVolumeId: volumeID,
 		CreationTime:   timestamp,
 		ReadyToUse:     ready,
@@ -1037,6 +1059,10 @@ func (gceCS *GCEControllerServer) createImage(ctx context.Context, project strin
 			return nil, common.LoggedError("Failed to create image: ", err)
 		}
 	}
+	imageId, err := getResourceId(image.SelfLink)
+	if err != nil {
+		return nil, common.LoggedError(fmt.Sprintf("Cannot extract resource id from snapshot %s", image.SelfLink), err)
+	}
 
 	err = gceCS.validateExistingImage(image, volKey)
 	if err != nil {
@@ -1055,7 +1081,7 @@ func (gceCS *GCEControllerServer) createImage(ctx context.Context, project strin
 
 	return &csi.Snapshot{
 		SizeBytes:      common.GbToBytes(image.DiskSizeGb),
-		SnapshotId:     cleanSelfLink(image.SelfLink),
+		SnapshotId:     imageId,
 		SourceVolumeId: volumeID,
 		CreationTime:   timestamp,
 		ReadyToUse:     ready,
@@ -1067,9 +1093,13 @@ func (gceCS *GCEControllerServer) validateExistingImage(image *compute.Image, vo
 		return fmt.Errorf("disk does not exist")
 	}
 
-	_, sourceKey, err := common.VolumeIDToKey(cleanSelfLink(image.SourceDisk))
+	sourceId, err := getResourceId(image.SourceDisk)
 	if err != nil {
-		return fmt.Errorf("fail to get source disk key %s, %w", image.SourceDisk, err)
+		return fmt.Errorf("failed to get source id from %s: %w", image.SourceDisk, err)
+	}
+	_, sourceKey, err := common.VolumeIDToKey(sourceId)
+	if err != nil {
+		return fmt.Errorf("failed to get source disk key %s: %w", image.SourceDisk, err)
 	}
 
 	if sourceKey.String() != volKey.String() {
@@ -1118,7 +1148,11 @@ func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Sna
 		return fmt.Errorf("disk does not exist")
 	}
 
-	_, sourceKey, err := common.VolumeIDToKey(cleanSelfLink(snapshot.SourceDisk))
+	sourceId, err := getResourceId(snapshot.SourceDisk)
+	if err != nil {
+		return fmt.Errorf("failed to get source id from %s: %w", snapshot.SourceDisk, err)
+	}
+	_, sourceKey, err := common.VolumeIDToKey(sourceId)
 	if err != nil {
 		return fmt.Errorf("fail to get source disk key %s, %w", snapshot.SourceDisk, err)
 	}
@@ -1161,7 +1195,7 @@ func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.D
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		// This is a success according to the spec
-		klog.Warningf("Snapshot id does not have the correct format %s", snapshotID)
+		klog.Warningf("Snapshot id does not have the correct format %s: %v", snapshotID, err)
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
@@ -1352,7 +1386,7 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 				return &csi.ListSnapshotsResponse{}, nil
 			}
 		}
-		e, err := generateImageEntry(image)
+		e, err := generateDiskImageEntry(image)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate image entry: %w", err)
 		}
@@ -1374,6 +1408,15 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 		return nil, fmt.Errorf("Failed to covert creation timestamp: %w", err)
 	}
 
+	snapshotId, err := getResourceId(snapshot.SelfLink)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshot id from %s: %w", snapshot.SelfLink, err)
+	}
+	sourceId, err := getResourceId(snapshot.SourceDisk)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source id from %s: %w", snapshot.SourceDisk, err)
+	}
+
 	// We ignore the error intentionally here since we are just listing snapshots
 	// TODO: If the snapshot is in "FAILED" state we need to think through what this
 	// should actually look like.
@@ -1382,8 +1425,8 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 	entry := &csi.ListSnapshotsResponse_Entry{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
-			SnapshotId:     cleanSelfLink(snapshot.SelfLink),
-			SourceVolumeId: cleanSelfLink(snapshot.SourceDisk),
+			SnapshotId:     snapshotId,
+			SourceVolumeId: sourceId,
 			CreationTime:   tp,
 			ReadyToUse:     ready,
 		},
@@ -1399,35 +1442,23 @@ func generateDiskImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_En
 		return nil, fmt.Errorf("failed to covert creation timestamp: %w", err)
 	}
 
-	ready, _ := isImageReady(image.Status)
-
-	entry := &csi.ListSnapshotsResponse_Entry{
-		Snapshot: &csi.Snapshot{
-			SizeBytes:      common.GbToBytes(image.DiskSizeGb),
-			SnapshotId:     cleanSelfLink(image.SelfLink),
-			SourceVolumeId: cleanSelfLink(image.SourceDisk),
-			CreationTime:   tp,
-			ReadyToUse:     ready,
-		},
-	}
-	return entry, nil
-}
-
-func generateImageEntry(image *compute.Image) (*csi.ListSnapshotsResponse_Entry, error) {
-	timestamp, err := parseTimestamp(image.CreationTimestamp)
+	imageId, err := getResourceId(image.SelfLink)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to covert creation timestamp: %w", err)
+		return nil, fmt.Errorf("cannot get image id from %s: %w", image.SelfLink, err)
+	}
+	sourceId, err := getResourceId(image.SourceDisk)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get source id from %s: %w", image.SourceDisk, err)
 	}
 
-	// ignore the error intentionally here since we are just listing images
 	ready, _ := isImageReady(image.Status)
 
 	entry := &csi.ListSnapshotsResponse_Entry{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      common.GbToBytes(image.DiskSizeGb),
-			SnapshotId:     cleanSelfLink(image.SelfLink),
-			SourceVolumeId: cleanSelfLink(image.SourceDisk),
-			CreationTime:   timestamp,
+			SnapshotId:     imageId,
+			SourceVolumeId: sourceId,
+			CreationTime:   tp,
 			ReadyToUse:     ready,
 		},
 	}
@@ -1693,7 +1724,12 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 	return info, nil
 }
 
-func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params common.DiskParameters) *csi.CreateVolumeResponse {
+func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params common.DiskParameters) (*csi.CreateVolumeResponse, error) {
+	volumeId, err := getResourceId(disk.GetSelfLink())
+	if err != nil {
+		return nil, fmt.Errorf("cannot get volume id from %s: %w", disk.GetSelfLink(), err)
+	}
+
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
@@ -1704,7 +1740,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params co
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes:      realDiskSizeBytes,
-			VolumeId:           cleanSelfLink(disk.GetSelfLink()),
+			VolumeId:           volumeId,
 			VolumeContext:      paramsToVolumeContext(params),
 			AccessibleTopology: tops,
 		},
@@ -1743,12 +1779,36 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params co
 		}
 		createResp.Volume.ContentSource = contentSource
 	}
-	return createResp
+	return createResp, nil
 }
 
-func cleanSelfLink(selfLink string) string {
-	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
-	return r.ReplaceAllString(selfLink, "")
+func getResourceId(resourceLink string) (string, error) {
+	url, err := neturl.Parse(resourceLink)
+	if err != nil {
+		return "", fmt.Errorf("Could not parse resource %s: %w", resourceLink, err)
+	}
+	if url.Scheme != resourceApiScheme {
+		return "", fmt.Errorf("Unexpected API scheme for resource %s", resourceLink)
+	}
+
+	// Note that the resource host can basically be anything, if we are running in
+	// a distributed cloud or trusted partner environment.
+
+	// The path should be /compute/VERSION/project/....
+	elts := strings.Split(url.Path, "/")
+	if len(elts) < 4 {
+		return "", fmt.Errorf("Short resource path %s", resourceLink)
+	}
+	if elts[1] != resourceApiService {
+		return "", fmt.Errorf("Bad resource service %s in %s", elts[1], resourceLink)
+	}
+	if _, ok := validResourceApiVersions[elts[2]]; !ok {
+		return "", fmt.Errorf("Bad version %s in %s", elts[2], resourceLink)
+	}
+	if elts[3] != resourceProject {
+		return "", fmt.Errorf("Expected %v to start with %s in resource %s", elts[3:], resourceProject, resourceLink)
+	}
+	return strings.Join(elts[3:], "/"), nil
 }
 
 func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) (*gce.CloudDisk, error) {
