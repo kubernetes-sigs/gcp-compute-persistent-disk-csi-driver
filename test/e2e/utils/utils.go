@@ -55,7 +55,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 	extra_flags := []string{
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
-		"--max-concurrent-format-and-mount=10", // otherwise the serialization times out.
+		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
 	}
 	if computeEndpoint != "" {
 		extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint %s", computeEndpoint))
