@@ -22,7 +22,9 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 )
 
 const (
@@ -267,4 +269,13 @@ func ParseMachineType(machineTypeUrl string) (string, error) {
 		return "", fmt.Errorf("failed to parse machineTypeUrl. Expected suffix: zones/{zone}/machineTypes/{machine-type}. Got: %s", machineTypeUrl)
 	}
 	return machineType[1], nil
+}
+
+// ConvertStringToInt64 converts a string to int64
+func ConvertStringToInt64(str string) (int64, error) {
+	quantity, err := resource.ParseQuantity(str)
+	if err != nil {
+		return -1, err
+	}
+	return volumehelpers.RoundUpToB(quantity)
 }

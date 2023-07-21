@@ -34,9 +34,9 @@ import (
 const (
 	DiskSizeGb                = 10
 	Timestamp                 = "2018-09-05T15:17:08.270-07:00"
-	BasePath                  = "https://www.googleapis.com/compute/v1/projects/"
-	snapshotURITemplateGlobal = "%s/global/snapshots/%s" //{gce.projectID}/global/snapshots/{snapshot.Name}"
-	imageURITemplateGlobal    = "%s/global/images/%s"    //{gce.projectID}/global/images/{image.Name}"
+	BasePath                  = "https://www.googleapis.com/compute/v1/"
+	snapshotURITemplateGlobal = "projects/%s/global/snapshots/%s" //{gce.projectID}/global/snapshots/{snapshot.Name}"
+	imageURITemplateGlobal    = "projects/%s/global/images/%s"    //{gce.projectID}/global/images/{image.Name}"
 )
 
 type FakeCloudProvider struct {
@@ -196,13 +196,14 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	computeDisk := &computev1.Disk{
-		Name:         volKey.Name,
-		SizeGb:       common.BytesToGbRoundUp(capBytes),
-		Description:  "Disk created by GCE-PD CSI Driver",
-		Type:         cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		SourceDiskId: volumeContentSourceVolumeID,
-		Status:       cloud.mockDiskStatus,
-		Labels:       params.Labels,
+		Name:            volKey.Name,
+		SizeGb:          common.BytesToGbRoundUp(capBytes),
+		Description:     "Disk created by GCE-PD CSI Driver",
+		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		SourceDiskId:    volumeContentSourceVolumeID,
+		Status:          cloud.mockDiskStatus,
+		Labels:          params.Labels,
+		ProvisionedIops: params.ProvisionedIOPSOnCreate,
 	}
 
 	if snapshotID != "" {

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,12 +43,16 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb      int64 = 5
-	defaultRepdSizeGb  int64 = 200
-	defaultMwSizeGb    int64 = 200
-	readyState               = "READY"
-	standardDiskType         = "pd-standard"
-	defaultVolumeLimit int64 = 127
+	defaultSizeGb              int64 = 5
+	defaultExtremeSizeGb       int64 = 500
+	defaultRepdSizeGb          int64 = 200
+	defaultMwSizeGb            int64 = 200
+	defaultVolumeLimit         int64 = 127
+	readyState                       = "READY"
+	standardDiskType                 = "pd-standard"
+	extremeDiskType                  = "pd-extreme"
+	provisionedIOPSOnCreate          = "12345"
+	provisionedIOPSOnCreateInt       = int64(12345)
 
 	defaultEpsilon = 500000000 // 500M
 )
@@ -70,7 +75,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -95,7 +100,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -167,7 +172,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -266,7 +271,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 		instance := testContext.Instance
 
-		volName, _ := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
 
@@ -314,8 +319,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -413,7 +417,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
@@ -469,52 +473,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
 		keyRingId := "gce-pd-csi-test-ring"
 
-		// Create KeyRing
-		ringReq := &kmspb.CreateKeyRingRequest{
-			Parent:    parentName,
-			KeyRingId: keyRingId,
-		}
-		keyRing, err := kmsClient.CreateKeyRing(ctx, ringReq)
-		if !gce.IsGCEError(err, "alreadyExists") {
-			getKeyRingReq := &kmspb.GetKeyRingRequest{
-				Name: fmt.Sprintf("%s/keyRings/%s", parentName, keyRingId),
-			}
-			keyRing, err = kmsClient.GetKeyRing(ctx, getKeyRingReq)
-
-		}
-		Expect(err).To(BeNil(), "Failed to create or get key ring %v", keyRingId)
-
-		// Create CryptoKey in KeyRing
-		keyId := "test-key-" + string(uuid.NewUUID())
-		keyReq := &kmspb.CreateCryptoKeyRequest{
-			Parent:      keyRing.Name,
-			CryptoKeyId: keyId,
-			CryptoKey: &kmspb.CryptoKey{
-				Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
-				VersionTemplate: &kmspb.CryptoKeyVersionTemplate{
-					Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
-				},
-			},
-		}
-		key, err := kmsClient.CreateCryptoKey(ctx, keyReq)
-		Expect(err).To(BeNil(), "Failed to create crypto key %v in key ring %v", keyId, keyRing.Name)
-
-		keyVersions := []string{}
-		keyVersionReq := &kmspb.ListCryptoKeyVersionsRequest{
-			Parent: key.Name,
-		}
-
-		it := kmsClient.ListCryptoKeyVersions(ctx, keyVersionReq)
-
-		for {
-			keyVersion, err := it.Next()
-			if err == iterator.Done {
-				break
-			}
-			Expect(err).To(BeNil(), "Failed to list crypto key versions")
-
-			keyVersions = append(keyVersions, keyVersion.Name)
-		}
+		key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
 
 		// Defer deletion of all key versions
 		// https://cloud.google.com/kms/docs/destroy-restore
@@ -524,7 +483,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
 					Name: keyVersion,
 				}
-				_, err = kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
+				_, err := kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
 				Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
 			}
 
@@ -619,10 +578,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		nodeID := testContext.Instance.GetNodeID()
 
-		_, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		_, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 		defer deleteVolumeOrError(client, volID)
 
-		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z)
+		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 		defer deleteVolumeOrError(client, secondVolID)
 
 		// Attach volID to current instance
@@ -668,8 +627,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -721,7 +679,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 		instance := testContext.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -758,7 +716,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 		instance := testContext.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -800,7 +758,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		zone := "us-east1-a"
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -822,7 +780,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, standardDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -902,7 +860,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
@@ -963,7 +921,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
@@ -1024,7 +982,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		p, z, _ := controllerInstance.GetIdentity()
 
 		// Create Source Disk
-		_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z)
+		_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z, standardDiskType)
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
@@ -1055,6 +1013,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
+		// Validate the the clone disk zone matches the source disk zone.
+		_, srcKey, err := common.VolumeIDToKey(srcVolID)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
+		Expect(zoneFromURL(cloudDisk.Zone)).To(Equal(srcKey.Zone))
 		defer func() {
 			// Delete Disk
 			controllerClient.DeleteVolume(volID)
@@ -1106,9 +1068,77 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		replicaZonesCompatible := false
+		_, srcKey, err := common.VolumeIDToKey(srcVolID)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
 		for _, replicaZone := range cloudDisk.ReplicaZones {
-			tokens := strings.Split(replicaZone, "/")
-			actualZone := tokens[len(tokens)-1]
+			actualZone := zoneFromURL(replicaZone)
+			if actualZone == srcKey.Zone {
+				replicaZonesCompatible = true
+			}
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		// Validate that one of the replicaZones of the clone matches the zone of the source disk.
+		Expect(replicaZonesCompatible).To(Equal(true))
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should successfully create RePD from a RePD VolumeContentSource", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Source Disk
+		srcVolName := testNamePrefix + string(uuid.NewUUID())
+		srcVolID, err := controllerClient.CreateVolume(srcVolName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil, nil)
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volID, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil,
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: srcVolID,
+					},
+				},
+			})
+
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		// Validate that the replicaZones of the clone match the replicaZones of the source disk.
+		srcCloudDisk, err := computeService.RegionDisks.Get(p, region, srcVolName).Do()
+		Expect(err).To(BeNil(), "Could not get source disk from cloud directly")
+		Expect(srcCloudDisk.ReplicaZones).To(Equal(cloudDisk.ReplicaZones))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
 			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
 			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
 			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
@@ -1132,7 +1162,7 @@ func equalWithinEpsilon(a, b, epsiolon int64) bool {
 	return b-a < epsiolon
 }
 
-func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string) (volName, volID string) {
+func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string, diskType string) (volName, volID string) {
 	// Create Disk
 	var err error
 	volName = testNamePrefix + string(uuid.NewUUID())
@@ -1149,7 +1179,7 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	// Validate Disk Created
 	cloudDisk, err := computeService.Disks.Get(project, zone, volName).Do()
 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+	Expect(cloudDisk.Type).To(ContainSubstring(diskType))
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
@@ -1168,7 +1198,7 @@ func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 }
 
-func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string) (string, string) {
+func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volID, err := client.CreateVolumeWithCaps(volName, nil, defaultMwSizeGb,
@@ -1194,7 +1224,7 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	// Validate Disk Created
 	cloudDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+	Expect(cloudDisk.Type).To(ContainSubstring(diskType))
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultMwSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
@@ -1204,7 +1234,66 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 }
 
 func cleanSelfLink(selfLink string) string {
-	temp := strings.TrimPrefix(selfLink, gce.GCEComputeAPIEndpoint)
-	temp = strings.TrimPrefix(temp, gce.GCEComputeBetaAPIEndpoint)
-	return strings.TrimPrefix(temp, gce.GCEComputeAlphaAPIEndpoint)
+	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
+	return r.ReplaceAllString(selfLink, "")
+}
+
+// Returns the zone from the URL with the format https://compute.googleapis.com/compute/v1/projects/{project}/zones/{zone}.
+// Returns the empty string if the zone cannot be abstracted from the URL.
+func zoneFromURL(url string) string {
+	tokens := strings.Split(url, "/")
+	if len(tokens) == 0 {
+		return ""
+	}
+	return tokens[len(tokens)-1]
+}
+
+func setupKeyRing(ctx context.Context, parentName string, keyRingId string) (*kmspb.CryptoKey, []string) {
+	// Create KeyRing
+	ringReq := &kmspb.CreateKeyRingRequest{
+		Parent:    parentName,
+		KeyRingId: keyRingId,
+	}
+	keyRing, err := kmsClient.CreateKeyRing(ctx, ringReq)
+	if !gce.IsGCEError(err, "alreadyExists") {
+		getKeyRingReq := &kmspb.GetKeyRingRequest{
+			Name: fmt.Sprintf("%s/keyRings/%s", parentName, keyRingId),
+		}
+		keyRing, err = kmsClient.GetKeyRing(ctx, getKeyRingReq)
+
+	}
+	Expect(err).To(BeNil(), "Failed to create or get key ring %v", keyRingId)
+
+	// Create CryptoKey in KeyRing
+	keyId := "test-key-" + string(uuid.NewUUID())
+	keyReq := &kmspb.CreateCryptoKeyRequest{
+		Parent:      keyRing.Name,
+		CryptoKeyId: keyId,
+		CryptoKey: &kmspb.CryptoKey{
+			Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
+			VersionTemplate: &kmspb.CryptoKeyVersionTemplate{
+				Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
+			},
+		},
+	}
+	key, err := kmsClient.CreateCryptoKey(ctx, keyReq)
+	Expect(err).To(BeNil(), "Failed to create crypto key %v in key ring %v", keyId, keyRing.Name)
+
+	keyVersions := []string{}
+	keyVersionReq := &kmspb.ListCryptoKeyVersionsRequest{
+		Parent: key.Name,
+	}
+
+	it := kmsClient.ListCryptoKeyVersions(ctx, keyVersionReq)
+
+	for {
+		keyVersion, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		Expect(err).To(BeNil(), "Failed to list crypto key versions")
+
+		keyVersions = append(keyVersions, keyVersion.Name)
+	}
+	return key, keyVersions
 }
