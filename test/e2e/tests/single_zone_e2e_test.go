@@ -44,22 +44,22 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb                    int64 = 5
-	defaultExtremeSizeGb             int64 = 500
-	defaultHdTSizeGb                 int64 = 2048
-	defaultRepdSizeGb                int64 = 200
-	defaultMwSizeGb                  int64 = 200
-	defaultVolumeLimit               int64 = 127
-	readyState                             = "READY"
-	standardDiskType                       = "pd-standard"
-	extremeDiskType                        = "pd-extreme"
-	hdtDiskType                            = "hyperdisk-throughput"
-	provisionedIOPSOnCreate                = "12345"
-	provisionedIOPSOnCreateInt             = int64(12345)
-	provisionedThroughputOnCreate          = "66Mi"
-	provisionedThroughputOnCreateInt       = int64(66)
-
-	defaultEpsilon = 500000000 // 500M
+	defaultSizeGb                     int64 = 5
+	defaultExtremeSizeGb              int64 = 500
+	defaultHdTSizeGb                  int64 = 2048
+	defaultRepdSizeGb                 int64 = 200
+	defaultMwSizeGb                   int64 = 200
+	defaultVolumeLimit                int64 = 127
+	readyState                              = "READY"
+	standardDiskType                        = "pd-standard"
+	extremeDiskType                         = "pd-extreme"
+	hdtDiskType                             = "hyperdisk-throughput"
+	provisionedIOPSOnCreate                 = "12345"
+	provisionedIOPSOnCreateInt              = int64(12345)
+	provisionedIOPSOnCreateDefaultInt       = int64(100000)
+	provisionedThroughputOnCreate           = "66Mi"
+	provisionedThroughputOnCreateInt        = int64(66)
+	defaultEpsilon                          = 500000000 // 500M
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
@@ -421,6 +421,48 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	DescribeTable("Should create and delete pd-extreme disk with default iops",
+		func(diskType string) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+
+			// Create Disk
+			diskParams := map[string]string{
+				common.ParameterKeyType: diskType,
+			}
+			volName := testNamePrefix + string(uuid.NewUUID())
+
+			diskSize := defaultExtremeSizeGb
+
+			volume, err := client.CreateVolume(volName, diskParams, diskSize, nil, nil)
+
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
+			Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
+			Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateDefaultInt))
+			Expect(cloudDisk.Name).To(Equal(volName))
+
+			defer func() {
+				// Delete Disk
+				client.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+		},
 		Entry("on pd-extreme", extremeDiskType),
 	)
 
