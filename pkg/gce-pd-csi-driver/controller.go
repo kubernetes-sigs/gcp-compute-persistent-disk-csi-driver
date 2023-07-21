@@ -1700,7 +1700,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string) (*csi.Cre
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes:      realDiskSizeBytes,
-			VolumeId:           cleanSelfLink(disk.GetSelfLink()),
+			VolumeId:           volumeId,
 			VolumeContext:      nil,
 			AccessibleTopology: tops,
 		},
