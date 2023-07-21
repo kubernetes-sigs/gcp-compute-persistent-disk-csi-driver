@@ -229,10 +229,10 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	switch volKey.Type() {
 	case meta.Zonal:
 		computeDisk.Zone = volKey.Zone
-		computeDisk.SelfLink = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, volKey.Zone, volKey.Name)
+		computeDisk.SelfLink = fmt.Sprintf("%sprojects/%s/zones/%s/disks/%s", BasePath, project, volKey.Zone, volKey.Name)
 	case meta.Regional:
 		computeDisk.Region = volKey.Region
-		computeDisk.SelfLink = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, volKey.Region, volKey.Name)
+		computeDisk.SelfLink = fmt.Sprintf("%sprojects/%s/regions/%s/disks/%s", BasePath, project, volKey.Region, volKey.Name)
 	default:
 		return fmt.Errorf("could not create disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
