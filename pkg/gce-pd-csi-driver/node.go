@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,6 +47,15 @@ type GCENodeServer struct {
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
 	volumeLocks *common.VolumeLocks
+
+	// If set, this semaphore will be used to serialize formatAndMount. It will be raised
+	// when the operation starts, and lowered either when finished, or when
+	// formatAndMountTimeout has expired.
+	//
+	// This is used only on linux (where memory problems for concurrent fsck and mkfs have
+	// been observed).
+	formatAndMountSemaphore chan any
+	formatAndMountTimeout   time.Duration
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -84,6 +94,14 @@ func (ns *GCENodeServer) isVolumePathMounted(path string) bool {
 		return true
 	}
 	return false
+}
+
+func (ns *GCENodeServer) WithSerializedFormatAndMount(timeout time.Duration, maxConcurrent int) *GCENodeServer {
+	if maxConcurrent > 0 {
+		ns.formatAndMountSemaphore = make(chan any, maxConcurrent)
+		ns.formatAndMountTimeout = timeout
+	}
+	return ns
 }
 
 func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -318,7 +336,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
 	}
 
-	err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
+	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
 		// as "dirty" even if it is otherwise consistent and ext3/4 will try to restore to a consistent state by replaying
@@ -329,7 +347,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			klog.V(4).Infof("Failed to mount CSI volume read-only, retry mounting with extra option noload")
 
 			options = append(options, "noload")
-			err = formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
+			err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 			if err == nil {
 				klog.V(4).Infof("NodeStageVolume succeeded with \"noload\" option on %v to %s", volumeID, stagingTargetPath)
 				return &csi.NodeStageVolumeResponse{}, nil
