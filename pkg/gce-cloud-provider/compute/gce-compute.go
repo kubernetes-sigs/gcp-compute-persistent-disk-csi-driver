@@ -43,7 +43,7 @@ const (
 	pdDiskTypeUnsupportedPattern = `\[([a-z-]+)\] features are not compatible for creating instance`
 )
 
-var hyperdiskTypes = []string{"hyperdisk-extreme", "hyperdisk-throughput"}
+var hyperdiskTypes = []string{"hyperdisk-extreme", "hyperdisk-throughput", "hyperdisk-balanced"}
 var pdDiskTypeUnsupportedRegex = regexp.MustCompile(pdDiskTypeUnsupportedPattern)
 
 type GCEAPIVersion string
@@ -258,6 +258,9 @@ func (cloud *CloudProvider) ListSnapshots(ctx context.Context, filter string) ([
 
 func (cloud *CloudProvider) GetDisk(ctx context.Context, project string, key *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error) {
 	klog.V(5).Infof("Getting disk %v", key)
+
+	// Override GCEAPIVersion as hyperdisk is only available in beta and we cannot get the disk-type with get disk call.
+	gceAPIVersion = GCEAPIVersionBeta
 	switch key.Type() {
 	case meta.Zonal:
 		if gceAPIVersion == GCEAPIVersionBeta {
@@ -416,8 +419,16 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCrea
 		Description:       v1Disk.Description,
 		Type:              v1Disk.Type,
 		SourceSnapshot:    v1Disk.SourceSnapshot,
+		SourceImage:       v1Disk.SourceImage,
+		SourceImageId:     v1Disk.SourceImageId,
+		SourceSnapshotId:  v1Disk.SourceSnapshotId,
+		SourceDisk:        v1Disk.SourceDisk,
 		ReplicaZones:      v1Disk.ReplicaZones,
 		DiskEncryptionKey: dek,
+		Zone:              v1Disk.Zone,
+		Region:            v1Disk.Region,
+		Status:            v1Disk.Status,
+		SelfLink:          v1Disk.SelfLink,
 	}
 	if v1Disk.ProvisionedIops > 0 {
 		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
@@ -558,7 +569,6 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
-
 	if multiWriter || containsBetaDiskType(hyperdiskTypes, params.DiskType) {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
@@ -600,6 +610,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		var insertOp *computebeta.Operation
 		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, params.ProvisionedThroughputOnCreate)
 		betaDiskToCreate.MultiWriter = multiWriter
+		betaDiskToCreate.EnableConfidentialCompute = params.EnableConfidentialCompute
 		insertOp, err = cloud.betaService.Disks.Insert(project, volKey.Zone, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
 			opName = insertOp.Name

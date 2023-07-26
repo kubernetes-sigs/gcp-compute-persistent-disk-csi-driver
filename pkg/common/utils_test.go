@@ -1079,3 +1079,29 @@ func TestIsContextError(t *testing.T) {
 		}
 	}
 }
+
+func TestIsValidDiskEncryptionKmsKey(t *testing.T) {
+	cases := []struct {
+		diskEncryptionKmsKey string
+		expectedIsValid      bool
+	}{
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/us-central1/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      true,
+		},
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/global/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      true,
+		},
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      false,
+		},
+	}
+	for _, tc := range cases {
+		isValid := isValidDiskEncryptionKmsKey(tc.diskEncryptionKmsKey)
+		if tc.expectedIsValid != isValid {
+			t.Errorf("test failed: the provided key %s expected to be %v bu tgot %v", tc.diskEncryptionKmsKey, tc.expectedIsValid, isValid)
+		}
+	}
+}
