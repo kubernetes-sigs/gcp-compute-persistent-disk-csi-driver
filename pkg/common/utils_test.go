@@ -800,6 +800,60 @@ func TestConvertMiBStringToInt64(t *testing.T) {
 	}
 }
 
+func TestConvertStringToBool(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expected    bool
+		expectError bool
+	}{
+		{
+			desc:        "valid true",
+			inputStr:    "true",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case true",
+			inputStr:    "True",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			desc:        "valid false",
+			inputStr:    "false",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			desc:        "valid mixed case false",
+			inputStr:    "False",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			desc:        "invalid",
+			inputStr:    "yes",
+			expected:    false,
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := ConvertStringToBool(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to bool %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to bool %s; expect an error", tc.inputStr)
+			}
+			if err == nil && got != tc.expected {
+				t.Errorf("Got %v for converting string to bool; expect %v", got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestParseMachineType(t *testing.T) {
 	tests := []struct {
 		desc                string
@@ -952,6 +1006,32 @@ func TestIsContextError(t *testing.T) {
 			}
 		} else if errCode != test.expectedErrCode {
 			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
+	}
+}
+
+func TestIsValidDiskEncryptionKmsKey(t *testing.T) {
+	cases := []struct {
+		diskEncryptionKmsKey string
+		expectedIsValid      bool
+	}{
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/us-central1/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      true,
+		},
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/global/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      true,
+		},
+		{
+			diskEncryptionKmsKey: "projects/my-project/locations/keyRings/TestKeyRing/cryptoKeys/test-key",
+			expectedIsValid:      false,
+		},
+	}
+	for _, tc := range cases {
+		isValid := isValidDiskEncryptionKmsKey(tc.diskEncryptionKmsKey)
+		if tc.expectedIsValid != isValid {
+			t.Errorf("test failed: the provided key %s expected to be %v bu tgot %v", tc.diskEncryptionKmsKey, tc.expectedIsValid, isValid)
 		}
 	}
 }

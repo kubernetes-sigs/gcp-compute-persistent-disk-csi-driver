@@ -292,6 +292,17 @@ func ConvertMiBStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToMiB(quantity)
 }
 
+// ConvertStringToBool converts a string to a boolean.
+func ConvertStringToBool(str string) (bool, error) {
+	switch strings.ToLower(str) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	return false, fmt.Errorf("Unexpected boolean string %s", str)
+}
+
 // ParseMachineType returns an extracted machineType from a URL, or empty if not found.
 // machineTypeUrl: Full or partial URL of the machine type resource, in the format:
 //
@@ -363,4 +374,10 @@ func existingErrorCode(err error) (codes.Code, error) {
 func LoggedError(msg string, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
 	return status.Errorf(CodeForError(err), msg+"%v", err.Error())
+}
+
+func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
+	// Validate key against default kmskey pattern
+	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
+	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
 }
