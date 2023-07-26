@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"k8s.io/component-base/metrics"
@@ -31,8 +32,10 @@ import (
 const (
 	// envGKEPDCSIVersion is an environment variable set in the PDCSI controller manifest
 	// with the current version of the GKE component.
-	envGKEPDCSIVersion = "GKE_PDCSI_VERSION"
-	pdcsiDriverName    = "pd.csi.storage.gke.io"
+	envGKEPDCSIVersion               = "GKE_PDCSI_VERSION"
+	pdcsiDriverName                  = "pd.csi.storage.gke.io"
+	DefaultDiskTypeForMetric         = "unknownDiskType"
+	DefaultEnableConfidentialCompute = "unknownConfidentialMode"
 )
 
 var (
@@ -49,7 +52,7 @@ var (
 			Help:           "CSI server side error metrics",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type"})
+		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type", "enable_confidential_storage"})
 )
 
 type MetricsManager struct {
@@ -90,12 +93,13 @@ func (mm *MetricsManager) recordComponentVersionMetric() error {
 func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
-	diskType string) {
+	diskType string,
+	enableConfidentialStorage string) {
 	err := codes.OK.String()
 	if operationErr != nil {
 		err = common.CodeForError(operationErr).String()
 	}
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType).Inc()
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType, enableConfidentialStorage).Inc()
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -152,10 +156,12 @@ func IsGKEComponentVersionAvailable() bool {
 	return true
 }
 
-func GetDiskType(disk *gce.CloudDisk) string {
-	var diskType string
+func GetMetricParameters(disk *gce.CloudDisk) (string, string) {
+	diskType := DefaultDiskTypeForMetric
+	enableConfidentialStorage := DefaultEnableConfidentialCompute
 	if disk != nil {
 		diskType = disk.GetPDType()
+		enableConfidentialStorage = strconv.FormatBool(disk.GetEnableConfidentialCompute())
 	}
-	return diskType
+	return diskType, enableConfidentialStorage
 }
