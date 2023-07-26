@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -39,12 +40,14 @@ import (
 )
 
 const (
-	project    = "test-project"
-	zone       = "country-region-zone"
-	secondZone = "country-region-fakesecondzone"
-	node       = "test-node"
-	driver     = "test-driver"
-	name       = "test-name"
+	project                      = "test-project"
+	zone                         = "country-region-zone"
+	secondZone                   = "country-region-fakesecondzone"
+	node                         = "test-node"
+	driver                       = "test-driver"
+	name                         = "test-name"
+	parameterConfidentialCompute = "EnableConfidentialCompute"
+	testDiskEncryptionKmsKey     = "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY"
 )
 
 var (
@@ -72,6 +75,7 @@ var (
 
 	errorBackoffInitialDuration = 200 * time.Millisecond
 	errorBackoffMaxDuration     = 5 * time.Minute
+	defaultConfidentialStorage  = "false"
 )
 
 func TestCreateSnapshotArguments(t *testing.T) {
@@ -3398,6 +3402,106 @@ func TestGetResource(t *testing.T) {
 					t.Errorf("Expected cleaned self link: %v, got: %v", tc.want, got)
 				}
 			}
+		})
+	}
+}
+
+func TestCreateConfidentialVolume(t *testing.T) {
+	// Define test cases
+	testCases := []struct {
+		name       string
+		volKey     *meta.Key
+		req        *csi.CreateVolumeRequest
+		diskStatus string
+		expErrCode codes.Code
+	}{
+		{
+			name:       "create confidential volume from snapshot",
+			volKey:     meta.ZonalKey("my-disk", zone),
+			diskStatus: "READY",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-volume",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					common.ParameterKeyEnableConfidentialCompute: "true",
+					common.ParameterKeyDiskEncryptionKmsKey:      testDiskEncryptionKmsKey,
+					common.ParameterKeyType:                      "hyperdisk-balanced",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "create volume from snapshot with confidential-compute disabled",
+			volKey:     meta.ZonalKey("my-disk", zone),
+			diskStatus: "READY",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-volume",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					common.ParameterKeyEnableConfidentialCompute: "false",
+					common.ParameterKeyType:                      "hyperdisk-balanced",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		t.Run(tc.name, func(t *testing.T) {
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			// Setup new driver each time so no interference
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+
+			if tc.req.VolumeContentSource.GetType() != nil {
+				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name)
+				if err != nil {
+					t.Errorf("Got error extracting snapshot parameters: %v", err)
+				}
+				if snapshotParams.SnapshotType == common.DiskSnapshotType {
+					fcp.CreateSnapshot(context.Background(), project, tc.volKey, name, snapshotParams)
+				} else {
+					t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
+				}
+			}
+
+			// Start Test
+			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+			if err != nil {
+				serverError, ok := status.FromError(err)
+				if !ok {
+					t.Fatalf("Could not get error status code from err: %v", serverError)
+				}
+				t.Errorf("Recieved error %v", serverError)
+			}
+
+			volumeId := resp.GetVolume().VolumeId
+			project, volumeKey, err := common.VolumeIDToKey(volumeId)
+			createdDisk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+			if err != nil {
+				t.Fatalf("Get Disk failed for created disk with error: %v", err)
+			}
+			val, ok := tc.req.Parameters[common.ParameterKeyEnableConfidentialCompute]
+			if ok && val != strconv.FormatBool(createdDisk.GetEnableConfidentialCompute()) {
+				t.Fatalf("Confidential disk parameter does not match with created disk: %v Got error %v", createdDisk.GetEnableConfidentialCompute(), err)
+			}
+			t.Logf("Created disk for confidentialCompute %v with parametrs, %v", createdDisk.GetEnableConfidentialCompute(), tc.req.Parameters)
 		})
 	}
 }
