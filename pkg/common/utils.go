@@ -386,3 +386,9 @@ func LoggedError(msg string, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
 	return status.Errorf(CodeForError(err), msg+"%v", err.Error())
 }
+
+func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
+	// Validate key against default kmskey pattern
+	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
+	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
+}

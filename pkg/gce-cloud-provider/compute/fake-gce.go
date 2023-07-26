@@ -237,7 +237,13 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 		return fmt.Errorf("could not create disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
 
-	cloud.disks[volKey.Name] = CloudDiskFromV1(computeDisk)
+	if containsBetaDiskType(hyperdiskTypes, params.DiskType) {
+		betaDisk := convertV1DiskToBetaDisk(computeDisk, params.ProvisionedThroughputOnCreate)
+		betaDisk.EnableConfidentialCompute = params.EnableConfidentialCompute
+		cloud.disks[volKey.Name] = CloudDiskFromBeta(betaDisk)
+	} else {
+		cloud.disks[volKey.Name] = CloudDiskFromV1(computeDisk)
+	}
 	return nil
 }
 
