@@ -1,3 +1,20 @@
+# v1.10.5 - Changelog since v1.10.4
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add option for serializing formatAndMount, including fsck as well as mkfs. ([#1313](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1313), [@mattcary](https://github.com/mattcary))
+
+### Uncategorized
+
+- Add disk type for all operations metrics. ([#1295](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1295), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Fix provisioned-iops-on-create passing logic ([#1282](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1282), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Fix resource parsing when the gcp project name ends with alpha, beta or v1 ([#1307](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1307), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Use original error code when responding with a backoff error on publish or unpublish. ([#1311](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1311), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Added support in PDCSI driver to create confidential hyperdisk storage on GCE. ([#1315](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1315), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+
 # v1.10.4 - Changelog since v1.10.3
 
 ## Changes by Kind

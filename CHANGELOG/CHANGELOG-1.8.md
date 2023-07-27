@@ -1,3 +1,13 @@
+# v1.8.8 - Changelog since v1.8.7
+
+## Changes by Kind
+
+### Uncategorized
+
+- Add disk type for all operations metrics. ([#1297](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1297), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Fix provisioned-iops-on-create passing logic ([#1284](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1284), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+
 # v1.8.7 - Changelog since v1.8.6
 
 ### Bug or Regression
