@@ -1,3 +1,18 @@
+# v1.9.7 - Changelog since v1.9.6
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fix resource parsing when the gcp project name ends with alpha, beta or v1 ([#1308](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1308), [@mattcary](https://github.com/mattcary))
+
+### Uncategorized
+
+- Add disk type for all operations metrics. ([#1296](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1296), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Fix provisioned-iops-on-create passing logic ([#1283](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1283), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Use original error code when responding with a backoff error on publish or unpublish. ([#1312](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1312), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+
 # v1.9.6 - Changelog since v1.9.5
 
 ## Changes by Kind
