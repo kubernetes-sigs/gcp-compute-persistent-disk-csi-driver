@@ -44,16 +44,20 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb              int64 = 5
-	defaultExtremeSizeGb       int64 = 500
-	defaultRepdSizeGb          int64 = 200
-	defaultMwSizeGb            int64 = 200
-	defaultVolumeLimit         int64 = 127
-	readyState                       = "READY"
-	standardDiskType                 = "pd-standard"
-	extremeDiskType                  = "pd-extreme"
-	provisionedIOPSOnCreate          = "12345"
-	provisionedIOPSOnCreateInt       = int64(12345)
+	defaultSizeGb                    int64 = 5
+	defaultExtremeSizeGb             int64 = 500
+	defaultHdTSizeGb                 int64 = 2048
+	defaultRepdSizeGb                int64 = 200
+	defaultMwSizeGb                  int64 = 200
+	defaultVolumeLimit               int64 = 127
+	readyState                             = "READY"
+	standardDiskType                       = "pd-standard"
+	extremeDiskType                        = "pd-extreme"
+	hdtDiskType                            = "hyperdisk-throughput"
+	provisionedIOPSOnCreate                = "12345"
+	provisionedIOPSOnCreateInt             = int64(12345)
+	provisionedThroughputOnCreate          = "66Mi"
+	provisionedThroughputOnCreateInt       = int64(66)
 
 	defaultEpsilon = 500000000 // 500M
 )
@@ -292,6 +296,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		},
 		Entry("on pd-standard", standardDiskType),
 		Entry("on pd-extreme", extremeDiskType),
+		Entry("on pd-extreme", hdtDiskType),
 	)
 
 	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
@@ -1281,8 +1286,11 @@ func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone st
 	volName := testNamePrefix + string(uuid.NewUUID())
 
 	diskSize := defaultSizeGb
-	if diskType == extremeDiskType {
+	switch diskType {
+	case extremeDiskType:
 		diskSize = defaultExtremeSizeGb
+	case hdtDiskType:
+		diskSize = defaultHdTSizeGb
 	}
 	volume, err := client.CreateVolume(volName, disk.params, diskSize,
 		&csi.TopologyRequirement{
@@ -1443,6 +1451,16 @@ var typeToDisk = map[string]*disk{
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(extremeDiskType))
 			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
+		},
+	},
+	hdtDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType:                          hdtDiskType,
+			common.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreate,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(hdtDiskType))
+			Expect(disk.ProvisionedThroughput).To(Equal(provisionedThroughputOnCreateInt))
 		},
 	},
 }
