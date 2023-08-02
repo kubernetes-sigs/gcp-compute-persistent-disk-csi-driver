@@ -23,8 +23,6 @@ import (
 	"net/http"
 	"strings"
 
-	"context"
-
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc"
