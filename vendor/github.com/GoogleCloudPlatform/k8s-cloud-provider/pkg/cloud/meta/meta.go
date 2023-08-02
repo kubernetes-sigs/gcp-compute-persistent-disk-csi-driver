@@ -140,6 +140,7 @@ var AllServices = []*ServiceInfo{
 		keyType:     Global,
 		serviceType: reflect.TypeOf(&beta.BackendServicesService{}),
 		additionalMethods: []string{
+			"Patch",
 			"Update",
 			"SetSecurityPolicy",
 			"AddSignedUrlKey",
@@ -155,6 +156,7 @@ var AllServices = []*ServiceInfo{
 		keyType:     Global,
 		serviceType: reflect.TypeOf(&alpha.BackendServicesService{}),
 		additionalMethods: []string{
+			"Patch",
 			"Update",
 			"SetSecurityPolicy",
 			"AddSignedUrlKey",
@@ -171,6 +173,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&ga.RegionBackendServicesService{}),
 		additionalMethods: []string{
 			"GetHealth",
+			"Patch",
 			"Update",
 		},
 	},
@@ -183,6 +186,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&alpha.RegionBackendServicesService{}),
 		additionalMethods: []string{
 			"GetHealth",
+			"Patch",
 			"Update",
 		},
 	},
@@ -195,6 +199,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&beta.RegionBackendServicesService{}),
 		additionalMethods: []string{
 			"GetHealth",
+			"Patch",
 			"Update",
 		},
 	},
@@ -228,6 +233,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&alpha.FirewallsService{}),
 		additionalMethods: []string{
 			"Update",
+			"Patch",
 		},
 	},
 	{
@@ -239,6 +245,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&beta.FirewallsService{}),
 		additionalMethods: []string{
 			"Update",
+			"Patch",
 		},
 	},
 	{
@@ -249,6 +256,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&ga.FirewallsService{}),
 		additionalMethods: []string{
 			"Update",
+			"Patch",
 		},
 	},
 	{
@@ -303,6 +311,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&ga.ForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -314,6 +323,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&alpha.ForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -325,6 +335,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&beta.ForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -336,6 +347,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&alpha.GlobalForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -347,6 +359,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&beta.GlobalForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -357,6 +370,7 @@ var AllServices = []*ServiceInfo{
 		serviceType: reflect.TypeOf(&ga.GlobalForwardingRulesService{}),
 		additionalMethods: []string{
 			"SetTarget",
+			"SetLabels",
 		},
 	},
 	{
@@ -493,6 +507,26 @@ var AllServices = []*ServiceInfo{
 			"DetachDisk",
 			"UpdateNetworkInterface",
 		},
+	},
+	{
+		Object:      "InstanceGroupManager",
+		Service:     "InstanceGroupManagers",
+		Resource:    "instanceGroupManagers",
+		keyType:     Zonal,
+		serviceType: reflect.TypeOf(&ga.InstanceGroupManagersService{}),
+		additionalMethods: []string{
+			"CreateInstances",
+			"DeleteInstances",
+			"Resize",
+			"SetInstanceTemplate",
+		},
+	},
+	{
+		Object:      "InstanceTemplate",
+		Service:     "InstanceTemplates",
+		Resource:    "instanceTemplates",
+		keyType:     Global,
+		serviceType: reflect.TypeOf(&ga.InstanceTemplatesService{}),
 	},
 	{
 		Object:      "Image",
@@ -886,6 +920,7 @@ var AllServices = []*ServiceInfo{
 		keyType:     Global,
 		serviceType: reflect.TypeOf(&ga.TargetHttpsProxiesService{}),
 		additionalMethods: []string{
+			"SetCertificateMap",
 			"SetSslCertificates",
 			"SetSslPolicy",
 			"SetUrlMap",
@@ -913,6 +948,7 @@ var AllServices = []*ServiceInfo{
 		keyType:     Global,
 		serviceType: reflect.TypeOf(&beta.TargetHttpsProxiesService{}),
 		additionalMethods: []string{
+			"SetCertificateMap",
 			"SetSslCertificates",
 			"SetSslPolicy",
 			"SetUrlMap",
