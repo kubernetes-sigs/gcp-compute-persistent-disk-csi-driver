@@ -584,7 +584,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error()), diskType
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to getDisk: %v", err.Error()), diskType
+		return nil, common.LoggedError("Failed to getDisk: ", err), diskType
 	}
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
