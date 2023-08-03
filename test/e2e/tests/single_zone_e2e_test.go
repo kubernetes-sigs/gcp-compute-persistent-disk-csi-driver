@@ -277,7 +277,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			instance := testContext.Instance
 
 			if diskType == hdtDiskType {
-				z = "us-central1-a"
+				z = "us-east4-a"
 			}
 
 			volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
@@ -300,7 +300,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		},
 		Entry("on pd-standard", standardDiskType),
 		Entry("on pd-extreme", extremeDiskType),
-		Entry("on pd-extreme", hdtDiskType),
+		Entry("on hyperdisk-throughput", hdtDiskType),
 	)
 
 	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
