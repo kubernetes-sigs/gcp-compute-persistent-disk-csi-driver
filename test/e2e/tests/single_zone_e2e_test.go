@@ -276,6 +276,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			client := testContext.Client
 			instance := testContext.Instance
 
+			if diskType == hdtDiskType {
+				z = "us-central1-a"
+			}
+
 			volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
 
 			underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
