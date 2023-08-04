@@ -223,3 +223,14 @@ func (d *CloudDisk) GetMultiWriter() bool {
 		return false
 	}
 }
+
+func (d *CloudDisk) GetEnableConfidentialCompute() bool {
+	switch {
+	case d.disk != nil:
+		return false
+	case d.betaDisk != nil:
+		return d.betaDisk.EnableConfidentialCompute
+	default:
+		return false
+	}
+}
