@@ -38,7 +38,7 @@ var (
 	project         = flag.String("project", "", "Project to run tests in")
 	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
 	architecture    = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	zones           = flag.String("zones", "us-central1-c,us-central1-b", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	zones           = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
 	machineType     = flag.String("machine-type", "n2-standard-2", "Type of machine to provision instance on")
 	imageURL        = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
