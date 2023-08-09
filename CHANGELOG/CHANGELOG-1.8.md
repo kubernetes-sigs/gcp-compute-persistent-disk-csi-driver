@@ -7,10 +7,6 @@
 - Update go version to 1.19.11 to fix CVE-2023-29406 ([#1336](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1336), [@Sneha-at](https://github.com/Sneha-at))
 - Updated dependencies to fix CVE-2022-27664, CVE-2022-32149, CVE-2022-41723, CVE-2022-41721 ([#1334](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1334), [@Sneha-at](https://github.com/Sneha-at))
 
-### Uncategorized
-
-- Add disk type for all operations metrics. ([#1297](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1297), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
-
 ## Dependencies
 
 ### Added
