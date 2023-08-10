@@ -612,7 +612,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "Could not find instance %v: %v", nodeID, err.Error()), disk
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to get instance: %v", err.Error()), disk
+		return nil, common.LoggedError("Failed to get instance: ", err), disk
 	}
 
 	readWrite := "READ_WRITE"
@@ -647,12 +647,12 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 			machineType := parseMachineType(instance.MachineType)
 			return nil, status.Errorf(codes.InvalidArgument, "'%s' is not a compatible disk type with the machine type %s, please review the GCP online documentation for available persistent disk options", udErr.DiskType, machineType), disk
 		}
-		return nil, status.Errorf(codes.Internal, "Failed to Attach: %v", err.Error()), disk
+		return nil, common.LoggedError("Failed to Attach: ", err), disk
 	}
 
 	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Errored during WaitForAttach: %v", err.Error()), disk
+		return nil, common.LoggedError("Errored during WaitForAttach: ", err), disk
 	}
 
 	klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v", volKey, nodeID)
@@ -744,7 +744,7 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 			klog.Warningf("Treating volume %v as unpublished because node %v could not be found", volKey.String(), instanceName)
 			return &csi.ControllerUnpublishVolumeResponse{}, nil, diskToUnpublish
 		}
-		return nil, status.Errorf(codes.Internal, "error getting instance: %v", err.Error()), diskToUnpublish
+		return nil, common.LoggedError("error getting instance: ", err), diskToUnpublish
 	}
 
 	deviceName, err := common.GetDeviceName(volKey)
@@ -1001,7 +1001,7 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
-			return nil, status.Errorf(codes.Internal, "Failed to get snapshot: %v", err.Error())
+			return nil, common.LoggedError("Failed to get snapshot: ", err)
 		}
 		// If we could not find the snapshot, we create a new one
 		snapshot, err = gceCS.CloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
