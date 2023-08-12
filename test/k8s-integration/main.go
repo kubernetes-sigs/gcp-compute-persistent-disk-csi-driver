@@ -28,6 +28,7 @@ import (
 	apimachineryversion "k8s.io/apimachinery/pkg/util/version"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
 
@@ -36,7 +37,8 @@ var (
 	teardownCluster      = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
 	teardownDriver       = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster       = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
-	platform             = flag.String("platform", "linux", "platform that the tests will be run, either linux or windows")
+	platform             = flag.String("platform", "linux", "platform that the tests will be run on, either linux or windows")
+	arch                 = flag.String("arch", "amd64", "architecture that the tests will be run on (eg: amd64/arm64)")
 	gceZone              = flag.String("gce-zone", "", "zone that the gce k8s cluster is created/found in")
 	gceRegion            = flag.String("gce-region", "", "region that gke regional cluster should be created in")
 	kubeVersion          = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
@@ -65,6 +67,7 @@ var (
 	saFile              = flag.String("service-account-file", "", "path of service account file")
 	deployOverlayName   = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
 	doDriverBuild       = flag.Bool("do-driver-build", true, "building the driver from source")
+	doK8sBuild          = flag.Bool("do-k8s-build", true, "building the driver from source. If false, will fetch precompiled artifacts")
 	useGKEManagedDriver = flag.Bool("use-gke-managed-driver", false, "use GKE managed PD CSI driver for the tests")
 
 	// Test flags
@@ -73,6 +76,8 @@ var (
 
 	useKubeTest2 = flag.Bool("use-kubetest2", false, "use kubetest2 to run e2e tests")
 	parallel     = flag.Int("parallel", 4, "the number of parallel tests setting for ginkgo parallelism")
+
+	allowedVersionTags = []string{"master", "stable", "latest"}
 )
 
 const (
@@ -191,10 +196,46 @@ func main() {
 		klog.Fatalf("num-windows-nodes must be set if the platform is windows")
 	}
 
+	if *kubeVersion == "master" && !*doK8sBuild {
+		klog.Fatalf("must set do-k8s-build=true when kubeVersion=%s", *kubeVersion)
+	}
+
+	if len(*kubeVersion) != 0 {
+		if !slices.Contains(allowedVersionTags, *kubeVersion) {
+			if _, err := parseVersion(*kubeVersion); err != nil {
+				klog.Fatalf("invalid kube-version %s", *kubeVersion)
+			}
+		}
+	}
+
+	if len(*testVersion) != 0 {
+		if !slices.Contains(allowedVersionTags, *testVersion) {
+			if _, err := parseVersion(*testVersion); err != nil {
+				klog.Fatalf("invalid test-version %s", *testVersion)
+			}
+		}
+	}
+
 	err := handle()
 	if err != nil {
 		klog.Fatalf("Failed to run integration test: %w", err)
 	}
+}
+
+func buildTestingBinaries(k8sDir string) error {
+	if err := buildKubernetes(k8sDir, "WHAT=test/e2e/e2e.test"); err != nil {
+		return fmt.Errorf("failed to build Kubernetes e2e: %v", err.Error())
+	}
+
+	// kubetest relies on ginkgo and kubectl already built in the test k8s directory
+	if err := buildKubernetes(k8sDir, "ginkgo"); err != nil {
+		return fmt.Errorf("failed to build gingko: %v", err.Error())
+	}
+
+	if err := buildKubernetes(k8sDir, "kubectl"); err != nil {
+		return fmt.Errorf("failed to build kubectl: %v", err.Error())
+	}
+	return nil
 }
 
 func handle() error {
@@ -266,7 +307,7 @@ func handle() error {
 		}()
 	}
 
-	// Create temporary directories for kubernetes builds
+	// Create temporary directories for kubernetes source/build artifacts
 	testParams.testParentDir = generateUniqueTmpDir()
 	defer removeDir(testParams.testParentDir)
 
@@ -274,13 +315,24 @@ func handle() error {
 	// Otherwise, either GKE or a prebuild local K8s dir is being used
 	if len(*kubeVersion) != 0 {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
-		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *kubeVersion)
-		if err != nil {
+		klog.Infof("Downloading Kubernetes source from: %s", *kubeVersion)
+		if err := downloadKubernetesSource(testParams.k8sSourceDir, *kubeVersion); err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err.Error())
 		}
-		err = buildKubernetes(testParams.k8sSourceDir, "quick-release")
-		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes: %v", err.Error())
+
+		if *doK8sBuild {
+			klog.Info("Building Kubernetes source")
+			if err := buildKubernetes(testParams.k8sSourceDir, "quick-release"); err != nil {
+				return fmt.Errorf("failed to build Kubernetes: %v", err.Error())
+			}
+		} else {
+			klog.Info("Fetching precompiled Kubernetes artifacts for %s/%s", *platform, *arch)
+			if err := downloadKubernetesRelease(testParams.k8sSourceDir, *kubeVersion, *platform, *arch); err != nil {
+				return fmt.Errorf("failed to download Kubernetes release: %v", err.Error())
+			}
+			if err := buildTestingBinaries(testParams.k8sSourceDir); err != nil {
+				return err
+			}
 		}
 	} else {
 		testParams.k8sSourceDir = *localK8sDir
@@ -290,22 +342,13 @@ func handle() error {
 	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used.
 	if !*useKubeTest2 && len(*testVersion) != 0 && *testVersion != *kubeVersion {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
-		err := downloadKubernetesSource(testParams.pkgDir, testParams.testParentDir, *testVersion)
-		if err != nil {
+		// Overlay the Kubernetes source
+		if err := downloadKubernetesSource(testParams.k8sSourceDir, *testVersion); err != nil {
 			return fmt.Errorf("failed to download Kubernetes source: %v", err.Error())
 		}
-		err = buildKubernetes(testParams.k8sSourceDir, "WHAT=test/e2e/e2e.test")
-		if err != nil {
-			return fmt.Errorf("failed to build Kubernetes e2e: %v", err.Error())
-		}
-		// kubetest relies on ginkgo and kubectl already built in the test k8s directory
-		err = buildKubernetes(testParams.k8sSourceDir, "ginkgo")
-		if err != nil {
-			return fmt.Errorf("failed to build gingko: %v", err.Error())
-		}
-		err = buildKubernetes(testParams.k8sSourceDir, "kubectl")
-		if err != nil {
-			return fmt.Errorf("failed to build kubectl: %v", err.Error())
+		klog.Infof("Building Kubernetes Testing binaries: %s", *kubeVersion)
+		if err := buildTestingBinaries(testParams.k8sSourceDir); err != nil {
+			return err
 		}
 	}
 
@@ -779,7 +822,17 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 			}
 			kubeTest2Args = append(kubeTest2Args, "--use-built-binaries")
 		} else {
-			kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=latest-%s.txt", *testVersion))
+			testResourceVersion := *testVersion
+			if *testVersion != "stable" && *testVersion != "latest" {
+				// Find the minor version
+				v, err := parseVersion(*testVersion)
+				if err != nil {
+					// Note, this shouldn't happen, as we check flags in main().
+					return fmt.Errorf("failed to parse --test-version")
+				}
+				testResourceVersion = fmt.Sprintf("stable-%s", v.minorVersion())
+			}
+			kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--test-package-marker=%s.txt", testResourceVersion))
 		}
 	}
 	kubeTest2Args = append(kubeTest2Args, fmt.Sprintf("--focus-regex=%s", focus))

@@ -54,6 +54,10 @@ func (v *version) isGKEExtraVersion(extrastr string) bool {
 	return gkeExtraVersionRegex.MatchString(extrastr)
 }
 
+func (v *version) minorVersion() string {
+	return fmt.Sprintf("%d.%d", v.major(), v.minor())
+}
+
 func extractGKEExtraVersion(extra string) (int, error) {
 	m := gkeExtraVersionRegex.FindStringSubmatch(extra)
 	if len(m) != 2 {
