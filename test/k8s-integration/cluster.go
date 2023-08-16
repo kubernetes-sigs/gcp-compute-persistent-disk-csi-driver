@@ -223,11 +223,81 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	return nil
 }
 
-func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
-	k8sDir := filepath.Join(k8sIoDir, "kubernetes")
-	klog.Infof("Downloading Kubernetes source v=%s to path=%s", kubeVersion, k8sIoDir)
+func downloadTarball(k8sDir, releaseVersion, subDir, tarballName string) error {
+	tarballPath := filepath.Join(k8sDir, subDir)
+	if err := os.MkdirAll(tarballPath, 0777); err != nil {
+		return err
+	}
+	tarballOutput := filepath.Join(tarballPath, tarballName)
+	downloadUrl := fmt.Sprintf("https://dl.k8s.io/release/%s/%s", releaseVersion, tarballName)
+	klog.Infof("Downloading tarball %s to path=%s from url=%s", tarballName, tarballPath, downloadUrl)
+	_, err := exec.Command("curl", "-Lsf", "--output", tarballOutput, downloadUrl).CombinedOutput()
+	if err != nil {
+		return err
+	}
 
-	if err := os.MkdirAll(k8sIoDir, 0777); err != nil {
+	return nil
+}
+
+func downloadAndExtractSrcTarball(k8sDir, releaseVersion, tarballName string) error {
+	tarballPath := filepath.Join(k8sDir, tarballName)
+	if err := downloadTarball(k8sDir, releaseVersion, "", tarballName); err != nil {
+		return err
+	}
+	out, err := exec.Command("tar", "xf", tarballPath, "-C", k8sDir).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Failed to extract src tarball %s: %s: %s", tarballName, out, err)
+	}
+	return nil
+}
+
+func getReleaseVersionFromKubeVersion(kubeVersion string) (string, error) {
+	releaseVersion := fmt.Sprintf("v%s", kubeVersion)
+	if kubeVersion == "stable" || kubeVersion == "latest" {
+		// See https://kubernetes.io/releases/download/
+		out, err := exec.Command("curl", "-Lsf", "https://dl.k8s.io/release/stable.txt").CombinedOutput()
+		if err != nil {
+			return "", err
+		}
+		releaseVersion = string(out)
+	}
+	return releaseVersion, nil
+}
+
+func downloadKubernetesRelease(k8sDir, kubeVersion, platform, arch string) error {
+	releaseVersion, err := getReleaseVersionFromKubeVersion(kubeVersion)
+	if err != nil {
+		return err
+	}
+
+	// Download precompiled tarballs
+	serverTarballName := fmt.Sprintf("kubernetes-server-%s-%s.tar.gz", platform, arch)
+	if err := downloadTarball(k8sDir, releaseVersion, "server", serverTarballName); err != nil {
+		return err
+	}
+
+	manifestsTarballName := fmt.Sprintf("kubernetes-manifests.tar.gz")
+	if err := downloadTarball(k8sDir, releaseVersion, "server", manifestsTarballName); err != nil {
+		return err
+	}
+
+	nodeTarballName := fmt.Sprintf("kubernetes-node-%s-%s.tar.gz", platform, arch)
+	if err := downloadTarball(k8sDir, releaseVersion, "node", nodeTarballName); err != nil {
+		return err
+	}
+
+	clientTarballName := fmt.Sprintf("kubernetes-client-%s-%s.tar.gz", platform, arch)
+	if err := downloadTarball(k8sDir, releaseVersion, "client", clientTarballName); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func downloadKubernetesSource(k8sDir, kubeVersion string) error {
+	klog.Infof("Downloading Kubernetes source v=%s to path=%s", kubeVersion, k8sDir)
+
+	if err := os.MkdirAll(k8sDir, 0777); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(k8sDir); err != nil {
@@ -248,12 +318,17 @@ func downloadKubernetesSource(pkgDir, k8sIoDir, kubeVersion string) error {
 			return fmt.Errorf("failed to clone kubernetes master: %s, err: %v", out, err.Error())
 		}
 	} else {
-		// Shallow clone of a release branch.
-		vKubeVersion := "v" + kubeVersion
-		klog.Infof("shallow clone of k8s %s", vKubeVersion)
-		out, err := exec.Command("git", "clone", "--depth", "1", "https://github.com/kubernetes/kubernetes", k8sDir).CombinedOutput()
+		releaseVersion, err := getReleaseVersionFromKubeVersion(kubeVersion)
 		if err != nil {
-			return fmt.Errorf("failed to clone kubernetes %s: %s, err: %v", vKubeVersion, out, err.Error())
+			return err
+		}
+
+		// Download versioned source.
+		if err := downloadAndExtractSrcTarball(k8sDir, releaseVersion, "kubernetes-src.tar.gz"); err != nil {
+			return err
+		}
+		if err := downloadAndExtractSrcTarball(k8sDir, releaseVersion, "kubernetes.tar.gz"); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -14,10 +14,11 @@ readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
+readonly do_k8s_build="${GCE_PD_DO_K8S_BUILD:-false}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
-readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
-readonly test_version=${TEST_VERSION:-master}
+readonly kube_version=${GCE_PD_KUBE_VERSION:-stable}
+readonly test_version=${TEST_VERSION:-stable}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly gce_region=${GCE_CLUSTER_REGION:-}
 readonly image_type=${IMAGE_TYPE:-cos_containerd}
@@ -44,7 +45,8 @@ fi
 
 base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
-            --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
+            --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} \
+            --do-k8s-build=${do_k8s_build} --boskos-resource-type=${boskos_resource_type} \
             --storageclass-files=sc-standard.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
