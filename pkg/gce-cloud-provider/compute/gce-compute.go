@@ -574,12 +574,15 @@ func (cloud *CloudProvider) insertZonalDisk(
 	}
 
 	diskToCreate := &computev1.Disk{
-		Name:            volKey.Name,
-		SizeGb:          common.BytesToGbRoundUp(capBytes),
-		Description:     description,
-		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		Labels:          params.Labels,
-		ProvisionedIops: params.ProvisionedIOPSOnCreate,
+		Name:        volKey.Name,
+		SizeGb:      common.BytesToGbRoundUp(capBytes),
+		Description: description,
+		Type:        cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		Labels:      params.Labels,
+	}
+
+	if params.ProvisionedIOPSOnCreate > 0 {
+		diskToCreate.ProvisionedIops = params.ProvisionedIOPSOnCreate
 	}
 
 	if snapshotID != "" {
