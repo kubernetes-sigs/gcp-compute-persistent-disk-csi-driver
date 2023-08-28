@@ -24,7 +24,7 @@ import (
 	mounter "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
-func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+func (ns *GCENodeServer) formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
 	if !strings.EqualFold(fstype, defaultWindowsFsType) {
 		return fmt.Errorf("GCE PD CSI driver can only supports %s file system, it does not support %s", defaultWindowsFsType, fstype)
 	}
