@@ -1,3 +1,11 @@
+# v1.8.10 - Changelog since v1.8.9
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go version to 1.19.12 to fix CVE-2023-29409 CVE-2023-39533 ([#1350](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1350), [@Sneha-at](https://github.com/Sneha-at))
+
 # v1.8.9 - Changelog since v1.8.8
 
 ## Changes by Kind
@@ -6,6 +14,10 @@
 
 - Update go version to 1.19.11 to fix CVE-2023-29406 ([#1336](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1336), [@Sneha-at](https://github.com/Sneha-at))
 - Updated dependencies to fix CVE-2022-27664, CVE-2022-32149, CVE-2022-41723, CVE-2022-41721 ([#1334](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1334), [@Sneha-at](https://github.com/Sneha-at))
+
+### Uncategorized
+
+- Add disk type for all operations metrics. ([#1297](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1297), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
 
 ## Dependencies
 

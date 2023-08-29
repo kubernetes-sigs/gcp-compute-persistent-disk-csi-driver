@@ -1,3 +1,11 @@
+# v1.10.7 - Changelog since v1.10.6
+
+## Changes by Kind
+
+### Uncategorized
+
+- Update go version to 1.20.7 to fix CVE-2023-29409 CVE-2023-39533 ([#1348](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1348), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.10.6 - Changelog since v1.10.5
 
 ## Changes by Kind

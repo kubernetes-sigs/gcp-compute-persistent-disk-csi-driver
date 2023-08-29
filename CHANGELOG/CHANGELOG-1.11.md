@@ -1,3 +1,15 @@
+# v1.11.1 - Changelog since v1.11.0
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go version to 1.20.7 to fix CVE-2023-29409 CVE-2023-39533 ([#1347](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1347), [@Sneha-at](https://github.com/Sneha-at))
+
+### Uncategorized
+
+- Fix zone specification in HdT tests ([#1341](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1341), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.11.0 - Changelog since v1.10.5
 
 ## Changes by Kind
