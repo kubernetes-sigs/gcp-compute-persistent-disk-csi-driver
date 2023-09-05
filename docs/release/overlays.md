@@ -10,7 +10,7 @@ When it comes to creation of overlays there are no strict rules on how overlays 
    * Consider a scenario where the existing `stable-master` overlay needs to be changed for a new kubernetes version.
    * Update the `deploy/kubernetes/images/prow-stable-sidecar-rc-master` directory with appropriate image versions.
    * Update the `deploy/kubernetes/images/prow-stable-sidecar-rc-master` directory. If there are no additional kustomize diff patches to add, no updates are necessary.
-   * At this stage, validate the changes made to the `prow-stable-sidecar-rc-master` overlay. Ensure the upstream testgrids like [this](https://k8s-testgrid.appspot.com/provider-gcp-compute-persistent-disk-csi-driver) are green, and verify with repository maintainers that downstream test grids (e.g GKE internal prow test grids) are green. Care must be taken to avoid directly making changes to `deploy/kubernetes/base` manifests at this stage, as they may impact existing overlays.
+   * At this stage, validate the changes made to the `prow-stable-sidecar-rc-master` overlay. Ensure the upstream testgrids like [this](https://testgrid.k8s.io/provider-gcp-compute-persistent-disk-csi-driver) are green, and verify with repository maintainers that downstream test grids (e.g GKE internal prow test grids) are green. Care must be taken to avoid directly making changes to `deploy/kubernetes/base` manifests at this stage, as they may impact existing overlays.
 
    A sample kustomize patch file would look like this:
 
