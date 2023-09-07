@@ -91,6 +91,7 @@
 
 ### Bug or Regression
 
+- Fix the filesystem not being resized when restoring from a snapshot/clone to a larger size than the original ([#972](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/972), [@mattcary](https://github.com/mattcary))
 - Add udevadm binary in the container image. ([#1072](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1072), [@jenting](https://github.com/jenting))
 - Remove debug.PrintStack() ([#1135](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1135), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
 
