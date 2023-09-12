@@ -1,3 +1,18 @@
+# v1.7.11 - Changelog since v1.7.10
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go version to 1.19.11 to fix CVE-2023-29406 ([#1335](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1335), [@Sneha-at](https://github.com/Sneha-at))
+
+### Uncategorized
+
+- #1101: Add provisionedThroughput for hyperdisk
+  #1227: Adding new metric pdcsi_operation_errors to fetch error
+  #1296: emit metrics even for success scenarios ([#1305](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1305), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+- Use errors.As so we can detect wrapped errors, and check for existing error codes in CodesForError ([#1326](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1326), [@judemars](https://github.com/judemars))
+
 # v1.7.10 - Changelog since v1.7.9
 
 ## Changes by Kind
