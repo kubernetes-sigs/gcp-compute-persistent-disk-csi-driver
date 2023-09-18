@@ -1,3 +1,11 @@
+# v1.8.10 - Changelog since v1.8.9
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Update go version to 1.19.12 to fix CVE-2023-29409 CVE-2023-39533 ([#1350](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1350), [@Sneha-at](https://github.com/Sneha-at))
+
 # v1.8.9 - Changelog since v1.8.8
 
 ## Changes by Kind

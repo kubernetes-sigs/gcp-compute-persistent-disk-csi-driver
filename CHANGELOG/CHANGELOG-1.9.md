@@ -1,3 +1,15 @@
+# v1.9.9 - Changelog since v1.9.8
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add option for serializing formatAndMount, including fsck as well as mkfs. ([#1352](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1352), [@mattcary](https://github.com/mattcary))
+
+### Uncategorized
+
+- Update go version to 1.20.7 to fix CVE-2023-29409 CVE-2023-39533 ([#1349](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1349), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.9.8 - Changelog since v1.9.7
 
 ## Changes by Kind
