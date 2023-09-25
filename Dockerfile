@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BUILDPLATFORM
-
 FROM --platform=$BUILDPLATFORM golang:1.19.12 as builder
 
 ARG STAGINGVERSION
