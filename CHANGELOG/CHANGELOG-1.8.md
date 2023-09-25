@@ -1,3 +1,11 @@
+# v1.8.11 - Changelog since v1.8.10
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Upgrade google.golang.org/grpc from v1.55.0 -> v1.55.1 to address https://github.com/grpc/grpc-go/issues/6373 ([#1371](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1371), [@pwschuurman](https://github.com/pwschuurman))
+
 # v1.8.10 - Changelog since v1.8.9
 
 ## Changes by Kind
