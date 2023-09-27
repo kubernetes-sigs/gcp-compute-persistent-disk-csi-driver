@@ -79,6 +79,14 @@ var (
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type
 	machineTypeRegex = regexp.MustCompile(machineTypePattern)
+
+	// userErrorCodeMap tells how API error types are translated to error codes.
+	userErrorCodeMap = map[int]codes.Code{
+		http.StatusForbidden:       codes.PermissionDenied,
+		http.StatusBadRequest:      codes.InvalidArgument,
+		http.StatusTooManyRequests: codes.ResourceExhausted,
+		http.StatusNotFound:        codes.NotFound,
+	}
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -296,82 +304,63 @@ func ParseMachineType(machineTypeUrl string) (string, error) {
 	return machineType[1], nil
 }
 
-// CodeForError returns a pointer to the grpc error code that maps to the http
-// error code for the passed in user googleapi error or context error. Returns
-// codes.Internal if the given error is not a googleapi error caused by the user.
-// The following http error codes are considered user errors:
-// (1) http 400 Bad Request, returns grpc InvalidArgument,
-// (2) http 403 Forbidden, returns grpc PermissionDenied,
-// (3) http 404 Not Found, returns grpc NotFound
-// (4) http 429 Too Many Requests, returns grpc ResourceExhausted
-// The following errors are considered context errors:
-// (1) "context deadline exceeded", returns grpc DeadlineExceeded,
-// (2) "context canceled", returns grpc Canceled
-func CodeForError(err error) *codes.Code {
-	if err == nil {
-		return nil
+// CodeForError returns the grpc error code that maps to the http error code for the
+// passed in user googleapi error or context error. Returns codes.Internal if the given
+// error is not a googleapi error caused by the user. userErrorCodeMap is used for
+// encoding most errors.
+func CodeForError(sourceError error) codes.Code {
+	if sourceError == nil {
+		return codes.Internal
 	}
 
-	if errCode := existingErrorCode(err); errCode != nil {
-		return errCode
+	if code, err := existingErrorCode(sourceError); err == nil {
+		return code
 	}
-	if code := isContextError(err); code != nil {
+	if code, err := isContextError(sourceError); err == nil {
 		return code
 	}
 
-	internalErrorCode := codes.Internal
-	// Upwrap the error
 	var apiErr *googleapi.Error
-	if !errors.As(err, &apiErr) {
-		return &internalErrorCode
+	if !errors.As(sourceError, &apiErr) {
+		return codes.Internal
+	}
+	if code, ok := userErrorCodeMap[apiErr.Code]; ok {
+		return code
 	}
 
-	userErrors := map[int]codes.Code{
-		http.StatusForbidden:       codes.PermissionDenied,
-		http.StatusBadRequest:      codes.InvalidArgument,
-		http.StatusTooManyRequests: codes.ResourceExhausted,
-		http.StatusNotFound:        codes.NotFound,
-	}
-	if code, ok := userErrors[apiErr.Code]; ok {
-		return &code
-	}
-
-	return &internalErrorCode
+	return codes.Internal
 }
 
-// isContextError returns a pointer to the grpc error code DeadlineExceeded
-// if the passed in error contains the "context deadline exceeded" string and returns
-// the grpc error code Canceled if the error contains the "context canceled" string.
-func isContextError(err error) *codes.Code {
+// isContextError returns the grpc error code DeadlineExceeded if the passed in error
+// contains the "context deadline exceeded" string and returns the grpc error code
+// Canceled if the error contains the "context canceled" string. It returns and error if
+// err isn't a context error.
+func isContextError(err error) (codes.Code, error) {
 	if err == nil {
-		return nil
+		return codes.Unknown, fmt.Errorf("null error")
 	}
 
 	errStr := err.Error()
 	if strings.Contains(errStr, context.DeadlineExceeded.Error()) {
-		return errCodePtr(codes.DeadlineExceeded)
+		return codes.DeadlineExceeded, nil
 	}
 	if strings.Contains(errStr, context.Canceled.Error()) {
-		return errCodePtr(codes.Canceled)
+		return codes.Canceled, nil
 	}
-	return nil
+	return codes.Unknown, fmt.Errorf("Not a context error: %w", err)
 }
 
-func existingErrorCode(err error) *codes.Code {
+func existingErrorCode(err error) (codes.Code, error) {
 	if err == nil {
-		return nil
+		return codes.Unknown, fmt.Errorf("null error")
 	}
 	if status, ok := status.FromError(err); ok {
-		return errCodePtr(status.Code())
+		return status.Code(), nil
 	}
-	return nil
-}
-
-func errCodePtr(code codes.Code) *codes.Code {
-	return &code
+	return codes.Unknown, fmt.Errorf("no existing error code for %w", err)
 }
 
 func LoggedError(msg string, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
-	return status.Errorf(*CodeForError(err), msg+"%v", err.Error())
+	return status.Errorf(CodeForError(err), msg+"%v", err.Error())
 }
