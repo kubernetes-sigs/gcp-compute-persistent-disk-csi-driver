@@ -5,6 +5,7 @@ reviewers:
   - msau42
   - saikat-royc
   - pwschuurman
+  - tyuchn
 approvers:
   - amacaskill
   - leiyiz
@@ -12,6 +13,7 @@ approvers:
   - msau42
   - saikat-royc
   - pwschuurman
+  - tyuchn
 emeritus_reviewers:
   - davidz627
   - jingxu97
