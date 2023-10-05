@@ -1902,7 +1902,7 @@ func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
 	// If we haven't recorded a code, return unavailable, which signals a problem with the driver
 	// (ie, next() wasn't called correctly).
 	klog.Errorf("using default code for %s", id)
-	return codes.Unavailable
+	return codes.Internal
 }
 
 func (b *csiErrorBackoff) next(id csiErrorBackoffId, code codes.Code) {
