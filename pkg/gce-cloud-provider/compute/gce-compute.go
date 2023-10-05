@@ -889,7 +889,8 @@ func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
 }
 
 // codeForGCEOpError return the grpc error code for the passed in
-// gce operation error.
+// gce operation error. All of these error codes are filtered out from our SLO,
+// but will be monitored by the stockout reporting dashboard.
 func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 	userErrors := map[string]codes.Code{
 		"RESOURCE_NOT_FOUND":                        codes.NotFound,
