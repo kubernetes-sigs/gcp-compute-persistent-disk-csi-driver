@@ -29,7 +29,7 @@ type GCEIdentityServer struct {
 // GetPluginInfo(context.Context, *GetPluginInfoRequest) (*GetPluginInfoResponse, error)
 func (gceIdentity *GCEIdentityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	if gceIdentity.Driver.name == "" {
-		return nil, status.Error(codes.Unavailable, "Driver name not configured")
+		return nil, status.Error(codes.Internal, "Driver name not configured")
 	}
 
 	return &csi.GetPluginInfoResponse{
