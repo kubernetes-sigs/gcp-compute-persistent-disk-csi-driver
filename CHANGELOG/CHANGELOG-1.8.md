@@ -1,3 +1,13 @@
+# v1.8.14 - Changelog since v1.8.11
+
+## Changes by Kind
+
+### Bug or Regression
+
+- bump go version to 1.20.8 ([#1394](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1394), [@tyuchn](https://github.com/tyuchn))
+- Remove ARG BUILDPLATFORM from Dockerfile ([#1385](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1385), [@tyuchn](https://github.com/tyuchn))
+- Filter out user errors from GetDisk error returned from ControllerPublishVolume ([#1380](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1380), [@amacaskill](https://github.com/amacaskill))
+
 # v1.8.11 - Changelog since v1.8.10
 
 ## Changes by Kind

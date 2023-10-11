@@ -1,3 +1,14 @@
+# v1.9.10 - Changelog since v1.9.9
+
+## Changes by Kind
+
+### Bug or Regression
+
+- bump go version to 1.20.8 ([#1394](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1394), [@tyuchn](https://github.com/tyuchn))
+- Remove ARG BUILDPLATFORM from Dockerfile ([#1385](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1385), [@tyuchn](https://github.com/tyuchn))
+- Update test/run-e2e.sh to match PROW configuration ([#1360](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1360), [@pwschuurman](https://github.com/pwschuurman))
+- Always call LoggedError for errors returned from CloudProvider methods ([#1381](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1381), [@amacaskill](https://github.com/amacaskill))
+
 # v1.9.9 - Changelog since v1.9.8
 
 ## Changes by Kind
