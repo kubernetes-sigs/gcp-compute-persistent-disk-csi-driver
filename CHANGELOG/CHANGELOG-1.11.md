@@ -1,3 +1,12 @@
+# v1.11.2 - Changelog since v1.11.1
+## Changes by Kind
+
+### Bug or Regression
+
+- bump go version to 1.20.8 ([#1394](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1394), [@tyuchn](https://github.com/tyuchn))
+- Remove ARG BUILDPLATFORM from Dockerfile ([#1385](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1385), [@tyuchn](https://github.com/tyuchn))
+- Update test/run-e2e.sh to match PROW configuration ([#1360](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1360), [@pwschuurman](https://github.com/pwschuurman))
+
 # v1.11.1 - Changelog since v1.11.0
 
 ## Changes by Kind
