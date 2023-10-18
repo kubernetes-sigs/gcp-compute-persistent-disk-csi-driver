@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
-	cloud.google.com/go/kms v1.15.0
+	cloud.google.com/go/kms v1.15.3
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.24.0
 	github.com/container-storage-interface/spec v1.6.0
 	github.com/google/uuid v1.3.0
@@ -31,8 +31,8 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute v1.23.0 // indirect
-	cloud.google.com/go/iam v1.1.1 // indirect
+	cloud.google.com/go/compute v1.23.1 // indirect
+	cloud.google.com/go/iam v1.1.3 // indirect
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
