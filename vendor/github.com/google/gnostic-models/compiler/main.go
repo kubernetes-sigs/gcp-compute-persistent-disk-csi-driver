@@ -12,20 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package compiler provides support functions to generated compiler code.
 package compiler
-
-import (
-	"github.com/google/gnostic-models/compiler"
-)
-
-// Error represents compiler errors and their location in the document.
-type Error = compiler.Error
-
-// NewError creates an Error.
-var NewError = compiler.NewError
-
-// ErrorGroup is a container for groups of Error values.
-type ErrorGroup = compiler.ErrorGroup
-
-// NewErrorGroupOrNil returns a new ErrorGroup for a slice of errors or nil if the slice is empty.
-var NewErrorGroupOrNil = compiler.NewErrorGroupOrNil

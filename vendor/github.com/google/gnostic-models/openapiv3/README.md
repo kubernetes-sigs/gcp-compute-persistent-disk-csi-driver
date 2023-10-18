@@ -19,8 +19,3 @@ for OpenAPI.
 
 The schema-generator directory contains support code which generates
 openapi-3.1.json from the OpenAPI 3.1 specification document (Markdown).
-
-### How to rebuild
-
-Run:
-`COMPILE-PROTOS.sh`
