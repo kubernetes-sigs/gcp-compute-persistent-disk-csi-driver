@@ -52,14 +52,14 @@ github.com/fsnotify/fsnotify
 ## explicit; go 1.16
 github.com/go-logr/logr
 github.com/go-logr/logr/funcr
-# github.com/go-openapi/jsonpointer v0.19.5
-## explicit; go 1.13
+# github.com/go-openapi/jsonpointer v0.20.0
+## explicit; go 1.18
 github.com/go-openapi/jsonpointer
 # github.com/go-openapi/jsonreference v0.19.6
 ## explicit; go 1.13
 github.com/go-openapi/jsonreference
-# github.com/go-openapi/swag v0.21.1
-## explicit; go 1.11
+# github.com/go-openapi/swag v0.22.4
+## explicit; go 1.18
 github.com/go-openapi/swag
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
