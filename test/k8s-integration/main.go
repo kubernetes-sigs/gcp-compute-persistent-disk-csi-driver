@@ -107,12 +107,11 @@ type testParameters struct {
 }
 
 func init() {
+	klog.InitFlags(nil)
 	flag.Set("logtostderr", "true")
 }
 
 func main() {
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	if *useGKEManagedDriver {
