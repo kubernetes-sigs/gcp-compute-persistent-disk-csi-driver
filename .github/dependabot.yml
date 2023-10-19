@@ -34,6 +34,17 @@ updates:
         - "k8s.io*"
         - "sigs.k8s.io*"
         - "github.com/kubernetes-csi*"
+    github-dependencies:
+      patterns:
+        - "*"
+      exclude-patterns:
+        - "golang.org/x*"
+        - "cloud.google.com/go*"
+        - "google.golang.org*"
+        - "github.com/onsi*"
+        - "k8s.io*"
+        - "sigs.k8s.io*"
+        - "github.com/kubernetes-csi*"
   labels:
     - "area/dependency"
     - "release-note-none"
