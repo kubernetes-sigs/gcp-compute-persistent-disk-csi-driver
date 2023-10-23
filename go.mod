@@ -11,7 +11,7 @@ require (
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
 	github.com/onsi/ginkgo/v2 v2.13.0
-	github.com/onsi/gomega v1.28.0
+	github.com/onsi/gomega v1.28.1
 	golang.org/x/oauth2 v0.13.0
 	golang.org/x/sys v0.13.0
 	google.golang.org/api v0.148.0
