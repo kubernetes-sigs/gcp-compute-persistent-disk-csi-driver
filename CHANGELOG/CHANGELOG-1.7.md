@@ -1,3 +1,29 @@
+# v1.7.17 - Changelog since v1.7.15
+
+## Changes by Kind
+
+### Bug or Regression
+
+- CVE fixes: CVE-2023-39323 ([#1412](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1412), [@dannawang0221](https://github.com/dannawang0221))
+
+### Other (Cleanup or Flake)
+
+- Update go version to 1.20.10 ([#1453](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1453), [@tyuchn](https://github.com/tyuchn))
+
+## Dependencies
+
+### Added
+
+_Nothing has changed._
+
+### Changed
+
+- golang.org/x/crypto: v0.9.0 → v0.14.0
+- golang.org/x/net: v0.10.0 → v0.17.0
+- golang.org/x/sys: v0.8.0 → v0.13.0
+- golang.org/x/term: v0.8.0 → v0.13.0
+- golang.org/x/text: v0.9.0 → v0.13.0
+
 # v1.7.15 - Changelog since v1.7.13
 
 ## Changes by Kind
@@ -58,6 +84,7 @@
 ## Dependencies
 
 ### Added
+
 - bitbucket.org/creachadair/stringset: v0.0.9
 - cloud.google.com/go/accessapproval: v1.6.0
 - cloud.google.com/go/accesscontextmanager: v1.7.0
@@ -235,6 +262,7 @@
 - sigs.k8s.io/json: 9f7c6b3
 
 ### Changed
+
 - cloud.google.com/go/bigquery: v1.8.0 → v1.50.0
 - cloud.google.com/go/datastore: v1.1.0 → v1.11.0
 - cloud.google.com/go/firestore: v1.1.0 → v1.9.0
@@ -355,6 +383,7 @@
 - sigs.k8s.io/yaml: v1.2.0 → v1.3.0
 
 ### Removed
+
 - contrib.go.opencensus.io/exporter/stackdriver: v0.12.8
 - git.apache.org/thrift.git: 2566ecd
 - github.com/aws/aws-k8s-tester: [b411acf](https://github.com/aws/aws-k8s-tester/tree/b411acf)
@@ -491,10 +520,13 @@ _Nothing has changed._
 ## Dependencies
 
 ### Added
+
 _Nothing has changed._
 
 ### Changed
+
 - github.com/prometheus/client_golang: [v1.11.0 → v1.11.1](https://github.com/prometheus/client_golang/compare/v1.11.0...v1.11.1)
 
 ### Removed
+
 _Nothing has changed._
