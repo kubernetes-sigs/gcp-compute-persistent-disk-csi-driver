@@ -856,6 +856,10 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 }
 
 func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
+	if opErr == nil {
+		return nil
+	}
+
 	if opErr.Code == "UNSUPPORTED_OPERATION" {
 		if diskType := pdDiskTypeUnsupportedRegex.FindStringSubmatch(opErr.Message); diskType != nil {
 			return &UnsupportedDiskError{
@@ -863,7 +867,29 @@ func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
 			}
 		}
 	}
-	return fmt.Errorf("operation %v failed (%v): %v", name, opErr.Code, opErr.Message)
+	grpcErrCode := codeForGCEOpError(*opErr)
+	return status.Errorf(grpcErrCode, "operation %v failed (%v): %v", name, opErr.Code, opErr.Message)
+}
+
+// codeForGCEOpError return the grpc error code for the passed in
+// gce operation error.
+func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
+	userErrors := map[string]codes.Code{
+		"RESOURCE_NOT_FOUND":                        codes.NotFound,
+		"RESOURCE_ALREADY_EXISTS":                   codes.AlreadyExists,
+		"RESOURCE_IN_USE_BY_ANOTHER_RESOURCE":       codes.InvalidArgument,
+		"OPERATION_CANCELED_BY_USER":                codes.Aborted,
+		"QUOTA_EXCEEDED":                            codes.ResourceExhausted,
+		"ZONE_RESOURCE_POOL_EXHAUSTED":              codes.Unavailable,
+		"ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS": codes.Unavailable,
+		"REGION_QUOTA_EXCEEDED":                     codes.ResourceExhausted,
+		"RATE_LIMIT_EXCEEDED":                       codes.ResourceExhausted,
+		"INVALID_USAGE":                             codes.InvalidArgument,
+	}
+	if code, ok := userErrors[err.Code]; ok {
+		return code
+	}
+	return codes.Internal
 }
 
 func opIsDone(op *computev1.Operation) (bool, error) {
