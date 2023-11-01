@@ -1,3 +1,25 @@
+# v1.8.16 - Changelog since v1.8.14
+
+## Changes by Kind
+
+### Bug or Regression
+
+- CVE fixes: CVE-2023-39323 ([#1412](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1412), [@dannawang0221](https://github.com/dannawang0221))
+
+### Other (Cleanup or Flake)
+
+- Update go version to 1.20.10 ([#1453](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1453), [@tyuchn](https://github.com/tyuchn))
+
+## Dependencies
+
+### Changed
+
+- golang.org/x/crypto: 8634188 → v0.14.0
+- golang.org/x/net: v0.8.0 → v0.17.0
+- golang.org/x/sys: v0.6.0 → v0.13.0
+- golang.org/x/term: v0.6.0 → v0.13.0
+- golang.org/x/text: v0.8.0 → v0.13.0
+
 # v1.8.14 - Changelog since v1.8.11
 
 ## Changes by Kind
@@ -40,6 +62,7 @@
 ## Dependencies
 
 ### Added
+
 - cloud.google.com/go/accessapproval: v1.6.0
 - cloud.google.com/go/accesscontextmanager: v1.6.0
 - cloud.google.com/go/aiplatform: v1.35.0
@@ -155,6 +178,7 @@
 - cloud.google.com/go/workflows: v1.10.0
 
 ### Changed
+
 - cloud.google.com/go/bigquery: v1.8.0 → v1.48.0
 - cloud.google.com/go/compute: v1.7.0 → v1.18.0
 - cloud.google.com/go/datastore: v1.1.0 → v1.10.0
@@ -194,6 +218,7 @@
 - google.golang.org/protobuf: v1.28.0 → v1.30.0
 
 ### Removed
+
 - github.com/googleapis/go-type-adapters: [v1.0.0](https://github.com/googleapis/go-type-adapters/tree/v1.0.0)
 
 # v1.8.8 - Changelog since v1.8.7
