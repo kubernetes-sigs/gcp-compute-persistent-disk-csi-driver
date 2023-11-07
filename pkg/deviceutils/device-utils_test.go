@@ -1,7 +1,12 @@
 package deviceutils
 
 import (
+	"fmt"
+	"regexp"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestParseNvmeSerial(t *testing.T) {
@@ -42,6 +47,64 @@ func TestParseNvmeSerial(t *testing.T) {
 		}
 		if actualSerial != tc.serial {
 			t.Fatalf("Expected '%s' but got '%s'", tc.serial, actualSerial)
+		}
+	}
+}
+
+func less(a, b fmt.Stringer) bool {
+	return a.String() < b.String()
+}
+
+// Test that the NVMe Regex matches expected paths
+// Note that this only tests the regex, not the actual path finding codepath.
+// The real codepath uses filepath.Glob(), which doesn't have an easy way to mock out local
+// directory paths (eg: using a subdirectory prefix).
+// We could use a recursive child process, setting a root UID, and use Chroot (which requires superuser).
+// This is done in upstream golang tests, but this adds additional complexity
+// and may prevent our tests from running on all platforms. See the following test for an example:
+// https://github.com/golang/go/blob/d33548d178016122726342911f8e15016a691472/src/syscall/exec_linux_test.go#L250
+func TestDiskNvmePattern(t *testing.T) {
+	nvmeDiskRegex := regexp.MustCompile(diskNvmePattern)
+
+	testCases := []struct {
+		paths     []string
+		wantPaths []string
+	}{
+		{
+			paths: []string{
+				"/dev/nvme0n1p15",
+				"/dev/nvme0n1p14",
+				"/dev/nvme0n1p1",
+				"/dev/nvme0n1",
+				"/dev/nvme0n2",
+				"/dev/nvme0",
+			},
+			wantPaths: []string{
+				"/dev/nvme0n1",
+				"/dev/nvme0n2",
+			},
+		},
+		{
+			paths: []string{
+				"/dev/nvme1",
+				"/dev/nvme0n1p15",
+				"/dev/nvme0n1p14",
+				"/dev/nvme0n1p1",
+				"/dev/nvme2",
+			},
+			wantPaths: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		gotPaths := []string{}
+		for _, path := range tc.paths {
+			if nvmeDiskRegex.MatchString(path) {
+				gotPaths = append(gotPaths, path)
+			}
+		}
+		if diff := cmp.Diff(gotPaths, tc.wantPaths, cmpopts.SortSlices(less)); diff != "" {
+			t.Errorf("Unexpected NVMe device paths (-got, +want):\n%s", diff)
 		}
 	}
 }
