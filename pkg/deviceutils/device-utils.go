@@ -38,7 +38,7 @@ const (
 	diskSDPath           = "/dev/sd"
 	diskSDPattern        = "/dev/sd*"
 	diskNvmePath         = "/dev/nvme"
-	diskNvmePattern      = "/dev/nvme*"
+	diskNvmePattern      = "^/dev/nvme[0-9]+n[0-9]+$"
 	// How many times to retry for a consistent read of /proc/mounts.
 	maxListTries = 3
 	// Number of fields per line in /proc/mounts as per the fstab man page.
