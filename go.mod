@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
-	cloud.google.com/go/kms v1.9.0
+	cloud.google.com/go/kms v1.10.1
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.18.0
 	github.com/container-storage-interface/spec v1.6.0
 	github.com/google/uuid v1.3.0
@@ -12,11 +12,11 @@ require (
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.20.0
-	golang.org/x/oauth2 v0.6.0
+	golang.org/x/oauth2 v0.7.0
 	golang.org/x/sys v0.13.0
-	google.golang.org/api v0.110.0
-	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4
-	google.golang.org/grpc v1.55.1
+	google.golang.org/api v0.114.0
+	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
+	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.30.0
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/apimachinery v0.24.1
@@ -31,8 +31,8 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute v1.18.0 // indirect
-	cloud.google.com/go/iam v0.12.0 // indirect
+	cloud.google.com/go/compute v1.19.1 // indirect
+	cloud.google.com/go/iam v0.13.0 // indirect
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
@@ -53,7 +53,7 @@ require (
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.2.1-0.20210504230335-f78f29fc09ea // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
-	github.com/googleapis/gax-go/v2 v2.7.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.7.1 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
