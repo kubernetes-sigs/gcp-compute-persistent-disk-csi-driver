@@ -1,3 +1,26 @@
+# v1.7.18 - Changelog since v1.7.17
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Bump Golang Builder version to 1.20.11 ([#1503](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1503), [@uriel-guzman](https://github.com/uriel-guzman))
+- Bump google.golang.org/grpc from v1.55.1 to v1.56.3 to fix CVE-2023-44487. ([#1497](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1497), [@uriel-guzman](https://github.com/uriel-guzman))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- github.com/cncf/xds/go: [32f1caf → e9ce688](https://github.com/cncf/xds/go/compare/32f1caf...e9ce688)
+- github.com/envoyproxy/go-control-plane: [v0.11.0 → 9239064](https://github.com/envoyproxy/go-control-plane/compare/v0.11.0...9239064)
+- github.com/envoyproxy/protoc-gen-validate: [v0.10.0 → v0.10.1](https://github.com/envoyproxy/protoc-gen-validate/compare/v0.10.0...v0.10.1)
+- google.golang.org/grpc: v1.55.1 → v1.56.3
+
+### Removed
+_Nothing has changed._
+
 # v1.7.17 - Changelog since v1.7.15
 
 ## Changes by Kind

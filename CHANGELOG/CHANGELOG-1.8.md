@@ -1,3 +1,92 @@
+# v1.8.17 - Changelog since v1.8.16
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Bump Golang Builder version to 1.20.11 ([#1504](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1504), [@uriel-guzman](https://github.com/uriel-guzman))
+- Bump google.golang.org/grpc from v1.55.1 to v1.56.3 to fix CVE-2023-44487. ([#1496](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1496), [@uriel-guzman](https://github.com/uriel-guzman))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- cloud.google.com/go/accesscontextmanager: v1.6.0 → v1.7.0
+- cloud.google.com/go/aiplatform: v1.35.0 → v1.37.0
+- cloud.google.com/go/analytics: v0.18.0 → v0.19.0
+- cloud.google.com/go/apigeeregistry: v0.5.0 → v0.6.0
+- cloud.google.com/go/apikeys: v0.5.0 → v0.6.0
+- cloud.google.com/go/appengine: v1.6.0 → v1.7.1
+- cloud.google.com/go/artifactregistry: v1.11.2 → v1.13.0
+- cloud.google.com/go/asset: v1.11.1 → v1.13.0
+- cloud.google.com/go/beyondcorp: v0.4.0 → v0.5.0
+- cloud.google.com/go/bigquery: v1.48.0 → v1.50.0
+- cloud.google.com/go/billing: v1.12.0 → v1.13.0
+- cloud.google.com/go/channel: v1.11.0 → v1.12.0
+- cloud.google.com/go/cloudbuild: v1.7.0 → v1.9.0
+- cloud.google.com/go/cloudtasks: v1.9.0 → v1.10.0
+- cloud.google.com/go/compute: v1.18.0 → v1.19.1
+- cloud.google.com/go/container: v1.13.1 → v1.15.0
+- cloud.google.com/go/containeranalysis: v0.7.0 → v0.9.0
+- cloud.google.com/go/datacatalog: v1.12.0 → v1.13.0
+- cloud.google.com/go/dataform: v0.6.0 → v0.7.0
+- cloud.google.com/go/dataplex: v1.5.2 → v1.6.0
+- cloud.google.com/go/datastore: v1.10.0 → v1.11.0
+- cloud.google.com/go/datastream: v1.6.0 → v1.7.0
+- cloud.google.com/go/deploy: v1.6.0 → v1.8.0
+- cloud.google.com/go/dialogflow: v1.31.0 → v1.32.0
+- cloud.google.com/go/documentai: v1.16.0 → v1.18.0
+- cloud.google.com/go/edgecontainer: v0.3.0 → v1.0.0
+- cloud.google.com/go/eventarc: v1.10.0 → v1.11.0
+- cloud.google.com/go/filestore: v1.5.0 → v1.6.0
+- cloud.google.com/go/functions: v1.10.0 → v1.13.0
+- cloud.google.com/go/gkehub: v0.11.0 → v0.12.0
+- cloud.google.com/go/iam: v0.12.0 → v0.13.0
+- cloud.google.com/go/iap: v1.6.0 → v1.7.1
+- cloud.google.com/go/iot: v1.5.0 → v1.6.0
+- cloud.google.com/go/kms: v1.9.0 → v1.10.1
+- cloud.google.com/go/maps: v0.6.0 → v0.7.0
+- cloud.google.com/go/monitoring: v1.12.0 → v1.13.0
+- cloud.google.com/go/networkconnectivity: v1.10.0 → v1.11.0
+- cloud.google.com/go/networksecurity: v0.7.0 → v0.8.0
+- cloud.google.com/go/notebooks: v1.7.0 → v1.8.0
+- cloud.google.com/go/policytroubleshooter: v1.5.0 → v1.6.0
+- cloud.google.com/go/privatecatalog: v0.7.0 → v0.8.0
+- cloud.google.com/go/pubsub: v1.28.0 → v1.30.0
+- cloud.google.com/go/pubsublite: v1.6.0 → v1.7.0
+- cloud.google.com/go/recaptchaenterprise/v2: v2.6.0 → v2.7.0
+- cloud.google.com/go/resourcemanager: v1.5.0 → v1.7.0
+- cloud.google.com/go/run: v0.8.0 → v0.9.0
+- cloud.google.com/go/scheduler: v1.8.0 → v1.9.0
+- cloud.google.com/go/security: v1.12.0 → v1.13.0
+- cloud.google.com/go/securitycenter: v1.18.1 → v1.19.0
+- cloud.google.com/go/servicecontrol: v1.11.0 → v1.11.1
+- cloud.google.com/go/servicedirectory: v1.8.0 → v1.9.0
+- cloud.google.com/go/servicemanagement: v1.6.0 → v1.8.0
+- cloud.google.com/go/serviceusage: v1.5.0 → v1.6.0
+- cloud.google.com/go/spanner: v1.44.0 → v1.45.0
+- cloud.google.com/go/speech: v1.14.1 → v1.15.0
+- cloud.google.com/go/storagetransfer: v1.7.0 → v1.8.0
+- cloud.google.com/go/trace: v1.8.0 → v1.9.0
+- cloud.google.com/go/translate: v1.6.0 → v1.7.0
+- cloud.google.com/go/video: v1.13.0 → v1.15.0
+- cloud.google.com/go/vision/v2: v2.6.0 → v2.7.0
+- cloud.google.com/go/vmmigration: v1.5.0 → v1.6.0
+- cloud.google.com/go/vmwareengine: v0.2.2 → v0.3.0
+- github.com/cncf/xds/go: [32f1caf → e9ce688](https://github.com/cncf/xds/go/compare/32f1caf...e9ce688)
+- github.com/envoyproxy/go-control-plane: [v0.11.0 → 9239064](https://github.com/envoyproxy/go-control-plane/compare/v0.11.0...9239064)
+- github.com/envoyproxy/protoc-gen-validate: [v0.10.0 → v0.10.1](https://github.com/envoyproxy/protoc-gen-validate/compare/v0.10.0...v0.10.1)
+- github.com/googleapis/gax-go/v2: [v2.7.0 → v2.7.1](https://github.com/googleapis/gax-go/v2/compare/v2.7.0...v2.7.1)
+- golang.org/x/oauth2: v0.6.0 → v0.7.0
+- google.golang.org/api: v0.110.0 → v0.114.0
+- google.golang.org/genproto: 7f2fa6f → daa745c
+- google.golang.org/grpc: v1.55.1 → v1.56.3
+
+### Removed
+_Nothing has changed._
+
 # v1.8.16 - Changelog since v1.8.14
 
 ## Changes by Kind
