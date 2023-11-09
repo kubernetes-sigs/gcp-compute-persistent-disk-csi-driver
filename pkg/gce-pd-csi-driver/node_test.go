@@ -502,7 +502,7 @@ func TestNodeStageVolume(t *testing.T) {
 				&testingexec.FakeCmd{
 					CombinedOutputScript: []testingexec.FakeAction{
 						func() ([]byte, []byte, error) {
-							return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+							return []byte("DEVNAME=/dev/sdb\nTYPE=ext4"), nil, nil
 						},
 					},
 				},
@@ -546,7 +546,7 @@ func TestNodeStageVolume(t *testing.T) {
 				&testingexec.FakeCmd{
 					CombinedOutputScript: []testingexec.FakeAction{
 						func() ([]byte, []byte, error) {
-							return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+							return []byte("DEVNAME=/dev/sdb\nTYPE=ext4"), nil, nil
 						},
 					},
 				},
@@ -572,7 +572,7 @@ func TestNodeStageVolume(t *testing.T) {
 					&testingexec.FakeCmd{
 						CombinedOutputScript: []testingexec.FakeAction{
 							func() ([]byte, []byte, error) {
-								return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+								return []byte("DEVNAME=/dev/sdb\nTYPE=ext4"), nil, nil
 							},
 						},
 					},
@@ -584,7 +584,7 @@ func TestNodeStageVolume(t *testing.T) {
 						CombinedOutputScript: []testingexec.FakeAction{
 							func() ([]byte, []byte, error) {
 								resizeCalled = true
-								return []byte(fmt.Sprintf("DEVNAME=/dev/sdb\nTYPE=ext4")), nil, nil
+								return []byte("DEVNAME=/dev/sdb\nTYPE=ext4"), nil, nil
 							},
 						},
 					},
