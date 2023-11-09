@@ -19,7 +19,6 @@ package main
 import (
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,7 +75,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 	var mergeErrors []string
 	var filesToDelete []string
 	for _, dir := range sourceDirectories {
-		files, err := ioutil.ReadDir(dir)
+		files, err := os.ReadDir(dir)
 		if err != nil {
 			klog.Errorf("Failed to read juint directory %s: %w", dir, err)
 			mergeErrors = append(mergeErrors, err.Error())
@@ -88,7 +87,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			}
 			fullFilename := filepath.Join(dir, file.Name())
 			filesToDelete = append(filesToDelete, fullFilename)
-			data, err := ioutil.ReadFile(fullFilename)
+			data, err := os.ReadFile(fullFilename)
 			if err != nil {
 				return err
 			}
@@ -121,7 +120,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 		return err
 	}
 
-	if err = ioutil.WriteFile(destination, data, 0644); err != nil {
+	if err = os.WriteFile(destination, data, 0644); err != nil {
 		return err
 	}
 
