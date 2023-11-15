@@ -1183,7 +1183,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
 
-		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name)
+		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 		if err != nil {
 			t.Errorf("Got error extracting snapshot parameters: %v", err)
 		}
@@ -3727,7 +3727,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
 
 			if tc.req.VolumeContentSource.GetType() != nil {
-				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name)
+				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 				if err != nil {
 					t.Errorf("Got error extracting snapshot parameters: %v", err)
 				}

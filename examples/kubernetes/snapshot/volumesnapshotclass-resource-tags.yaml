@@ -1,0 +1,8 @@
+apiVersion: snapshot.storage.k8s.io/v1beta1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-gce-pd-snapshot-class-with-resource-tags
+parameters:
+  resource-tags: <parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>
+driver: pd.csi.storage.gke.io
+deletionPolicy: Delete
