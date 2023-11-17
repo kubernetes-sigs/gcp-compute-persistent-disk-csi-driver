@@ -17,6 +17,8 @@ package gcecloudprovider
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -38,6 +40,15 @@ const (
 	snapshotURITemplateGlobal = "projects/%s/global/snapshots/%s" //{gce.projectID}/global/snapshots/{snapshot.Name}"
 	imageURITemplateGlobal    = "projects/%s/global/images/%s"    //{gce.projectID}/global/images/{image.Name}"
 )
+
+var (
+	// Snaphsot and Image Regex must comply with RFC1035
+	rfc1035Regex = regexp.MustCompile("^[a-z]([-a-z0-9]*[a-z0-9])?$")
+)
+
+func isRFC1035(value string) bool {
+	return rfc1035Regex.MatchString(strings.ToLower(value))
+}
 
 type FakeCloudProvider struct {
 	project string
@@ -332,6 +343,9 @@ func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, instance
 
 // Snapshot Methods
 func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
+	if !isRFC1035(snapshotName) {
+		return nil, fmt.Errorf("invalid snapshot name %v: %w", snapshotName, invalidError())
+	}
 	snapshot, ok := cloud.snapshots[snapshotName]
 	if !ok {
 		return nil, notFoundError()
@@ -410,6 +424,9 @@ func (cloud *FakeCloudProvider) ListImages(ctx context.Context, filter string) (
 }
 
 func (cloud *FakeCloudProvider) GetImage(ctx context.Context, project, imageName string) (*computev1.Image, error) {
+	if !isRFC1035(imageName) {
+		return nil, fmt.Errorf("invalid image name %v: %w", imageName, invalidError())
+	}
 	image, ok := cloud.images[imageName]
 	if !ok {
 		return nil, notFoundError()
@@ -567,6 +584,7 @@ func notFoundError() *googleapi.Error {
 
 func invalidError() *googleapi.Error {
 	return &googleapi.Error{
+		Code: http.StatusBadRequest,
 		Errors: []googleapi.ErrorItem{
 			{
 				Reason: "invalid",
