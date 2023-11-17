@@ -1337,6 +1337,7 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 				// return empty list if no snapshot is found
 				return &csi.ListSnapshotsResponse{}, nil
 			}
+			return nil, common.LoggedError("Failed to get image snapshot: ", err)
 		}
 		e, err := generateImageEntry(image)
 		if err != nil {

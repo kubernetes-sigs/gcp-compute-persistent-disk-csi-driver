@@ -287,11 +287,43 @@ func TestListSnapshotsArguments(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
+			name: "valid image",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testImageID + "0",
+			},
+			numSnapshots:  3,
+			numImages:     2,
+			expectedCount: 1,
+		},
+		{
 			name: "invalid id",
 			req: &csi.ListSnapshotsRequest{
 				SnapshotId: testSnapshotID + "/foo",
 			},
 			expectedCount: 0,
+		},
+		{
+			name: "invalid image id",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testImageID + "/foo",
+			},
+			expectedCount: 0,
+		},
+		{
+			name: "invalid snapshot name",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testSnapshotID + "-invalid-snapshot-",
+			},
+			expectedCount: 0,
+			expErrCode:    codes.InvalidArgument,
+		},
+		{
+			name: "invalid image name",
+			req: &csi.ListSnapshotsRequest{
+				SnapshotId: testImageID + "-invalid-image-",
+			},
+			expectedCount: 0,
+			expErrCode:    codes.InvalidArgument,
 		},
 		{
 			name: "no id",
