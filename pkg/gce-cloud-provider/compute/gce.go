@@ -29,6 +29,7 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -49,10 +50,11 @@ const (
 )
 
 type CloudProvider struct {
-	service     *compute.Service
-	betaService *computebeta.Service
-	project     string
-	zone        string
+	service      *compute.Service
+	betaService  *computebeta.Service
+	alphaService *computealpha.Service
+	project      string
+	zone         string
 
 	zonesCache map[string][]string
 }
@@ -95,17 +97,23 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
+	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting Project and Zone: %w", err)
 	}
 
 	return &CloudProvider{
-		service:     svc,
-		betaService: betasvc,
-		project:     project,
-		zone:        zone,
-		zonesCache:  make(map[string]([]string)),
+		service:      svc,
+		betaService:  betasvc,
+		alphaService: alphasvc,
+		project:      project,
+		zone:         zone,
+		zonesCache:   make(map[string]([]string)),
 	}, nil
 
 }
@@ -168,6 +176,25 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 		computeOpts = append(computeOpts, option.WithEndpoint(betaEndpoint))
 	}
 	service, err := computebeta.NewService(ctx, computeOpts...)
+	if err != nil {
+		return nil, err
+	}
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
+	return service, nil
+}
+
+func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*computealpha.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
+	if err != nil {
+		return nil, err
+	}
+
+	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+	if computeEndpoint != "" {
+		alphaEndpoint := fmt.Sprintf("%s/compute/alpha/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(alphaEndpoint))
+	}
+	service, err := computealpha.NewService(ctx, computeOpts...)
 	if err != nil {
 		return nil, err
 	}

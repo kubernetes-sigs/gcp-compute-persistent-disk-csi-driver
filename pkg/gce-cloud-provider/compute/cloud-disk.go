@@ -18,13 +18,15 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 )
 
 type CloudDisk struct {
-	disk     *computev1.Disk
-	betaDisk *computebeta.Disk
+	disk      *computev1.Disk
+	betaDisk  *computebeta.Disk
+	alphaDisk *computealpha.Disk
 }
 
 type CloudDiskType string
@@ -38,6 +40,12 @@ func CloudDiskFromV1(disk *computev1.Disk) *CloudDisk {
 func CloudDiskFromBeta(disk *computebeta.Disk) *CloudDisk {
 	return &CloudDisk{
 		betaDisk: disk,
+	}
+}
+
+func CloudDiskFromAlpha(disk *computealpha.Disk) *CloudDisk {
+	return &CloudDisk{
+		alphaDisk: disk,
 	}
 }
 

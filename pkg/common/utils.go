@@ -392,3 +392,16 @@ func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
 	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
 	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
 }
+
+// TODO(amacaskill): Implement this function.
+// ParseStoragePools returns an error if none of the given storagePools
+// (delimited by a comma) are in the format
+// projects/project/zones/zone/storagePools/storagePool.
+func ParseStoragePools(storagePools string) ([]string, error) {
+	return nil, status.Errorf(codes.Unimplemented, "")
+}
+
+// TODO(amacaskill): Implement this function.
+func StoragePoolInZone(storagePools []string, zone string) string {
+	return ""
+}
