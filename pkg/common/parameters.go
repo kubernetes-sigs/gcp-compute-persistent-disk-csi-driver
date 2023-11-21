@@ -31,6 +31,7 @@ const (
 	ParameterKeyProvisionedThroughputOnCreate = "provisioned-throughput-on-create"
 	ParameterAvailabilityClass                = "availability-class"
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
+	ParameterKeyStoragePools                  = "storage-pools"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -94,6 +95,9 @@ type DiskParameters struct {
 	EnableConfidentialCompute bool
 	// Default: false
 	ForceAttach bool
+	// Values: {[]string}
+	// Default: ""
+	StoragePools []string
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -183,12 +187,17 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			if paramEnableConfidentialCompute {
 				// DiskEncryptionKmsKey is needed to enable confidentialStorage
 				if val, ok := parameters[ParameterKeyDiskEncryptionKmsKey]; !ok || !isValidDiskEncryptionKmsKey(val) {
-					return p, fmt.Errorf("Valid %v is required to enbale ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
+					return p, fmt.Errorf("Valid %v is required to enable ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
 				}
 			}
 
 			p.EnableConfidentialCompute = paramEnableConfidentialCompute
-
+		case ParameterKeyStoragePools:
+			storagePools, err := ParseStoragePools(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)
+			}
+			p.StoragePools = storagePools
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
