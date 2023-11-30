@@ -97,7 +97,7 @@ type DiskParameters struct {
 	ForceAttach bool
 	// Values: {[]string}
 	// Default: ""
-	StoragePools []string
+	StoragePools []StoragePool
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -107,6 +107,13 @@ type SnapshotParameters struct {
 	ImageFamily      string
 	Tags             map[string]string
 	Labels           map[string]string
+}
+
+type StoragePool struct {
+	Project      string
+	Zone         string
+	Name         string
+	ResourceName string
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and

@@ -454,7 +454,7 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCrea
 	return betaDisk
 }
 
-func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCreate int64, storagePool string) *computealpha.Disk {
+func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCreate int64, storagePool *common.StoragePool) *computealpha.Disk {
 	// Note: this is an incomplete list. It only includes the fields we use for disk creation.
 	alphaDisk := &computealpha.Disk{
 		Name:             v1Disk.Name,
@@ -478,8 +478,8 @@ func convertV1DiskToAlphaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCre
 	if provisionedThroughputOnCreate > 0 {
 		alphaDisk.ProvisionedThroughput = provisionedThroughputOnCreate
 	}
-	if storagePool != "" {
-		alphaDisk.StoragePool = storagePool
+	if storagePool != nil {
+		alphaDisk.StoragePool = storagePool.ResourceName
 	}
 
 	return alphaDisk
@@ -669,10 +669,10 @@ func (cloud *CloudProvider) insertZonalDisk(
 		}
 	} else if gceAPIVersion == GCEAPIVersionAlpha {
 		var insertOp *computealpha.Operation
-		var storagePool string
+		var storagePool *common.StoragePool
 		if storagePoolsEnabled {
 			storagePool = common.StoragePoolInZone(params.StoragePools, diskToCreate.Zone)
-			if storagePool == "" {
+			if storagePool == nil {
 				return status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", diskToCreate.Zone)
 			}
 		}
