@@ -877,6 +877,59 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "success with storage pools parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"storage-pools": "projects/test-project/zones/us-central1-a/storagePools/storagePool-1", "type": "hyperdisk-balanced"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      "projects/test-project/zones/us-central1-a/disks/test-name",
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+		},
+		{
+			name: "fail with invalid storage pools parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"storage-pools": "zones/us-central1-a/storagePools/storagePool-1", "type": "hyperdisk-balanced"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
 	}
 
 	// Run test cases
@@ -1312,6 +1365,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		name                 string
 		volumeOnCloud        bool
 		expErrCode           codes.Code
+		expErrMsg            string
 		sourceVolumeID       string
 		reqParameters        map[string]string
 		sourceReqParameters  map[string]string
@@ -1399,6 +1453,30 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
 				},
 			},
+		},
+		{
+			name:                 "fail cloning with storage pools",
+			volumeOnCloud:        true,
+			sourceVolumeID:       testZonalVolumeSourceID,
+			requestCapacityRange: stdCapRange,
+			sourceCapacityRange:  stdCapRange,
+			reqParameters: map[string]string{
+				common.ParameterKeyType:                 "test-type",
+				common.ParameterKeyReplicationType:      replicationTypeNone,
+				common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+				common.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
+			},
+			sourceReqParameters: zonalParams,
+			sourceTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			requestTopology: &csi.TopologyRequirement{
+				Requisite: requisiteTopology,
+				Preferred: prefTopology,
+			},
+			expErrCode: codes.InvalidArgument,
+			expErrMsg:  "storage pools do not support disk clones",
 		},
 		{
 			name:                 "success zonal -> zonal cloning, req = all zones in region, pref = req w/ src zone as first element: delayed binding without allowedTopologies",
@@ -1850,6 +1928,9 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		}
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+		if tc.expErrMsg != "" && tc.expErrMsg != err.Error() {
+			t.Fatalf("Got error: %v, expected error: %v", err.Error(), tc.expErrMsg)
 		}
 
 		// Make sure the response has the source volume.

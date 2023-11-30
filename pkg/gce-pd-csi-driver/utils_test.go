@@ -18,9 +18,12 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"fmt"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/go-cmp/cmp"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 var (
@@ -287,6 +290,435 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 		if err != nil {
 			if tc.expVal != val {
 				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
+			}
+		}
+	}
+}
+
+func TestValidateStoragePools(t *testing.T) {
+	testCases := []struct {
+		name    string
+		req     *csi.CreateVolumeRequest
+		params  common.DiskParameters
+		project string
+		expErr  error
+	}{
+		{
+			name: "success with storage pools not enabled",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+			},
+			expErr: nil,
+		},
+		{
+			name: "success with nil CreateVolumeReq",
+			req:  nil,
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+			},
+			expErr: nil,
+		},
+		{
+			name: "fail storage pools with confidential storage",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+				EnableConfidentialCompute: true,
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("storage pools do not support confidential storage"),
+		},
+		{
+			name: "fail storage pools with disk type other than HdB/HdT",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType: "pd-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("invalid disk-type: \"pd-balanced\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+		},
+		{
+			name: "fail storage pools with regional PD",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType:        "hyperdisk-balanced",
+				ReplicationType: "regional-pd",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("storage pools do not support regional PD"),
+		},
+		{
+			name: "fail storage pools with disk clones",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: "projects/test-project/zones/us-central1-a/disks/disk-1",
+						},
+					},
+				},
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("storage pools do not support disk clones"),
+		},
+		{
+			name: "fail storage pools zones, requisite zones mismatch",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("failed to validate storage pools zones: requisite topologies must match storage pools zones. requisite zones: [us-central1-a], storage pools zones: [us-central1-a us-central1-b]"),
+		},
+		{
+			name: "fail storage pools cross-project usage",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "other-project",
+			expErr:  fmt.Errorf("failed to validate storage pools projects: cross-project storage pools usage is not supported. Trying to CreateVolume in project \"other-project\" with storage pools in projects [test-project]"),
+		},
+		{
+			name: "success validateStoragePools",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		input := "validateStoragePools()"
+		err := validateStoragePools(tc.req, tc.params, tc.project)
+		if tc.expErr != nil && err == nil {
+			t.Fatalf("%s didn't get any error, but expected error %v", input, tc.expErr)
+		}
+		if tc.expErr == nil && err != nil {
+			t.Fatalf("%s got error %v, but didn't expect any error", input, err)
+		}
+		if err != nil && tc.expErr != nil {
+			if diff := cmp.Diff(err.Error(), tc.expErr.Error()); diff != "" {
+				t.Errorf("%s: -want, +got \n%s", input, diff)
+			}
+		}
+	}
+}
+
+func TestValidateStoragePoolZones(t *testing.T) {
+	testCases := []struct {
+		name         string
+		req          *csi.CreateVolumeRequest
+		storagePools []common.StoragePool
+		expErr       error
+	}{
+		{
+			name: "fail with 2 storage pools in 1 zone",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			storagePools: []common.StoragePool{
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-a",
+					Name:         "storagePool-1",
+					ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-a",
+					Name:         "storagePool-2",
+					ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+			},
+			expErr: fmt.Errorf("found multiple storage pools in zone us-central1-a. Only one storage pool per zone is allowed"),
+		},
+		{
+			name: "fail with requisite topology with no segments",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{{}},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			storagePools: []common.StoragePool{
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-a",
+					Name:         "storagePool-1",
+					ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+			},
+			expErr: fmt.Errorf("topologies specified but no segments"),
+		},
+		{
+			name: "fail with requisite zones does not match storage pools zones",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			storagePools: []common.StoragePool{
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-b",
+					Name:         "storagePool-1",
+					ResourceName: "projects/test-project/zones/us-central1-b/storagePools/storagePool-1",
+				},
+			},
+			expErr: fmt.Errorf("requisite topologies must match storage pools zones. requisite zones: [us-central1-a], storage pools zones: [us-central1-b]"),
+		},
+		{
+			name: "success validateStoragePoolZones",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			storagePools: []common.StoragePool{
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-a",
+					Name:         "storagePool-1",
+					ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+				{
+					Project:      "test-project",
+					Zone:         "us-central1-b",
+					Name:         "storagePool-2",
+					ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+			},
+			expErr: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		err := validateStoragePoolZones(tc.req, tc.storagePools)
+		input := "validateStoragePoolZones()"
+		if tc.expErr != nil && err == nil {
+			t.Fatalf("%s didn't get any error, but expected error %v", input, tc.expErr)
+		}
+		if tc.expErr == nil && err != nil {
+			t.Fatalf("%s got error %v, but didn't expect any error", input, err)
+		}
+		if err != nil && tc.expErr != nil {
+			if diff := cmp.Diff(err.Error(), tc.expErr.Error()); diff != "" {
+				t.Errorf("%s: -want, +got \n%s", input, diff)
 			}
 		}
 	}

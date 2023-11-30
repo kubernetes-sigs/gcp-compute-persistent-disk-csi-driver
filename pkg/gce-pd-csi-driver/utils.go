@@ -23,7 +23,10 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
+
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 const (
@@ -135,6 +138,68 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
 	default:
 		return fmt.Errorf("%v access mode is not supported for for PD", am.GetMode())
+	}
+	return nil
+}
+
+func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParameters, project string) error {
+	storagePoolsEnabled := params.StoragePools != nil
+	if !storagePoolsEnabled || req == nil {
+		return nil
+	}
+
+	if params.EnableConfidentialCompute {
+		return fmt.Errorf("storage pools do not support confidential storage")
+	}
+
+	if !(params.DiskType == "hyperdisk-balanced" || params.DiskType == "hyperdisk-throughput") {
+		return fmt.Errorf("invalid disk-type: %q. storage pools only support hyperdisk-balanced or hyperdisk-throughput", params.DiskType)
+	}
+
+	if params.ReplicationType == replicationTypeRegionalPD {
+		return fmt.Errorf("storage pools do not support regional PD")
+	}
+
+	if useVolumeCloning(req) {
+		return fmt.Errorf("storage pools do not support disk clones")
+	}
+
+	// Check that requisite zones matches the storage pools zones.
+	// This means allowedTopologies was set properly by GCW.
+	if err := validateStoragePoolZones(req, params.StoragePools); err != nil {
+		return fmt.Errorf("failed to validate storage pools zones: %v", err)
+	}
+
+	// Check that Storage Pools are in same project as the GCEClient that creates the volume.
+	if err := validateStoragePoolProjects(project, params.StoragePools); err != nil {
+		return fmt.Errorf("failed to validate storage pools projects: %v", err)
+	}
+
+	return nil
+}
+
+func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []common.StoragePool) error {
+	storagePoolZones, err := common.StoragePoolZones(storagePools)
+	if err != nil {
+		return err
+	}
+	reqZones, err := getZonesFromTopology(req.GetAccessibilityRequirements().GetRequisite())
+	if err != nil {
+		return err
+	}
+	if !common.UnorderedSlicesEqual(storagePoolZones, reqZones) {
+		return fmt.Errorf("requisite topologies must match storage pools zones. requisite zones: %v, storage pools zones: %v", reqZones, storagePoolZones)
+	}
+	return nil
+}
+
+func validateStoragePoolProjects(project string, storagePools []common.StoragePool) error {
+	spProjects := sets.String{}
+	for _, sp := range storagePools {
+		if sp.Project != project {
+			spProjects.Insert(sp.Project)
+			return fmt.Errorf("cross-project storage pools usage is not supported. Trying to CreateVolume in project %q with storage pools in projects %v", project, spProjects.UnsortedList())
+		}
 	}
 	return nil
 }
