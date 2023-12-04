@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
-	github.com/onsi/ginkgo/v2 v2.13.1
+	github.com/onsi/ginkgo/v2 v2.13.2
 	github.com/onsi/gomega v1.30.0
 	golang.org/x/oauth2 v0.14.0
 	golang.org/x/sys v0.14.0
