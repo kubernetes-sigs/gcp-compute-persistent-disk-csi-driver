@@ -20,6 +20,7 @@ package gcecloudprovider
 import (
 	"testing"
 
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 )
@@ -55,12 +56,12 @@ func TestGetEnableConfidentialCompute(t *testing.T) {
 			expectedEnableConfidentialCompute: true,
 		},
 		{
-			name:                              "test disk withpit enableConfidentialCompute",
+			name:                              "test disk without enableConfidentialCompute",
 			diskVersion:                       CreateDiskWithConfidentialCompute(false, false, "hyperdisk-balanced"),
 			expectedEnableConfidentialCompute: false,
 		},
 		{
-			name:                              "test disk withpit enableConfidentialCompute",
+			name:                              "test disk without enableConfidentialCompute",
 			diskVersion:                       CreateDiskWithConfidentialCompute(false, false, "pd-standard"),
 			expectedEnableConfidentialCompute: false,
 		},
@@ -74,6 +75,57 @@ func TestGetEnableConfidentialCompute(t *testing.T) {
 		}
 		if confidentialCompute != tc.expectedEnableConfidentialCompute {
 			t.Fatalf("Got confidentialCompute value %t expected %t", confidentialCompute, tc.expectedEnableConfidentialCompute)
+		}
+	}
+}
+
+func TestGetEnableStoragePools(t *testing.T) {
+	testCases := []struct {
+		name                       string
+		cloudDisk                  *CloudDisk
+		expectedEnableStoragePools bool
+	}{
+		{
+			name: "v1 disk returns false",
+			cloudDisk: &CloudDisk{
+				disk: &computev1.Disk{},
+			},
+			expectedEnableStoragePools: false,
+		},
+		{
+			name: "beta disk returns false",
+			cloudDisk: &CloudDisk{
+				betaDisk: &computebeta.Disk{},
+			},
+			expectedEnableStoragePools: false,
+		},
+		{
+			name: "alpha disk without storage pool returns false",
+			cloudDisk: &CloudDisk{
+				alphaDisk: &computealpha.Disk{},
+			},
+			expectedEnableStoragePools: false,
+		},
+		{
+			name: "alpha disk with storage pool returns true",
+			cloudDisk: &CloudDisk{
+				alphaDisk: &computealpha.Disk{
+					StoragePool: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1",
+				},
+			},
+			expectedEnableStoragePools: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		input := "GetEnableStoragePools()"
+		enableStoragePools := tc.cloudDisk.GetEnableStoragePools()
+		if enableStoragePools != tc.expectedEnableStoragePools {
+			t.Fatalf("%s got confidentialCompute value %t expected %t", input, enableStoragePools, tc.expectedEnableStoragePools)
+		}
+		if enableStoragePools != tc.expectedEnableStoragePools {
+			t.Fatalf("%s got confidentialCompute value %t expected %t", input, enableStoragePools, tc.expectedEnableStoragePools)
 		}
 	}
 }

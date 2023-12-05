@@ -58,6 +58,9 @@ func (d *CloudDisk) LocationType() meta.KeyType {
 	case d.betaDisk != nil:
 		zone = d.betaDisk.Zone
 		region = d.betaDisk.Region
+	case d.alphaDisk != nil:
+		zone = d.alphaDisk.Zone
+		region = d.alphaDisk.Region
 	}
 	switch {
 	case zone != "":
@@ -75,6 +78,8 @@ func (d *CloudDisk) GetUsers() []string {
 		return d.disk.Users
 	case d.betaDisk != nil:
 		return d.betaDisk.Users
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Users
 	default:
 		return nil
 	}
@@ -86,6 +91,8 @@ func (d *CloudDisk) GetName() string {
 		return d.disk.Name
 	case d.betaDisk != nil:
 		return d.betaDisk.Name
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Name
 	default:
 		return ""
 	}
@@ -97,6 +104,8 @@ func (d *CloudDisk) GetKind() string {
 		return d.disk.Kind
 	case d.betaDisk != nil:
 		return d.betaDisk.Kind
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Kind
 	default:
 		return ""
 	}
@@ -108,6 +117,8 @@ func (d *CloudDisk) GetStatus() string {
 		return d.disk.Status
 	case d.betaDisk != nil:
 		return d.betaDisk.Status
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Status
 	default:
 		return "Unknown"
 	}
@@ -123,6 +134,8 @@ func (d *CloudDisk) GetPDType() string {
 		pdType = d.disk.Type
 	case d.betaDisk != nil:
 		pdType = d.betaDisk.Type
+	case d.alphaDisk != nil:
+		pdType = d.alphaDisk.Type
 	default:
 		return ""
 	}
@@ -136,6 +149,8 @@ func (d *CloudDisk) GetSelfLink() string {
 		return d.disk.SelfLink
 	case d.betaDisk != nil:
 		return d.betaDisk.SelfLink
+	case d.alphaDisk != nil:
+		return d.alphaDisk.SelfLink
 	default:
 		return ""
 	}
@@ -147,6 +162,8 @@ func (d *CloudDisk) GetSizeGb() int64 {
 		return d.disk.SizeGb
 	case d.betaDisk != nil:
 		return d.betaDisk.SizeGb
+	case d.alphaDisk != nil:
+		return d.alphaDisk.SizeGb
 	default:
 		return -1
 	}
@@ -160,6 +177,8 @@ func (d *CloudDisk) setSizeGb(size int64) {
 		d.disk.SizeGb = size
 	case d.betaDisk != nil:
 		d.betaDisk.SizeGb = size
+	case d.alphaDisk != nil:
+		d.alphaDisk.SizeGb = size
 	}
 }
 
@@ -169,6 +188,8 @@ func (d *CloudDisk) GetZone() string {
 		return d.disk.Zone
 	case d.betaDisk != nil:
 		return d.betaDisk.Zone
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Zone
 	default:
 		return ""
 	}
@@ -180,6 +201,8 @@ func (d *CloudDisk) GetSnapshotId() string {
 		return d.disk.SourceSnapshotId
 	case d.betaDisk != nil:
 		return d.betaDisk.SourceSnapshotId
+	case d.alphaDisk != nil:
+		return d.alphaDisk.SourceSnapshotId
 	default:
 		return ""
 	}
@@ -191,6 +214,8 @@ func (d *CloudDisk) GetSourceDiskId() string {
 		return d.disk.SourceDiskId
 	case d.betaDisk != nil:
 		return d.betaDisk.SourceDiskId
+	case d.alphaDisk != nil:
+		return d.alphaDisk.SourceDiskId
 	default:
 		return ""
 	}
@@ -202,6 +227,8 @@ func (d *CloudDisk) GetImageId() string {
 		return d.disk.SourceImageId
 	case d.betaDisk != nil:
 		return d.betaDisk.SourceImageId
+	case d.alphaDisk != nil:
+		return d.alphaDisk.SourceImageId
 	default:
 		return ""
 	}
@@ -217,6 +244,10 @@ func (d *CloudDisk) GetKMSKeyName() string {
 		if dek := d.betaDisk.DiskEncryptionKey; dek != nil {
 			return dek.KmsKeyName
 		}
+	case d.alphaDisk != nil:
+		if dek := d.alphaDisk.DiskEncryptionKey; dek != nil {
+			return dek.KmsKeyName
+		}
 	}
 	return ""
 }
@@ -227,6 +258,8 @@ func (d *CloudDisk) GetMultiWriter() bool {
 		return false
 	case d.betaDisk != nil:
 		return d.betaDisk.MultiWriter
+	case d.alphaDisk != nil:
+		return d.alphaDisk.MultiWriter
 	default:
 		return false
 	}
@@ -238,6 +271,21 @@ func (d *CloudDisk) GetEnableConfidentialCompute() bool {
 		return false
 	case d.betaDisk != nil:
 		return d.betaDisk.EnableConfidentialCompute
+	case d.alphaDisk != nil:
+		return d.alphaDisk.EnableConfidentialCompute
+	default:
+		return false
+	}
+}
+
+func (d *CloudDisk) GetEnableStoragePools() bool {
+	switch {
+	case d.disk != nil:
+		return false
+	case d.betaDisk != nil:
+		return false
+	case d.alphaDisk != nil:
+		return d.alphaDisk.StoragePool != ""
 	default:
 		return false
 	}
