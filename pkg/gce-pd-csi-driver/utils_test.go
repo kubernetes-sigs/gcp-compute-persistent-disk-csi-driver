@@ -18,6 +18,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"reflect"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -289,5 +290,34 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 				t.Fatalf("Expected '%t' but got '%t'", tc.expVal, val)
 			}
 		}
+	}
+}
+
+func TestClearSecrets(t *testing.T) {
+	vc := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	}
+
+	req := &csi.NodeExpandVolumeRequest{
+		VolumePath:       "/path",
+		VolumeCapability: vc,
+		Secrets: map[string]string{
+			"key": "value",
+		},
+	}
+
+	clearedReq := &csi.NodeExpandVolumeRequest{
+		VolumePath:       "/path",
+		VolumeCapability: vc,
+		Secrets:          map[string]string{},
+	}
+
+	if !reflect.DeepEqual(clearSecrets(req), clearedReq) {
+		t.Fatalf("Unexpected change: %v vs. %v", clearSecrets(req), clearedReq)
 	}
 }
