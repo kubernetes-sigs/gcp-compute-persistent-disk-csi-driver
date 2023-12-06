@@ -162,12 +162,12 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 	}
 }
 
-func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int) {
+func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelTracing bool) {
 	maxLogChar = grpcLogCharCap
 
 	klog.V(4).Infof("Driver: %v", gceDriver.name)
 	//Start the nonblocking GRPC
-	s := NewNonBlockingGRPCServer()
+	s := NewNonBlockingGRPCServer(enableOtelTracing)
 	// TODO(#34): Only start specific servers based on a flag.
 	// In the future have this only run specific combinations of servers depending on which version this is.
 	// The schema for that was in util. basically it was just s.start but with some nil servers.
