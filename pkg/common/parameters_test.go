@@ -19,6 +19,8 @@ package common
 import (
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestExtractAndDefaultParameters(t *testing.T) {
@@ -199,6 +201,67 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				Labels:          map[string]string{},
 			},
 		},
+		{
+			name:       "storage pool parameters",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
+			labels:     map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:        "hyperdisk-balanced",
+				ReplicationType: "none",
+				Tags:            map[string]string{},
+				Labels:          map[string]string{},
+				StoragePools: []StoragePool{
+					{
+						Project:      "my-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "my-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/my-project/zones/us-central1-b/storagePools/storagePool-2",
+					},
+				},
+			},
+		},
+		{
+			name:       "invalid storage pool parameters, starts with /projects instead of projects",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "/projects/my-project/zones/us-central1-a/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
+		{
+			name:       "invalid storage pool parameters, missing projects",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
+		{
+			name:       "invalid storage pool parameters, missing zones",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
+		{
+			name:       "invalid storage pool parameters, duplicate projects",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/projects/my-project/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
+		{
+			name:       "invalid storage pool parameters, duplicate zones",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/zones/us-central1-a/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
+		{
+			name:       "invalid storage pool parameters, duplicate storagePools",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/us-central1-a/storagePools/storagePool-1"},
+			labels:     map[string]string{},
+			expectErr:  true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -211,8 +274,8 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				return
 			}
 
-			if !reflect.DeepEqual(p, tc.expectParams) {
-				t.Errorf("ExtractAndDefaultParameters(%+v) = %v; expected params: %v", tc.parameters, p, tc.expectParams)
+			if diff := cmp.Diff(p, tc.expectParams); diff != "" {
+				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 		})
 	}

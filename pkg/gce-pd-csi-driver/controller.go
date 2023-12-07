@@ -254,6 +254,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 
+	if err := validateStoragePools(req, params, gceCS.CloudProvider.GetDefaultProject()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate storage pools: %v", err)
+	}
+
 	// Verify that the regional availability class is only used on regional disks.
 	if params.ForceAttach && params.ReplicationType != replicationTypeRegionalPD {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid availabilty class for zonal disk")
@@ -1623,13 +1627,13 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 	zones := []string{}
 	for _, top := range topList {
 		if top.GetSegments() == nil {
-			return nil, fmt.Errorf("preferred topologies specified but no segments")
+			return nil, fmt.Errorf("topologies specified but no segments")
 		}
 
 		// GCE PD cloud provider Create has no restrictions so just create in top preferred zone
 		zone, err := getZoneFromSegment(top.GetSegments())
 		if err != nil {
-			return nil, fmt.Errorf("could not get zone from preferred topology: %w", err)
+			return nil, fmt.Errorf("could not get zone from topology: %w", err)
 		}
 		zones = append(zones, zone)
 	}
