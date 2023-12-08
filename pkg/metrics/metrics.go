@@ -36,6 +36,7 @@ const (
 	pdcsiDriverName                  = "pd.csi.storage.gke.io"
 	DefaultDiskTypeForMetric         = "unknownDiskType"
 	DefaultEnableConfidentialCompute = "unknownConfidentialMode"
+	DefaultEnableStoragePools        = "unknownStoragePools"
 )
 
 var (
@@ -52,7 +53,7 @@ var (
 			Help:           "CSI server side error metrics",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type", "enable_confidential_storage"})
+		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type", "enable_confidential_storage", "enable_storage_pools"})
 )
 
 type MetricsManager struct {
@@ -94,12 +95,13 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
 	diskType string,
-	enableConfidentialStorage string) {
+	enableConfidentialStorage string,
+	enableStoragePools string) {
 	err := codes.OK.String()
 	if operationErr != nil {
 		err = common.CodeForError(operationErr).String()
 	}
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType, enableConfidentialStorage).Inc()
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType, enableConfidentialStorage, enableStoragePools).Inc()
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -156,12 +158,14 @@ func IsGKEComponentVersionAvailable() bool {
 	return true
 }
 
-func GetMetricParameters(disk *gce.CloudDisk) (string, string) {
+func GetMetricParameters(disk *gce.CloudDisk) (string, string, string) {
 	diskType := DefaultDiskTypeForMetric
 	enableConfidentialStorage := DefaultEnableConfidentialCompute
+	enableStoragePools := DefaultEnableStoragePools
 	if disk != nil {
 		diskType = disk.GetPDType()
 		enableConfidentialStorage = strconv.FormatBool(disk.GetEnableConfidentialCompute())
+		enableStoragePools = strconv.FormatBool(disk.GetEnableStoragePools())
 	}
-	return diskType, enableConfidentialStorage
+	return diskType, enableConfidentialStorage, enableStoragePools
 }

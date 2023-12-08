@@ -20,6 +20,7 @@ package metrics
 import (
 	"testing"
 
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -41,41 +42,76 @@ func CreateDiskWithConfidentialCompute(betaVersion bool, confidentialCompute boo
 	})
 }
 
-func TestGetEnableConfidentialCompute(t *testing.T) {
+func CreateDiskWithStoragePool(storagePool string, diskType string) *gce.CloudDisk {
+	return gce.CloudDiskFromAlpha(&computealpha.Disk{
+		StoragePool: storagePool,
+		Type:        diskType,
+	})
+}
+
+func TestGetMetricParameters(t *testing.T) {
 	testCases := []struct {
 		name                              string
 		disk                              *gce.CloudDisk
 		expectedEnableConfidentialCompute string
 		expectedDiskType                  string
+		expectedEnableStoragePools        string
 	}{
 		{
 			name:                              "test betaDisk with enableConfidentialCompute=false",
 			disk:                              CreateDiskWithConfidentialCompute(true, false, hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "false",
 			expectedDiskType:                  hyperdiskBalanced,
+			expectedEnableStoragePools:        "false",
 		},
 		{
 			name:                              "test betaDisk with enableConfidentialCompute=true",
 			disk:                              CreateDiskWithConfidentialCompute(true, true, hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "true",
 			expectedDiskType:                  hyperdiskBalanced,
+			expectedEnableStoragePools:        "false",
 		},
 		{
-			name:                              "test disk withpit enableConfidentialCompute",
+			name:                              "test disk without enableConfidentialCompute",
 			disk:                              CreateDiskWithConfidentialCompute(false, false, hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "false",
 			expectedDiskType:                  hyperdiskBalanced,
+			expectedEnableStoragePools:        "false",
+		},
+		{
+			name:                              "test alphaDisk with storage pool projects/my-project/zone/us-central1-a/storagePools/sp1",
+			disk:                              CreateDiskWithStoragePool("projects/my-project/zone/us-central1-a/storagePools/sp1", hyperdiskBalanced),
+			expectedEnableConfidentialCompute: "false",
+			expectedDiskType:                  hyperdiskBalanced,
+			expectedEnableStoragePools:        "true",
+		},
+		{
+			name:                              "test alphaDisk with no storage pool",
+			disk:                              CreateDiskWithStoragePool("", hyperdiskBalanced),
+			expectedEnableConfidentialCompute: "false",
+			expectedDiskType:                  hyperdiskBalanced,
+			expectedEnableStoragePools:        "false",
+		},
+		{
+			name:                              "test nil disk",
+			disk:                              nil,
+			expectedEnableConfidentialCompute: DefaultEnableConfidentialCompute,
+			expectedDiskType:                  DefaultDiskTypeForMetric,
+			expectedEnableStoragePools:        DefaultEnableStoragePools,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Logf("Running test: %v", tc.name)
-		diskType, confidentialCompute := GetMetricParameters(tc.disk)
+		diskType, confidentialCompute, enableStoragePools := GetMetricParameters(tc.disk)
 		if confidentialCompute != tc.expectedEnableConfidentialCompute {
-			t.Fatalf("Got confidentialCompute value %v expected %v", confidentialCompute, tc.expectedEnableConfidentialCompute)
+			t.Fatalf("Got confidentialCompute value %q expected %q", confidentialCompute, tc.expectedEnableConfidentialCompute)
 		}
 		if diskType != tc.expectedDiskType {
-			t.Fatalf("Got confidentialCompute value %v expected %v", diskType, tc.expectedDiskType)
+			t.Fatalf("Got diskType value %q expected %q", diskType, tc.expectedDiskType)
+		}
+		if enableStoragePools != tc.expectedEnableStoragePools {
+			t.Fatalf("Got enableStoragePools value %q expected %q", enableStoragePools, tc.expectedEnableStoragePools)
 		}
 	}
 }
