@@ -1407,7 +1407,7 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 }
 
 func cleanSelfLink(selfLink string) string {
-	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/.*(v1|beta|alpha)\\/")
+	r, _ := regexp.Compile("https:\\/\\/www.*apis.com\\/[a-z]+\\/(v1|beta|alpha)\\/")
 	return r.ReplaceAllString(selfLink, "")
 }
 
