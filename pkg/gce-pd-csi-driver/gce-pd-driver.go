@@ -152,13 +152,14 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:        gceDriver,
-		CloudProvider: cloudProvider,
-		seen:          map[string]int{},
-		volumeLocks:   common.NewVolumeLocks(),
-		errorBackoff:  newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
+		Driver:                 gceDriver,
+		CloudProvider:          cloudProvider,
+		seen:                   map[string]int{},
+		volumeLocks:            common.NewVolumeLocks(),
+		errorBackoff:           newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
+		fallbackRequisiteZones: fallbackRequisiteZones,
 	}
 }
 
