@@ -1,3 +1,23 @@
+# v1.7.19 - Changelog since v1.7.18
+
+## Changes by Kind
+
+### Uncategorized
+
+- Update golang builder to 1.20.12 ([#1539](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1539), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+
 # v1.7.18 - Changelog since v1.7.17
 
 ## Changes by Kind

@@ -1,3 +1,24 @@
+# v1.9.14 - Changelog since v1.9.13
+
+## Changes by Kind
+
+### Uncategorized
+
+- Properly wrap error from GCE Images.Get() API call, to fix a potential nil-ptr dereference ([#1518](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1518), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Update golang builder to 1.20.12 ([#1537](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1537), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+
 # v1.9.13 - Changelog since v1.9.12
 
 ## Changes by Kind

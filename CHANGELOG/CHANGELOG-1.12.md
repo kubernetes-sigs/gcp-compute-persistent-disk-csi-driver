@@ -1,3 +1,46 @@
+# v1.12.5 - Changelog since v1.12.4
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- Update golang builder to 1.20.12 ([#1536](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1536), [@msau42](https://github.com/msau42))
+
+### Uncategorized
+
+- Add --fallback-requisite-zones flag to allow disk provisioning to fallback to a default set of zones when there are an insufficient number of zones available in a passed in requisite topology in CreateVolume. ([#1542](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1542), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Properly wrap error from GCE Images.Get() API call, to fix a potential nil-ptr dereference ([#1515](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1515), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# v1.12.4 - Changelog since v1.12.3
+
+## Changes by Kind
+
+### Uncategorized
+
+- Properly wrap error from GCE Images.Get() API call, to fix a potential nil-ptr dereference ([#1515](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1515), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.12.3 - Changelog since v1.12.2
 
 ## Changes by Kind
