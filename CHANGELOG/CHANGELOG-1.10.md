@@ -1,3 +1,26 @@
+# v1.10.13 - Changelog since v1.10.12
+
+## Changes by Kind
+
+### Uncategorized
+
+- Bump golang.org/x/crypto from v0.14.0 to v0.17.0 to fix CVE-2023-48795 ([#1551](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1551), [@sunnylovestiramisu](https://github.com/sunnylovestiramisu))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- golang.org/x/crypto: v0.14.0 → v0.17.0
+- golang.org/x/sys: v0.13.0 → v0.15.0
+- golang.org/x/term: v0.13.0 → v0.15.0
+- golang.org/x/text: v0.13.0 → v0.14.0
+
+### Removed
+_Nothing has changed._
+
+
 # v1.10.12 - Changelog since v1.10.11
 
 ## Changes by Kind
