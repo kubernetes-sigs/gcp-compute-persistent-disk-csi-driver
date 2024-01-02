@@ -1016,6 +1016,11 @@ func TestCodeForError(t *testing.T) {
 			inputErr: nil,
 			expCode:  codes.Internal,
 		},
+		{
+			name:     "user multiattach error",
+			inputErr: fmt.Errorf("The disk resource 'projects/foo/disk/bar' is already being used by 'projects/foo/instances/1'"),
+			expCode:  codes.InvalidArgument,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1073,6 +1078,34 @@ func TestIsContextError(t *testing.T) {
 			}
 		} else if errCode != test.expectedErrCode {
 			t.Errorf("test %v failed: got %v, expected %v", test.name, errCode, test.expectedErrCode)
+		}
+	}
+}
+
+func TestIsUserMultiAttachError(t *testing.T) {
+	cases := []struct {
+		errorString  string
+		expectedCode codes.Code
+		expectCode   bool
+	}{
+		{
+			errorString:  "The disk resource 'projects/foo/disk/bar' is already being used by 'projects/foo/instance/biz'",
+			expectedCode: codes.InvalidArgument,
+			expectCode:   true,
+		},
+		{
+			errorString: "The disk resource is ok!",
+			expectCode:  false,
+		},
+	}
+	for _, test := range cases {
+		code, err := isUserMultiAttachError(fmt.Errorf(test.errorString))
+		if test.expectCode {
+			if err != nil || code != test.expectedCode {
+				t.Errorf("Failed with non-nil error %v or bad code %v: %s", err, code, test.errorString)
+			}
+		} else if err == nil {
+			t.Errorf("Expected error for test but got none: %s", test.errorString)
 		}
 	}
 }
