@@ -337,6 +337,9 @@ func CodeForError(sourceError error) codes.Code {
 		return codes.Internal
 	}
 
+	if code, err := isUserMultiAttachError(sourceError); err == nil {
+		return code
+	}
 	if code, err := existingErrorCode(sourceError); err == nil {
 		return code
 	}
@@ -372,6 +375,17 @@ func isContextError(err error) (codes.Code, error) {
 		return codes.Canceled, nil
 	}
 	return codes.Unknown, fmt.Errorf("Not a context error: %w", err)
+}
+
+// isUserMultiAttachError returns an InvalidArgument if the error is
+// multi-attach detected from the API server. If we get this error from the API
+// server, it means that the kubelet doesn't know about the multiattch so it is
+// due to user configuration.
+func isUserMultiAttachError(err error) (codes.Code, error) {
+	if strings.Contains(err.Error(), "The disk resource") && strings.Contains(err.Error(), "is already being used") {
+		return codes.InvalidArgument, nil
+	}
+	return codes.Unknown, fmt.Errorf("Not a user multiattach error: %w", err)
 }
 
 func existingErrorCode(err error) (codes.Code, error) {
