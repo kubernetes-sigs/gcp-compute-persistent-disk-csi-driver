@@ -671,9 +671,9 @@ func (cloud *CloudProvider) insertZonalDisk(
 		var insertOp *computealpha.Operation
 		var storagePool *common.StoragePool
 		if storagePoolsEnabled {
-			storagePool = common.StoragePoolInZone(params.StoragePools, diskToCreate.Zone)
+			storagePool = common.StoragePoolInZone(params.StoragePools, volKey.Zone)
 			if storagePool == nil {
-				return status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", diskToCreate.Zone)
+				return status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", volKey.Zone)
 			}
 		}
 		alphaDiskToCreate := convertV1DiskToAlphaDisk(diskToCreate, params.ProvisionedThroughputOnCreate, storagePool)

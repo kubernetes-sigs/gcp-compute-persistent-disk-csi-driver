@@ -25,11 +25,12 @@ import (
 
 func TestExtractAndDefaultParameters(t *testing.T) {
 	tests := []struct {
-		name         string
-		parameters   map[string]string
-		labels       map[string]string
-		expectParams DiskParameters
-		expectErr    bool
+		name               string
+		parameters         map[string]string
+		labels             map[string]string
+		enableStoragePools bool
+		expectParams       DiskParameters
+		expectErr          bool
 	}{
 		{
 			name:       "defaults",
@@ -202,9 +203,10 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
-			name:       "storage pool parameters",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
-			labels:     map[string]string{},
+			name:               "storage pool parameters",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
+			labels:             map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:        "hyperdisk-balanced",
 				ReplicationType: "none",
@@ -227,46 +229,59 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
-			name:       "invalid storage pool parameters, starts with /projects instead of projects",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "/projects/my-project/zones/us-central1-a/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, starts with /projects instead of projects",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "/projects/my-project/zones/us-central1-a/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 		{
-			name:       "invalid storage pool parameters, missing projects",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, missing projects",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 		{
-			name:       "invalid storage pool parameters, missing zones",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, missing zones",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 		{
-			name:       "invalid storage pool parameters, duplicate projects",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/projects/my-project/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, duplicate projects",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/projects/my-project/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 		{
-			name:       "invalid storage pool parameters, duplicate zones",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/zones/us-central1-a/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, duplicate zones",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "zones/us-central1-a/zones/us-central1-a/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 		{
-			name:       "invalid storage pool parameters, duplicate storagePools",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/us-central1-a/storagePools/storagePool-1"},
-			labels:     map[string]string{},
-			expectErr:  true,
+			name:               "invalid storage pool parameters, duplicate storagePools",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/storagePools/us-central1-a/storagePools/storagePool-1"},
+			labels:             map[string]string{},
+			expectErr:          true,
+		},
+		{
+			name:               "storage pool parameters, enableStoragePools is false",
+			enableStoragePools: false,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
+			labels:             map[string]string{},
+			expectErr:          true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels)
+			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}

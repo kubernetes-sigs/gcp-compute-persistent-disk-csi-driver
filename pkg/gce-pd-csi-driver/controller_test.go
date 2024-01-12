@@ -444,10 +444,11 @@ func TestListSnapshotsArguments(t *testing.T) {
 
 func TestCreateVolumeArguments(t *testing.T) {
 	testCases := []struct {
-		name       string
-		req        *csi.CreateVolumeRequest
-		expVol     *csi.Volume
-		expErrCode codes.Code
+		name               string
+		req                *csi.CreateVolumeRequest
+		enableStoragePools bool
+		expVol             *csi.Volume
+		expErrCode         codes.Code
 	}{
 		{
 			name: "success default",
@@ -898,6 +899,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
+			enableStoragePools: true,
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
 				VolumeId:      "projects/test-project/zones/us-central1-a/disks/test-name",
@@ -908,6 +910,29 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "fail with storage pools parameter, enableStoragePools is false",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"storage-pools": "projects/test-project/zones/us-central1-a/storagePools/storagePool-1", "type": "hyperdisk-balanced"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			enableStoragePools: false,
+			expErrCode:         codes.InvalidArgument,
 		},
 		{
 			name: "fail with invalid storage pools parameter",
@@ -929,7 +954,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			expErrCode: codes.InvalidArgument,
+			enableStoragePools: true,
+			expErrCode:         codes.InvalidArgument,
 		},
 	}
 
@@ -938,7 +964,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil)
-
+		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		if err != nil {
@@ -1374,6 +1400,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 		requestCapacityRange *csi.CapacityRange
 		sourceTopology       *csi.TopologyRequirement
 		requestTopology      *csi.TopologyRequirement
+		enableStoragePools   bool
 		expCloneKey          *meta.Key
 		// Accessible topologies validates that the replica zones are valid for regional disk clones.
 		expAccessibleTop []*csi.Topology
@@ -1461,6 +1488,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			sourceCapacityRange:  stdCapRange,
+			enableStoragePools:   true,
 			reqParameters: map[string]string{
 				common.ParameterKeyType:                 "test-type",
 				common.ParameterKeyReplicationType:      replicationTypeNone,
@@ -1880,6 +1908,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		gceDriver := initGCEDriver(t, nil)
+		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
 		req := &csi.CreateVolumeRequest{
 			Name:               testCloneVolumeName,
