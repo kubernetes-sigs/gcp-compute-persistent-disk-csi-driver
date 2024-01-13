@@ -120,7 +120,7 @@ type StoragePool struct {
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string) (DiskParameters, error) {
+func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool) (DiskParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -200,6 +200,9 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 
 			p.EnableConfidentialCompute = paramEnableConfidentialCompute
 		case ParameterKeyStoragePools:
+			if !enableStoragePools {
+				return p, fmt.Errorf("parameters contains invalid option %q", ParameterKeyStoragePools)
+			}
 			storagePools, err := ParseStoragePools(v)
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)

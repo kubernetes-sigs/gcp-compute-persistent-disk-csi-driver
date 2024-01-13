@@ -62,13 +62,14 @@ func TestSanity(t *testing.T) {
 	}
 
 	fallbackRequisiteZones := []string{}
+	enableStoragePools := false
 
 	mounter := mountmanager.NewFakeSafeMounter()
 	deviceUtils := deviceutils.NewFakeDeviceUtils(true)
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools)
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
