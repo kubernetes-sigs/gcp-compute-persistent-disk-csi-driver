@@ -12,7 +12,7 @@ lifecycle of Google Compute Engine Persistent Disks.
 ## Project Status
 
 Status: GA
-Latest stable image: `registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.10.1`
+Latest stable image: `registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.13.0`
 
 ### Test Status
 
@@ -35,10 +35,10 @@ versions.
 
 | Kubernetes Version | PD CSI Driver Version |
 |--------------------|-----------------------|
-| HEAD               | v1.10.x               |
+| HEAD               | v1.13.x               |
+| 1.29               | v1.12.x               |
+| 1.28               | v1.12.x               |
 | 1.27               | v1.10.x               |
-| 1.26               | v1.9.x                |
-| 1.25               | v1.8.x                |
 
 The manifest bundle which captures all the driver components (driver pod which includes the containers csi-provisioner, csi-resizer, csi-snapshotter, gce-pd-driver, csi-driver-registrar;
 csi driver object, rbacs, pod security policies etc) for the lastest stable
