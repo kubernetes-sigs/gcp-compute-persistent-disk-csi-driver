@@ -217,7 +217,7 @@ func main() {
 
 	err := handle()
 	if err != nil {
-		klog.Fatalf("Failed to run integration test: %w", err)
+		klog.Fatalf("Failed to run integration test: %v", err)
 	}
 }
 
@@ -274,7 +274,7 @@ func handle() error {
 		defer func() {
 			err = setEnvProject(string(oldProject))
 			if err != nil {
-				klog.Errorf("failed to set project environment to %s: %w", oldProject, err.Error())
+				klog.Errorf("failed to set project environment to %s: %v", oldProject, err.Error())
 			}
 		}()
 		project = newproject
@@ -300,7 +300,7 @@ func handle() error {
 			if *teardownCluster {
 				err := deleteImage(*stagingImage, testParams.stagingVersion)
 				if err != nil {
-					klog.Errorf("failed to delete image: %w", err)
+					klog.Errorf("failed to delete image: %v", err)
 				}
 			}
 		}()
@@ -325,7 +325,7 @@ func handle() error {
 				return fmt.Errorf("failed to build Kubernetes: %v", err.Error())
 			}
 		} else {
-			klog.Info("Fetching precompiled Kubernetes artifacts for %s/%s", *platform, *arch)
+			klog.Infof("Fetching precompiled Kubernetes artifacts for %s/%s", *platform, *arch)
 			if err := downloadKubernetesRelease(testParams.k8sSourceDir, *kubeVersion, *platform, *arch); err != nil {
 				return fmt.Errorf("failed to download Kubernetes release: %v", err.Error())
 			}
@@ -382,12 +382,12 @@ func handle() error {
 			case "gce":
 				err := clusterDownGCE(testParams.k8sSourceDir)
 				if err != nil {
-					klog.Errorf("failed to cluster down: %w", err)
+					klog.Errorf("failed to cluster down: %v", err)
 				}
 			case "gke":
 				err := clusterDownGKE(*gceZone, *gceRegion)
 				if err != nil {
-					klog.Errorf("failed to cluster down: %w", err)
+					klog.Errorf("failed to cluster down: %v", err)
 				}
 			default:
 				klog.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
@@ -441,7 +441,7 @@ func handle() error {
 		if *teardownDriver {
 			defer func() {
 				if teardownErr := deleteDriver(testParams, *deployOverlayName); teardownErr != nil {
-					klog.Errorf("failed to delete driver: %w", teardownErr)
+					klog.Errorf("failed to delete driver: %v", teardownErr)
 				}
 			}()
 		}

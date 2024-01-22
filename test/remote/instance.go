@@ -178,7 +178,7 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 
 		instance, err = i.computeService.Instances.Get(i.project, i.zone, i.name).Do()
 		if err != nil {
-			klog.Errorf("Failed to get instance %v: %w", i.name, err)
+			klog.Errorf("Failed to get instance %q: %v", i.name, err)
 			return false, nil
 		}
 
@@ -218,7 +218,7 @@ func (i *InstanceInfo) DeleteInstance() {
 		if isGCEError(err, "notFound") {
 			return
 		}
-		klog.Errorf("Error deleting instance %q: %w", i.name, err)
+		klog.Errorf("Error deleting instance %q: %v", i.name, err)
 	}
 }
 
@@ -229,7 +229,7 @@ func (i *InstanceInfo) DetachDisk(diskName string) error {
 		if isGCEError(err, "notFound") {
 			return nil
 		}
-		klog.Errorf("Error deleting disk %q: %w", diskName, err)
+		klog.Errorf("Error deleting disk %q: %v", diskName, err)
 	}
 
 	start := time.Now()

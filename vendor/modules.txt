@@ -57,7 +57,7 @@ github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.5.4
 ## explicit; go 1.16
 github.com/fsnotify/fsnotify
-# github.com/go-logr/logr v1.3.0
+# github.com/go-logr/logr v1.4.1
 ## explicit; go 1.18
 github.com/go-logr/logr
 github.com/go-logr/logr/funcr
@@ -867,14 +867,15 @@ k8s.io/cloud-provider/volume/helpers
 ## explicit; go 1.16
 k8s.io/component-base/metrics
 k8s.io/component-base/version
-# k8s.io/klog/v2 v2.100.1
-## explicit; go 1.13
+# k8s.io/klog/v2 v2.120.1
+## explicit; go 1.18
 k8s.io/klog/v2
 k8s.io/klog/v2/internal/buffer
 k8s.io/klog/v2/internal/clock
 k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
+k8s.io/klog/v2/internal/sloghandler
 # k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
 ## explicit; go 1.16
 k8s.io/kube-openapi/pkg/builder3/util

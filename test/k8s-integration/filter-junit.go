@@ -77,7 +77,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 	for _, dir := range sourceDirectories {
 		files, err := os.ReadDir(dir)
 		if err != nil {
-			klog.Errorf("Failed to read juint directory %s: %w", dir, err)
+			klog.Errorf("Failed to read juint directory %s: %v", dir, err)
 			mergeErrors = append(mergeErrors, err.Error())
 			continue
 		}
