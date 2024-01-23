@@ -1,3 +1,25 @@
+# v1.8.19 - Changelog since v1.8.18
+
+## Changes by Kind
+
+### Uncategorized
+
+- Properly wrap error from GCE Images.Get() API call, to fix a potential nil-ptr dereference ([#1519](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1519), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Reduce log spam when identifying NVMe devices located in `/dev` ([#1581](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1581), [@pwschuurman](https://github.com/pwschuurman))
+- Update golang builder to 1.20.12 ([#1538](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1538), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+
 # v1.8.18 - Changelog since v1.8.17
 
 ## Changes by Kind
