@@ -1,3 +1,23 @@
+# v1.9.16 - Changelog since v1.9.15
+
+## Changes by Kind
+
+### Uncategorized
+
+- Reduce log spam when identifying NVMe devices located in `/dev` ([#1580](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1580), [@pwschuurman](https://github.com/pwschuurman))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+
 # v1.9.15 - Changelog since v1.9.14
 
 ## Changes by Kind
