@@ -125,7 +125,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %w", err)
+				klog.Errorf("Failed to detach disk: %v", err)
 			}
 
 		}()
@@ -159,12 +159,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %w", err)
+				klog.Errorf("Failed to unstage volume: %v", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %w", fp, err)
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
 			}
 		}()
 	})
@@ -197,7 +197,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Detach Disk
 			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
 			if err != nil {
-				klog.Errorf("Failed to detach disk: %w", err)
+				klog.Errorf("Failed to detach disk: %v", err)
 			}
 
 		}()
@@ -229,12 +229,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// Unstage Disk
 			err = client.NodeUnstageVolume(volID, stageDir)
 			if err != nil {
-				klog.Errorf("Failed to unstage volume: %w", err)
+				klog.Errorf("Failed to unstage volume: %v", err)
 			}
 			fp := filepath.Join("/tmp/", volName)
 			err = testutils.RmAll(instance, fp)
 			if err != nil {
-				klog.Errorf("Failed to rm file path %s: %w", fp, err)
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
 			}
 		}()
 	})
@@ -1290,7 +1290,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
 
 		if err != nil {
-			klog.Fatalf("Failed to setup instance %v: %w", nodeID, err)
+			klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 		}
 
 		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
@@ -1298,7 +1298,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create new driver and client w/ invalid endpoint
 		tcInvalid, err := testutils.GCEClientAndDriverSetup(i, "invalid-string")
 		if err != nil {
-			klog.Fatalf("Failed to set up Test Context for instance %v: %w", i.GetName(), err)
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
 
 		_, err = tcInvalid.Client.ListVolumes()
@@ -1307,7 +1307,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create new driver and client w/ valid, passed-in endpoint
 		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")
 		if err != nil {
-			klog.Fatalf("Failed to set up Test Context for instance %v: %w", i.GetName(), err)
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
 		_, err = tcValid.Client.ListVolumes()
 
