@@ -76,6 +76,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 		//`awk "{print \$2}"`,
 	)
 	driverPIDString, err := i.SSHNoSudo("sh", "-c", driverPIDCmd)
+	klog.Infof("DRIVER PID STRING %s: COMMAND: %s", driverPIDString, driverPIDCmd)
 	if err != nil {
 		// Exit failure with the error
 		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", output, err.Error())
