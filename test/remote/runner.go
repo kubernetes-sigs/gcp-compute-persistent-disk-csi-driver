@@ -61,6 +61,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	// When the process is killed the driver should close the TCP endpoint, then we want to download the logs
 	klog.Infof("DRIVER RUN COMMAND: %s", driverRunCmd)
 	output, err := i.SSH(driverRunCmd)
+	klog.Infof("OUTPUT: %s", output)
 	if err != nil {
 		// Exit failure with the error
 		return -1, fmt.Errorf("failed start driver, got output: %v, error: %v", output, err.Error())
