@@ -20,7 +20,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.21.0
 	golang.org/x/oauth2 v0.16.0
 	golang.org/x/sys v0.16.0
-	google.golang.org/api v0.159.0
+	google.golang.org/api v0.161.0
 	google.golang.org/genproto v0.0.0-20240102182953-50ed04b92917
 	google.golang.org/grpc v1.61.0
 	google.golang.org/protobuf v1.32.0
