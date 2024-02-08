@@ -118,7 +118,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err := client.ControllerPublishVolume(volID, instance.GetNodeID(), false /* forceAttach */)
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
 
 		defer func() {
@@ -190,7 +190,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err := client.ControllerPublishVolume(volID, instance.GetNodeID(), false /* forceAttach */)
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
 
 		defer func() {
@@ -330,7 +330,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 
 			// Attach Disk
-			err := client.ControllerPublishVolume(underSpecifiedID, instance.GetNodeID(), false /* forceAttach */)
+			err := client.ControllerPublishVolumeReadWrite(underSpecifiedID, instance.GetNodeID(), false /* forceAttach */)
 			Expect(err).To(BeNil(), "ControllerPublishVolume failed")
 		},
 		Entry("on pd-standard", standardDiskType),
@@ -699,7 +699,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		defer deleteVolumeOrError(client, secondVolID)
 
 		// Attach volID to current instance
-		err := client.ControllerPublishVolume(volID, nodeID, false /* forceAttach */)
+		err := client.ControllerPublishVolumeReadWrite(volID, nodeID, false /* forceAttach */)
 		Expect(err).To(BeNil(), "Failed ControllerPublishVolume")
 		defer client.ControllerUnpublishVolume(volID, nodeID)
 
@@ -1304,6 +1304,55 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 	})
+
+	type multiZoneTestConfig struct {
+		diskType          string
+		readOnly          bool
+		hasMultiZoneLabel bool
+		wantErrSubstring  string
+	}
+
+	DescribeTable("Unsupported 'multi-zone' PV ControllerPublish attempts",
+		func(cfg multiZoneTestConfig) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			controllerInstance := testContext.Instance
+			controllerClient := testContext.Client
+
+			p, z, _ := controllerInstance.GetIdentity()
+
+			volName := testNamePrefix + string(uuid.NewUUID())
+			_, diskVolumeId := createAndValidateZonalDisk(controllerClient, p, z, cfg.diskType, volName)
+			defer deleteDisk(controllerClient, p, z, diskVolumeId, volName)
+
+			if cfg.hasMultiZoneLabel {
+				labelsMap := map[string]string{
+					common.MultiZoneLabel: "true",
+				}
+				disk, err := computeService.Disks.Get(p, z, volName).Do()
+				Expect(err).To(BeNil(), "Could not get disk")
+				diskOp, err := computeService.Disks.SetLabels(p, z, volName, &compute.ZoneSetLabelsRequest{
+					LabelFingerprint: disk.LabelFingerprint,
+					Labels:           labelsMap,
+				}).Do()
+				Expect(err).To(BeNil(), "Could not set disk labels")
+				_, err = computeService.ZoneOperations.Wait(p, z, diskOp.Name).Do()
+				Expect(err).To(BeNil(), "Could not set disk labels")
+			}
+
+			// Attach Disk
+			volID := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
+			nodeID := testContext.Instance.GetNodeID()
+
+			err := controllerClient.ControllerPublishVolume(volID, nodeID, false /* forceAttach */, cfg.readOnly)
+			Expect(err).ToNot(BeNil(), "Unexpected success attaching disk")
+			Expect(err.Error()).To(ContainSubstring(cfg.wantErrSubstring), "Expected err")
+		},
+		Entry("with unsupported ROX mode", multiZoneTestConfig{diskType: standardDiskType, readOnly: false, hasMultiZoneLabel: true, wantErrSubstring: "'multi-zone' volume only supports 'readOnly'"}),
+		Entry("with missing multi-zone label", multiZoneTestConfig{diskType: standardDiskType, readOnly: true, hasMultiZoneLabel: false, wantErrSubstring: "points to disk that is missing label \"goog-gke-multi-zone\""}),
+		Entry("with unsupported disk-type pd-extreme", multiZoneTestConfig{diskType: extremeDiskType, readOnly: true, hasMultiZoneLabel: true, wantErrSubstring: "points to disk with unsupported disk type"}),
+	)
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
@@ -1314,9 +1363,13 @@ func equalWithinEpsilon(a, b, epsiolon int64) bool {
 }
 
 func createAndValidateUniqueZonalDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
+	volName := testNamePrefix + string(uuid.NewUUID())
+	return createAndValidateZonalDisk(client, project, zone, diskType, volName)
+}
+
+func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, diskType string, volName string) (string, string) {
 	// Create Disk
 	disk := typeToDisk[diskType]
-	volName := testNamePrefix + string(uuid.NewUUID())
 
 	diskSize := defaultSizeGb
 	switch diskType {

@@ -67,6 +67,7 @@ var (
 
 	testVolumeID           = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name)
 	underspecifiedVolumeID = fmt.Sprintf("projects/UNSPECIFIED/zones/UNSPECIFIED/disks/%s", name)
+	multiZoneVolumeID      = fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", project, name)
 
 	region, _      = common.GetRegionFromZones([]string{zone})
 	testRegionalID = fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, name)
@@ -3781,10 +3782,10 @@ func backoffDriver(t *testing.T, config *backoffDriverConfig) *GCEDriver {
 
 	driver := GetGCEDriver()
 	driver.cs = &GCEControllerServer{
-		Driver:       driver,
-		seen:         map[string]int{},
-		volumeLocks:  common.NewVolumeLocks(),
-		errorBackoff: newFakeCSIErrorBackoff(config.clock),
+		Driver:            driver,
+		volumeEntriesSeen: map[string]int{},
+		volumeLocks:       common.NewVolumeLocks(),
+		errorBackoff:      newFakeCSIErrorBackoff(config.clock),
 	}
 
 	driver.cs.CloudProvider = fcp

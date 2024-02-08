@@ -24,4 +24,12 @@ const (
 	VolumeAttributePartition = "partition"
 
 	UnspecifiedValue = "UNSPECIFIED"
+
+	// Keyword indicating a 'multi-zone' volumeHandle. Replaces "zones" in the volumeHandle:
+	// eg: projects/{project}/zones/multi-zone/disks/{name} vs.
+	// projects/{project}/zones/{zone}/disks/{name}
+	MultiZoneValue = "multi-zone"
+
+	// Label that is set on a disk when it is used by a 'multi-zone' VolumeHandle
+	MultiZoneLabel = "goog-gke-multi-zone"
 )
