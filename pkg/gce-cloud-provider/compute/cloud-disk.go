@@ -290,3 +290,16 @@ func (d *CloudDisk) GetEnableStoragePools() bool {
 		return false
 	}
 }
+
+func (d *CloudDisk) GetLabels() map[string]string {
+	switch {
+	case d.disk != nil:
+		return d.disk.Labels
+	case d.betaDisk != nil:
+		return d.betaDisk.Labels
+	case d.alphaDisk != nil:
+		return d.alphaDisk.Labels
+	default:
+		return nil
+	}
+}

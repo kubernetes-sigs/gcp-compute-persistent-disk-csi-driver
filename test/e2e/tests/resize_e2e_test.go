@@ -67,7 +67,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
+		err = client.ControllerPublishVolumeReadWrite(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
@@ -189,7 +189,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
 
 		// Attach and mount again
-		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
+		err = client.ControllerPublishVolumeReadWrite(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
@@ -281,7 +281,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err = client.ControllerPublishVolume(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
+		err = client.ControllerPublishVolumeReadWrite(volume.VolumeId, instance.GetNodeID(), false /* forceAttach */)
 		Expect(err).To(BeNil(), "Controller publish volume failed")
 
 		defer func() {
