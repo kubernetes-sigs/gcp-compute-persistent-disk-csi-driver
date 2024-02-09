@@ -3,6 +3,6 @@ kind: VolumeSnapshotClass
 metadata:
   name: csi-gce-pd-snapshot-class-with-resource-tags
 parameters:
-  resource-tags: <parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>
+  resource-tags: parent1/key1/value1,parent2/key2/value2
 driver: pd.csi.storage.gke.io
 deletionPolicy: Delete

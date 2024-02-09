@@ -186,6 +186,36 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "success with resource-tags parameter",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{"resource-tags": "parent1/key1/value1,parent2/key2/value2"},
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
+			expSnapshot: &csi.Snapshot{
+				SnapshotId:     testSnapshotID,
+				SourceVolumeId: testVolumeID,
+				CreationTime:   tp,
+				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
+				ReadyToUse:     false,
+			},
+		},
+		{
+			name: "fail with malformed resource-tags parameter",
+			req: &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
+				Parameters:     map[string]string{"resource-tags": "parent1/key1/value1,parent2/key2/"},
+			},
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDisk(name),
+			},
+			expErrCode: codes.InvalidArgument,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -957,6 +987,31 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			enableStoragePools: true,
 			expErrCode:         codes.InvalidArgument,
+		},
+		{
+			name: "success with resource-tags parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"resource-tags": "parent1/key1/value1,parent2/key2/value2"},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+		{
+			name: "fail with malformed resource-tags parameter",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"resource-tags": "parent1/key1/value1,parent2/key2/"},
+			},
+			expErrCode: codes.InvalidArgument,
 		},
 	}
 

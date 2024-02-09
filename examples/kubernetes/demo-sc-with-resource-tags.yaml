@@ -4,5 +4,5 @@ metadata:
   name: csi-gce-pd-with-resource-tags
 provisioner: pd.csi.storage.gke.io
 parameters:
-  resource-tags: <parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>
+  resource-tags: parent1/key1/value1,parent2/key2/value2
 volumeBindingMode: WaitForFirstConsumer
