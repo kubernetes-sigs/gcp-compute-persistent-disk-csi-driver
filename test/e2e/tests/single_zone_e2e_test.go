@@ -1296,13 +1296,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 
 		// Create new driver and client w/ invalid endpoint
-		tcInvalid, err := testutils.GCEClientAndDriverSetup(i, "invalid-string")
-		if err != nil {
-			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		computeEndpoint := "invalid-string"
+		tcInvalid, err := testutils.GCEClientAndDriverSetup(i, computeEndpoint)
+		if tcInvalid != nil {
+			klog.Fatalf("Driver setup with incorrect compute %v: %v", i.GetName(), computeEndpoint)
 		}
-
-		_, err = tcInvalid.Client.ListVolumes()
-		Expect(err.Error()).To(ContainSubstring("no such host"), "expected error when passed invalid compute url")
+		Expect(err.Error()).To(ContainSubstring("failed start driver"), "expected error when passed invalid compute url")
 
 		// Create new driver and client w/ valid, passed-in endpoint
 		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")

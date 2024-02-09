@@ -38,6 +38,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type Environment string
+type Version string
+
 const (
 	TokenURL                        = "https://accounts.google.com/o/oauth2/token"
 	diskSourceURITemplateSingleZone = "projects/%s/zones/%s/disks/%s"       // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
@@ -47,27 +50,12 @@ const (
 
 	regionURITemplate = "projects/%s/regions/%s"
 
-	replicaZoneURITemplateSingleZone = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
-	versionV1                        = "v1"
-	versionBeta                      = "beta"
-	versionAlpha                     = "alpha"
-	googleEnv                        = "googleapis"
+	replicaZoneURITemplateSingleZone             = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
+	versionV1                        Version     = "v1"
+	versionBeta                      Version     = "beta"
+	versionAlpha                     Version     = "alpha"
+	environmentStaging               Environment = "staging"
 )
-
-var computeVersionMap = map[string]map[string]map[string]string{
-	googleEnv: {
-		"prod": {
-			versionV1:    "compute/v1/",
-			versionBeta:  "compute/beta/",
-			versionAlpha: "compute/alpha/",
-		},
-		"staging": {
-			versionV1:    "compute/staging_v1/",
-			versionBeta:  "compute/staging_beta/",
-			versionAlpha: "compute/staging_alpha/",
-		},
-	},
-}
 
 type CloudProvider struct {
 	service      *compute.Service
@@ -92,7 +80,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint string, computeEnvironment string) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint string, computeEnvironment Environment) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -187,7 +175,7 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment string) (*computealpha.Service, error) {
+func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment Environment) (*computealpha.Service, error) {
 	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionAlpha)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
@@ -200,7 +188,7 @@ func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSou
 	return service, nil
 }
 
-func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment string) (*computebeta.Service, error) {
+func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment Environment) (*computebeta.Service, error) {
 	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionBeta)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
@@ -213,7 +201,7 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 	return service, nil
 }
 
-func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment string) (*compute.Service, error) {
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment Environment) (*compute.Service, error) {
 	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionV1)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
@@ -226,26 +214,35 @@ func createCloudService(ctx context.Context, vendorVersion string, tokenSource o
 	return service, nil
 }
 
-func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment string, computeVersion string) ([]option.ClientOption, error) {
+func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint string, computeEnvironment Environment, computeVersion Version) ([]option.ClientOption, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
-	computeEnvironmentSuffix, ok := computeVersionMap[googleEnv][computeEnvironment][computeVersion]
-	if !ok {
-		return nil, errors.New("Unable to fetch compute endpoint")
-	}
+	computeEnvironmentSuffix := getPath(computeEnvironment, computeVersion)
 	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+
 	if computeEndpoint != "" {
-		endpoint := fmt.Sprintf("%s%s", computeEndpoint, computeEnvironmentSuffix)
-		klog.Infof("Got compute endpoint %s", endpoint)
-		_, err := url.ParseRequestURI(endpoint)
+		computeURL, err := url.ParseRequestURI(computeEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		endpoint := computeURL.JoinPath(computeEnvironmentSuffix).String()
+		_, err = url.ParseRequestURI(endpoint)
 		if err != nil {
 			klog.Fatalf("Error parsing compute endpoint %s", endpoint)
 		}
 		computeOpts = append(computeOpts, option.WithEndpoint(endpoint))
 	}
 	return computeOpts, nil
+}
+
+func getPath(env Environment, version Version) string {
+	prefix := ""
+	if env == environmentStaging {
+		prefix = fmt.Sprintf("%s_", env)
+	}
+	return fmt.Sprintf("compute/%s%s/", prefix, version)
 }
 
 func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
