@@ -162,7 +162,7 @@ func TestCodeForGCEOpError(t *testing.T) {
 		{
 			name:     "UNSUPPORTED_OPERATION error",
 			inputErr: computev1.OperationErrorErrors{Code: "UNSUPPORTED_OPERATION"},
-			expCode:  codes.Internal,
+			expCode:  codes.InvalidArgument,
 		},
 	}
 
