@@ -951,6 +951,7 @@ func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
 	if opErr == nil {
 		return nil
 	}
+	klog.Infof("wrapOpErr: Logging opErr: %+v", opErr)
 
 	if opErr.Code == "UNSUPPORTED_OPERATION" {
 		if diskType := pdDiskTypeUnsupportedRegex.FindStringSubmatch(opErr.Message); diskType != nil {
@@ -971,6 +972,7 @@ func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 		"RESOURCE_NOT_FOUND":                        codes.NotFound,
 		"RESOURCE_ALREADY_EXISTS":                   codes.AlreadyExists,
 		"RESOURCE_IN_USE_BY_ANOTHER_RESOURCE":       codes.InvalidArgument,
+		"UNSUPPORTED_OPERATION":                     codes.InvalidArgument,
 		"OPERATION_CANCELED_BY_USER":                codes.Aborted,
 		"QUOTA_EXCEEDED":                            codes.ResourceExhausted,
 		"ZONE_RESOURCE_POOL_EXHAUSTED":              codes.Unavailable,

@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	apiv2error "github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -336,6 +337,65 @@ func CodeForError(sourceError error) codes.Code {
 	if sourceError == nil {
 		return codes.Internal
 	}
+	klog.Infof("CodeForError: logging sourceErr: %+v", sourceError)
+
+	var apiErrv2Log *apiv2error.APIError
+	if !errors.As(sourceError, &apiErrv2Log) {
+		klog.Infof("CodeForError: sourceErr cannot be converted to apiv2error: %+v", apiErrv2Log)
+	} else {
+		klog.Infof("CodeForError: sourceErr was converted to apiv2error: %+v", apiErrv2Log)
+		klog.Infof("CodeForError: apiv2error.Unwrap: %+v", apiErrv2Log.Unwrap())
+		klog.Infof("CodeForError: CodeForErrorOriginal(apiv2error.Unwrap): code: %v", CodeForErrorOriginal(apiErrv2Log.Unwrap()))
+		klog.Infof("CodeForError: apiv2error.HTTPCode: %d", apiErrv2Log.HTTPCode())
+		klog.Infof("CodeForError: apiv2error.GRPCStatus().Code(): %d", apiErrv2Log.GRPCStatus().Code())
+		klog.Infof("CodeForError: apiv2error.GRPCStatus().Code(): %+v", apiErrv2Log.GRPCStatus())
+	}
+
+	var apiErrLog *googleapi.Error
+	if !errors.As(sourceError, &apiErrLog) {
+		klog.Infof("CodeForError: sourceErr cannot be converted to googleapiErr: %+v", apiErrLog)
+	} else {
+		klog.Infof("CodeForError: sourceErr was converted to googleapiErr: %+v", apiErrLog)
+		klog.Infof("CodeForError: googleapiErr.Unwrap: %+v", apiErrLog.Unwrap())
+		klog.Infof("CodeForError: CodeForErrorOriginal(googleapiErr.Unwrap): code: %v", CodeForErrorOriginal(apiErrLog.Unwrap()))
+		klog.Infof("CodeForError: googleapiErr.HTTPCode: %d", apiErrLog.Code)
+	}
+
+	if code, err := isUserMultiAttachError(sourceError); err == nil {
+		klog.Infof("encountered user multi attach error. returning error code: %v", code)
+		return code
+	}
+	if code, err := existingErrorCode(sourceError); err == nil {
+		klog.Infof("encountered existing error code. returning error code: %v", code)
+		return code
+	}
+	if code, err := isContextError(sourceError); err == nil {
+		klog.Infof("encountered existing error code. returning error code: %v", code)
+		return code
+	}
+
+	var apiErr *googleapi.Error
+	if !errors.As(sourceError, &apiErr) {
+		klog.Infof("CodeForError: sourceErr cannot be converted to googleapiErr: %+v", apiErr)
+		return codes.Internal
+	}
+	klog.Infof("CodeForError: sourceErr was converted to googleapiErr: %+v", apiErr)
+
+	if code, ok := userErrorCodeMap[apiErr.Code]; ok {
+		return code
+	}
+
+	return codes.Internal
+}
+
+// CodeForErrorOriginal returns the grpc error code that maps to the http error code for the
+// passed in user googleapi error or context error. Returns codes.Internal if the given
+// error is not a googleapi error caused by the user. userErrorCodeMap is used for
+// encoding most errors.
+func CodeForErrorOriginal(sourceError error) codes.Code {
+	if sourceError == nil {
+		return codes.Internal
+	}
 
 	if code, err := isUserMultiAttachError(sourceError); err == nil {
 		return code
@@ -388,12 +448,98 @@ func isUserMultiAttachError(err error) (codes.Code, error) {
 	return codes.Unknown, fmt.Errorf("Not a user multiattach error: %w", err)
 }
 
+/*
+
+import (
+	"errors"
+
+	"github.com/googleapis/gax-go/v2/apierror"
+	"google.golang.org/api/googleapi"
+)
+
+// WrapError creates an [apierror.APIError] from err, wraps it in err, and
+// returns err. If err is not a [googleapi.Error] (or a
+// [google.golang.org/grpc/status.Status]), it returns err without modification.
+func WrapError(err error) error {
+	var herr *googleapi.Error
+	apiError, ok := apierror.ParseError(err, false)
+	if ok && errors.As(err, &herr) {
+		herr.Wrap(apiError)
+	}
+	return err
+}
+
+func (a *APIError) setDetailsFromError(err error) bool {
+	st, isStatus := status.FromError(err)
+	var herr *googleapi.Error
+	isHTTPErr := errors.As(err, &herr)
+
+	switch {
+	case isStatus:
+		a.status = st
+		a.details = parseDetails(st.Details())
+	case isHTTPErr:
+		a.httpErr = herr
+		a.details = parseHTTPDetails(herr)
+		a.status = status.New(codes.Unknown, herr.Message)
+	default:
+		return false
+	}
+	return true
+}
+
+*/
+
+func unwrapUnknownErrorCode(err error) (codes.Code, error) {
+	var apiErr *apiv2error.APIError
+	if !errors.As(err, &apiErr) {
+		klog.Infof("unwrapUnknownErrorCode: error cannot be converted to apiv2error: %+v", err)
+		return codes.Unknown, nil
+	}
+	klog.Infof("unwrapUnknownErrorCode: logging apiv2error: %+v", err)
+	st, isStatus := status.FromError(err)
+	if isStatus {
+		klog.Infof("unwrapUnknownErrorCode: isStatus is true. Status: %+v, original error: %+v", st, err)
+	}
+	var herr *googleapi.Error
+	isHTTPErr := errors.As(err, &herr)
+	if isHTTPErr {
+		klog.Infof("unwrapUnknownErrorCode: isHTTPErr is true. original error: %+v", err)
+	}
+	originalErr := apiErr.Unwrap()
+	klog.Infof("unwrapUnknownErrorCode: originalErr: %+v", originalErr)
+
+	if status, ok := status.FromError(originalErr); ok {
+		code := status.Code()
+		klog.Infof("unwrapUnknownErrorCode: status.FromError(originalErr) is %+v, and Code is: %+v", status, code)
+	}
+
+	var googleAPIErr *googleapi.Error
+	if !errors.As(originalErr, &googleAPIErr) {
+		klog.Infof("unwrapUnknownErrorCode: originalErr cannot be converted to googleapi.Error: %+v", originalErr)
+		return codes.Unknown, nil
+	}
+	klog.Infof("unwrapUnknownErrorCode: logging google api error: %+v, originalErr: %+v", googleAPIErr, originalErr)
+
+	if code, ok := userErrorCodeMap[googleAPIErr.Code]; ok {
+		klog.Infof("unwrapUnknownErrorCode: originalErr found code in UserErrorCodeMap. code is %v, googleAPIErr: %+v, originalErr: %+v", code, googleAPIErr, originalErr)
+		return code, nil
+	}
+
+	return codes.Unknown, nil
+}
+
 func existingErrorCode(err error) (codes.Code, error) {
 	if err == nil {
 		return codes.Unknown, fmt.Errorf("null error")
 	}
 	if status, ok := status.FromError(err); ok {
-		return status.Code(), nil
+		code := status.Code()
+		if code == codes.Unknown {
+			klog.Infof("encountered unknown error code. Calling unwrapUnknownErrorCode")
+			return unwrapUnknownErrorCode(err)
+		}
+		return code, nil
 	}
 	return codes.Unknown, fmt.Errorf("no existing error code for %w", err)
 }
