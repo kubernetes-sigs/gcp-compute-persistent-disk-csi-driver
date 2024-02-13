@@ -298,7 +298,8 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, gceCS.CloudProvider.GetDefaultProject(), volKey, gceAPIVersion)
 	if err != nil {
 		if !gce.IsGCEError(err, "notFound") {
-			return nil, common.LoggedError("CreateVolume, failed to getDisk when validating: ", err)
+			// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
+			return nil, common.LoggedError("CreateVolume, failed to getDisk when validating: ", status.Error(codes.Unavailable, err.Error()))
 		}
 	}
 	if err == nil {
@@ -313,10 +314,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 		ready, err := isDiskReady(existingDisk)
 		if err != nil {
-			return nil, common.LoggedError("CreateVolume disk "+volKey.String()+" had error checking ready status: ", err)
+			return nil, status.Errorf(codes.Aborted, "CreateVolume disk %q had error checking ready status: %v", volKey.String(), err.Error())
 		}
 		if !ready {
-			return nil, status.Errorf(codes.Internal, "CreateVolume existing disk %v is not ready", volKey)
+			return nil, status.Errorf(codes.Aborted, "CreateVolume existing disk %v is not ready", volKey)
 		}
 
 		// If there is no validation error, immediately return success
@@ -391,10 +392,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 			// Verify the source disk is ready.
 			ready, err := isDiskReady(diskFromSourceVolume)
 			if err != nil {
-				return nil, common.LoggedError("CreateVolume disk from source volume "+sourceVolKey.String()+"  had error checking ready status: ", err)
+				return nil, status.Errorf(codes.Aborted, "CreateVolume disk from source volume %q had error checking ready status: %v", sourceVolKey.String(), err.Error())
 			}
 			if !ready {
-				return nil, status.Errorf(codes.Internal, "CreateVolume disk from source volume %v is not ready", sourceVolKey)
+				return nil, status.Errorf(codes.Aborted, "CreateVolume disk from source volume %v is not ready", sourceVolKey)
 			}
 		}
 	} else { // if VolumeContentSource is nil, validate access mode is not read only
@@ -1802,9 +1803,10 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	if multiWriter {
 		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
+	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.RegionalKey(name, region), gceAPIVersion)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get disk after creating regional disk: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "failed to get disk after creating regional disk: %v", err.Error())
 	}
 	return disk, nil
 }
@@ -1824,9 +1826,10 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	if multiWriter {
 		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
+	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.ZonalKey(name, diskZone), gceAPIVersion)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Unavailable, "failed to get disk after creating zonal disk: %v", err.Error())
 	}
 	return disk, nil
 }

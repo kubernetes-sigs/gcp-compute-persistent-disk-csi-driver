@@ -515,7 +515,9 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		if IsGCEError(err, "alreadyExists") {
 			disk, err := cloud.GetDisk(ctx, project, volKey, gceAPIVersion)
 			if err != nil {
-				return err
+				// failed to GetDisk, however the Disk may already exist
+				// the error code should be non-Final
+				return status.Error(codes.Unavailable, err.Error())
 			}
 			err = cloud.ValidateExistingDisk(ctx, disk, params,
 				int64(capacityRange.GetRequiredBytes()),
@@ -527,16 +529,19 @@ func (cloud *CloudProvider) insertRegionalDisk(
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
-		return status.Error(codes.Internal, fmt.Sprintf("unknown Insert disk error: %v", err.Error()))
+		// if the error code is considered "final", RegionDisks.Insert might not be retried
+		return fmt.Errorf("unknown Insert Regional disk error: %w", err)
 	}
 	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
 
 	err = cloud.waitForRegionalOp(ctx, project, opName, volKey.Region)
+	// failed to wait for Op to finish, however, the Op possibly is still running as expected
+	// the error code returned should be non-final
 	if err != nil {
 		if IsGCEError(err, "alreadyExists") {
 			disk, err := cloud.GetDisk(ctx, project, volKey, gceAPIVersion)
 			if err != nil {
-				return err
+				return status.Errorf(codes.Unavailable, "error when getting disk: %v", err.Error())
 			}
 			err = cloud.ValidateExistingDisk(ctx, disk, params,
 				int64(capacityRange.GetRequiredBytes()),
@@ -548,7 +553,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unknown Insert disk operation error: %w", err)
+		return status.Errorf(codes.Unavailable, "unknown error when polling the operation: %v", err.Error())
 	}
 	return nil
 }
@@ -627,7 +632,9 @@ func (cloud *CloudProvider) insertZonalDisk(
 		if IsGCEError(err, "alreadyExists") {
 			disk, err := cloud.GetDisk(ctx, project, volKey, gceAPIVersion)
 			if err != nil {
-				return err
+				// failed to GetDisk, however the Disk may already exist
+				// the error code should be non-Final
+				return status.Error(codes.Unavailable, err.Error())
 			}
 			err = cloud.ValidateExistingDisk(ctx, disk, params,
 				int64(capacityRange.GetRequiredBytes()),
@@ -639,6 +646,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 			klog.Warningf("GCE PD %s already exists, reusing", volKey.Name)
 			return nil
 		}
+		// if the error code is considered "final", Disks.Insert might not be retried
 		return fmt.Errorf("unknown Insert disk error: %w", err)
 	}
 	klog.V(5).Infof("InsertDisk operation %s for disk %s", opName, diskToCreate.Name)
@@ -646,10 +654,12 @@ func (cloud *CloudProvider) insertZonalDisk(
 	err = cloud.waitForZonalOp(ctx, project, opName, volKey.Zone)
 
 	if err != nil {
+		// failed to wait for Op to finish, however, the Op possibly is still running as expected
+		// the error code returned should be non-final
 		if IsGCEError(err, "alreadyExists") {
 			disk, err := cloud.GetDisk(ctx, project, volKey, gceAPIVersion)
 			if err != nil {
-				return err
+				return status.Errorf(codes.Unavailable, "error when getting disk: %v", err.Error())
 			}
 			err = cloud.ValidateExistingDisk(ctx, disk, params,
 				int64(capacityRange.GetRequiredBytes()),
@@ -661,7 +671,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 			klog.Warningf("GCE PD %s already exists after wait, reusing", volKey.Name)
 			return nil
 		}
-		return fmt.Errorf("unknown Insert disk operation error: %w", err)
+		return status.Errorf(codes.Unavailable, "unknown error when polling the operation: %v", err.Error())
 	}
 	return nil
 }
