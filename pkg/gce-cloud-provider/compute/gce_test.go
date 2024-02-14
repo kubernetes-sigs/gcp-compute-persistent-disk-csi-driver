@@ -18,14 +18,28 @@ limitations under the License.
 package gcecloudprovider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
+
+	"golang.org/x/oauth2"
 
 	"google.golang.org/api/googleapi"
 )
 
+type mockTokenSource struct{}
+
+func (*mockTokenSource) Token() (*oauth2.Token, error) {
+	return &oauth2.Token{
+		AccessToken:  "access",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(1 * time.Hour),
+	}, nil
+}
 func TestIsGCEError(t *testing.T) {
 	testCases := []struct {
 		name          string
@@ -83,4 +97,56 @@ func TestIsGCEError(t *testing.T) {
 			t.Fatalf("Got isGCEError '%t', expected '%t'", isGCEError, tc.expIsGCEError)
 		}
 	}
+}
+
+func TestGetComputeVersion(t *testing.T) {
+	testCases := []struct {
+		name               string
+		computeEndpoint    string
+		computeEnvironment Environment
+		computeVersion     Version
+		expectedEndpoint   string
+		expectError        bool
+	}{
+
+		{
+			name:               "check for production environment",
+			computeEndpoint:    "https://compute.googleapis.com",
+			computeEnvironment: "production",
+			computeVersion:     "v1",
+			expectedEndpoint:   "https://compute.googleapis.com/compute/v1/",
+			expectError:        false,
+		},
+		{
+			name:               "check for incorrect endpoint",
+			computeEndpoint:    "https://compute.googleapis",
+			computeEnvironment: "prod",
+			computeVersion:     "v1",
+			expectError:        true,
+		},
+		{
+			name:               "check for staging environment",
+			computeEndpoint:    "https://compute.googleapis.com",
+			computeEnvironment: environmentStaging,
+			computeVersion:     "v1",
+			expectedEndpoint:   "compute/staging_v1/",
+			expectError:        false,
+		},
+		{
+			name:               "check for random string as endpoint",
+			computeEndpoint:    "compute-googleapis",
+			computeEnvironment: "prod",
+			computeVersion:     "v1",
+			expectedEndpoint:   "compute/v1/",
+			expectError:        true,
+		},
+	}
+	for _, tc := range testCases {
+		ctx := context.Background()
+		_, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion)
+		if err != nil && !tc.expectError {
+			t.Fatalf("Got error %v, expected endpoint %s", err, tc.expectedEndpoint)
+		}
+	}
+
 }
