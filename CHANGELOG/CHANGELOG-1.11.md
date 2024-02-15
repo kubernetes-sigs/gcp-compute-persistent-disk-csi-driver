@@ -1,3 +1,11 @@
+# v1.11.9 - Changelog since v1.11.8
+
+## Changes by Kind
+
+### Bug
+
+- Change GetDisk error reporting to temporary in CreateVolume codepath ([#1601])https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1601), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
 # v1.11.8 - Changelog since v1.11.7
 
 ## Changes by Kind
