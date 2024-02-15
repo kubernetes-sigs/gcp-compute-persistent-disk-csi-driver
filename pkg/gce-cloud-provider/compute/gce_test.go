@@ -104,7 +104,7 @@ func TestIsGCEError(t *testing.T) {
 func TestGetComputeVersion(t *testing.T) {
 	testCases := []struct {
 		name               string
-		computeEndpoint    url.URL
+		computeEndpoint    *url.URL
 		computeEnvironment Environment
 		computeVersion     Version
 		expectedEndpoint   string
@@ -129,7 +129,7 @@ func TestGetComputeVersion(t *testing.T) {
 		},
 		{
 			name:               "check for random string as endpoint",
-			computeEndpoint:    url.URL{},
+			computeEndpoint:    convertStringToURL(""),
 			computeEnvironment: "prod",
 			computeVersion:     "v1",
 			expectedEndpoint:   "compute/v1/",
@@ -151,10 +151,10 @@ func TestGetComputeVersion(t *testing.T) {
 
 }
 
-func convertStringToURL(urlString string) url.URL {
+func convertStringToURL(urlString string) *url.URL {
 	parsedURL, err := url.ParseRequestURI(urlString)
 	if err != nil {
-		return url.URL{}
+		return nil
 	}
-	return *parsedURL
+	return parsedURL
 }

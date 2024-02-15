@@ -73,7 +73,7 @@ var (
 
 	enableStoragePoolsFlag                    = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
 	computeEnvironment        gce.Environment = gce.EnvironmentProduction
-	computeEndpoint           url.URL
+	computeEndpoint           *url.URL
 	version                   string
 	allowedComputeEnvironment = []gce.Environment{gce.EnvironmentStaging, gce.EnvironmentProduction}
 )
@@ -89,7 +89,7 @@ func init() {
 	// Use V(5) for GCE Cloud Provider Call informational logging
 	// Use V(6) for extra repeated/polling information
 	enumFlag(&computeEnvironment, "compute-environment", allowedComputeEnvironment, "Operating compute environment")
-	urlFlag(&computeEndpoint, "compute-endpoint", "Compute endpoint")
+	urlFlag(computeEndpoint, "compute-endpoint", "Compute endpoint")
 	klog.InitFlags(flag.CommandLine)
 	flag.Set("logtostderr", "true")
 }
@@ -229,7 +229,7 @@ func urlFlag(target *url.URL, name string, usage string) {
 	flag.Func(name, usage, func(flagValue string) error {
 		computeURL, err := url.ParseRequestURI(flagValue)
 		if err == nil {
-			*target = *computeURL
+			target = computeURL
 			return nil
 		}
 		return err
