@@ -978,6 +978,7 @@ func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 		"REGION_QUOTA_EXCEEDED":                     codes.ResourceExhausted,
 		"RATE_LIMIT_EXCEEDED":                       codes.ResourceExhausted,
 		"INVALID_USAGE":                             codes.InvalidArgument,
+		"UNSUPPORTED_OPERATION":                     codes.InvalidArgument,
 	}
 	if code, ok := userErrors[err.Code]; ok {
 		return code
