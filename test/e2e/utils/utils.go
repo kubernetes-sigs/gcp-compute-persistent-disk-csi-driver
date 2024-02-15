@@ -53,6 +53,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
 
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
+	klog.Infof("ENDPOINT: %s", endpoint)
 	extra_flags := []string{
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
 		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
@@ -65,7 +66,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	// useful to see what's happening when debugging tests.
 	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
-
+	klog.Infof("DRIVER COMMAND %s", driverRunCmd)
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
 		BinPath:      binPath,
