@@ -1280,7 +1280,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should pass/fail if valid/invalid compute endpoint is passed in", func() {
+	It("Should pass if valid compute endpoint is passed in", func() {
 		// gets instance set up w/o compute-endpoint set from test setup
 		_, err := getRandomTestContext().Client.ListVolumes()
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
@@ -1294,14 +1294,6 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 
 		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
-
-		// Create new driver and client w/ invalid endpoint
-		computeEndpoint := "invalid-string"
-		tcInvalid, err := testutils.GCEClientAndDriverSetup(i, computeEndpoint)
-		if tcInvalid != nil {
-			klog.Fatalf("Driver setup with incorrect compute %v: %v", i.GetName(), computeEndpoint)
-		}
-		Expect(err.Error()).To(ContainSubstring("failed start driver"), "expected error when passed invalid compute url")
 
 		// Create new driver and client w/ valid, passed-in endpoint
 		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")

@@ -231,7 +231,6 @@ func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, comp
 		_, err = url.ParseRequestURI(endpoint)
 		if err != nil {
 			klog.Fatalf("Error parsing compute endpoint %s", endpoint)
-			return nil, err
 		}
 		computeOpts = append(computeOpts, option.WithEndpoint(endpoint))
 	}
