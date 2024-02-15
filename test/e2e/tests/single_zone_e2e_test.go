@@ -1280,7 +1280,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should pass/fail if valid/invalid compute endpoint is passed in", func() {
+	It("Should pass if valid compute endpoint is passed in", func() {
 		// gets instance set up w/o compute-endpoint set from test setup
 		_, err := getRandomTestContext().Client.ListVolumes()
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
