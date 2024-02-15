@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -40,7 +41,6 @@ import (
 var (
 	cloudConfigFilePath  = flag.String("cloud-config", "", "Path to GCE cloud provider config")
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
-	computeEndpoint      = flag.String("compute-endpoint", "", "If set, used as the endpoint for the GCE API.")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
 	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
@@ -72,9 +72,10 @@ var (
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 
 	enableStoragePoolsFlag                    = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
-	computeEnvironment        gce.Environment = "production"
+	computeEnvironment        gce.Environment = gce.EnvironmentProduction
+	computeEndpoint           url.URL
 	version                   string
-	allowedComputeEnvironment = []string{"staging", "production"}
+	allowedComputeEnvironment = []gce.Environment{gce.EnvironmentStaging, gce.EnvironmentProduction}
 )
 
 const (
@@ -88,6 +89,7 @@ func init() {
 	// Use V(5) for GCE Cloud Provider Call informational logging
 	// Use V(6) for extra repeated/polling information
 	enumFlag(&computeEnvironment, "compute-environment", allowedComputeEnvironment, "Operating compute environment")
+	urlFlag(&computeEndpoint, "compute-endpoint", "Compute endpoint")
 	klog.InitFlags(flag.CommandLine)
 	flag.Set("logtostderr", "true")
 }
@@ -159,7 +161,7 @@ func handle() {
 	// Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
-		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, *computeEndpoint, computeEnvironment)
+		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment)
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
@@ -209,10 +211,10 @@ func handle() {
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing)
 }
 
-func enumFlag(target *gce.Environment, name string, allowedComputeEnvironment []string, usage string) {
+func enumFlag(target *gce.Environment, name string, allowedComputeEnvironment []gce.Environment, usage string) {
 	flag.Func(name, usage, func(flagValue string) error {
 		for _, allowedValue := range allowedComputeEnvironment {
-			if flagValue == allowedValue {
+			if gce.Environment(flagValue) == allowedValue {
 				*target = gce.Environment(flagValue)
 				return nil
 			}
@@ -221,4 +223,15 @@ func enumFlag(target *gce.Environment, name string, allowedComputeEnvironment []
 		return errors.New(errMsg)
 	})
 
+}
+
+func urlFlag(target *url.URL, name string, usage string) {
+	flag.Func(name, usage, func(flagValue string) error {
+		computeURL, err := url.ParseRequestURI(flagValue)
+		if err == nil {
+			*target = *computeURL
+			return nil
+		}
+		return err
+	})
 }

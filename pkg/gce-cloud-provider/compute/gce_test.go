@@ -22,11 +22,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
 	"golang.org/x/oauth2"
 
+	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 )
 
@@ -102,7 +104,7 @@ func TestIsGCEError(t *testing.T) {
 func TestGetComputeVersion(t *testing.T) {
 	testCases := []struct {
 		name               string
-		computeEndpoint    string
+		computeEndpoint    url.URL
 		computeEnvironment Environment
 		computeVersion     Version
 		expectedEndpoint   string
@@ -111,30 +113,23 @@ func TestGetComputeVersion(t *testing.T) {
 
 		{
 			name:               "check for production environment",
-			computeEndpoint:    "https://compute.googleapis.com",
-			computeEnvironment: "production",
-			computeVersion:     "v1",
-			expectedEndpoint:   "https://compute.googleapis.com/compute/v1/",
+			computeEndpoint:    convertStringToURL("https://compute.googleapis.com"),
+			computeEnvironment: EnvironmentProduction,
+			computeVersion:     versionBeta,
+			expectedEndpoint:   "https://compute.googleapis.com/compute/beta/",
 			expectError:        false,
 		},
 		{
-			name:               "check for incorrect endpoint",
-			computeEndpoint:    "https://compute.googleapis",
-			computeEnvironment: "prod",
-			computeVersion:     "v1",
-			expectError:        true,
-		},
-		{
 			name:               "check for staging environment",
-			computeEndpoint:    "https://compute.googleapis.com",
-			computeEnvironment: environmentStaging,
-			computeVersion:     "v1",
-			expectedEndpoint:   "compute/staging_v1/",
+			computeEndpoint:    convertStringToURL("https://compute.googleapis.com"),
+			computeEnvironment: EnvironmentStaging,
+			computeVersion:     versionV1,
+			expectedEndpoint:   "https://compute.googleapis.com/compute/staging_v1/",
 			expectError:        false,
 		},
 		{
 			name:               "check for random string as endpoint",
-			computeEndpoint:    "compute-googleapis",
+			computeEndpoint:    url.URL{},
 			computeEnvironment: "prod",
 			computeVersion:     "v1",
 			expectedEndpoint:   "compute/v1/",
@@ -143,10 +138,23 @@ func TestGetComputeVersion(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		ctx := context.Background()
-		_, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion)
+		computeOpts, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion)
+		service, _ := compute.NewService(ctx, computeOpts...)
+		gotEndpoint := service.BasePath
 		if err != nil && !tc.expectError {
-			t.Fatalf("Got error %v, expected endpoint %s", err, tc.expectedEndpoint)
+			t.Fatalf("Got error %v", err)
+		}
+		if gotEndpoint != tc.expectedEndpoint && !tc.expectError {
+			t.Fatalf("expected endpoint %s, got endpoint %s", tc.expectedEndpoint, gotEndpoint)
 		}
 	}
 
+}
+
+func convertStringToURL(urlString string) url.URL {
+	parsedURL, err := url.ParseRequestURI(urlString)
+	if err != nil {
+		return url.URL{}
+	}
+	return *parsedURL
 }
