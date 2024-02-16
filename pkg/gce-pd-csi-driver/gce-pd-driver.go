@@ -152,15 +152,16 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig) *GCEControllerServer {
 	return &GCEControllerServer{
-		Driver:                 gceDriver,
-		CloudProvider:          cloudProvider,
-		seen:                   map[string]int{},
-		volumeLocks:            common.NewVolumeLocks(),
-		errorBackoff:           newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
-		fallbackRequisiteZones: fallbackRequisiteZones,
-		enableStoragePools:     enableStoragePools,
+		Driver:                      gceDriver,
+		CloudProvider:               cloudProvider,
+		volumeEntriesSeen:           map[string]int{},
+		volumeLocks:                 common.NewVolumeLocks(),
+		errorBackoff:                newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
+		fallbackRequisiteZones:      fallbackRequisiteZones,
+		enableStoragePools:          enableStoragePools,
+		multiZoneVolumeHandleConfig: multiZoneVolumeHandleConfig,
 	}
 }
 
