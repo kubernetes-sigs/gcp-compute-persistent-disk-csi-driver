@@ -89,7 +89,7 @@ func init() {
 	// Use V(5) for GCE Cloud Provider Call informational logging
 	// Use V(6) for extra repeated/polling information
 	enumFlag(&computeEnvironment, "compute-environment", allowedComputeEnvironment, "Operating compute environment")
-	urlFlag(computeEndpoint, "compute-endpoint", "Compute endpoint")
+	urlFlag(&computeEndpoint, "compute-endpoint", "Compute endpoint")
 	klog.InitFlags(flag.CommandLine)
 	flag.Set("logtostderr", "true")
 }
@@ -97,6 +97,7 @@ func init() {
 func main() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
+	klog.Infof("Operating compute environment set to: %s and computeEndpoint is set to: %v", computeEnvironment, computeEndpoint)
 	handle()
 	os.Exit(0)
 }
@@ -225,13 +226,14 @@ func enumFlag(target *gce.Environment, name string, allowedComputeEnvironment []
 
 }
 
-func urlFlag(target *url.URL, name string, usage string) {
+func urlFlag(target **url.URL, name string, usage string) {
 	flag.Func(name, usage, func(flagValue string) error {
 		computeURL, err := url.ParseRequestURI(flagValue)
 		if err == nil {
-			target = computeURL
+			*target = computeURL
 			return nil
 		}
+		klog.Infof("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
 }
