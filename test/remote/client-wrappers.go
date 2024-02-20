@@ -134,12 +134,20 @@ func (c *CsiClient) DeleteVolume(volId string) error {
 	return err
 }
 
-func (c *CsiClient) ControllerPublishVolume(volId, nodeId string, forceAttach bool) error {
+func (c *CsiClient) ControllerPublishVolumeReadOnly(volId, nodeId string) error {
+	return c.ControllerPublishVolume(volId, nodeId, false /* forceAttach */, true /* readOnly */)
+}
+
+func (c *CsiClient) ControllerPublishVolumeReadWrite(volId, nodeId string, forceAttach bool) error {
+	return c.ControllerPublishVolume(volId, nodeId, forceAttach, false /* readOnly */)
+}
+
+func (c *CsiClient) ControllerPublishVolume(volId, nodeId string, forceAttach bool, readOnly bool) error {
 	cpreq := &csipb.ControllerPublishVolumeRequest{
 		VolumeId:         volId,
 		NodeId:           nodeId,
 		VolumeCapability: stdVolCap,
-		Readonly:         false,
+		Readonly:         readOnly,
 	}
 	if forceAttach {
 		cpreq.VolumeContext = map[string]string{

@@ -20,6 +20,7 @@ package gcecloudprovider
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
@@ -126,6 +127,50 @@ func TestGetEnableStoragePools(t *testing.T) {
 		}
 		if enableStoragePools != tc.expectedEnableStoragePools {
 			t.Fatalf("%s got confidentialCompute value %t expected %t", input, enableStoragePools, tc.expectedEnableStoragePools)
+		}
+	}
+}
+
+func TestGetLabels(t *testing.T) {
+	testCases := []struct {
+		name       string
+		cloudDisk  *CloudDisk
+		wantLabels map[string]string
+	}{
+		{
+			name: "v1 disk labels",
+			cloudDisk: &CloudDisk{
+				disk: &computev1.Disk{
+					Labels: map[string]string{"foo": "v1", "goog-gke-multi-zone": "true"},
+				},
+			},
+			wantLabels: map[string]string{"foo": "v1", "goog-gke-multi-zone": "true"},
+		},
+		{
+			name: "beta disk labels",
+			cloudDisk: &CloudDisk{
+				betaDisk: &computebeta.Disk{
+					Labels: map[string]string{"bar": "beta", "goog-gke-multi-zone": "true"},
+				},
+			},
+			wantLabels: map[string]string{"bar": "beta", "goog-gke-multi-zone": "true"},
+		},
+		{
+			name: "alpha disk without storage pool returns false",
+			cloudDisk: &CloudDisk{
+				alphaDisk: &computealpha.Disk{
+					Labels: map[string]string{"baz": "alpha", "goog-gke-multi-zone": "true"},
+				},
+			},
+			wantLabels: map[string]string{"baz": "alpha", "goog-gke-multi-zone": "true"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		gotLabels := tc.cloudDisk.GetLabels()
+		if diff := cmp.Diff(tc.wantLabels, gotLabels); diff != "" {
+			t.Errorf("GetLabels() returned unexpected difference (-want +got):\n%s", diff)
 		}
 	}
 }

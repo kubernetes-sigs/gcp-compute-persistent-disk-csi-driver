@@ -478,3 +478,15 @@ func UnorderedSlicesEqual(slice1 []string, slice2 []string) bool {
 	}
 	return true
 }
+
+func VolumeIdAsMultiZone(volumeId string) (string, error) {
+	splitId := strings.Split(volumeId, "/")
+	if len(splitId) != volIDTotalElements {
+		return "", fmt.Errorf("failed to get id components. Expected projects/{project}/zones/{zone}/disks/{name}. Got: %s", volumeId)
+	}
+	if splitId[volIDToplogyKey] != "zones" {
+		return "", fmt.Errorf("expected id to be zonal. Got: %s", volumeId)
+	}
+	splitId[volIDToplogyValue] = MultiZoneValue
+	return strings.Join(splitId, "/"), nil
+}
