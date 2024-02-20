@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"runtime"
 	"time"
@@ -38,9 +37,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type Environment string
-type Version string
-
 const (
 	TokenURL                        = "https://accounts.google.com/o/oauth2/token"
 	diskSourceURITemplateSingleZone = "projects/%s/zones/%s/disks/%s"       // {gce.projectID}/zones/{disk.Zone}/disks/{disk.Name}"
@@ -50,12 +46,7 @@ const (
 
 	regionURITemplate = "projects/%s/regions/%s"
 
-	replicaZoneURITemplateSingleZone             = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
-	versionV1                        Version     = "v1"
-	versionBeta                      Version     = "beta"
-	versionAlpha                     Version     = "alpha"
-	EnvironmentStaging               Environment = "staging"
-	EnvironmentProduction            Environment = "production"
+	replicaZoneURITemplateSingleZone = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 )
 
 type CloudProvider struct {
@@ -81,7 +72,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint string) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -96,23 +87,20 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	klog.Infof("Compute endpoint for V1 version: %s", svc.BasePath)
 
-	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	klog.Infof("Compute endpoint for Beta version: %s", betasvc.BasePath)
 
-	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	klog.Infof("Compute endpoint for Alpha version: %s", alphasvc.BasePath)
 
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
@@ -176,23 +164,16 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computealpha.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionAlpha)
-	if err != nil {
-		klog.Errorf("Failed to get compute endpoint: %s", err)
-	}
-	service, err := computealpha.NewService(ctx, computeOpts...)
+func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*computebeta.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
-	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
-	return service, nil
-}
 
-func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computebeta.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionBeta)
-	if err != nil {
-		klog.Errorf("Failed to get compute endpoint: %s", err)
+	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+	if computeEndpoint != "" {
+		betaEndpoint := fmt.Sprintf("%s/compute/beta/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(betaEndpoint))
 	}
 	service, err := computebeta.NewService(ctx, computeOpts...)
 	if err != nil {
@@ -202,12 +183,18 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 	return service, nil
 }
 
-func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*compute.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionV1)
+func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*computealpha.Service, error) {
+	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
-		klog.Errorf("Failed to get compute endpoint: %s", err)
+		return nil, err
 	}
-	service, err := compute.NewService(ctx, computeOpts...)
+
+	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
+	if computeEndpoint != "" {
+		alphaEndpoint := fmt.Sprintf("%s/compute/alpha/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(alphaEndpoint))
+	}
+	service, err := computealpha.NewService(ctx, computeOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -215,28 +202,28 @@ func createCloudService(ctx context.Context, vendorVersion string, tokenSource o
 	return service, nil
 }
 
-func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion Version) ([]option.ClientOption, error) {
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*compute.Service, error) {
+	svc, err := createCloudServiceWithDefaultServiceAccount(ctx, vendorVersion, tokenSource, computeEndpoint)
+	return svc, err
+}
+
+func createCloudServiceWithDefaultServiceAccount(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint string) (*compute.Service, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
 	}
+
 	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
-
-	if computeEndpoint != nil {
-		computeEnvironmentSuffix := constructComputeEndpointPath(computeEnvironment, computeVersion)
-		computeEndpoint.Path = computeEnvironmentSuffix
-		endpoint := computeEndpoint.String()
-		computeOpts = append(computeOpts, option.WithEndpoint(endpoint))
+	if computeEndpoint != "" {
+		v1Endpoint := fmt.Sprintf("%s/compute/v1/", computeEndpoint)
+		computeOpts = append(computeOpts, option.WithEndpoint(v1Endpoint))
 	}
-	return computeOpts, nil
-}
-
-func constructComputeEndpointPath(env Environment, version Version) string {
-	prefix := ""
-	if env == EnvironmentStaging {
-		prefix = fmt.Sprintf("%s_", env)
+	service, err := compute.NewService(ctx, computeOpts...)
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Sprintf("compute/%s%s/", prefix, version)
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
+	return service, nil
 }
 
 func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
