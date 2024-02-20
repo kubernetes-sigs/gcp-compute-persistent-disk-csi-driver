@@ -65,7 +65,6 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	// useful to see what's happening when debugging tests.
 	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
-
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
 		BinPath:      binPath,
