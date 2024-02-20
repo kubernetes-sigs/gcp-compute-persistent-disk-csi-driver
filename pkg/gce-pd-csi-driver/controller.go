@@ -159,7 +159,7 @@ const (
 )
 
 var (
-	validResourceApiVersions = map[string]bool{"v1": true, "alpha": true, "beta": true, "staging_v1": true, "staging_beta": true, "staging_alpha": true}
+	validResourceApiVersions = map[string]bool{"v1": true, "alpha": true, "beta": true}
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
