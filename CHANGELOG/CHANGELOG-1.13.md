@@ -1,3 +1,28 @@
+# v1.13.1 - Changelog since v1.13.0
+
+## Changes by Kind
+
+### Feature
+
+- Add support for multi-zone volumeHandle ([#1616](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1616), [@pwschuurman](https://github.com/pwschuurman))
+- Update driver to support staging compute ([#1614](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1614), [@Sneha-at](https://github.com/Sneha-at))
+
+### Other (Cleanup or Flake)
+
+- Map UNSUPPORTED_OPERATION GCE operation error codes to InvalidArgument ([#1610](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1610), [@amacaskill](https://github.com/amacaskill))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+
 # v1.13.0 - Changelog since v1.12.6
 
 ## Changes by Kind
