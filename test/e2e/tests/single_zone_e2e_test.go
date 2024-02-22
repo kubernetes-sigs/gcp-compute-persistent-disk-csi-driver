@@ -1295,6 +1295,16 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
 
+		// Create new driver and client with valid, empty endpoint
+		klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
+		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, "")
+		if err != nil {
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		}
+		_, err = tcEmpty.Client.ListVolumes()
+
+		Expect(err).To(BeNil(), "no error expected when passed empty compute url")
+
 		// Create new driver and client w/ valid, passed-in endpoint
 		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")
 		if err != nil {

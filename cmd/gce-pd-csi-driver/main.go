@@ -211,12 +211,15 @@ func enumFlag(target *gce.Environment, name string, allowedComputeEnvironment []
 
 func urlFlag(target **url.URL, name string, usage string) {
 	flag.Func(name, usage, func(flagValue string) error {
+		if flagValue == "" {
+			return nil
+		}
 		computeURL, err := url.ParseRequestURI(flagValue)
 		if err == nil {
 			*target = computeURL
 			return nil
 		}
-		klog.Infof("Error parsing endpoint compute endpoint %v", err)
+		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
 }
