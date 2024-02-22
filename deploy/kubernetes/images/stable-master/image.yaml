@@ -52,5 +52,5 @@ imageTag:
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
   newName: registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.13.0"
+  newTag: "v1.13.1"
 ---
