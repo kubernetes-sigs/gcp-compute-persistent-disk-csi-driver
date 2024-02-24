@@ -404,7 +404,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				EnableStoragePools: tc.enableStoragePools,
 				EnableMultiZone:    tc.enableMultiZone,
 			}
-			p, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.extraTags)
+			p, _, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, false, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
