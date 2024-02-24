@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gcepd-balanced
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-balanced
+  data-cache-mode: writeback
+  data-cache-size: "3"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
