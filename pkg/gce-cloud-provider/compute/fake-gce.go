@@ -318,7 +318,7 @@ func (cloud *FakeCloudProvider) getRegionalDiskTypeURI(project, region, diskType
 	return fmt.Sprintf(diskTypeURITemplateRegional, project, region, diskType)
 }
 
-func (cloud *FakeCloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
+func (cloud *FakeCloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, diskType, instanceZone, instanceName string) error {
 	return nil
 }
 
