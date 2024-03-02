@@ -52,6 +52,7 @@ const (
 	defaultVolumeLimit                int64 = 127
 	readyState                              = "READY"
 	standardDiskType                        = "pd-standard"
+	ssdDiskType                             = "pd-ssd"
 	extremeDiskType                         = "pd-extreme"
 	hdtDiskType                             = "hyperdisk-throughput"
 	provisionedIOPSOnCreate                 = "12345"
@@ -297,6 +298,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-standard", standardDiskType),
 		Entry("on pd-extreme", extremeDiskType),
 		Entry("on hyperdisk-throughput", hdtDiskType),
+		Entry("on pd-ssd", ssdDiskType),
 	)
 
 	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
@@ -1557,6 +1559,14 @@ var typeToDisk = map[string]*disk{
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(hdtDiskType))
 			Expect(disk.ProvisionedThroughput).To(Equal(provisionedThroughputOnCreateInt))
+		},
+	},
+	ssdDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType: ssdDiskType,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(ssdDiskType))
 		},
 	},
 }
