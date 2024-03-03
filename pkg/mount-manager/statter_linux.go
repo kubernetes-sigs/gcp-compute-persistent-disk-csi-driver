@@ -61,10 +61,26 @@ func (*realStatter) StatFS(path string) (available, capacity, used, inodesFree, 
 	return
 }
 
-type fakeStatter struct{}
+type fakeStatter struct {
+	options FakeStatterOptions
+}
+
+type FakeStatterOptions struct {
+	IsBlock bool
+}
 
 func NewFakeStatter(mounter *mount.SafeFormatAndMount) *fakeStatter {
-	return &fakeStatter{}
+	return &fakeStatter{
+		options: FakeStatterOptions{
+			IsBlock: true,
+		},
+	}
+}
+
+func NewFakeStatterWithOptions(mounter *mount.SafeFormatAndMount, options FakeStatterOptions) *fakeStatter {
+	return &fakeStatter{
+		options: options,
+	}
 }
 
 func (*fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, inodes, inodesUsed int64, err error) {
@@ -72,6 +88,6 @@ func (*fakeStatter) StatFS(path string) (available, capacity, used, inodesFree, 
 	return 1, 1, 1, 1, 1, 1, nil
 }
 
-func (*fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
-	return false, nil
+func (fs *fakeStatter) IsBlockDevice(fullPath string) (bool, error) {
+	return fs.options.IsBlock, nil
 }

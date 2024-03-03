@@ -106,3 +106,24 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 	}
 	return gotSizeBytes, nil
 }
+
+func setReadAheadKB(devicePath string, readAheadKB int64, m *mount.SafeFormatAndMount) error {
+	output, err := m.Exec.Command("blockdev", "--getss", devicePath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error when reading sector size at path %s: output: %s, err: %w", devicePath, string(output), err)
+	}
+	strOut := strings.TrimSpace(string(output))
+	sectorSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse %q into an int size", strOut)
+	}
+	readAheadInSectors := readAheadKB * 1024 / sectorSizeBytes
+	readAheadInSectorsStr := strconv.FormatInt(readAheadInSectors, 10)
+	// Empirical testing indicates that the actual read_ahead_kb size that is set is rounded to the
+	// nearest 4KB.
+	output, err = m.Exec.Command("blockdev", "--setra", readAheadInSectorsStr, devicePath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error when setting readahead at path %s: output: %s, err: %w", devicePath, string(output), err)
+	}
+	return nil
+}

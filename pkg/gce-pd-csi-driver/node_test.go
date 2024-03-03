@@ -28,6 +28,7 @@ import (
 	testingexec "k8s.io/utils/exec/testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
@@ -109,21 +110,33 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		Readonly:          false,
 		VolumeCapability:  stdVolCap,
 	}
+
 	_, err = ns.NodePublishVolume(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Failed to set up test by publishing default vol: %v", err)
 	}
 
 	testCases := []struct {
-		name       string
-		volumeID   string
-		volumePath string
-		expectErr  bool
+		name           string
+		volumeID       string
+		volumePath     string
+		expectedResp   *csi.NodeGetVolumeStatsResponse
+		deviceCapacity int
+		expectErr      bool
 	}{
 		{
-			name:       "normal",
-			volumeID:   defaultVolumeID,
-			volumePath: targetPath,
+			name:           "normal",
+			volumeID:       defaultVolumeID,
+			volumePath:     targetPath,
+			deviceCapacity: 300 * 1024 * 1024 * 1024, // 300 GB
+			expectedResp: &csi.NodeGetVolumeStatsResponse{
+				Usage: []*csi.VolumeUsage{
+					{
+						Unit:  csi.VolumeUsage_BYTES,
+						Total: 300 * 1024 * 1024 * 1024, // 300 GB,
+					},
+				},
+			},
 		},
 		{
 			name:       "no vol id",
@@ -145,17 +158,37 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			actionList := []testingexec.FakeCommandAction{
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						CombinedOutputScript: []testingexec.FakeAction{
+							func() ([]byte, []byte, error) {
+								return []byte(fmt.Sprintf("%d", tc.deviceCapacity)), nil, nil
+							},
+						},
+					},
+					"blockdev",
+					strings.Split("--getsize64 /dev/disk/fake-path", " ")...,
+				),
+			}
+
+			mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
+			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
+			ns := gceDriver.ns
 
 			req := &csi.NodeGetVolumeStatsRequest{
 				VolumeId:   tc.volumeID,
 				VolumePath: tc.volumePath,
 			}
-			_, err := ns.NodeGetVolumeStats(context.Background(), req)
+			resp, err := ns.NodeGetVolumeStats(context.Background(), req)
 			if err != nil && !tc.expectErr {
 				t.Fatalf("Got unexpected err: %v", err)
 			}
 			if err == nil && tc.expectErr {
 				t.Fatal("Did not get error but expected one")
+			}
+			if diff := cmp.Diff(tc.expectedResp, resp); diff != "" {
+				t.Errorf("NodeGetVolumeStats(%s): -want, +got \n%s", req, diff)
 			}
 		})
 	}
@@ -394,13 +427,17 @@ func TestNodeStageVolume(t *testing.T) {
 	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
 	testCases := []struct {
-		name         string
-		req          *csi.NodeStageVolumeRequest
-		deviceSize   int
-		blockExtSize int
-		readonlyBit  string
-		expResize    bool
-		expErrCode   codes.Code
+		name               string
+		req                *csi.NodeStageVolumeRequest
+		deviceSize         int
+		blockExtSize       int
+		readonlyBit        string
+		expResize          bool
+		expReadAheadUpdate bool
+		expReadAheadKB     string
+		readAheadSectors   string
+		sectorSizeInBytes  int
+		expErrCode         codes.Code
 	}{
 		{
 			name: "Valid request, no resize because block and filesystem sizes match",
@@ -451,6 +488,54 @@ func TestNodeStageVolume(t *testing.T) {
 			expResize:    false,
 		},
 		{
+			name: "Valid request, update readahead",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							MountFlags: []string{"read_ahead_kb=4096"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			deviceSize:         5,
+			blockExtSize:       1,
+			readonlyBit:        "0",
+			expResize:          true,
+			expReadAheadUpdate: true,
+			readAheadSectors:   "8192",
+			sectorSizeInBytes:  512,
+		},
+		{
+			name: "Valid request, update readahead (different sectorsize)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							MountFlags: []string{"read_ahead_kb=4096"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			deviceSize:         5,
+			blockExtSize:       1,
+			readonlyBit:        "0",
+			expResize:          true,
+			expReadAheadUpdate: true,
+			readAheadSectors:   "4194304",
+			sectorSizeInBytes:  1,
+		},
+		{
 			name: "Invalid request (Bad Access Mode)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
@@ -493,10 +578,47 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "Invalid request (Invalid read_ahead_kb)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							MountFlags: []string{"read_ahead_kb=not_a_number"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request (negative read_ahead_kb)",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							MountFlags: []string{"read_ahead_kb=-4096"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
 	}
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
 		resizeCalled := false
+		readAheadUpdateCalled := false
 		actionList := []testingexec.FakeCommandAction{
 			makeFakeCmd(
 				&testingexec.FakeCmd{
@@ -593,6 +715,33 @@ func TestNodeStageVolume(t *testing.T) {
 				),
 			}...)
 		}
+		if tc.expReadAheadUpdate {
+			actionList = append(actionList, []testingexec.FakeCommandAction{
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						CombinedOutputScript: []testingexec.FakeAction{
+							func() ([]byte, []byte, error) {
+								return []byte(fmt.Sprintf("%d", tc.sectorSizeInBytes)), nil, nil
+							},
+						},
+					},
+					"blockdev",
+					[]string{"--getss", "/dev/disk/fake-path"}...,
+				),
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						CombinedOutputScript: []testingexec.FakeAction{
+							func() (_ []byte, args []byte, _ error) {
+								readAheadUpdateCalled = true
+								return []byte{}, nil, nil
+							},
+						},
+					},
+					"blockdev",
+					[]string{"--setra", tc.readAheadSectors, "/dev/disk/fake-path"}...,
+				),
+			}...)
+		}
 		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
 		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
 		ns := gceDriver.ns
@@ -615,6 +764,12 @@ func TestNodeStageVolume(t *testing.T) {
 		}
 		if tc.expResize == false && resizeCalled == true {
 			t.Fatalf("Test called resize, but it was not expected.")
+		}
+		if tc.expReadAheadUpdate == true && readAheadUpdateCalled == false {
+			t.Fatalf("Test did not update read ahead, but it was expected.")
+		}
+		if tc.expReadAheadUpdate == false && readAheadUpdateCalled == true {
+			t.Fatalf("Test updated read ahead, but it was not expected.")
 		}
 	}
 }
