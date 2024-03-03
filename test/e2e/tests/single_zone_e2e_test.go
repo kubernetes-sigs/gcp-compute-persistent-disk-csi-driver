@@ -1317,6 +1317,90 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 	})
 
+	It("Should update readahead if read_ahead_kb passed on mount", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+
+		}()
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		expectedReadAheadKB := "4096"
+		volCap := &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					MountFlags: []string{fmt.Sprintf("read_ahead_kb=%s", expectedReadAheadKB)},
+				},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		}
+		err = client.NodeStageVolume(volID, stageDir, volCap)
+		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
+
+		// Validate that the link is correct
+		var validated bool
+		var devName string
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				devFsPath, err := instance.SSH("find", devicePath, "-printf", "'%l'")
+				Expect(err).To(BeNil(), "Failed to symlink devicePath")
+				devFsPathPieces := strings.Split(devFsPath, "/")
+				devName = devFsPathPieces[len(devFsPathPieces)-1]
+
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+		actualReadAheadKBStr, err := instance.SSH("cat", fmt.Sprintf("/sys/block/%s/queue/read_ahead_kb", devName))
+		actualReadAheadKB := strings.TrimSpace(actualReadAheadKBStr)
+		Expect(err).To(BeNil(), "Failed to read read_ahead_kb: %v", err)
+		Expect(actualReadAheadKB).To(Equal(expectedReadAheadKB), "unexpected read_ahead_kb")
+
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+	})
+
 	type multiZoneTestConfig struct {
 		diskType          string
 		readOnly          bool

@@ -105,3 +105,8 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 	}
 	return proxy.GetDiskTotalBytes(devicePath)
 }
+
+func setReadAheadKB(devicePath string, readAheadKB int64, m *mount.SafeFormatAndMount) error {
+	// This is a no-op on windows.
+	return nil
+}
