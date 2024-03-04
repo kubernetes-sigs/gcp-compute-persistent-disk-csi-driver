@@ -36,6 +36,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 )
 
 type Environment string
@@ -66,12 +67,25 @@ type CloudProvider struct {
 	zone         string
 
 	zonesCache map[string][]string
+
+	waitForAttachConfig WaitForAttachConfig
 }
 
 var _ GCECompute = &CloudProvider{}
 
 type ConfigFile struct {
 	Global ConfigGlobal `gcfg:"global"`
+}
+
+type WaitForAttachConfig struct {
+	// A set of disk types that should use the compute instances.get API instead of the
+	// disks.get API. For certain disk types, using the instances.get API is preferred
+	// based on the response characteristics of the API.
+	UseInstancesAPIForDiskTypes []string
+}
+
+func (cfg WaitForAttachConfig) ShouldUseGetInstanceAPI(diskType string) bool {
+	return slices.Contains(cfg.UseInstancesAPIForDiskTypes, diskType)
 }
 
 type ConfigGlobal struct {
@@ -81,7 +95,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -120,12 +134,13 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	}
 
 	return &CloudProvider{
-		service:      svc,
-		betaService:  betasvc,
-		alphaService: alphasvc,
-		project:      project,
-		zone:         zone,
-		zonesCache:   make(map[string]([]string)),
+		service:             svc,
+		betaService:         betasvc,
+		alphaService:        alphasvc,
+		project:             project,
+		zone:                zone,
+		zonesCache:          make(map[string]([]string)),
+		waitForAttachConfig: waitForAttachConfig,
 	}, nil
 
 }

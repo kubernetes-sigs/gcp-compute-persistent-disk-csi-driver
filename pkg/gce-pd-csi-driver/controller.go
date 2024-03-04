@@ -727,7 +727,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		return nil, common.LoggedError("Failed to Attach: ", err), disk
 	}
 
-	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, instanceZone, instanceName)
+	err = gceCS.CloudProvider.WaitForAttach(ctx, project, volKey, disk.GetPDType(), instanceZone, instanceName)
 	if err != nil {
 		return nil, common.LoggedError("Errored during WaitForAttach: ", err), disk
 	}
