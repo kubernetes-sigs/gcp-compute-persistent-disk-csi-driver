@@ -99,7 +99,7 @@ type GCECompute interface {
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	GetDiskSourceURI(project string, volKey *meta.Key) string
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
-	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error
+	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, diskType, instanceZone, instanceName string) error
 	ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error)
 	ListDisks(ctx context.Context) ([]*computev1.Disk, string, error)
 	// Regional Disk Methods
@@ -924,18 +924,46 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName
 	})
 }
 
-func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
+func (cloud *CloudProvider) waitForAttachOnInstance(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
 	klog.V(5).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, instanceName)
 	start := time.Now()
 	return wait.ExponentialBackoff(AttachDiskBackoff, func() (bool, error) {
-		klog.V(6).Infof("Polling for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
+		klog.V(6).Infof("Polling instances.get for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
+		instance, err := cloud.GetInstanceOrError(ctx, instanceZone, instanceName)
+		if err != nil {
+			return false, fmt.Errorf("GetInstance failed to get instance: %w", err)
+		}
+
+		if instance == nil {
+			return false, fmt.Errorf("instance %v could not be found", instanceName)
+		}
+
+		for _, disk := range instance.Disks {
+			deviceName, err := common.GetDeviceName(volKey)
+			if err != nil {
+				return false, fmt.Errorf("failed to get disk device name for %s: %w", volKey, err)
+			}
+
+			if deviceName == disk.DeviceName {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+func (cloud *CloudProvider) waitForAttachOnDisk(ctx context.Context, project string, volKey *meta.Key, instanceZone, instanceName string) error {
+	klog.V(5).Infof("Waiting for attach of disk %v to instance %v to complete...", volKey.Name, instanceName)
+	start := time.Now()
+	return wait.ExponentialBackoff(AttachDiskBackoff, func() (bool, error) {
+		klog.V(6).Infof("Polling disks.get for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
 		disk, err := cloud.GetDisk(ctx, project, volKey, GCEAPIVersionV1)
 		if err != nil {
 			return false, fmt.Errorf("GetDisk failed to get disk: %w", err)
 		}
 
 		if disk == nil {
-			return false, fmt.Errorf("Disk %v could not be found", volKey.Name)
+			return false, fmt.Errorf("disk %v could not be found", volKey.Name)
 		}
 
 		for _, user := range disk.GetUsers() {
@@ -945,6 +973,14 @@ func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, v
 		}
 		return false, nil
 	})
+}
+
+func (cloud *CloudProvider) WaitForAttach(ctx context.Context, project string, volKey *meta.Key, diskType, instanceZone, instanceName string) error {
+	if cloud.waitForAttachConfig.ShouldUseGetInstanceAPI(diskType) {
+		return cloud.waitForAttachOnInstance(ctx, project, volKey, instanceZone, instanceName)
+	} else {
+		return cloud.waitForAttachOnDisk(ctx, project, volKey, instanceZone, instanceName)
+	}
 }
 
 func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {

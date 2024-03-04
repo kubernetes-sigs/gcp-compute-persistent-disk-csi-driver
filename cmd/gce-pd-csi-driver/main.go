@@ -79,6 +79,8 @@ var (
 	computeEndpoint           *url.URL
 	allowedComputeEnvironment = []gce.Environment{gce.EnvironmentStaging, gce.EnvironmentProduction}
 
+	useInstanceAPIOnWaitForAttachDiskTypesFlag = flag.String("use-instance-api-to-poll-attachment-disk-types", "", "Comma separated list of disk types that should use instances.get API when polling for disk attach during ControllerPublish")
+
 	version string
 )
 
@@ -170,10 +172,16 @@ func handle() {
 		DiskTypes: multiZoneVolumeHandleDiskTypes,
 	}
 
+	// Initialize waitForAttach config
+	useInstanceAPIOnWaitForAttachDiskTypes := strings.Split(*useInstanceAPIOnWaitForAttachDiskTypesFlag, ",")
+	waitForAttachConfig := gce.WaitForAttachConfig{
+		UseInstancesAPIForDiskTypes: useInstanceAPIOnWaitForAttachDiskTypes,
+	}
+
 	// Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
-		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment)
+		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment, waitForAttachConfig)
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
