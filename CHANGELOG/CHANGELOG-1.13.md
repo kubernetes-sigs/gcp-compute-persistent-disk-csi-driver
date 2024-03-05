@@ -1,3 +1,25 @@
+# v1.13.3 - Changelog since v1.13.2
+
+## Changes by Kind
+
+### Uncategorized
+
+- Flag --use-instance-api-to-poll-attachment-disk-types uses instances.get API when polling for disk attachment in ControllerPublish for passed in disk types ([#1630](https://github.com/kube
+rnetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1630), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- Support for read_ahead_kb mount flag to change block device readahead ([#1631](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1631), [@k8s-infra-cherrypick-
+robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.13.2 - Changelog since v1.13.1
 
 ## Changes by Kind
