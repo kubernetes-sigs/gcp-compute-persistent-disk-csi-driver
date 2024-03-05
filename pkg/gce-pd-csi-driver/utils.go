@@ -257,6 +257,11 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	var options []string
 
 	for _, opt := range mntFlags {
+		if readAheadKBMountFlagRegex.FindString(opt) != "" {
+			// The read_ahead_kb flag is a special flag that isn't
+			// passed directly as an option to the mount command.
+			continue
+		}
 		options = append(options, opt)
 	}
 
