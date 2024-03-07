@@ -2,7 +2,7 @@ package deviceutils
 
 import (
 	"fmt"
-	"regexp"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -64,8 +64,6 @@ func less(a, b fmt.Stringer) bool {
 // and may prevent our tests from running on all platforms. See the following test for an example:
 // https://github.com/golang/go/blob/d33548d178016122726342911f8e15016a691472/src/syscall/exec_linux_test.go#L250
 func TestDiskNvmePattern(t *testing.T) {
-	nvmeDiskRegex := regexp.MustCompile(diskNvmePattern)
-
 	testCases := []struct {
 		paths     []string
 		wantPaths []string
@@ -97,12 +95,19 @@ func TestDiskNvmePattern(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		gotPaths := []string{}
+		devPaths := []string{}
+
 		for _, path := range tc.paths {
-			if nvmeDiskRegex.MatchString(path) {
-				gotPaths = append(gotPaths, path)
+			ok, err := filepath.Match(diskNvmeGlob, path)
+			if err != nil {
+				t.Errorf("Error encountered matching path: %v", path)
+			}
+
+			if ok {
+				devPaths = append(devPaths, path)
 			}
 		}
+		gotPaths := filterAvailableNvmeDevFsPaths(devPaths)
 		if diff := cmp.Diff(gotPaths, tc.wantPaths, cmpopts.SortSlices(less)); diff != "" {
 			t.Errorf("Unexpected NVMe device paths (-got, +want):\n%s", diff)
 		}
