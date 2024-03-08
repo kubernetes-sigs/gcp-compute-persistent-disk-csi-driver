@@ -1,3 +1,22 @@
+# v1.13.4 - Changelog since v1.13.3
+
+## Changes by Kind
+
+### Uncategorized
+
+- Fixes a regression in the NVMe device search path ([#1634](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1634), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # v1.13.3 - Changelog since v1.13.2
 
 ## Changes by Kind
