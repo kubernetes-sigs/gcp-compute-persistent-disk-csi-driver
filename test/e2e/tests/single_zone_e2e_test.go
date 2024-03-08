@@ -73,7 +73,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
 	})
 
-	It("Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
+	It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -170,7 +170,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
+	It("[NVMe] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -301,7 +301,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-ssd", ssdDiskType),
 	)
 
-	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
+	DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
 		func(diskType string) {
 			testContext := getRandomTestContext()
 
@@ -1287,15 +1287,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		_, err := getRandomTestContext().Client.ListVolumes()
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 
-		zone := "us-central1-c"
-		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
-		i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
-
-		if err != nil {
-			klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
-		}
-
-		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
+		i := getRandomTestContext().Instance
 
 		// Create new driver and client with valid, empty endpoint
 		klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
@@ -1317,7 +1309,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 	})
 
-	It("Should update readahead if read_ahead_kb passed on mount", func() {
+	It("[NVMe] Should update readahead if read_ahead_kb passed on mount", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -1378,7 +1370,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Expect(err).To(BeNil(), "Failed to symlink devicePath")
 				devFsPathPieces := strings.Split(devFsPath, "/")
 				devName = devFsPathPieces[len(devFsPathPieces)-1]
-
+				break
 			}
 		}
 		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
