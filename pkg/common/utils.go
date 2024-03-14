@@ -273,7 +273,7 @@ func ConvertTagsStringToMap(tags string) (map[string]string, error) {
 		return nil, nil
 	}
 
-	regexParent, _ := regexp.Compile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
+	regexParent := regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
 	checkTagParentIDFn := func(parentID string) error {
 		if !regexParent.MatchString(parentID) {
 			return fmt.Errorf("tag parent_id %q is invalid. parent_id can have a maximum of 32 characters and cannot be empty. parent_id can be either OrganizationID or ProjectID. OrganizationID must consist of decimal numbers, and cannot have leading zeroes and ProjectID must be 6 to 30 characters in length, can only contain lowercase letters, numbers, and hyphens, and must start with a letter, and cannot end with a hyphen", parentID)
@@ -281,7 +281,7 @@ func ConvertTagsStringToMap(tags string) (map[string]string, error) {
 		return nil
 	}
 
-	regexKey, _ := regexp.Compile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
+	regexKey := regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
 	checkTagKeyFn := func(key string) error {
 		if !regexKey.MatchString(key) {
 			return fmt.Errorf("tag key %q is invalid. Tag key can have a maximum of 63 characters and cannot be empty. Tag key must begin and end with an alphanumeric character, and must contain only uppercase, lowercase alphanumeric characters, and the following special characters `._-`", key)
@@ -331,6 +331,9 @@ func ConvertTagsStringToMap(tags string) (map[string]string, error) {
 		tagsMap[parentIDKeyStr] = value
 	}
 
+	// The maximum number of tags allowed per resource is 50. For more details check the following:
+	// https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing#attaching
+	// https://cloud.google.com/resource-manager/docs/limits#tag-limits
 	const maxNumberOfTags = 50
 	if len(tagsMap) > maxNumberOfTags {
 		return nil, fmt.Errorf("more than %d tags is not allowed, given: %d", maxNumberOfTags, len(tagsMap))
