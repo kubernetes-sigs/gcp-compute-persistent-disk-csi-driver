@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/kms v1.10.1
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.18.0
 	github.com/container-storage-interface/spec v1.6.0
-	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.1
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
@@ -18,7 +18,7 @@ require (
 	google.golang.org/api v0.114.0
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 	google.golang.org/grpc v1.56.3
-	google.golang.org/protobuf v1.30.0
+	google.golang.org/protobuf v1.33.0
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/apimachinery v0.24.1
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
@@ -49,7 +49,7 @@ require (
 	github.com/go-openapi/swag v0.21.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/gofuzz v1.2.1-0.20210504230335-f78f29fc09ea // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
