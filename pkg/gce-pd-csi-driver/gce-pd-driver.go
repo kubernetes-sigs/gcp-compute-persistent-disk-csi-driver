@@ -36,6 +36,7 @@ type GCEDriver struct {
 	name              string
 	vendorVersion     string
 	extraVolumeLabels map[string]string
+	extraTags         map[string]string
 
 	ids *GCEIdentityServer
 	ns  *GCENodeServer
@@ -50,7 +51,7 @@ func GetGCEDriver() *GCEDriver {
 	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolumeLabels map[string]string, identityServer *GCEIdentityServer, controllerServer *GCEControllerServer, nodeServer *GCENodeServer) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolumeLabels map[string]string, extraTags map[string]string, identityServer *GCEIdentityServer, controllerServer *GCEControllerServer, nodeServer *GCENodeServer) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -84,6 +85,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolu
 	gceDriver.name = name
 	gceDriver.vendorVersion = vendorVersion
 	gceDriver.extraVolumeLabels = extraVolumeLabels
+	gceDriver.extraTags = extraTags
 	gceDriver.ids = identityServer
 	gceDriver.cs = controllerServer
 	gceDriver.ns = nodeServer

@@ -1,0 +1,8 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gce-pd-with-resource-tags
+provisioner: pd.csi.storage.gke.io
+parameters:
+  resource-tags: parent1/key1/value1,parent2/key2/value2
+volumeBindingMode: WaitForFirstConsumer
