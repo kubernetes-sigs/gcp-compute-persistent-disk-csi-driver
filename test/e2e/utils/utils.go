@@ -57,15 +57,13 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
 		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
 	}
-	if computeEndpoint != "" {
-		extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint %s", computeEndpoint))
-	}
+	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
+
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
 	// useful to see what's happening when debugging tests.
 	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
-
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
 		BinPath:      binPath,
