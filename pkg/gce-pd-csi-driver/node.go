@@ -91,7 +91,7 @@ func getDefaultFsType() string {
 }
 func (ns *GCENodeServer) isVolumePathMounted(path string) bool {
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(path)
-	klog.V(4).Infof("NodePublishVolume check volume path %s is mounted %t: error %v", path, !notMnt, err)
+	klog.V(4).Infof("Checking volume path %s is mounted %t: error %v", path, !notMnt, err)
 	if err == nil && !notMnt {
 		// TODO(#95): check if mount is compatible. Return OK if it is, or appropriate error.
 		/*
