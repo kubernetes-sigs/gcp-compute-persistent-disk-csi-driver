@@ -16,7 +16,15 @@ limitations under the License.
 
 package deviceutils
 
+import "k8s.io/mount-utils"
+
 func (_ *deviceUtils) DisableDevice(devicePath string) error {
 	// No disabling is necessary on windows.
 	return nil
+}
+
+func (_ *deviceUtils) IsDeviceFilesystemInUse(mounter *mount.SafeFormatAndMount, devicePath, devFsPath string) (bool, error) {
+	// We don't support checking if a device filesystem is captured elsewhere by the system
+	// Return false, to skip this check. Assume the filesystem is not in use.
+	return false, nil
 }

@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+	"k8s.io/mount-utils"
 	pathutils "k8s.io/utils/path"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
@@ -91,6 +92,13 @@ type DeviceUtils interface {
 
 	// Resize returns whether or not a device needs resizing.
 	Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error)
+
+	// IsDeviceFilesystemInUse returns if a device path with the specified fstype
+	// TODO: Mounter is passed in in order to call GetDiskFormat()
+	// This is currently only implemented in mounter_linux, not mounter_windows.
+	// Refactor this interface and function call up the stack to the caller once it is
+	// implemented in mounter_windows.
+	IsDeviceFilesystemInUse(mounter *mount.SafeFormatAndMount, devicePath, devFsPath string) (bool, error)
 }
 
 type deviceUtils struct {
