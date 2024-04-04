@@ -24,5 +24,5 @@ import (
 
 func (_ *deviceUtils) DisableDevice(devicePath string) error {
 	deviceName := filepath.Base(devicePath)
-	return os.WriteFile(fmt.Sprintf("/sys/block/%s/device/state", deviceName), []byte("offline"), 0644)
+	return os.WriteFile(fmt.Sprintf("/sys/block/%s/device/state", deviceName), []byte("offline\n"), 0644)
 }
