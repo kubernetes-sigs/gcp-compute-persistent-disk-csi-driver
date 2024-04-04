@@ -16,6 +16,7 @@ package gceGCEDriver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -450,19 +451,44 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err.Error(), stagingTargetPath))
 	}
 
-	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
-	if err != nil {
-		klog.Errorf("Failed to find device path for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", volumeID, err.Error())
-	} else {
-		if devFsPath, err := filepath.EvalSymlinks(devicePath); err != nil {
-			klog.Warningf("filepath.EvalSymlinks(%q) failed when trying to disable device: %v (ignored, unstaging continues)", devicePath, err)
-		} else if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
-			klog.Warningf("Failed to disabled device %s (aka %s) for volume %s. Device may not be detached cleanly (ignored, unstaging continues): %v", devicePath, devFsPath, volumeID, err)
+	if err := ns.safelyDisableDevice(volumeID); err != nil {
+		var targetErr *ignoreableError
+		if errors.As(err, &targetErr) {
+			klog.Warningf("Device may not be detached cleanly for volume %s (ignored, unstaging continues): %v", volumeID, err)
+		} else {
+			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
 		}
 	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
+}
+
+// A private error wrapper used to pass control flow decisions up to the caller
+type ignoreableError struct{ error }
+
+func (ns *GCENodeServer) safelyDisableDevice(volumeID string) error {
+	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
+	if err != nil {
+		return &ignoreableError{fmt.Errorf("failed to find device path for volume %s: %v", volumeID, err.Error())}
+	}
+
+	devFsPath, err := filepath.EvalSymlinks(devicePath)
+	if err != nil {
+		return &ignoreableError{fmt.Errorf("filepath.EvalSymlinks(%q) failed: %v", devicePath, err)}
+	}
+
+	if inUse, err := ns.DeviceUtils.IsDeviceFilesystemInUse(ns.Mounter, devicePath, devFsPath); err != nil {
+		return &ignoreableError{fmt.Errorf("failed to check if device %s (aka %s) is in use: %v", devicePath, devFsPath, err)}
+	} else if inUse {
+		return fmt.Errorf("device %s (aka %s) is still in use", devicePath, devFsPath)
+	}
+
+	if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
+		return &ignoreableError{fmt.Errorf("failed to disable device %s (aka %s): %v", devicePath, devFsPath, err)}
+	}
+
+	return nil
 }
 
 func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
