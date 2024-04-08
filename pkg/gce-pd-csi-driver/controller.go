@@ -2001,7 +2001,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.RegionalKey(name, region), gceAPIVersion)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "failed to get disk after creating regional disk: %v", err.Error())
+		return nil, common.NewTemporaryError(codes.Unavailable, fmt.Errorf("failed to get disk after creating regional disk: %w", err))
 	}
 	return disk, nil
 }
@@ -2024,7 +2024,7 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.ZonalKey(name, diskZone), gceAPIVersion)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "failed to get disk after creating zonal disk: %v", err.Error())
+		return nil, common.NewTemporaryError(codes.Unavailable, fmt.Errorf("failed to get disk after creating zonal disk: %w", err))
 	}
 	return disk, nil
 }
