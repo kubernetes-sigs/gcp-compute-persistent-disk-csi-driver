@@ -48,7 +48,7 @@ else
 endif
 
 build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
-	$(DOCKER) buildx build --progress=plain --platform=linux --progress=plain \
+	$(DOCKER) buildx build --platform=linux --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) \

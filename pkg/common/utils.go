@@ -92,6 +92,8 @@ var (
 		http.StatusNotFound:        codes.NotFound,
 	}
 
+	validDataCacheMode = []string{DataCacheModeWriteBack, DataCacheModeWriteThrough}
+
 	// Regular expressions for validating parent_id, key and value of a resource tag.
 	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
 	regexKey    = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
@@ -381,6 +383,15 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToMiB(quantity)
 }
 
+// ConvertGiStringToInt64 converts a GiB string to int64
+func ConvertGiStringToInt64(str string) (int64, error) {
+	quantity, err := resource.ParseQuantity(str)
+	if err != nil {
+		return -1, err
+	}
+	return volumehelpers.RoundUpToGiB(quantity)
+}
+
 // ConvertStringToBool converts a string to a boolean.
 func ConvertStringToBool(str string) (bool, error) {
 	switch strings.ToLower(str) {
@@ -576,6 +587,22 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	}
 	splitId[volIDToplogyValue] = MultiZoneValue
 	return strings.Join(splitId, "/"), nil
+}
+
+func StringInSlice(s string, list []string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateDataCacheMode(s string) error {
+	if StringInSlice(s, validDataCacheMode) {
+		return nil
+	}
+	return fmt.Errorf("invalid data-cache-mode %s. Only \"writeback\" and \"writethrough\" is a valid input", s)
 }
 
 // NewLimiter returns a token bucket based request rate limiter after initializing
