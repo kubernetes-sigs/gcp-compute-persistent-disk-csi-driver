@@ -18,6 +18,7 @@ package common
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -76,9 +77,8 @@ const (
 )
 
 type DataCacheParameters struct {
-	// Values: {string}
+	// Values: {string} in int64 form
 	// Default: ""
-	// Example: "25Gi"
 	DataCacheSize string
 	// Values: writethrough, writeback
 	// Default: writethrough
@@ -166,10 +166,10 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		ResourceTags:         make(map[string]string), // Default
 	}
 
-	// Set data cache feature default
+	// Set data cache mode default
 	d := DataCacheParameters{}
-	if enableDataCache {
-		d.DataCacheMode = "writethrough"
+	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
+		d.DataCacheMode = DataCacheModeWriteThrough
 	}
 
 	for k, v := range extraVolumeLabels {
@@ -263,11 +263,19 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyDataCacheSize)
 			}
 			// TODO: need to parse or validate the string
-			d.DataCacheSize = v
+
+			paramDataCacheSize, err := ConvertGiStringToInt64(v)
+			if err != nil {
+				return p, d, fmt.Errorf("parameters contain invalid dataCacheSize parameter: %w", err)
+			}
+			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
 			klog.V(2).Infof("====== Data cache size is %v ======", v)
 		case ParameterKeyDataCacheMode:
 			if !enableDataCache {
 				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyDataCacheSize)
+			}
+			if err := ValidateDataCacheMode(v); err != nil {
+				return p, d, fmt.Errorf("parameters contains invalid option: %w", err)
 			}
 			d.DataCacheMode = v
 			klog.V(2).Infof("====== Data cache mode is %v ======", v)

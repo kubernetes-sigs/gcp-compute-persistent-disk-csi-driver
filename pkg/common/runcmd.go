@@ -4,11 +4,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	/*
-		"bufio"
-		"io"
-		"io/ioutil"
-	*/
 
 	"k8s.io/klog/v2"
 )
@@ -36,25 +31,4 @@ func RunCommand(cmd string, args ...string) ([]byte, error) {
 		return output, fmt.Errorf("%s %s failed: %w; output: %s", cmd, strings.Join(args, " "), err, string(output))
 	}
 	return output, nil
-	/*
-		pipe, _ := execCmd.StdoutPipe()
-		if err := execCmd.Start(); err != nil {
-			klog.Errorf("====== Failed execCmd.Start() ======")
-		}
-		outStr := ""
-		go func(p io.ReadCloser) {
-			reader := bufio.NewReader(pipe)
-			klog.V(2).Infof("====== Start ioutil.ReadAll ======")
-			b, err := ioutil.ReadAll(reader)
-			if err != nil {
-				klog.Errorf("====== Failed ioutil.ReadAll(reader) %v ======", err)
-			}
-			klog.V(2).Infof("%v \n", string(b))
-			klog.V(2).Infof("====== End ioutil.ReadAll ======")
-		}(pipe)
-
-		if err := execCmd.Wait(); err != nil {
-			klog.Errorf("====== Failed execCmd.Wait(): %v ======", err)
-		}
-		return []byte(outStr), nil*/
 }

@@ -6,6 +6,6 @@ provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
   data-cache-mode: writeback
-  data-cache-size: "3"
+  data-cache-size: "50Gi"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
