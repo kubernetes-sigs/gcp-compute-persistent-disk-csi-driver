@@ -419,7 +419,7 @@ func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey
 	}
 }
 
-func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCreate int64) *computebeta.Disk {
+func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 	var dek *computebeta.CustomerEncryptionKey = nil
 
 	if v1Disk.DiskEncryptionKey != nil {
@@ -444,12 +444,17 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk, provisionedThroughputOnCrea
 		Status:            v1Disk.Status,
 		SelfLink:          v1Disk.SelfLink,
 	}
+
+	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
+	// but if multiWriter + hyperdisk is supported in the future, we want the PDCSI driver to support this feature without
+	// any additional code change.
 	if v1Disk.ProvisionedIops > 0 {
 		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
 	}
-	if provisionedThroughputOnCreate > 0 {
-		betaDisk.ProvisionedThroughput = provisionedThroughputOnCreate
+	if v1Disk.ProvisionedThroughput > 0 {
+		betaDisk.ProvisionedThroughput = v1Disk.ProvisionedThroughput
 	}
+	betaDisk.StoragePool = v1Disk.StoragePool
 
 	return betaDisk
 }
@@ -543,7 +548,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, 0)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
 		betaDiskToCreate.MultiWriter = multiWriter
 		insertOp, err = cloud.betaService.RegionDisks.Insert(project, volKey.Region, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
@@ -619,12 +624,8 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
-	if multiWriter || containsBetaDiskType(hyperdiskTypes, params.DiskType) {
+	if multiWriter {
 		gceAPIVersion = GCEAPIVersionBeta
-	}
-	storagePoolsEnabled := params.StoragePools != nil
-	if storagePoolsEnabled {
-		gceAPIVersion = GCEAPIVersionAlpha
 	}
 
 	diskToCreate := &computev1.Disk{
@@ -637,6 +638,17 @@ func (cloud *CloudProvider) insertZonalDisk(
 
 	if params.ProvisionedIOPSOnCreate > 0 {
 		diskToCreate.ProvisionedIops = params.ProvisionedIOPSOnCreate
+	}
+	if params.ProvisionedThroughputOnCreate > 0 {
+		diskToCreate.ProvisionedThroughput = params.ProvisionedThroughputOnCreate
+	}
+
+	if params.StoragePools != nil {
+		sp := common.StoragePoolInZone(params.StoragePools, volKey.Zone)
+		if sp == nil {
+			return status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", volKey.Zone)
+		}
+		diskToCreate.StoragePool = sp.ResourceName
 	}
 
 	if snapshotID != "" {
@@ -662,12 +674,12 @@ func (cloud *CloudProvider) insertZonalDisk(
 			KmsKeyName: params.DiskEncryptionKMSKey,
 		}
 	}
+	diskToCreate.EnableConfidentialCompute = params.EnableConfidentialCompute
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
-		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate, params.ProvisionedThroughputOnCreate)
+		betaDiskToCreate := convertV1DiskToBetaDisk(diskToCreate)
 		betaDiskToCreate.MultiWriter = multiWriter
-		betaDiskToCreate.EnableConfidentialCompute = params.EnableConfidentialCompute
 		insertOp, err = cloud.betaService.Disks.Insert(project, volKey.Zone, betaDiskToCreate).Context(ctx).Do()
 		if insertOp != nil {
 			opName = insertOp.Name
@@ -675,7 +687,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 	} else if gceAPIVersion == GCEAPIVersionAlpha {
 		var insertOp *computealpha.Operation
 		var storagePool *common.StoragePool
-		if storagePoolsEnabled {
+		if params.StoragePools != nil {
 			storagePool = common.StoragePoolInZone(params.StoragePools, volKey.Zone)
 			if storagePool == nil {
 				return status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", volKey.Zone)
