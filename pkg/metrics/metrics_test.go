@@ -20,8 +20,6 @@ package metrics
 import (
 	"testing"
 
-	computealpha "google.golang.org/api/compute/v0.alpha"
-	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
@@ -30,20 +28,15 @@ const (
 	hyperdiskBalanced = "hyperdisk-balanced"
 )
 
-func CreateDiskWithConfidentialCompute(betaVersion bool, confidentialCompute bool, diskType string) *gce.CloudDisk {
-	if betaVersion {
-		return gce.CloudDiskFromBeta(&computebeta.Disk{
-			EnableConfidentialCompute: confidentialCompute,
-			Type:                      diskType,
-		})
-	}
+func CreateDiskWithConfidentialCompute(confidentialCompute bool, diskType string) *gce.CloudDisk {
 	return gce.CloudDiskFromV1(&compute.Disk{
-		Type: diskType,
+		EnableConfidentialCompute: confidentialCompute,
+		Type:                      diskType,
 	})
 }
 
 func CreateDiskWithStoragePool(storagePool string, diskType string) *gce.CloudDisk {
-	return gce.CloudDiskFromAlpha(&computealpha.Disk{
+	return gce.CloudDiskFromV1(&compute.Disk{
 		StoragePool: storagePool,
 		Type:        diskType,
 	})
@@ -58,35 +51,28 @@ func TestGetMetricParameters(t *testing.T) {
 		expectedEnableStoragePools        string
 	}{
 		{
-			name:                              "test betaDisk with enableConfidentialCompute=false",
-			disk:                              CreateDiskWithConfidentialCompute(true, false, hyperdiskBalanced),
+			name:                              "test disk with enableConfidentialCompute=false",
+			disk:                              CreateDiskWithConfidentialCompute(false, hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "false",
 			expectedDiskType:                  hyperdiskBalanced,
 			expectedEnableStoragePools:        "false",
 		},
 		{
-			name:                              "test betaDisk with enableConfidentialCompute=true",
-			disk:                              CreateDiskWithConfidentialCompute(true, true, hyperdiskBalanced),
+			name:                              "test disk with enableConfidentialCompute=true",
+			disk:                              CreateDiskWithConfidentialCompute(true, hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "true",
 			expectedDiskType:                  hyperdiskBalanced,
 			expectedEnableStoragePools:        "false",
 		},
 		{
-			name:                              "test disk without enableConfidentialCompute",
-			disk:                              CreateDiskWithConfidentialCompute(false, false, hyperdiskBalanced),
-			expectedEnableConfidentialCompute: "false",
-			expectedDiskType:                  hyperdiskBalanced,
-			expectedEnableStoragePools:        "false",
-		},
-		{
-			name:                              "test alphaDisk with storage pool projects/my-project/zone/us-central1-a/storagePools/sp1",
+			name:                              "test disk with storage pool projects/my-project/zone/us-central1-a/storagePools/sp1",
 			disk:                              CreateDiskWithStoragePool("projects/my-project/zone/us-central1-a/storagePools/sp1", hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "false",
 			expectedDiskType:                  hyperdiskBalanced,
 			expectedEnableStoragePools:        "true",
 		},
 		{
-			name:                              "test alphaDisk with no storage pool",
+			name:                              "test disk with no storage pool",
 			disk:                              CreateDiskWithStoragePool("", hyperdiskBalanced),
 			expectedEnableConfidentialCompute: "false",
 			expectedDiskType:                  hyperdiskBalanced,
