@@ -249,7 +249,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	if containsBetaDiskType(hyperdiskTypes, params.DiskType) {
-		betaDisk := convertV1DiskToBetaDisk(computeDisk, params.ProvisionedThroughputOnCreate)
+		betaDisk := convertV1DiskToBetaDisk(computeDisk)
 		betaDisk.EnableConfidentialCompute = params.EnableConfidentialCompute
 		cloud.disks[volKey.Name] = CloudDiskFromBeta(betaDisk)
 	} else {
