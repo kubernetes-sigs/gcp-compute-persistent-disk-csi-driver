@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -97,11 +98,9 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	diskType string,
 	enableConfidentialStorage string,
 	enableStoragePools string) {
-	err := codes.OK.String()
-	if operationErr != nil {
-		err = common.CodeForError(operationErr).String()
-	}
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, err, diskType, enableConfidentialStorage, enableStoragePools).Inc()
+	errCode := errorCodeLabelValue(operationErr)
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
+	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -168,4 +167,19 @@ func GetMetricParameters(disk *gce.CloudDisk) (string, string, string) {
 		enableStoragePools = strconv.FormatBool(disk.GetEnableStoragePools())
 	}
 	return diskType, enableConfidentialStorage, enableStoragePools
+}
+
+// errorCodeLabelValue returns the label value for the given operation error.
+// This was separated into a helper function for unit testing purposes.
+func errorCodeLabelValue(operationErr error) string {
+	err := codes.OK.String()
+	if operationErr != nil {
+		// If the operationErr is a TemporaryError, unwrap the temporary error before passing it to CodeForError.
+		var tempErr *common.TemporaryError
+		if errors.As(operationErr, &tempErr) {
+			operationErr = tempErr.Unwrap()
+		}
+		err = common.CodeForError(operationErr).String()
+	}
+	return err
 }

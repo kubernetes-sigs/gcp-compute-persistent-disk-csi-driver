@@ -1021,6 +1021,26 @@ func TestCodeForError(t *testing.T) {
 			inputErr: fmt.Errorf("The disk resource 'projects/foo/disk/bar' is already being used by 'projects/foo/instances/1'"),
 			expCode:  codes.InvalidArgument,
 		},
+		{
+			name:     "TemporaryError that wraps googleapi error",
+			inputErr: &TemporaryError{code: codes.Unavailable, err: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"}},
+			expCode:  codes.Unavailable,
+		},
+		{
+			name:     "TemporaryError that wraps fmt.Errorf, which wraps googleapi error",
+			inputErr: &TemporaryError{code: codes.Aborted, err: fmt.Errorf("got error: %w", &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"})},
+			expCode:  codes.Aborted,
+		},
+		{
+			name:     "TemporaryError that wraps status error",
+			inputErr: &TemporaryError{code: codes.Aborted, err: status.Error(codes.Aborted, "aborted error")},
+			expCode:  codes.Aborted,
+		},
+		{
+			name:     "TemporaryError that wraps context canceled error",
+			inputErr: &TemporaryError{code: codes.Aborted, err: context.Canceled},
+			expCode:  codes.Aborted,
+		},
 	}
 
 	for _, tc := range testCases {
