@@ -30,7 +30,6 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
-	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -54,17 +53,18 @@ const (
 	replicaZoneURITemplateSingleZone             = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 	versionV1                        Version     = "v1"
 	versionBeta                      Version     = "beta"
-	versionAlpha                     Version     = "alpha"
 	EnvironmentStaging               Environment = "staging"
 	EnvironmentProduction            Environment = "production"
 )
 
+// CloudProvider only supports GCE v1/beta Disk APIs. See
+// https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1524
+// for how to add GCE alpha Disk support.
 type CloudProvider struct {
-	service      *compute.Service
-	betaService  *computebeta.Service
-	alphaService *computealpha.Service
-	project      string
-	zone         string
+	service     *compute.Service
+	betaService *computebeta.Service
+	project     string
+	zone        string
 
 	zonesCache map[string][]string
 
@@ -122,12 +122,6 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	}
 	klog.Infof("Compute endpoint for Beta version: %s", betasvc.BasePath)
 
-	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
-	if err != nil {
-		return nil, err
-	}
-	klog.Infof("Compute endpoint for Alpha version: %s", alphasvc.BasePath)
-
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting Project and Zone: %w", err)
@@ -136,7 +130,6 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	return &CloudProvider{
 		service:             svc,
 		betaService:         betasvc,
-		alphaService:        alphasvc,
 		project:             project,
 		zone:                zone,
 		zonesCache:          make(map[string]([]string)),
@@ -189,19 +182,6 @@ func readConfig(configPath string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("couldn't read cloud provider configuration at %s: %w", configPath, err)
 	}
 	return cfg, nil
-}
-
-func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computealpha.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionAlpha)
-	if err != nil {
-		klog.Errorf("Failed to get compute endpoint: %s", err)
-	}
-	service, err := computealpha.NewService(ctx, computeOpts...)
-	if err != nil {
-		return nil, err
-	}
-	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
-	return service, nil
 }
 
 func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computebeta.Service, error) {

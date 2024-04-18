@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 )
@@ -100,22 +99,6 @@ func TestGetEnableStoragePools(t *testing.T) {
 			},
 			expectedEnableStoragePools: false,
 		},
-		{
-			name: "alpha disk without storage pool returns false",
-			cloudDisk: &CloudDisk{
-				alphaDisk: &computealpha.Disk{},
-			},
-			expectedEnableStoragePools: false,
-		},
-		{
-			name: "alpha disk with storage pool returns true",
-			cloudDisk: &CloudDisk{
-				alphaDisk: &computealpha.Disk{
-					StoragePool: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1",
-				},
-			},
-			expectedEnableStoragePools: true,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -154,15 +137,6 @@ func TestGetLabels(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{"bar": "beta", "goog-gke-multi-zone": "true"},
-		},
-		{
-			name: "alpha disk without storage pool returns false",
-			cloudDisk: &CloudDisk{
-				alphaDisk: &computealpha.Disk{
-					Labels: map[string]string{"baz": "alpha", "goog-gke-multi-zone": "true"},
-				},
-			},
-			wantLabels: map[string]string{"baz": "alpha", "goog-gke-multi-zone": "true"},
 		},
 	}
 
