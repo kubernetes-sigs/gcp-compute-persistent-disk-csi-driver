@@ -288,7 +288,8 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 		gceAPIVersion = gce.GCEAPIVersionBeta
 	}
 
-	if err := validateStoragePools(req, params, gceCS.CloudProvider.GetDefaultProject()); err != nil {
+	err = validateStoragePools(req, params, gceCS.CloudProvider.GetDefaultProject())
+	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate storage pools: %v", err)
 	}
 
