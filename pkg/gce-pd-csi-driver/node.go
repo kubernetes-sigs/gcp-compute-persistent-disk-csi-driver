@@ -455,9 +455,9 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		klog.Errorf("Failed to find device path for volume %s. Device may not be detached cleanly (error is ignored and unstaging is continuing): %v", volumeID, err.Error())
 	} else {
 		if devFsPath, err := filepath.EvalSymlinks(devicePath); err != nil {
-			klog.Warningf("filepath.EvalSymlinks(%q) failed when trying to disable device: %w (ignored, unstaging continues)", devicePath, err)
+			klog.Warningf("filepath.EvalSymlinks(%q) failed when trying to disable device: %v (ignored, unstaging continues)", devicePath, err)
 		} else if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
-			klog.Warningf("Failed to disabled device %s (aka %s) for volume %s. Device may not be detached cleanly (ignored, unstaging continues): %w", devicePath, devFsPath, volumeID, err)
+			klog.Warningf("Failed to disabled device %s (aka %s) for volume %s. Device may not be detached cleanly (ignored, unstaging continues): %v", devicePath, devFsPath, volumeID, err)
 		}
 	}
 
