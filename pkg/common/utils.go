@@ -23,8 +23,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"golang.org/x/time/rate"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -89,6 +91,11 @@ var (
 		http.StatusTooManyRequests: codes.ResourceExhausted,
 		http.StatusNotFound:        codes.NotFound,
 	}
+
+	// Regular expressions for validating parent_id, key and value of a resource tag.
+	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
+	regexKey    = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
+	regexValue  = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.@%=+:,*#&()\[\]{}\-\s]{0,61}[a-zA-Z0-9])?$`)
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -255,6 +262,86 @@ func ConvertLabelsStringToMap(labels string) (map[string]string, error) {
 	}
 
 	return labelsMap, nil
+}
+
+// ConvertTagsStringToMap converts the tags from string to Tag slice
+// example: "parent_id1/tag_key1/tag_value1,parent_id2/tag_key2/tag_value2" gets
+// converted into {"parent_id1/tag_key1":"tag_value1", "parent_id2/tag_key2":"tag_value2"}
+// See https://cloud.google.com/resource-manager/docs/tags/tags-overview,
+// https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details
+func ConvertTagsStringToMap(tags string) (map[string]string, error) {
+	const tagsDelimiter = ","
+	const tagsParentIDKeyValueDelimiter = "/"
+
+	tagsMap := make(map[string]string)
+	if tags == "" {
+		return nil, nil
+	}
+
+	checkTagParentIDFn := func(tag, parentID string) error {
+		if !regexParent.MatchString(parentID) {
+			return fmt.Errorf("tag parent_id %q for tag %q is invalid. parent_id can have a maximum of 32 characters and cannot be empty. parent_id can be either OrganizationID or ProjectID. OrganizationID must consist of decimal numbers, and cannot have leading zeroes and ProjectID must be 6 to 30 characters in length, can only contain lowercase letters, numbers, and hyphens, and must start with a letter, and cannot end with a hyphen", parentID, tag)
+		}
+		return nil
+	}
+
+	checkTagKeyFn := func(tag, key string) error {
+		if !regexKey.MatchString(key) {
+			return fmt.Errorf("tag key %q for tag %q is invalid. Tag key can have a maximum of 63 characters and cannot be empty. Tag key must begin and end with an alphanumeric character, and must contain only uppercase, lowercase alphanumeric characters, and the following special characters `._-`", key, tag)
+		}
+		return nil
+	}
+
+	checkTagValueFn := func(tag, value string) error {
+		if !regexValue.MatchString(value) {
+			return fmt.Errorf("tag value %q for tag %q is invalid. Tag value can have a maximum of 63 characters and cannot be empty. Tag value must begin and end with an alphanumeric character, and must contain only uppercase, lowercase alphanumeric characters, and the following special characters `_-.@%%=+:,*#&(){}[]` and spaces", value, tag)
+		}
+
+		return nil
+	}
+
+	checkTagParentIDKey := sets.String{}
+	parentIDkeyValueStrings := strings.Split(tags, tagsDelimiter)
+	for _, parentIDkeyValueString := range parentIDkeyValueStrings {
+		parentIDKeyValue := strings.Split(parentIDkeyValueString, tagsParentIDKeyValueDelimiter)
+
+		if len(parentIDKeyValue) != 3 {
+			return nil, fmt.Errorf("tag %q is invalid, correct format: 'parent_id1/key1/value1,parent_id2/key2/value2'", parentIDkeyValueString)
+		}
+
+		parentID := strings.TrimSpace(parentIDKeyValue[0])
+		if err := checkTagParentIDFn(parentIDkeyValueString, parentID); err != nil {
+			return nil, err
+		}
+
+		key := strings.TrimSpace(parentIDKeyValue[1])
+		if err := checkTagKeyFn(parentIDkeyValueString, key); err != nil {
+			return nil, err
+		}
+
+		value := strings.TrimSpace(parentIDKeyValue[2])
+		if err := checkTagValueFn(parentIDkeyValueString, value); err != nil {
+			return nil, err
+		}
+
+		parentIDKeyStr := fmt.Sprintf("%s/%s", parentID, key)
+		if checkTagParentIDKey.Has(parentIDKeyStr) {
+			return nil, fmt.Errorf("tag parent_id & key combination %q exists more than once", parentIDKeyStr)
+		}
+		checkTagParentIDKey.Insert(parentIDKeyStr)
+
+		tagsMap[parentIDKeyStr] = value
+	}
+
+	// The maximum number of tags allowed per resource is 50. For more details check the following:
+	// https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing#attaching
+	// https://cloud.google.com/resource-manager/docs/limits#tag-limits
+	const maxNumberOfTags = 50
+	if len(tagsMap) > maxNumberOfTags {
+		return nil, fmt.Errorf("more than %d tags is not allowed, given: %d", maxNumberOfTags, len(tagsMap))
+	}
+
+	return tagsMap, nil
 }
 
 // ProcessStorageLocations trims and normalizes storage location to lower letters.
@@ -489,4 +576,17 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	}
 	splitId[volIDToplogyValue] = MultiZoneValue
 	return strings.Join(splitId, "/"), nil
+}
+
+// NewLimiter returns a token bucket based request rate limiter after initializing
+// the passed values for limit, burst (or token bucket) size. If opted for emptyBucket
+// all initial tokens are reserved for the first burst.
+func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
+	limiter := rate.NewLimiter(rate.Every(time.Second/time.Duration(limit)), burst)
+
+	if emptyBucket {
+		limiter.AllowN(time.Now(), burst)
+	}
+
+	return limiter
 }

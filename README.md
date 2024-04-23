@@ -60,6 +60,7 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 | labels                      | `key1=value1,key2=value2` |               | Labels allow you to assign custom [GCE Disk labels](https://cloud.google.com/compute/docs/labeling-resources). |
 | provisioned-iops-on-create  | string (int64 format). Values typically between 10,000 and 120,000 |               | Indicates how many IOPS to provision for the disk. See the [Extreme persistent disk documentation](https://cloud.google.com/compute/docs/disks/extreme-persistent-disk) for details, including valid ranges for IOPS. |
 | provisioned-throughput-on-create  | string (int64 format). Values typically between 1 and 7,124 mb per second |               | Indicates how much throughput to provision for the disk. See the [hyperdisk documentation]([TBD](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk#create)) for details, including valid ranges for throughput. |
+| resource-tags               | `<parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>` |               | Resource tags allow you to attach user-defined tags to each Compute Disk, Image and Snapshot. See [Tags overview](https://cloud.google.com/resource-manager/docs/tags/tags-overview), [Creating and managing tags](https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing). |
 
 ### Topology
 

@@ -81,6 +81,8 @@ var (
 
 	useInstanceAPIOnWaitForAttachDiskTypesFlag = flag.String("use-instance-api-to-poll-attachment-disk-types", "", "Comma separated list of disk types that should use instances.get API when polling for disk attach during ControllerPublish")
 
+	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
+
 	version string
 )
 
@@ -153,6 +155,14 @@ func handle() {
 		klog.Fatalf("Bad extra volume labels: %v", err.Error())
 	}
 
+	if len(*extraTagsStr) > 0 && !*runControllerService {
+		klog.Fatalf("Extra tags provided but not running controller")
+	}
+	extraTags, err := common.ConvertTagsStringToMap(*extraTagsStr)
+	if err != nil {
+		klog.Fatalf("Bad extra tags: %v", err.Error())
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -211,7 +221,7 @@ func handle() {
 		}
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}

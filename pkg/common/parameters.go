@@ -32,6 +32,7 @@ const (
 	ParameterAvailabilityClass                = "availability-class"
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
+	ParameterKeyResourceTags                  = "resource-tags"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -98,6 +99,9 @@ type DiskParameters struct {
 	// Values: {[]string}
 	// Default: ""
 	StoragePools []StoragePool
+	// Values: {map[string]string}
+	// Default: ""
+	ResourceTags map[string]string
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -107,6 +111,7 @@ type SnapshotParameters struct {
 	ImageFamily      string
 	Tags             map[string]string
 	Labels           map[string]string
+	ResourceTags     map[string]string
 }
 
 type StoragePool struct {
@@ -120,17 +125,22 @@ type StoragePool struct {
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool) (DiskParameters, error) {
+func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool, extraTags map[string]string) (DiskParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
 		DiskEncryptionKMSKey: "",                      // Default
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
+		ResourceTags:         make(map[string]string), // Default
 	}
 
 	for k, v := range extraVolumeLabels {
 		p.Labels[k] = v
+	}
+
+	for k, v := range extraTags {
+		p.ResourceTags[k] = v
 	}
 
 	for k, v := range parameters {
@@ -208,6 +218,10 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)
 			}
 			p.StoragePools = storagePools
+		case ParameterKeyResourceTags:
+			if err := extractResourceTagsParameter(v, p.ResourceTags); err != nil {
+				return p, err
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
@@ -218,13 +232,19 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 	return p, nil
 }
 
-func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string) (SnapshotParameters, error) {
+func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string, extraTags map[string]string) (SnapshotParameters, error) {
 	p := SnapshotParameters{
 		StorageLocations: []string{},
 		SnapshotType:     DiskSnapshotType,
 		Tags:             make(map[string]string), // Default
 		Labels:           make(map[string]string), // Default
+		ResourceTags:     make(map[string]string), // Default
 	}
+
+	for k, v := range extraTags {
+		p.ResourceTags[k] = v
+	}
+
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case ParameterKeyStorageLocations:
@@ -256,6 +276,10 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 			for labelKey, labelValue := range paramLabels {
 				p.Labels[labelKey] = labelValue
 			}
+		case ParameterKeyResourceTags:
+			if err := extractResourceTagsParameter(v, p.ResourceTags); err != nil {
+				return p, err
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
@@ -264,4 +288,16 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 		p.Tags[tagKeyCreatedBy] = driverName
 	}
 	return p, nil
+}
+
+func extractResourceTagsParameter(tagsString string, resourceTags map[string]string) error {
+	paramResourceTags, err := ConvertTagsStringToMap(tagsString)
+	if err != nil {
+		return fmt.Errorf("parameters contain invalid %s parameter: %w", ParameterKeyResourceTags, err)
+	}
+	// Override any existing resource tags with those from this parameter.
+	for tagParentIDKey, tagValue := range paramResourceTags {
+		resourceTags[tagParentIDKey] = tagValue
+	}
+	return nil
 }

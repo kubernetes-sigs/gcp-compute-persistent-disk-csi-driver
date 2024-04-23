@@ -273,7 +273,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools)
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools, gceCS.Driver.extraTags)
 	diskTypeForMetric = params.DiskType
 	enableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
 	hasStoragePools := len(params.StoragePools) > 0
@@ -901,7 +901,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 
 	// Validate the disk parameters match the disk we GET
-	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools)
+	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools, gceCS.Driver.extraTags)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
@@ -1110,7 +1110,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
 	}
 
-	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name)
+	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid snapshot parameters: %v", err.Error())
 	}

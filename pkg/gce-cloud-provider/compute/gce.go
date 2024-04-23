@@ -25,10 +25,13 @@ import (
 	"time"
 
 	"golang.org/x/oauth2/google"
+	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 
 	"cloud.google.com/go/compute/metadata"
+	rscmgr "cloud.google.com/go/resourcemanager/apiv3"
 	"golang.org/x/oauth2"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
@@ -55,6 +58,33 @@ const (
 	versionBeta                      Version     = "beta"
 	EnvironmentStaging               Environment = "staging"
 	EnvironmentProduction            Environment = "production"
+
+	// resourceManagerHostSubPath is the endpoint for tag requests.
+	resourceManagerHostSubPath = "cloudresourcemanager.googleapis.com"
+
+	// zonalOrRegionalComputeParentPathFmt is the string format for the full path of compute resource.
+	// belonging to a zone or a region
+	zonalOrRegionalComputeParentPathFmt = "//compute.googleapis.com/projects/%s/%s/%s/%s/%d"
+
+	// globalComputeParentPathFmt is the string format for the full path of global compute resource.
+	globalComputeParentPathFmt = "//compute.googleapis.com/projects/%s/global/%s/%d"
+
+	// gcpTagsRequestRateLimit is the tag request rate limit per second.
+	gcpTagsRequestRateLimit = 8
+
+	// gcpTagsRequestTokenBucketSize is the burst/token bucket size used
+	// for limiting API requests.
+	gcpTagsRequestTokenBucketSize = 8
+)
+
+// ResourceType indicates the type of a compute resource.
+type ResourceType string
+
+var (
+	// snapshotsType is the resource type of compute snapshots.
+	snapshotsType ResourceType = "snapshots"
+	// imagesType is the resource type of compute images.
+	imagesType ResourceType = "images"
 )
 
 // CloudProvider only supports GCE v1/beta Disk APIs. See
@@ -63,12 +93,15 @@ const (
 type CloudProvider struct {
 	service     *compute.Service
 	betaService *computebeta.Service
+	tokenSource oauth2.TokenSource
 	project     string
 	zone        string
 
 	zonesCache map[string][]string
 
 	waitForAttachConfig WaitForAttachConfig
+
+	tagsRateLimiter *rate.Limiter
 }
 
 var _ GCECompute = &CloudProvider{}
@@ -130,10 +163,14 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	return &CloudProvider{
 		service:             svc,
 		betaService:         betasvc,
+		tokenSource:         tokenSource,
 		project:             project,
 		zone:                zone,
 		zonesCache:          make(map[string]([]string)),
 		waitForAttachConfig: waitForAttachConfig,
+		// GCP has a rate limit of 600 requests per minute, restricting
+		// here to 8 requests per second.
+		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
 	}, nil
 
 }
@@ -232,6 +269,39 @@ func constructComputeEndpointPath(env Environment, version Version) string {
 		prefix = fmt.Sprintf("%s_", env)
 	}
 	return fmt.Sprintf("compute/%s%s/", prefix, version)
+}
+
+func createTagValuesClient(ctx context.Context, tokenSource oauth2.TokenSource, resourceManagerHostSubPath string) (*rscmgr.TagValuesClient, error) {
+	client, err := newOauthClient(ctx, tokenSource)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := fmt.Sprintf("https://%s", resourceManagerHostSubPath)
+	opts := []option.ClientOption{
+		option.WithHTTPClient(client),
+		option.WithEndpoint(endpoint),
+	}
+	return rscmgr.NewTagValuesRESTClient(ctx, opts...)
+}
+
+func createTagBindingsClient(ctx context.Context, tokenSource oauth2.TokenSource, location string, resourceManagerHostSubPath string) (*rscmgr.TagBindingsClient, error) {
+	client, err := newOauthClient(ctx, tokenSource)
+	if err != nil {
+		return nil, err
+	}
+
+	var endpoint string
+	if location != "" {
+		endpoint = fmt.Sprintf("https://%s-%s", location, resourceManagerHostSubPath)
+	} else {
+		endpoint = fmt.Sprintf("https://%s", resourceManagerHostSubPath)
+	}
+	opts := []option.ClientOption{
+		option.WithHTTPClient(client),
+		option.WithEndpoint(endpoint),
+	}
+	return rscmgr.NewTagBindingsRESTClient(ctx, opts...)
 }
 
 func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
