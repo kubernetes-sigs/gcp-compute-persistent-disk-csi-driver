@@ -1,6 +1,6 @@
 module sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
-go 1.22.0
+go 1.22
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
