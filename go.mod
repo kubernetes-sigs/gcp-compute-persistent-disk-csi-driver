@@ -1,9 +1,10 @@
 module sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
 go 1.22
+toolchain go1.22.2
 
 require (
-	cloud.google.com/go/compute/metadata v0.2.3
+	cloud.google.com/go/compute/metadata v0.3.0
 	cloud.google.com/go/kms v1.15.8
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.24.0
 	github.com/container-storage-interface/spec v1.6.0
@@ -37,7 +38,6 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute v1.25.1 // indirect
 	cloud.google.com/go/iam v1.1.7 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
