@@ -484,10 +484,6 @@ func (ns *GCENodeServer) safelyDisableDevice(volumeID string) error {
 		return fmt.Errorf("device %s (aka %s) is still in use", devicePath, devFsPath)
 	}
 
-	if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
-		return &ignoreableError{fmt.Errorf("failed to disable device %s (aka %s): %v", devicePath, devFsPath, err)}
-	}
-
 	return nil
 }
 
