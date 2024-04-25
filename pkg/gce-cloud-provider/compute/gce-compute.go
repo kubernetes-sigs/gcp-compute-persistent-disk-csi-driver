@@ -17,15 +17,23 @@ package gcecloudprovider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	rscmgr "cloud.google.com/go/resourcemanager/apiv3"
+	rscmgrpb "cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/apierror"
+	"golang.org/x/oauth2"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
+	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -405,11 +413,26 @@ func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey
 	}
 }
 
+func convertV1DiskParamsToBeta(v1DiskParams *computev1.DiskParams) *computebeta.DiskParams {
+	resourceManagerTags := make(map[string]string)
+	for k, v := range v1DiskParams.ResourceManagerTags {
+		resourceManagerTags[k] = v
+	}
+	return &computebeta.DiskParams{
+		ResourceManagerTags: resourceManagerTags,
+	}
+}
+
 func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 	var dek *computebeta.CustomerEncryptionKey = nil
 
 	if v1Disk.DiskEncryptionKey != nil {
 		dek = convertV1CustomerEncryptionKeyToBeta(v1Disk.DiskEncryptionKey)
+	}
+
+	var params *computebeta.DiskParams = nil
+	if v1Disk.Params != nil {
+		params = convertV1DiskParamsToBeta(v1Disk.Params)
 	}
 
 	// Note: this is an incomplete list. It only includes the fields we use for disk creation.
@@ -429,6 +452,7 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 		Region:            v1Disk.Region,
 		Status:            v1Disk.Status,
 		SelfLink:          v1Disk.SelfLink,
+		Params:            params,
 	}
 
 	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
@@ -498,6 +522,16 @@ func (cloud *CloudProvider) insertRegionalDisk(
 	if params.DiskEncryptionKMSKey != "" {
 		diskToCreate.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
 			KmsKeyName: params.DiskEncryptionKMSKey,
+		}
+	}
+	resourceTags, err := getResourceManagerTags(ctx, cloud.tokenSource, params.ResourceTags)
+	if err != nil {
+		return err
+	}
+
+	if len(resourceTags) > 0 {
+		diskToCreate.Params = &computev1.DiskParams{
+			ResourceManagerTags: resourceTags,
 		}
 	}
 
@@ -630,6 +664,17 @@ func (cloud *CloudProvider) insertZonalDisk(
 		}
 	}
 	diskToCreate.EnableConfidentialCompute = params.EnableConfidentialCompute
+
+	resourceTags, err := getResourceManagerTags(ctx, cloud.tokenSource, params.ResourceTags)
+	if err != nil {
+		return err
+	}
+
+	if len(resourceTags) > 0 {
+		diskToCreate.Params = &computev1.DiskParams{
+			ResourceManagerTags: resourceTags,
+		}
+	}
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
@@ -1075,7 +1120,13 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 		return nil, err
 	}
 
-	return cloud.waitForImageCreation(ctx, project, imageName)
+	newImage, err := cloud.waitForImageCreation(ctx, project, imageName)
+
+	if err == nil {
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, newImage.Id, imagesType, "", false, resourceManagerHostSubPath)
+	}
+
+	return newImage, err
 }
 
 func (cloud *CloudProvider) waitForImageCreation(ctx context.Context, project, imageName string) (*computev1.Image, error) {
@@ -1226,7 +1277,13 @@ func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project
 		return nil, err
 	}
 
-	return cloud.waitForSnapshotCreation(ctx, project, snapshotName)
+	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
+
+	if err == nil {
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
+	}
+
+	return snapshot, err
 }
 
 func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters, description string) (*computev1.Snapshot, error) {
@@ -1242,7 +1299,13 @@ func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, proj
 		return nil, err
 	}
 
-	return cloud.waitForSnapshotCreation(ctx, project, snapshotName)
+	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
+
+	if err == nil {
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
+	}
+
+	return snapshot, err
 
 }
 
@@ -1271,6 +1334,160 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
 		}
 	}
+}
+
+// getResourceManagerTags returns the map of tag keys and values. The tag keys are in the form `tagKeys/{tag_key_id}`
+// and the tag values are in the format `tagValues/456`.
+func getResourceManagerTags(ctx context.Context, tokenSource oauth2.TokenSource, tagsMap map[string]string) (map[string]string, error) {
+	if len(tagsMap) <= 0 {
+		return nil, nil
+	}
+
+	tagValuesClient, err := createTagValuesClient(ctx, tokenSource, resourceManagerHostSubPath)
+	if err != nil {
+		return nil, err
+	}
+	defer tagValuesClient.Close()
+
+	tagKeyValueMap := make(map[string]string, len(tagsMap))
+	for tagParentIDKey, tagValue := range tagsMap {
+		getTagValuesReq := &rscmgrpb.GetNamespacedTagValueRequest{
+			Name: fmt.Sprintf("%s/%s", tagParentIDKey, tagValue),
+		}
+		value, err := tagValuesClient.GetNamespacedTagValue(ctx, getTagValuesReq, getRetryCallOptions()...)
+		if err != nil {
+			return nil, err
+		}
+		tagKeyValueMap[value.Parent] = value.Name
+	}
+
+	return tagKeyValueMap, nil
+}
+
+// getRetryCallOptions returns a list of additional call options. If the
+// call encounters TooManyRequests error then it will be retried with an
+// exponential backoff.
+func getRetryCallOptions() []gax.CallOption {
+	return []gax.CallOption{
+		gax.WithRetry(func() gax.Retryer {
+			return gax.OnHTTPCodes(gax.Backoff{
+				Initial:    90 * time.Second,
+				Max:        5 * time.Minute,
+				Multiplier: 2,
+			},
+				http.StatusTooManyRequests)
+		}),
+	}
+}
+
+// getFilteredTagsMap returns the map of tag keys and the tag values to apply on the resources after
+// filtering the tags already existing on a given resource.
+func getFilteredTagsMap(ctx context.Context, client *rscmgr.TagBindingsClient, parent string, tagsMap map[string]string) map[string]string {
+	if len(tagsMap) <= 0 {
+		klog.Infof("getFilteredTagsMap: tags map is empty for %s compute", parent)
+		return nil
+	}
+
+	filteredTagsMap := make(map[string]string, len(tagsMap))
+	for key, value := range tagsMap {
+		filteredTagsMap[key] = value
+	}
+
+	listBindingsReq := &rscmgrpb.ListEffectiveTagsRequest{
+		Parent: parent,
+	}
+	bindings := client.ListEffectiveTags(ctx, listBindingsReq)
+	for i := 0; i < 50; i++ {
+		binding, err := bindings.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil || binding == nil {
+			klog.Errorf("failed to list effective tags on %s compute resource: %v: %v", parent, binding, err)
+			break
+		}
+		namespacedTagKey := binding.GetNamespacedTagKey()
+		if _, exists := filteredTagsMap[namespacedTagKey]; exists {
+			delete(filteredTagsMap, namespacedTagKey)
+			klog.V(1).Infof("getFilteredTagsMap: skipping tag %s already exists on the %s compute resource", namespacedTagKey, parent)
+		}
+	}
+
+	return filteredTagsMap
+}
+
+// attachTagsToResource attaches tags to a compute resource. As GCP has a rate limit of 600
+// requests per minute, the tags list is filtered so that only the tags which are not attached
+// to the resource are attached. The calls to create the tag binding resource for the tags are
+// rate limited to 8 requests per second.
+func (cloud *CloudProvider) attachTagsToResource(
+	ctx context.Context,
+	tagsMap map[string]string,
+	project string,
+	resourceID uint64,
+	resourceType ResourceType,
+	location string,
+	isZonal bool,
+	resourceManagerHostSubPath string) error {
+	if len(tagsMap) <= 0 {
+		return nil
+	}
+
+	tagBindingsClient, err := createTagBindingsClient(ctx, cloud.tokenSource, location, resourceManagerHostSubPath)
+	if err != nil || tagBindingsClient == nil {
+		return fmt.Errorf("failed to create tag binding client for adding tags to %d compute %s: %w", resourceID, resourceType, err)
+	}
+	defer tagBindingsClient.Close()
+
+	var fullResourceID string
+	if location != "" {
+		if isZonal {
+			fullResourceID = fmt.Sprintf(zonalOrRegionalComputeParentPathFmt, project, "zones", location, resourceType, resourceID)
+		} else {
+			fullResourceID = fmt.Sprintf(zonalOrRegionalComputeParentPathFmt, project, "regions", location, resourceType, resourceID)
+		}
+	} else {
+		fullResourceID = fmt.Sprintf(globalComputeParentPathFmt, project, resourceType, resourceID)
+	}
+
+	filteredTagsMap := getFilteredTagsMap(ctx, tagBindingsClient, fullResourceID, tagsMap)
+
+	errFlag := false
+	for tagParentIDKey, tagValue := range filteredTagsMap {
+		if err := cloud.tagsRateLimiter.Wait(ctx); err != nil {
+			errFlag = true
+			klog.Errorf("rate limiting request to add %s tag to %d compute %s failed: %v", tagValue, resourceID, resourceType, err)
+			continue
+		}
+
+		tagBindingReq := &rscmgrpb.CreateTagBindingRequest{
+			TagBinding: &rscmgrpb.TagBinding{
+				Parent:                 fullResourceID,
+				TagValueNamespacedName: fmt.Sprintf("%s/%s", tagParentIDKey, tagValue),
+			},
+		}
+
+		result, err := tagBindingsClient.CreateTagBinding(ctx, tagBindingReq, getRetryCallOptions()...)
+		if err != nil {
+			e, ok := err.(*apierror.APIError)
+			if ok && e.HTTPCode() == http.StatusConflict {
+				klog.Infof("tag binding %d: %s/%s already exists", resourceID, tagParentIDKey, tagValue)
+				continue
+			}
+			errFlag = true
+			klog.Errorf("request to add %s/%s tag to %d compute %s failed: %v", tagParentIDKey, tagValue, resourceID, resourceType, err)
+			continue
+		}
+
+		if _, err = result.Wait(ctx); err != nil {
+			errFlag = true
+			klog.Errorf("failed to add %s/%s tag to %d compute %s: %v", tagParentIDKey, tagValue, resourceID, resourceType, err)
+		}
+	}
+	if errFlag {
+		return fmt.Errorf("failed to add tags to %d compute %s", resourceID, resourceType)
+	}
+	return nil
 }
 
 // kmsKeyEqual returns true if fetchedKMSKey and storageClassKMSKey refer to the same key.

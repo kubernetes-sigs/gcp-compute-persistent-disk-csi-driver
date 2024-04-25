@@ -26,7 +26,7 @@ func TestGetPluginInfo(t *testing.T) {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
 	identityServer := NewIdentityServer(gceDriver)
-	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, identityServer, nil, nil)
+	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestGetPluginInfo(t *testing.T) {
 func TestGetPluginCapabilities(t *testing.T) {
 	gceDriver := GetGCEDriver()
 	identityServer := NewIdentityServer(gceDriver)
-	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, identityServer, nil, nil)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestGetPluginCapabilities(t *testing.T) {
 func TestProbe(t *testing.T) {
 	gceDriver := GetGCEDriver()
 	identityServer := NewIdentityServer(gceDriver)
-	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, identityServer, nil, nil)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, identityServer, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

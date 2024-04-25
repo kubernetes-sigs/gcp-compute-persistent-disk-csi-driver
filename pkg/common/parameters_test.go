@@ -29,6 +29,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		parameters         map[string]string
 		labels             map[string]string
 		enableStoragePools bool
+		extraTags          map[string]string
 		expectParams       DiskParameters
 		expectErr          bool
 	}{
@@ -42,11 +43,12 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
 			name:       "specified empties",
-			parameters: map[string]string{ParameterKeyType: "", ParameterKeyReplicationType: "", ParameterKeyDiskEncryptionKmsKey: "", ParameterKeyLabels: ""},
+			parameters: map[string]string{ParameterKeyType: "", ParameterKeyReplicationType: "", ParameterKeyDiskEncryptionKmsKey: "", ParameterKeyLabels: "", ParameterKeyResourceTags: ""},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-standard",
@@ -54,6 +56,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -64,7 +67,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		},
 		{
 			name:       "values from parameters",
-			parameters: map[string]string{ParameterKeyType: "pd-ssd", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2"},
+			parameters: map[string]string{ParameterKeyType: "pd-ssd", ParameterKeyReplicationType: "regional-pd", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2"},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-ssd",
@@ -75,11 +78,15 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 					"key1": "value1",
 					"key2": "value2",
 				},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
+				},
 			},
 		},
 		{
 			name:       "values from parameters, checking pd-extreme",
-			parameters: map[string]string{ParameterKeyType: "pd-extreme", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyProvisionedIOPSOnCreate: "10k"},
+			parameters: map[string]string{ParameterKeyType: "pd-extreme", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2", ParameterKeyProvisionedIOPSOnCreate: "10k"},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-extreme",
@@ -90,12 +97,16 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 					"key1": "value1",
 					"key2": "value2",
 				},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
+				},
 				ProvisionedIOPSOnCreate: 10000,
 			},
 		},
 		{
 			name:       "values from parameters, checking hyperdisk-throughput",
-			parameters: map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyProvisionedThroughputOnCreate: "1000Mi"},
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2", ParameterKeyProvisionedThroughputOnCreate: "1000Mi"},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "hyperdisk-throughput",
@@ -105,6 +116,10 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				Labels: map[string]string{
 					"key1": "value1",
 					"key2": "value2",
+				},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
 				},
 				ProvisionedThroughputOnCreate: 1000,
 			},
@@ -119,6 +134,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -131,6 +147,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "foo/key",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -143,6 +160,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{tagKeyCreatedForClaimName: "testPVCName", tagKeyCreatedForClaimNamespace: "testPVCNamespace", tagKeyCreatedForVolumeName: "testPVName", tagKeyCreatedBy: "testDriver"},
 				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -155,6 +173,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{"label-1": "label-value-1", "label-2": "label-value-2"},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -167,6 +186,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{"key1": "value1", "key2": "value2", "label-1": "label-value-1", "label-2": "label-value-2"},
+				ResourceTags:         map[string]string{},
 			},
 		},
 		{
@@ -179,6 +199,56 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DiskEncryptionKMSKey: "",
 				Tags:                 map[string]string{},
 				Labels:               map[string]string{"key1": "value1", "label-1": "value-a", "label-2": "label-value-2"},
+				ResourceTags:         map[string]string{},
+			},
+		},
+		{
+			name:       "extra tags",
+			parameters: map[string]string{},
+			extraTags:  map[string]string{"parent1/key1": "value1", "parent2/key2": "value2"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
+				},
+			},
+		},
+		{
+			name:       "resource-tags parameter and extra tags",
+			parameters: map[string]string{ParameterKeyResourceTags: "parent3/key3/value3"},
+			extraTags:  map[string]string{"parent1/key1": "value1", "parent2/key2": "value2"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
+					"parent3/key3": "value3",
+				},
+			},
+		},
+		{
+			name:       "resource-tags parameter and extra labels, overlapping",
+			parameters: map[string]string{ParameterKeyResourceTags: "parent1/key1/value-a"},
+			extraTags:  map[string]string{"parent1/key1": "value-b", "parent2/key2": "value2"},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags: map[string]string{
+					"parent1/key1": "value-a",
+					"parent2/key2": "value2",
+				},
 			},
 		},
 		{
@@ -190,6 +260,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ForceAttach:     true,
 				Tags:            map[string]string{},
 				Labels:          map[string]string{},
+				ResourceTags:    map[string]string{},
 			},
 		},
 		{
@@ -200,6 +271,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType: "none",
 				Tags:            map[string]string{},
 				Labels:          map[string]string{},
+				ResourceTags:    map[string]string{},
 			},
 		},
 		{
@@ -212,6 +284,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ReplicationType: "none",
 				Tags:            map[string]string{},
 				Labels:          map[string]string{},
+				ResourceTags:    map[string]string{},
 				StoragePools: []StoragePool{
 					{
 						Project:      "my-project",
@@ -281,7 +354,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools)
+			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
@@ -301,6 +374,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 func TestSnapshotParameters(t *testing.T) {
 	tests := []struct {
 		desc                    string
+		extraTags               map[string]string
 		parameters              map[string]string
 		expectedSnapshotParames SnapshotParameters
 		expectError             bool
@@ -315,6 +389,7 @@ func TestSnapshotParameters(t *testing.T) {
 				ParameterKeyVolumeSnapshotContentName: "snapshot-content-name",
 				ParameterKeyVolumeSnapshotNamespace:   "snapshot-namespace",
 				ParameterKeyLabels:                    "label-1=value-a,key1=value1",
+				ParameterKeyResourceTags:              "parent1/key1/value1,parent2/key2/value2",
 			},
 			expectedSnapshotParames: SnapshotParameters{
 				StorageLocations: []string{"asia"},
@@ -326,7 +401,8 @@ func TestSnapshotParameters(t *testing.T) {
 					tagKeyCreatedForSnapshotNamespace:   "snapshot-namespace",
 					tagKeyCreatedBy:                     "test-driver",
 				},
-				Labels: map[string]string{"label-1": "value-a", "key1": "value1"},
+				Labels:       map[string]string{"label-1": "value-a", "key1": "value1"},
+				ResourceTags: map[string]string{"parent1/key1": "value1", "parent2/key2": "value2"},
 			},
 			expectError: false,
 		},
@@ -338,6 +414,7 @@ func TestSnapshotParameters(t *testing.T) {
 				SnapshotType:     DiskSnapshotType,
 				Tags:             make(map[string]string),
 				Labels:           map[string]string{},
+				ResourceTags:     map[string]string{},
 			},
 			expectError: false,
 		},
@@ -349,7 +426,7 @@ func TestSnapshotParameters(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters, "test-driver")
+			p, err := ExtractAndDefaultSnapshotParameters(tc.parameters, "test-driver", tc.extraTags)
 			if err != nil && !tc.expectError {
 				t.Errorf("Got error %v; expect no error", err)
 			}
