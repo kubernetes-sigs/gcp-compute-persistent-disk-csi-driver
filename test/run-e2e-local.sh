@@ -11,4 +11,9 @@ readonly PKGDIR=sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 # This requires application default credentials to be set up, eg by
 # `gcloud auth application-default login`
 
-ginkgo --v "test/e2e/tests" -- --project "${PROJECT}" --service-account "${IAM_NAME}" --v=6 --logtostderr
+CLOUDTOP_HOST=
+if hostname | grep -q c.googlers.com ; then
+  CLOUDTOP_HOST=--cloudtop-host
+fi
+
+ginkgo --v "test/e2e/tests" -- --project "${PROJECT}" --service-account "${IAM_NAME}" "${CLOUDTOP_HOST}" --v=6 --logtostderr

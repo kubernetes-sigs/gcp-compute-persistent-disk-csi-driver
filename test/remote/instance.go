@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -44,12 +45,25 @@ const (
 	timestampFormat = "20060102T150405"
 )
 
+// InstanceConfig is the common bundle of options used for instance creation.
+type InstanceConfig struct {
+	Project        string
+	Architecture   string
+	MachineType    string
+	ServiceAccount string
+	ImageURL       string
+	CloudtopHost   bool
+}
+
 type InstanceInfo struct {
-	project      string
-	architecture string
-	zone         string
-	name         string
-	machineType  string
+	project        string
+	architecture   string
+	zone           string
+	name           string
+	machineType    string
+	serviceAccount string
+	imageURL       string
+	cloudtopHost   bool
 
 	// External IP is filled in after instance creation
 	externalIP string
@@ -69,19 +83,22 @@ func (i *InstanceInfo) GetNodeID() string {
 	return common.CreateNodeID(i.project, i.zone, i.name)
 }
 
-func CreateInstanceInfo(project, instanceArchitecture, instanceZone, name, machineType string, cs *compute.Service) (*InstanceInfo, error) {
+func CreateInstanceInfo(config *InstanceConfig, zone, name string, cs *compute.Service) (*InstanceInfo, error) {
 	return &InstanceInfo{
-		project:        project,
-		architecture:   instanceArchitecture,
-		zone:           instanceZone,
+		project:        config.Project,
+		architecture:   config.Architecture,
+		zone:           zone,
 		name:           name,
-		machineType:    machineType,
+		machineType:    config.MachineType,
+		cloudtopHost:   config.CloudtopHost,
+		serviceAccount: config.ServiceAccount,
+		imageURL:       config.ImageURL,
 		computeService: cs,
 	}, nil
 }
 
 // Provision a gce instance using image
-func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) error {
+func (i *InstanceInfo) CreateOrGetInstance() error {
 	var err error
 	var instance *compute.Instance
 	klog.V(4).Infof("Creating instance: %v", i.name)
@@ -112,14 +129,14 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 				Type:       "PERSISTENT",
 				InitializeParams: &compute.AttachedDiskInitializeParams{
 					DiskName:    "my-root-pd-" + myuuid,
-					SourceImage: imageURL,
+					SourceImage: i.imageURL,
 				},
 			},
 		},
 	}
 
 	saObj := &compute.ServiceAccount{
-		Email:  serviceAccount,
+		Email:  i.serviceAccount,
 		Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
 	}
 	newInst.ServiceAccounts = []*compute.ServiceAccount{saObj}
@@ -185,6 +202,15 @@ func (i *InstanceInfo) CreateOrGetInstance(imageURL, serviceAccount string) erro
 		if strings.ToUpper(instance.Status) != "RUNNING" {
 			klog.Warningf("instance %s not in state RUNNING, was %s", i.name, instance.Status)
 			return false, nil
+		}
+
+		if i.cloudtopHost {
+			output, err := exec.Command("gcloud", "compute", "ssh", i.name, "--zone", i.zone, "--project", i.project, "--", "-o", "ProxyCommand=corp-ssh-helper %h %p", "--", "echo").CombinedOutput()
+			if err != nil {
+				klog.Errorf("Failed to bootstrap ssh (%v): %s", err, string(output))
+				return false, nil
+			}
+			klog.V(4).Infof("Bootstrapped cloudtop ssh for instance %v", i.name)
 		}
 
 		externalIP := getexternalIP(instance)

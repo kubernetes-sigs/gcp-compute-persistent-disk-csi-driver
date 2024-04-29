@@ -1289,7 +1289,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		zone := "us-central1-c"
 		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
-		i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
+		i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
 
 		if err != nil {
 			klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
