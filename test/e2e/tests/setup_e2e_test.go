@@ -43,6 +43,7 @@ var (
 	imageURL        = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
 	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
+	cloudtopHost    = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
 
 	testContexts        = []*remote.TestContext{}
 	computeService      *compute.Service
@@ -116,11 +117,21 @@ var _ = AfterSuite(func() {
 	}
 })
 
+func getRemoteInstanceConfig() *remote.InstanceConfig {
+	return &remote.InstanceConfig{
+		Project:        *project,
+		Architecture:   *architecture,
+		MachineType:    *machineType,
+		ServiceAccount: *serviceAccount,
+		ImageURL:       *imageURL,
+		CloudtopHost:   *cloudtopHost}
+}
+
 func NewTestContext(zone string) *remote.TestContext {
 	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
 	klog.Infof("Setting up node %s", nodeID)
 
-	i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
+	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
