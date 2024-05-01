@@ -24,9 +24,16 @@ import (
 	"k8s.io/mount-utils"
 )
 
+// DisableDevice asks the kernel to disable a device via /sys.
+// NB: this can be dangerous to use. Once a device is disabled, it's unusable, and can't be enabled
+// unless the serial number is known. But the serial number cannot be read from the device as it's
+// disabled. If a device is disabled in NodeUnstage, and then NodeStage is called without a
+// NodeUnpublish & publish sequence, the disabled state of the device will cause NodeStage to fail.
+// So this can only be used if we track the serial numbers of disabled devices in a persisent way
+// that survives driver restarts.
 func (_ *deviceUtils) DisableDevice(devicePath string) error {
 	deviceName := filepath.Base(devicePath)
-	return os.WriteFile(fmt.Sprintf("/sys/block/%s/device/state", deviceName), []byte("offline"), 0644)
+	return os.WriteFile(fmt.Sprintf("/sys/block/%s/device/state", deviceName), []byte("offline\n"), 0644)
 }
 
 func (_ *deviceUtils) IsDeviceFilesystemInUse(mounter *mount.SafeFormatAndMount, devicePath, devFsPath string) (bool, error) {
