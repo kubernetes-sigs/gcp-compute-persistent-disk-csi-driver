@@ -86,10 +86,6 @@ type DeviceUtils interface {
 	// exists on the machine, or an empty string if none exists
 	VerifyDevicePath(devicePaths []string, deviceName string) (string, error)
 
-	// DisableDevice performs necessary disabling prior to a device being
-	// detached from a node. The path is that from GetDiskByIdPaths.
-	DisableDevice(devicePath string) error
-
 	// Resize returns whether or not a device needs resizing.
 	Resize(resizer resizefs.Resizefs, devicePath string, deviceMountPath string) (bool, error)
 
