@@ -102,12 +102,18 @@ type CloudProvider struct {
 	waitForAttachConfig WaitForAttachConfig
 
 	tagsRateLimiter *rate.Limiter
+
+	listInstancesConfig ListInstancesConfig
 }
 
 var _ GCECompute = &CloudProvider{}
 
 type ConfigFile struct {
 	Global ConfigGlobal `gcfg:"global"`
+}
+
+type ListInstancesConfig struct {
+	Filters []string
 }
 
 type WaitForAttachConfig struct {
@@ -128,7 +134,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -168,6 +174,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		zone:                zone,
 		zonesCache:          make(map[string]([]string)),
 		waitForAttachConfig: waitForAttachConfig,
+		listInstancesConfig: listInstancesConfig,
 		// GCP has a rate limit of 600 requests per minute, restricting
 		// here to 8 requests per second.
 		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),

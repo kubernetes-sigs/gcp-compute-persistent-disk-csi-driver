@@ -56,13 +56,17 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 	extra_flags := []string{
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
 		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
+		"--multi-zone-volume-handle-enable",
+		"--multi-zone-volume-handle-disk-types=pd-standard",
+		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
+		"--use-instance-api-to-list-volumes-published-nodes",
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
 	// useful to see what's happening when debugging tests.
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s --multi-zone-volume-handle-enable --multi-zone-volume-handle-disk-types=pd-standard --use-instance-api-to-poll-attachment-disk-types=pd-ssd %s 2> %s/prog.out < /dev/null > /dev/null &'",
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,

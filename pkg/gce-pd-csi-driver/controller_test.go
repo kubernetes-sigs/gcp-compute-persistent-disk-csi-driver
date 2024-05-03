@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	compute "google.golang.org/api/compute/v1"
@@ -1133,6 +1135,96 @@ func TestListVolumePagination(t *testing.T) {
 	}
 }
 
+func TestListAttachedVolumePagination(t *testing.T) {
+	testCases := []struct {
+		name            string
+		diskCount       int
+		maxEntries      int32
+		expectedEntries []int
+	}{
+		{
+			name:            "no pagination (implicit)",
+			diskCount:       325,
+			expectedEntries: []int{325},
+		},
+		{
+			name:            "no pagination (explicit)",
+			diskCount:       2500,
+			maxEntries:      2500,
+			expectedEntries: []int{2500},
+		},
+		{
+			name:            "pagination (implicit)",
+			diskCount:       1327,
+			expectedEntries: []int{500, 500, 327},
+		},
+		{
+			name:            "pagination (explicit)",
+			diskCount:       723,
+			maxEntries:      200,
+			expectedEntries: []int{200, 200, 200, 123},
+		},
+		{
+			name:            "pagination (explicit)",
+			diskCount:       3253,
+			maxEntries:      1000,
+			expectedEntries: []int{1000, 1000, 1000, 253},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup new driver each time so no interference
+			var d []*gce.CloudDisk
+			fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			for i := 0; i < tc.diskCount; i++ {
+				// Create diskCount dummy instances, each with a dynamically attached disk
+				instanceName := fmt.Sprintf("instance-%v", i)
+				diskName := fmt.Sprintf("pvc-%v", i)
+				instance := compute.Instance{
+					Name:     name,
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, instanceName),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: diskName,
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, diskName),
+						},
+					},
+				}
+				fakeCloudProvider.InsertInstance(&instance, zone, instanceName)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			// Use attached disks (instances.list) API
+			gceDriver.cs.listVolumesConfig.UseInstancesAPIForPublishedNodes = true
+
+			tok := ""
+			for i, expectedEntry := range tc.expectedEntries {
+				lvr := &csi.ListVolumesRequest{
+					MaxEntries:    tc.maxEntries,
+					StartingToken: tok,
+				}
+				resp, err := gceDriver.cs.ListVolumes(context.TODO(), lvr)
+				if err != nil {
+					t.Fatalf("Got error %v", err)
+					return
+				}
+
+				if len(resp.Entries) != expectedEntry {
+					t.Fatalf("Got %v entries, expected %v on call # %d", len(resp.Entries), expectedEntry, i+1)
+				}
+
+				tok = resp.NextToken
+			}
+			if len(tok) != 0 {
+				t.Fatalf("Expected no more entries, but got NextToken in response: %s", tok)
+			}
+		})
+	}
+}
+
 func TestListVolumeArgs(t *testing.T) {
 	diskCount := 500
 	testCases := []struct {
@@ -1189,6 +1281,204 @@ func TestListVolumeArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListVolumeResponse(t *testing.T) {
+	zone1 := "us-central1-a"
+	zone2 := "us-central1-b"
+	testCases := []struct {
+		name            string
+		disks           []compute.Disk
+		instances       []compute.Instance
+		expectedEntries []*csi.ListVolumesResponse_Entry
+	}{
+		{
+			name: "unattached disk",
+			disks: []compute.Disk{
+				{
+					Name:     "pv-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{},
+					},
+				},
+			},
+		},
+		{
+			name: "attached disk",
+			disks: []compute.Disk{
+				{
+					Name:     "pv-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+				},
+			},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone, "node-1")},
+					},
+				},
+			},
+		},
+		{
+			name: "attached regional disk",
+			disks: []compute.Disk{
+				{
+					Name:     "pv-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/%s/disks/%s", project, region, "pv-1"),
+				},
+			},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/%s/disks/%s", project, region, "pv-1"),
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone, "node-1")},
+					},
+				},
+			},
+		},
+		{
+			name: "multi-zone attached disk",
+			disks: []compute.Disk{
+				{
+					Name:     fmt.Sprintf("%s-pv-1", zone1),
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone1, "pv-1"),
+					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+				},
+				{
+					Name:     fmt.Sprintf("%s-pv-1", zone2),
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone2, "pv-1"),
+					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+				},
+			},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone1, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone1, "pv-1"),
+						},
+					},
+					Zone: zone1,
+				},
+				{
+					Name:     "node-2",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone2, "node-2"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone2, "pv-1"),
+						},
+					},
+					Zone: zone2,
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone1, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone1, "node-1")},
+					},
+				},
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone2, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone2, "node-2")},
+					},
+				},
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", project, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{
+							fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone1, "node-1"),
+							fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone2, "node-2"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var d []*gce.CloudDisk
+			for _, disk := range tc.disks {
+				d = append(d, gce.CloudDiskFromV1(&disk))
+			}
+			fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+			if err != nil {
+			}
+			for _, instance := range tc.instances {
+				fakeCloudProvider.InsertInstance(&instance, instance.Zone, instance.Name)
+			}
+			// Setup new driver each time so no interference
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
+				Enable: true,
+			}
+
+			resp, err := gceDriver.cs.ListVolumes(context.TODO(), &csi.ListVolumesRequest{})
+			if err != nil {
+				t.Fatalf("ListVolumes unexpected error: %v", err)
+			}
+
+			if diff := cmp.Diff(tc.expectedEntries, resp.Entries, cmp.Transformer("EntryToVolumeId", entryToVolumeId), cmpopts.SortSlices(less)); diff != "" {
+				t.Errorf("ListVolumes: -want err, +got err\n%s", diff)
+			}
+		})
+	}
+}
+
+func entryToVolumeId(e csi.ListVolumesResponse_Entry) string {
+	return e.Volume.VolumeId
+}
+
+func less(a, b fmt.Stringer) bool {
+	return a.String() < b.String()
 }
 
 func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {

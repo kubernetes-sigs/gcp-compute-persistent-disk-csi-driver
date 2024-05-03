@@ -127,12 +127,20 @@ func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([
 	return []string{cloud.zone, "country-region-fakesecondzone"}, nil
 }
 
-func (cloud *FakeCloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, string, error) {
+func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error) {
 	d := []*computev1.Disk{}
 	for _, cd := range cloud.disks {
 		d = append(d, cd.disk)
 	}
 	return d, "", nil
+}
+
+func (cloud *FakeCloudProvider) ListInstances(ctx context.Context, fields []googleapi.Field) ([]*computev1.Instance, string, error) {
+	instances := []*computev1.Instance{}
+	for _, instance := range cloud.instances {
+		instances = append(instances, instance)
+	}
+	return instances, "", nil
 }
 
 func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string) ([]*computev1.Snapshot, string, error) {
