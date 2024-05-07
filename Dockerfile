@@ -27,7 +27,7 @@ FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.2 AS debian
 
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2 mdadm
 
 # Since we're leveraging apt to pull in dependencies, we use `gcr.io/distroless/base` because it includes glibc.
 FROM gcr.io/distroless/base-debian12 AS distroless-base
@@ -82,7 +82,9 @@ COPY --from=debian /lib/udev/rules.d/95-dm-notify.rules /lib/udev/rules.d/95-dm-
 COPY --from=debian /sbin/blkdeactivate /sbin/blkdeactivate
 COPY --from=debian /sbin/dmsetup /sbin/dmsetup
 COPY --from=debian /sbin/dmstats /sbin/dmstats
+COPY --from=debian /bin/ls /bin/ls
 # End of dependencies for LVM
+COPY --from=debian /sbin/mdadm /sbin/mdadm
 COPY --from=debian /sbin/mke2fs /sbin/mke2fs
 COPY --from=debian /sbin/mkfs* /sbin/
 COPY --from=debian /sbin/resize2fs /sbin/resize2fs

@@ -72,12 +72,8 @@ var (
 	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
-<<<<<<< HEAD
 	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
-=======
-	// TODO: set enableDataCacheFlag default to false after testing
-	enableDataCacheFlag = flag.Bool("enable-data-cache", true, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
->>>>>>> 4936a34f (Add GKE Data Cache Feature Support)
+	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -256,6 +252,13 @@ func handle() {
 		}
 	}
 
+	if *enableDataCacheFlag {
+		klog.V(2).Info("Raiding local ssds to setup data cache")
+		err := driver.RaidLocalSsds()
+		if err != nil {
+			klog.Fatalf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
+		}
+	}
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())

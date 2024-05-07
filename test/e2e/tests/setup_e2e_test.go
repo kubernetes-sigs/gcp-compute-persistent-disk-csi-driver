@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,8 @@ var (
 	kmsClient             *cloudkms.KeyManagementClient
 )
 
+const localSSDCount int64 = 2
+
 func init() {
 	klog.InitFlags(flag.CommandLine)
 }
@@ -78,6 +81,7 @@ var _ = BeforeSuite(func() {
 	defer close(hdtcc)
 
 	zones := strings.Split(*zones, ",")
+	// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -103,18 +107,25 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	for _, zone := range zones {
-		go func(curZone string) {
-			defer GinkgoRecover()
-			tcc <- NewDefaultTestContext(curZone)
-		}(zone)
-		go func(curZone string) {
-			defer GinkgoRecover()
-			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType)
-		}(zone)
+	numberOfInstancesPerZone := 2
+
+	setupContext := func(zones []string, randInt int) {
+		for _, zone := range zones {
+			go func(curZone string) {
+				defer GinkgoRecover()
+				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+			}(zone)
+			go func(curZone string) {
+				defer GinkgoRecover()
+				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType)
+			}(zone)
+		}
+	}
+	for j := 0; j < numberOfInstancesPerZone; j++ {
+		setupContext(zones, j)
 	}
 
-	for i := 0; i < len(zones); i++ {
+	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
@@ -145,12 +156,12 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewDefaultTestContext(zone string) *remote.TestContext {
-	return NewTestContext(zone, *minCpuPlatform, *machineType)
+func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
 }
 
-func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
+func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
@@ -165,6 +176,7 @@ func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContex
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
+		LocalSSDCount:             localSSDCount,
 	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
@@ -185,7 +197,16 @@ func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContex
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
+	pkgs := []string{"lvm2", "mdadm", "grep", "coreutils"}
+	err = testutils.InstallDependencies(i, pkgs)
+	if err != nil {
+		klog.Errorf("Failed to install dependency package on node %v: error : %v", i.GetNodeID(), err)
+	}
 
+	err = testutils.SetupDataCachingConfig(i)
+	if err != nil {
+		klog.Errorf("Failed to setup data cache required config error %v", err)
+	}
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 	if err != nil {
