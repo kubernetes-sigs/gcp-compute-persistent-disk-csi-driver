@@ -23,7 +23,6 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -274,9 +273,9 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	// Validate Arguments
 	volumeID := req.GetVolumeId()
-	pvcNameStringSlice := strings.Split(volumeID, "/")
 	stagingTargetPath := req.GetStagingTargetPath()
 	volumeCapability := req.GetVolumeCapability()
+	nodeId := ns.MetadataService.GetName()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume ID must be provided")
 	}
@@ -286,7 +285,9 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
-
+	if len(nodeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
+	}
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
@@ -310,7 +311,6 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		partition = part
 	}
 	devicePath, err := getDevicePath(ns, volumeID, partition)
-
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err.Error()))
 	}
@@ -321,215 +321,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	klog.V(2).Infof("====== Before LVM Setup ======")
 	klog.V(2).Infof("====== NodeStageVolume PublishContext is %v ======", req.GetPublishContext())
 	if ns.EnableDataCache && req.GetPublishContext()[contexLocalSsdCacheSize] != "" {
-
-		klog.V(2).Infof("====== Start LVM PoC NodeStageVolume Steps ======")
-		cacheGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
-		klog.V(2).Infof("====== cacheGroupName is %v ======", cacheGroupName)
-
-		klog.V(2).Infof("====== vgscan before vgcreate ======")
-		args := []string{}
-		info, err := common.RunCommand("vgscan", args...)
-
+		devFsPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
-			klog.Errorf("vgscan error %v: %s", err, info)
-		} else {
-			klog.V(2).Infof("====== vgscan info %v  ======", string(info))
-			klog.V(2).Infof("====== vgscan info contains cacheGroupName or not %v ======", strings.Contains(string(info), cacheGroupName))
-			infoString := strings.ReplaceAll(string(info), "\n", " ")
-			infoString = strings.ReplaceAll(infoString, ".", "")
-			infoString = strings.ReplaceAll(infoString, "\"", "")
-			infoSlice := strings.Split(infoString, " ")
-			if strings.Contains(string(info), "Found volume group") {
-				// Existing volume group
-				klog.V(2).Infof("====== vgscan found existing volume group ======")
-				existingVolumeGroupSlice := strings.SplitAfter(infoString, "Found volume group ")
-				existingVolumeGroup := strings.TrimRight(existingVolumeGroupSlice[1], " using metadata type lvm2")
-				klog.V(2).Infof("====== existingVolumeGroup is %v ======", existingVolumeGroup)
-				if strings.Contains(string(info), "Couldn't find device with uuid") {
-					klog.V(2).Infof("====== vgscan info does not find a device's uuid ======")
-					missingDeviceUUID := infoSlice[8]
-					klog.V(2).Infof("====== missingDeviceUUID is %s ======", missingDeviceUUID)
-
-					// pvcreate --norestorefile --uuid missingDeviceUUID /dev/nvme0n1
-					klog.V(2).Infof("====== pvcreate --norestorefile ======")
-					args = []string{
-						"--yes",
-						"-ff",
-						"--norestorefile",
-						"--uuid",
-						missingDeviceUUID,
-						"/dev/nvme0n1",
-					}
-					info, err = common.RunCommand("pvcreate", args...)
-					if err != nil {
-						klog.Errorf("pvcreate --norestorefile error %v: %s", err, info)
-						return nil, fmt.Errorf("pvcreate --norestorefile error %w: %s", err, info)
-					}
-
-					if cacheGroupName != existingVolumeGroup {
-						// Get data cache size info here
-						fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
-						klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
-						// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
-						klog.V(2).Infof("====== lvcreate fast cache layer again with the existingVolumeGroup ======")
-						args = []string{
-							"--yes",
-							"-n",
-							"fast",
-							"-L",
-							fastCacheSize,
-							existingVolumeGroup,
-							"/dev/nvme0n1",
-						}
-						info, err = common.RunCommand("lvcreate", args...)
-						if err != nil {
-							klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-							return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-						}
-
-						// vgrename from existingVolumeGroup to the new cacheGroupName
-						klog.V(2).Infof("====== vgrename existingVolumeGroup cacheGroupName======")
-						args = []string{
-							existingVolumeGroup,
-							cacheGroupName,
-						}
-						info, err = common.RunCommand("vgrename", args...)
-						if err != nil {
-							klog.V(2).Infof("====== vgrename error %v: %s ======", err, info)
-							return nil, fmt.Errorf("vgrename error %w: %s", err, info)
-						}
-					}
-
-					// vgchange -ay cachegroup
-					klog.V(2).Infof("====== vgchange -ay cachegroup after vgrename ======")
-					args = []string{
-						"-ay",
-						cacheGroupName,
-					}
-					info, err = common.RunCommand("vgchange", args...)
-					if err != nil {
-						return nil, fmt.Errorf("vgchange error %w: %s", err, info)
-					}
-				} else {
-					// Something may be wrong
-					klog.Warningf("====== Cannot find the missingDeviceUUID but volume group exists %s ======", info)
-					if strings.Contains(string(info), cacheGroupName) {
-						// vgchange -ay cachegroup
-						klog.V(2).Infof("====== only need to vgchange -ay cachegroup ======")
-						args = []string{
-							"-ay",
-							cacheGroupName,
-						}
-						info, err = common.RunCommand("vgchange", args...)
-						if err != nil {
-							return nil, fmt.Errorf("vgchange error %w: %s", err, info)
-						}
-					} else {
-						return nil, fmt.Errorf("Something is wrong")
-					}
-				}
-			} else {
-				// No existing volume group
-				klog.V(2).Infof("====== vgcreate ======")
-				args = []string{
-					"--zero",
-					"y",
-					cacheGroupName,
-					devicePath,
-					"/dev/nvme0n1",
-				}
-				info, err = common.RunCommand("vgcreate", args...)
-				if err != nil {
-					klog.Errorf("vgcreate error %v: %s", err, info)
-					return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
-				}
-
-				klog.V(2).Infof("====== vgscan after vgcreate ======")
-				args = []string{}
-				info, err = common.RunCommand("vgscan", args...)
-				if err != nil {
-					klog.Errorf("vgscan error %v: %s", err, info)
-				} else {
-					klog.V(2).Infof("====== vgscan info %s  ======", info)
-				}
-				// Get data cache size info here
-				fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
-				klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
-				// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
-				klog.V(2).Infof("====== lvcreate fast cache layer ======")
-				args = []string{
-					"--yes",
-					"-n",
-					"fast",
-					"-L",
-					fastCacheSize,
-					cacheGroupName,
-					"/dev/nvme0n1",
-				}
-				info, err = common.RunCommand("lvcreate", args...)
-				if err != nil {
-					klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-					return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-				}
-
-				// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
-				klog.V(2).Infof("====== lvcreate main cache layer ======")
-				args = []string{
-					"--yes",
-					"-n",
-					"main",
-					"-l",
-					"100%PVS",
-					cacheGroupName,
-					devicePath,
-				}
-				info, err = common.RunCommand("lvcreate", args...)
-				if err != nil {
-					klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-					return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-				}
-
-				// lvconvert --type cache --cachevol fast --zero y --cachemode writethrough cachegroup/main --force -y
-				klog.V(2).Infof("====== lvconvert fast and main to cache ======")
-				args = []string{
-					"--type",
-					"cache",
-					"--cachevol",
-					"fast",
-					"--zero",
-					"y",
-					"--cachemode",
-					req.GetPublishContext()[contextDataCacheMode],
-					cacheGroupName + "/main",
-					"--force",
-					"-y",
-				}
-				info, err = common.RunCommand("lvconvert", args...)
-				if err != nil {
-					klog.V(2).Infof("====== lvconvert error %v: %s ======", err, info)
-					return nil, fmt.Errorf("lvconvert error %w: %s", err, info)
-				}
-
-				// vgchange -ay cachegroup
-				klog.V(2).Infof("====== vgchange -ay cachegroup ======")
-				args = []string{
-					"-ay",
-					cacheGroupName,
-				}
-				info, err = common.RunCommand("vgchange", args...)
-				if err != nil {
-					return nil, fmt.Errorf("vgchange error %w: %s", err, info)
-				}
-
-			}
+			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
+		}
+		devicePath, err = SetupCaching(devFsPath, req, nodeId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 		}
 		// LVM devicePath is the main cachegroup
-		klog.V(2).Infof("====== Setting LVM devicePath for mount ======")
-		devicePath = "/dev/" + cacheGroupName + "/main"
-		klog.V(2).Infof("====== %v ======", devicePath)
-
-		// End of LVM PoC Steps
 	}
+	klog.V(2).Infof("====== Device path %v ======", devicePath)
 
 	// Part 2: Check if mount already exists at stagingTargetPath
 	if ns.isVolumePathMounted(stagingTargetPath) {
@@ -572,6 +374,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// devicePath should be /dev/cachegroup/main for the LVM cache
 	klog.V(2).Infof("====== fstype is %v ======", fstype)
+	klog.V(2).Infof("====== devicePath is %v ======", devicePath)
+	klog.V(2).Infof("====== stagingTargetPath is %v ======", stagingTargetPath)
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
@@ -654,7 +458,6 @@ func extractReadAheadKBMountFlag(mountFlags []string) (int64, bool, error) {
 func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	// Validate arguments
 	volumeID := req.GetVolumeId()
-	pvcNameStringSlice := strings.Split(volumeID, "/")
 	stagingTargetPath := req.GetStagingTargetPath()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnstageVolume Volume ID must be provided")
@@ -680,26 +483,20 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
 		}
 	}
-
 	// The NodeUnstageVolume does not have any volume or publish context, we need to get the info from LVM locally
 	// Check if cache group cache-{volumeID} exist in LVM
 	if ns.EnableDataCache {
 		// LVM PoC Steps
 		klog.V(2).Infof("====== Start LVM PoC NodeUnstageVolume Steps ======")
-		// lvchange -an /dev/cachegroup/main
-		// volumeID format is projects/songsunny-joonix/zones/us-central1-b/disks/pvc-ef877b3e-b116-411e-9553-42f7c74bbcd4
-		cacheGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
-		klog.V(2).Infof("====== lvchange -an /dev/%v/main ======", cacheGroupName)
-		args := []string{
-			"-an",
-			"/dev/" + cacheGroupName + "/main",
-		}
-		info, err := common.RunCommand("lvchange", args...)
+		// 	// lvchange -an /dev/cachegroup/main
+		// 	// volumeID format is projects/songsunny-joonix/zones/us-central1-b/disks/pvc-ef877b3e-b116-411e-9553-42f7c74bbcd4
+		// 	volumeGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
+		nodeId := ns.MetadataService.GetName()
+		err = CleanupCache(volumeID, nodeId)
 		if err != nil {
-			return nil, fmt.Errorf("lvchange error %w: %s", err, info)
+			klog.Errorf("Failed to cleanup cache: %v", err)
 		}
 	}
-
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }

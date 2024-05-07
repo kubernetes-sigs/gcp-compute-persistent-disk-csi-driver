@@ -51,6 +51,6 @@ imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
-  newName: gcr.io/songsunny-joonix/gcp-compute-persistent-disk-csi-driver
+  newName: gcr.io/snehaaradhey-joonix/gcp-compute-persistent-disk-csi-driver
   newTag: "datacache"
 ---
