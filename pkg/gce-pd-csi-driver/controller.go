@@ -28,6 +28,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -105,6 +106,8 @@ type GCEControllerServer struct {
 	enableStoragePools bool
 
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
+
+	listVolumesConfig ListVolumesConfig
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -122,6 +125,21 @@ type MultiZoneVolumeHandleConfig struct {
 	// to their respective attachment zone (based on the node), which will result in
 	// an "Unknown zone" error on ControllerPublish/ControllerUnpublish.
 	Enable bool
+}
+
+type ListVolumesConfig struct {
+	UseInstancesAPIForPublishedNodes bool
+}
+
+func (c ListVolumesConfig) listDisksFields() []googleapi.Field {
+	if c.UseInstancesAPIForPublishedNodes {
+		// If we are using the instances.list API in ListVolumes,
+		// don't include the users field in the response, as an optimization.
+		// We rely on instances.list items.disks for attachment pairings.
+		return listDisksFieldsWithoutUsers
+	}
+
+	return listDisksFieldsWithUsers
 }
 
 type csiErrorBackoffId string
@@ -175,10 +193,28 @@ const (
 	resourceApiScheme  = "https"
 	resourceApiService = "compute"
 	resourceProject    = "projects"
+
+	listDisksUsersField = googleapi.Field("items/users")
 )
 
 var (
 	validResourceApiVersions = map[string]bool{"v1": true, "alpha": true, "beta": true, "staging_v1": true, "staging_beta": true, "staging_alpha": true}
+
+	// By default GCE returns a lot of data for each instance. Request only a subset of the fields.
+	listInstancesFields = []googleapi.Field{
+		"items/disks/deviceName",
+		"items/disks/source",
+		"items/selfLink",
+		"nextPageToken",
+	}
+
+	// By default GCE returns a lot of data for each disk. Request only a subset of the fields.
+	listDisksFieldsWithoutUsers = []googleapi.Field{
+		"items/labels",
+		"items/selfLink",
+		"nextPageToken",
+	}
+	listDisksFieldsWithUsers = append(listDisksFieldsWithoutUsers, "items/users")
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
@@ -935,6 +971,22 @@ func generateFailedValidationMessage(format string, a ...interface{}) *csi.Valid
 	}
 }
 
+func (gceCS *GCEControllerServer) listVolumeEntries(ctx context.Context) ([]*csi.ListVolumesResponse_Entry, error) {
+	diskList, _, err := gceCS.CloudProvider.ListDisks(ctx, gceCS.listVolumesConfig.listDisksFields())
+	if err != nil {
+		return nil, err
+	}
+
+	var instanceList []*compute.Instance = nil
+	if gceCS.listVolumesConfig.UseInstancesAPIForPublishedNodes {
+		instanceList, _, err = gceCS.CloudProvider.ListInstances(ctx, listInstancesFields)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return gceCS.disksAndInstancesToVolumeEntries(diskList, instanceList), nil
+}
+
 func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	// https://cloud.google.com/compute/docs/reference/beta/disks/list
 	if req.MaxEntries < 0 {
@@ -944,19 +996,15 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 
 	offsetLow := 0
 	var ok bool
-	var volumeEntries []*csi.ListVolumesResponse_Entry
 	if req.StartingToken == "" {
-		diskList, _, err := gceCS.CloudProvider.ListDisks(ctx)
+		volumeEntries, err := gceCS.listVolumeEntries(ctx)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
 				return nil, status.Errorf(codes.Aborted, "ListVolumes error with invalid request: %v", err.Error())
 			}
-			return nil, common.LoggedError("Failed to list disk: ", err)
+			return nil, common.LoggedError("Failed to list volumes: ", err)
 		}
-		volumeEntries = gceCS.disksToVolumeEntries(diskList)
-	}
 
-	if req.StartingToken == "" {
 		gceCS.volumeEntries = volumeEntries
 		gceCS.volumeEntriesSeen = map[string]int{}
 	} else {
@@ -1008,47 +1056,62 @@ func isMultiZoneDisk(diskRsrc string, diskLabels map[string]string) (string, boo
 	return multiZoneVolumeId, true
 }
 
-// disksToVolumeEntries converts a list of disks to a list of CSI ListVolumeResponse entries
+// disksAndInstancesToVolumeEntries converts a list of disks and instances to a list
+// of CSI ListVolumeResponse entries.
 // It appends "multi-zone" volumeHandles at the end. These are volumeHandles which
 // map to multiple volumeHandles in different zones
-func (gceCS *GCEControllerServer) disksToVolumeEntries(disks []*compute.Disk) []*csi.ListVolumesResponse_Entry {
-	multiZoneNodesByVolumeId := map[string][]string{}
-	entries := []*csi.ListVolumesResponse_Entry{}
+func (gceCS *GCEControllerServer) disksAndInstancesToVolumeEntries(disks []*compute.Disk, instances []*compute.Instance) []*csi.ListVolumesResponse_Entry {
+	nodesByVolumeId := map[string][]string{}
+	multiZoneVolumeIdsByVolumeId := map[string]string{}
 	for _, d := range disks {
-		diskRsrc, err := getResourceId(d.SelfLink)
+		volumeId, err := getResourceId(d.SelfLink)
 		if err != nil {
 			klog.Warningf("Bad ListVolumes disk resource %s, skipped: %v (%+v)", d.SelfLink, err, d)
 			continue
 		}
-		users := []string{}
+
+		instanceIds := make([]string, len(d.Users))
 		for _, u := range d.Users {
-			rsrc, err := getResourceId(u)
+			instanceId, err := getResourceId(u)
 			if err != nil {
 				klog.Warningf("Bad ListVolumes user %s, skipped: %v", u, err)
 			} else {
-				users = append(users, rsrc)
+				instanceIds = append(instanceIds, instanceId)
 			}
 		}
 
+		nodesByVolumeId[volumeId] = instanceIds
+
 		if gceCS.multiZoneVolumeHandleConfig.Enable {
-			if multiZoneVolumeId, isMultiZone := isMultiZoneDisk(diskRsrc, d.Labels); isMultiZone {
-				_, ok := multiZoneNodesByVolumeId[multiZoneVolumeId]
-				if !ok {
-					multiZoneNodesByVolumeId[multiZoneVolumeId] = []string{}
-				}
-				multiZoneNodesByVolumeId[multiZoneVolumeId] = append(multiZoneNodesByVolumeId[multiZoneVolumeId], users...)
+			if multiZoneVolumeId, isMultiZone := isMultiZoneDisk(volumeId, d.Labels); isMultiZone {
+				multiZoneVolumeIdsByVolumeId[volumeId] = multiZoneVolumeId
+				nodesByVolumeId[multiZoneVolumeId] = append(nodesByVolumeId[multiZoneVolumeId], instanceIds...)
 			}
 		}
-		entries = append(entries, &csi.ListVolumesResponse_Entry{
-			Volume: &csi.Volume{
-				VolumeId: diskRsrc,
-			},
-			Status: &csi.ListVolumesResponse_VolumeStatus{
-				PublishedNodeIds: users,
-			},
-		})
 	}
-	for volumeId, nodeIds := range multiZoneNodesByVolumeId {
+
+	entries := []*csi.ListVolumesResponse_Entry{}
+	for _, instance := range instances {
+		instanceId, err := getResourceId(instance.SelfLink)
+		if err != nil {
+			klog.Warningf("Bad ListVolumes instance resource %s, skipped: %v (%+v)", instance.SelfLink, err, instance)
+			continue
+		}
+		for _, disk := range instance.Disks {
+			volumeId, err := getResourceId(disk.Source)
+			if err != nil {
+				klog.Warningf("Bad ListVolumes instance disk source %s, skipped: %v (%+v)", disk.Source, err, instance)
+				continue
+			}
+
+			nodesByVolumeId[volumeId] = append(nodesByVolumeId[volumeId], instanceId)
+			if multiZoneVolumeId, isMultiZone := multiZoneVolumeIdsByVolumeId[volumeId]; isMultiZone {
+				nodesByVolumeId[multiZoneVolumeId] = append(nodesByVolumeId[multiZoneVolumeId], instanceId)
+			}
+		}
+	}
+
+	for volumeId, nodeIds := range nodesByVolumeId {
 		entries = append(entries, &csi.ListVolumesResponse_Entry{
 			Volume: &csi.Volume{
 				VolumeId: volumeId,

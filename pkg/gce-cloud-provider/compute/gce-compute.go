@@ -33,6 +33,7 @@ import (
 	"golang.org/x/oauth2"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -106,7 +107,8 @@ type GCECompute interface {
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, diskType, instanceZone, instanceName string) error
 	ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error)
-	ListDisks(ctx context.Context) ([]*computev1.Disk, string, error)
+	ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error)
+	ListInstances(ctx context.Context, fields []googleapi.Field) ([]*computev1.Instance, string, error)
 	// Regional Disk Methods
 	GetReplicaZoneURI(project string, zone string) string
 	// Instance Methods
@@ -135,7 +137,7 @@ func (cloud *CloudProvider) GetDefaultZone() string {
 
 // ListDisks lists disks based on maxEntries and pageToken only in the project
 // and region that the driver is running in.
-func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, string, error) {
+func (cloud *CloudProvider) ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error) {
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get region from zones: %w", err)
@@ -148,6 +150,7 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, s
 
 	// listing out regional disks in the region
 	rlCall := cloud.service.RegionDisks.List(cloud.project, region)
+	rlCall.Fields(fields...)
 	nextPageToken := "pageToken"
 	for nextPageToken != "" {
 		rDiskList, err := rlCall.Do()
@@ -162,6 +165,7 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, s
 	// listing out zonal disks in all zones of the region
 	for _, zone := range zones {
 		lCall := cloud.service.Disks.List(cloud.project, zone)
+		lCall.Fields(fields...)
 		nextPageToken := "pageToken"
 		for nextPageToken != "" {
 			diskList, err := lCall.Do()
@@ -173,6 +177,41 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context) ([]*computev1.Disk, s
 			lCall.PageToken(nextPageToken)
 		}
 	}
+	return items, "", nil
+}
+
+// ListInstances lists instances based on maxEntries and pageToken for the project and region
+// that the driver is running in. Filters from cloud.listInstancesConfig.Filters are applied
+// to the request.
+func (cloud *CloudProvider) ListInstances(ctx context.Context, fields []googleapi.Field) ([]*computev1.Instance, string, error) {
+	region, err := common.GetRegionFromZones([]string{cloud.zone})
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get region from zones: %w", err)
+	}
+	zones, err := cloud.ListZones(ctx, region)
+	if err != nil {
+		return nil, "", err
+	}
+	items := []*computev1.Instance{}
+
+	for _, zone := range zones {
+		lCall := cloud.service.Instances.List(cloud.project, zone)
+		for _, filter := range cloud.listInstancesConfig.Filters {
+			lCall = lCall.Filter(filter)
+		}
+		lCall = lCall.Fields(fields...)
+		nextPageToken := "pageToken"
+		for nextPageToken != "" {
+			instancesList, err := lCall.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			items = append(items, instancesList.Items...)
+			nextPageToken = instancesList.NextPageToken
+			lCall.PageToken(nextPageToken)
+		}
+	}
+
 	return items, "", nil
 }
 
