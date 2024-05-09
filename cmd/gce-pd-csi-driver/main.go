@@ -265,6 +265,7 @@ func handle() {
 	gce.WaitForOpBackoff.Steps = *waitForOpBackoffSteps
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
+	driver.RaidLocalSsds()
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
 }
 

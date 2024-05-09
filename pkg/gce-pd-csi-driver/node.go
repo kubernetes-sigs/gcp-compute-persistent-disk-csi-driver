@@ -329,7 +329,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
 		}
-		devicePath, err = SetupCaching(devFsPath, req, nodeId)
+		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 		}
@@ -496,7 +496,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		// 	// volumeID format is projects/songsunny-joonix/zones/us-central1-b/disks/pvc-ef877b3e-b116-411e-9553-42f7c74bbcd4
 		// 	volumeGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
 		nodeId := ns.MetadataService.GetName()
-		err = CleanupCache(volumeID, nodeId)
+		err = cleanupCache(volumeID, nodeId)
 		if err != nil {
 			klog.Errorf("Failed to cleanup cache: %v", err)
 		}
