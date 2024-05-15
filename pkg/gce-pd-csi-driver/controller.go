@@ -290,7 +290,9 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	err = validateStoragePools(req, params, gceCS.CloudProvider.GetDefaultProject())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate storage pools: %v", err)
+		// Reassign error so that all errors are reported as InvalidArgument to RecordOperationErrorMetrics.
+		err = status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate storage pools: %v", err)
+		return nil, err
 	}
 
 	// Verify that the regional availability class is only used on regional disks.
