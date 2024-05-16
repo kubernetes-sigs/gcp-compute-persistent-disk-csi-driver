@@ -278,14 +278,7 @@ func useVolumeCloning(req *csi.CreateVolumeRequest) bool {
 	return req.VolumeContentSource != nil && req.VolumeContentSource.GetVolume() != nil
 }
 
-func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("CreateVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
+func (gceCS *GCEControllerServer) executeCreateVolume(ctx context.Context, req *csi.CreateVolumeRequest, metrics *metrics.Fields) (*csi.CreateVolumeResponse, error) {
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
 	name := req.GetName()
@@ -310,10 +303,10 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	params, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools, gceCS.Driver.extraTags)
-	diskTypeForMetric = params.DiskType
-	enableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
+	metrics.DiskType = params.DiskType
+	metrics.EnableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
 	hasStoragePools := len(params.StoragePools) > 0
-	enableStoragePools = strconv.FormatBool(hasStoragePools)
+	metrics.EnableStoragePools = strconv.FormatBool(hasStoragePools)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
@@ -524,7 +517,17 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
 	return generateCreateVolumeResponse(disk, zones, params)
+}
 
+func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	var err error
+	metricsFields := metrics.NewFields()
+	defer func() {
+		gceCS.Metrics.RecordOperationErrorMetricsFields("CreateVolume", err, metricsFields)
+	}()
+
+	resp, err := gceCS.executeCreateVolume(ctx, req, &metricsFields)
+	return resp, err
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
