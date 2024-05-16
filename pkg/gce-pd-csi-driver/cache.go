@@ -12,11 +12,14 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
-const cacheSuffix = "csi-fast"
-const mainLvSuffix = "csi-main"
-const raidedLocalSsdName = "csi-driver-data-cache"
-const raidMode = "0"
-const raidedLssdPrefix = "/dev/md/"
+const (
+	cacheSuffix        = "csi-fast"
+	mainLvSuffix       = "csi-main"
+	raidedLocalSsdName = "csi-driver-data-cache"
+	raidMode           = "0"
+	raidedLssdPrefix   = "/dev/md/"
+	raidedLocalSsdPath = raidedLssdPrefix + raidedLocalSsdName
+)
 
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
 	volumeId := req.GetVolumeId()
@@ -32,7 +35,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	if err != nil {
 		klog.Errorf("vgscan error %v: %s", err, info)
 	}
-	klog.V(2).Infof("====== vgscan info %v  ======", string(info))
 	klog.V(2).Infof("====== vgscan info contains volumeGroupName or not %v ======", strings.Contains(string(info), volumeGroupName))
 	// Check if the required volume group already exists
 	if strings.Contains(string(info), volumeGroupName) {
@@ -41,27 +43,11 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
 	} else {
-		err := createVg(volumeGroupName, devicePath)
+		err := createVg(volumeGroupName, devicePath, raidedLocalSsdPath)
 		if err != nil {
 			return mainDevicePath, err
 		}
-		// VG doesn't exist so throw error
-		klog.Errorf("No VG on Node, ensure Volume group on node")
 	}
-
-	// Verify if the PD is already in the required volume group
-	// args = []string{
-	// 	"--select",
-	// 	"vg_name",
-	// 	volumeGroupName
-	// }
-	// vgPvs, err := common.RunCommand("pvs", args...)
-	// if err != nil {
-	// 	klog.Errorf("Errored while checking Physical Volume(PV)s for the volume group %v: %s", err, vgPvs)
-	// }
-	// if strings.Contains(string(vgPvs), devicePath) {
-	// 	klog.V(2).Infof("====Physical Volume(PV) already exists in the Volume Group=====")
-	// } else {
 
 	// Check if the Physical Volume(PV) is part of some other volume group
 	args = []string{
@@ -82,7 +68,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	infoString = strings.ReplaceAll(infoString, ".", "")
 	infoString = strings.ReplaceAll(infoString, "\"", "")
 	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
-	klog.V(2).Info("============ infoSlice %s =============", infoSlice[(len(infoSlice)-1)], infoSlice)
 	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
 	klog.V(2).Infof("============ Physical volume is part of Volume group: %v=======", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
@@ -94,10 +79,13 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		if err != nil {
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
+
+		reduceVolumeGroup(vgNameForPv, false)
 		// Uncache LV
 		args = []string{
 			"--uncache",
 			vgNameForPv + "/" + mainLvName,
+			"--force",
 		}
 		info, err = common.RunCommand("lvconvert", args...)
 		if err != nil {
@@ -110,12 +98,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		info, err = common.RunCommand("vgmerge", []string{volumeGroupName, vgNameForPv}...)
 		if err != nil {
 			klog.Errorf("Errored while merging Volume group %s into %s %v: %s", vgNameForPv, volumeGroupName, err, info)
-		}
-
-		klog.V(2).Infof("==========Remove VG from node %v ==========", vgNameForPv)
-		info, err = common.RunCommand("vgremove", []string{vgNameForPv, "-y"}...)
-		if err != nil {
-			klog.Errorf("Errored while removing Volume group %s: info:%s, error:%v", vgNameForPv, err, info)
 		}
 
 	} else {
@@ -135,7 +117,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 	lvList, err := common.RunCommand("lvs", args...)
 	if err != nil {
-		klog.V(2).Infof("====== lvs error %v: %s ======", err, info)
 		return mainDevicePath, fmt.Errorf("lv list error %w: %s", err, info)
 	}
 	klog.Info("=============== Got LVs %s on Volume group %s ============", string(lvList), volumeGroupName)
@@ -153,13 +134,11 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 		info, err = common.RunCommand("lvcreate", args...)
 		if err != nil {
-			klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
 			return mainDevicePath, fmt.Errorf("lvcreate error %w: %s", err, info)
 		}
 
 	}
-	// Replace this with RAIDed Local SSD
-	cachePoolName := "dev/nvme0n1"
+	cachePoolName := raidedLocalSsdPath
 	// Verify caching is setup for PD
 	args = []string{
 		"--select",
@@ -169,7 +148,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 	poolName, err := common.RunCommand("lvs", args...)
 	if err != nil {
-		klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
 		return mainDevicePath, fmt.Errorf("lvcreate error %w: %s", err, info)
 	}
 	cacheLvName := getLvName(cacheSuffix, volumeId)
@@ -177,9 +155,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(2).Infof("================Validate Cache is setup for correct size and mode===============")
 	} else {
-		fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "Gi"
+		fastCacheSize := req.GetPublishContext()[common.ContexLocalSsdCacheSize]
+		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
 		klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
-		// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
 		klog.V(2).Infof("====== lvcreate fast cache layer again with the VolumeGroup %v======", volumeGroupName)
 		args = []string{
 			"--yes",
@@ -197,7 +175,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 
 		// Once caching is setup, link the PD to cache
-		// lvconvert --type cache --cachevol fast --zero y --cachemode writethrough cachegroup/main --force -y
 		klog.V(2).Infof("====== lvconvert fast and main to cache ======")
 		args = []string{
 			"--type",
@@ -207,8 +184,10 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--zero",
 			"y",
 			"--cachemode",
-			req.GetPublishContext()[contextDataCacheMode],
+			req.GetPublishContext()[common.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
+			"--chunksize",
+			string(chunkSize),
 			"--force",
 			"-y",
 		}
@@ -247,7 +226,6 @@ func cleanupCache(volumeId string, nodeId string) error {
 	}
 	info, err = common.RunCommand("lvconvert", args...)
 	if err != nil {
-		klog.Errorf("Errored while uncaching the disk  %v: %s", err, info)
 		return fmt.Errorf("errored while uncaching the disk %w: %s", err, info)
 	}
 	return nil
@@ -265,14 +243,14 @@ func getLvName(suffix string, volumeId string) string {
 	return fmt.Sprintf("%s-%s", suffix, pvcName)
 }
 
-func createVg(volumeGroupName string, devicePath string) error {
+func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string) error {
 	// No existing volume group
 	klog.V(2).Infof("====== vgcreate ======")
 	args := []string{
 		"--zero",
 		"y",
 		volumeGroupName,
-		"/dev/nvme0n1",
+		raidedLocalSsds,
 	}
 	info, err := common.RunCommand("vgcreate", args...)
 	if err != nil {
@@ -307,48 +285,56 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 }
 
 func RaidLocalSsds() error {
-	isRaided, err := isRaided()
+	isAlreadyRaided, err := isRaided()
 	if err != nil {
 		klog.V(2).Info("======Errored while scanning for available LocalSSDs err:%v; continuing Raiding=======", err)
-	} else if isRaided {
+	} else if isAlreadyRaided {
 		klog.V(2).Infof("===============Local SSDs are already RAIDed==============")
 		return nil
 	}
-	info, err := common.RunCommand("nvme", []string{"list"}...)
+	info, err := common.RunCommand("nvme", []string{"list", "-o", "json"}...)
 	if err != nil {
-		klog.Errorf("nvme list error %v: %s", err, info)
 		return fmt.Errorf("errored while scanning available NVME disks info: %v; err:%v", info, err)
 	}
-	klog.V(2).Infof("==========NVME list %v========", string(info))
 	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
+	klog.V(2).Infof("=============NVME list %v ============", infoString)
 	infoString = strings.ReplaceAll(infoString, "\"", "")
-	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
+	infoString = strings.ReplaceAll(infoString, " :", ":")
+	infoString = strings.ReplaceAll(infoString, ": ", ":")
+	infoString = strings.ReplaceAll(infoString, ",", " ")
+	infoSlice := strings.Split(infoString, " ")
 	diskList := []string{}
 	for _, diskInfo := range infoSlice {
 		diskName := strings.TrimSpace(diskInfo)
-		if strings.HasPrefix(diskName, "/dev/n") {
+		if strings.Contains(diskName, "DevicePath") {
+			diskName := strings.TrimSpace(strings.Split(diskName, ":")[1])
 			diskList = append(diskList, diskName)
 		}
 	}
 	nvmeDiskCount := len(diskList)
 	nvmeDiskList := strings.Join(diskList, " ")
-	klog.V(2).Infof("========= nvmeDiskCount %v; nvmeDislList: %v ================", nvmeDiskCount, nvmeDiskList)
+	klog.V(2).Infof("========= nvmeDiskCount %v; nvmeDiskList: %v; diskList %v================", nvmeDiskCount, nvmeDiskList, diskList)
 	args := []string{
 		"--create",
 		raidedLssdPrefix + raidedLocalSsdName,
-		"-l=" + raidMode,
+		"-l" + raidMode,
 		// Force RAIDing as sometime it might fail for caution if there is just 1 LSSD present as 1 LSSD need not be RAIDed
 		"--force",
 		"-n",
 		strconv.Itoa(nvmeDiskCount),
-		nvmeDiskList,
 	}
+	args = append(args, diskList...)
 	info, err = common.RunCommand("mdadm", args...)
 	if err != nil {
-		klog.Errorf("Errored while RAIDing LSSDs %v: %s", err, info)
 		return fmt.Errorf("errored while RAIDing LSSDs info: %v; err:%v", info, err)
-	} else {
-		klog.V(2).Infof("========RAIDed Local SSDs in mode 0===========")
+	}
+	// Validate if Raided successfully
+	isAlreadyRaided, err = isRaided()
+	if err != nil {
+		klog.V(2).Info("======Errored while scanning for available raided LocalSSDs err:%v=======", err)
+	}
+	if !isAlreadyRaided {
+		return fmt.Errorf("failed raiding, raided device not found on scanning")
 	}
 	return nil
 }
@@ -363,7 +349,7 @@ func isRaided() (bool, error) {
 		return false, fmt.Errorf("errored while scanning for raided LSSD %v: %s", err, info)
 	}
 	klog.V(2).Infof("=========== Got LSSDs %v===========", string(info))
-	if strings.Contains(string(info), raidedLssdPrefix+raidedLocalSsdName) {
+	if info != nil && strings.Contains(string(info), raidedLocalSsdName) {
 		return true, nil
 	}
 	return false, nil

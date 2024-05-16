@@ -266,7 +266,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
-
+	klog.V(2).Infof("==============Target path %s=========", targetPath)
 	if err := cleanupPublishPath(targetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err.Error(), targetPath))
 	}
@@ -322,9 +322,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
 	// LVM PoC Steps
-	klog.V(2).Infof("====== Before LVM Setup ======")
 	klog.V(2).Infof("====== NodeStageVolume PublishContext is %v ======", req.GetPublishContext())
-	if ns.EnableDataCache && req.GetPublishContext()[contexLocalSsdCacheSize] != "" {
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
 		devFsPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
@@ -333,9 +332,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 		}
-		// LVM devicePath is the main cachegroup
 	}
-	klog.V(2).Infof("====== Device path %v ======", devicePath)
 
 	// Part 2: Check if mount already exists at stagingTargetPath
 	if ns.isVolumePathMounted(stagingTargetPath) {
@@ -365,7 +362,6 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
-		klog.V(2).Infof("====== block storage ======")
 		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
@@ -376,10 +372,6 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
 	}
 
-	// devicePath should be /dev/cachegroup/main for the LVM cache
-	klog.V(2).Infof("====== fstype is %v ======", fstype)
-	klog.V(2).Infof("====== devicePath is %v ======", devicePath)
-	klog.V(2).Infof("====== stagingTargetPath is %v ======", stagingTargetPath)
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
@@ -492,9 +484,6 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	if ns.EnableDataCache {
 		// LVM PoC Steps
 		klog.V(2).Infof("====== Start LVM PoC NodeUnstageVolume Steps ======")
-		// 	// lvchange -an /dev/cachegroup/main
-		// 	// volumeID format is projects/songsunny-joonix/zones/us-central1-b/disks/pvc-ef877b3e-b116-411e-9553-42f7c74bbcd4
-		// 	volumeGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
 		nodeId := ns.MetadataService.GetName()
 		err = cleanupCache(volumeID, nodeId)
 		if err != nil {

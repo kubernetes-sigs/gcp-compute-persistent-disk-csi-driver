@@ -36,4 +36,10 @@ const (
 	// Data cache mode
 	DataCacheModeWriteBack    = "writeback"
 	DataCacheModeWriteThrough = "writethrough"
+
+	ContextDataCacheSize = "data-cache-size"
+	ContextDataCacheMode = "data-cache-mode"
+
+	// Keys in the publish context
+	ContexLocalSsdCacheSize = "local-ssd-cache-size"
 )

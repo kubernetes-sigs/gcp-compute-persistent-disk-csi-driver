@@ -248,6 +248,10 @@ func handle() {
 		}
 	}
 
+	if *enableDataCacheFlag {
+		klog.V(2).Info("Raiding local ssd")
+		driver.RaidLocalSsds()
+	}
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
@@ -265,7 +269,6 @@ func handle() {
 	gce.WaitForOpBackoff.Steps = *waitForOpBackoffSteps
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
-	driver.RaidLocalSsds()
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
 }
 

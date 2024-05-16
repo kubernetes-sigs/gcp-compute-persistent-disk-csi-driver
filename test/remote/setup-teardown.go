@@ -59,7 +59,7 @@ func SetupInstance(cfg InstanceConfig) (*InstanceInfo, error) {
 		cfg: cfg,
 	}
 
-	err := instance.CreateOrGetInstance()
+	err := instance.CreateOrGetInstance(int(cfg.localSSDCount))
 	if err != nil {
 		return nil, err
 	}

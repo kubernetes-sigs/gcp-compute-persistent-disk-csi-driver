@@ -42,6 +42,11 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 )
 
+var (
+	// Keys in the volume context.
+	contextForceAttach = "force-attach"
+)
+
 type GCEControllerServer struct {
 	Driver        *GCEDriver
 	CloudProvider gce.GCECompute
@@ -199,14 +204,6 @@ const (
 	// but 500 is a good proxy (gives ~8KB of data per ListVolumesResponse#Entry)
 	// See https://github.com/grpc/grpc/blob/master/include/grpc/impl/codegen/grpc_types.h#L503)
 	maxListVolumesResponseEntries = 500
-
-	// Keys in the volume context.
-	contextForceAttach   = "force-attach"
-	contextDataCacheSize = "data-cache-size"
-	contextDataCacheMode = "data-cache-mode"
-
-	// Keys in the publish context
-	contexLocalSsdCacheSize = "local-ssd-cache-size"
 
 	resourceApiScheme  = "https"
 	resourceApiService = "compute"
@@ -1067,10 +1064,10 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	klog.V(2).Infof("====== ControllerPublishVolume VolumeContext is %v ======", req.GetVolumeContext())
 	// Set data cache publish context
 	if gceCS.enableDataCache && req.GetVolumeContext() != nil {
-		if req.GetVolumeContext()[contextDataCacheSize] != "" {
+		if req.GetVolumeContext()[common.ContextDataCacheSize] != "" {
 			pubVolResp.PublishContext = map[string]string{}
-			pubVolResp.PublishContext[contexLocalSsdCacheSize] = req.GetVolumeContext()[contextDataCacheSize]
-			pubVolResp.PublishContext[contextDataCacheMode] = req.GetVolumeContext()[contextDataCacheMode]
+			pubVolResp.PublishContext[common.ContexLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
+			pubVolResp.PublishContext[common.ContextDataCacheMode] = req.GetVolumeContext()[common.ContextDataCacheMode]
 		}
 	}
 
@@ -2375,8 +2372,8 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 		if createResp.Volume.VolumeContext == nil {
 			createResp.Volume.VolumeContext = map[string]string{}
 		}
-		createResp.Volume.VolumeContext[contextDataCacheMode] = dataCacheParams.DataCacheMode
-		createResp.Volume.VolumeContext[contextDataCacheSize] = dataCacheParams.DataCacheSize
+		createResp.Volume.VolumeContext[common.ContextDataCacheMode] = dataCacheParams.DataCacheMode
+		createResp.Volume.VolumeContext[common.ContextDataCacheSize] = dataCacheParams.DataCacheSize
 	}
 	snapshotID := disk.GetSnapshotId()
 	imageID := disk.GetImageId()
