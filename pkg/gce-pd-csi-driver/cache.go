@@ -119,7 +119,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	if err != nil {
 		return mainDevicePath, fmt.Errorf("lv list error %w: %s", err, info)
 	}
-	klog.Info("=============== Got LVs %s on Volume group %s ============", string(lvList), volumeGroupName)
+	klog.Infof("=============== Got LVs %s on Volume group %s ============", string(lvList), volumeGroupName)
 	if !strings.Contains(string(lvList), mainLvName) {
 		// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
 		klog.V(2).Infof("====== lvcreate main cache layer ======")
@@ -287,7 +287,7 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 func RaidLocalSsds() error {
 	isAlreadyRaided, err := isRaided()
 	if err != nil {
-		klog.V(2).Info("======Errored while scanning for available LocalSSDs err:%v; continuing Raiding=======", err)
+		klog.V(2).Infof("======Errored while scanning for available LocalSSDs err:%v; continuing Raiding=======", err)
 	} else if isAlreadyRaided {
 		klog.V(2).Infof("===============Local SSDs are already RAIDed==============")
 		return nil
@@ -331,7 +331,7 @@ func RaidLocalSsds() error {
 	// Validate if Raided successfully
 	isAlreadyRaided, err = isRaided()
 	if err != nil {
-		klog.V(2).Info("======Errored while scanning for available raided LocalSSDs err:%v=======", err)
+		klog.V(2).Infof("======Errored while scanning for available raided LocalSSDs err:%v=======", err)
 	}
 	if !isAlreadyRaided {
 		return fmt.Errorf("failed raiding, raided device not found on scanning")

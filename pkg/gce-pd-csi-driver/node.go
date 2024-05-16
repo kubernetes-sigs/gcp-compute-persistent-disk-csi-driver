@@ -481,7 +481,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		// LVM PoC Steps
 		klog.V(2).Infof("====== Start LVM PoC NodeUnstageVolume Steps ======")
 		nodeId := ns.MetadataService.GetName()
-		err = cleanupCache(volumeID, nodeId)
+		err := cleanupCache(volumeID, nodeId)
 		if err != nil {
 			klog.Errorf("Failed to cleanup cache: %v", err)
 		}

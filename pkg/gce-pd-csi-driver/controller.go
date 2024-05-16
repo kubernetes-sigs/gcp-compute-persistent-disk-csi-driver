@@ -315,7 +315,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	params, dataCacheParams, err := common.ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraVolumeLabels, gceCS.enableStoragePools, gceCS.enableDataCache, gceCS.Driver.extraTags)
-	klog.V(2).Infof("====== dataCacheParams are %v ======", dataCacheParams, gceCS.Driver.extraTags)
+	klog.V(2).Infof("====== dataCacheParams are %v ======", dataCacheParams)
 	diskTypeForMetric = params.DiskType
 	enableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
 	hasStoragePools := len(params.StoragePools) > 0
