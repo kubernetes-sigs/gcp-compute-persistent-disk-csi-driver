@@ -98,7 +98,7 @@ func CreateInstanceInfo(config *InstanceConfig, zone, name string, cs *compute.S
 }
 
 // Provision a gce instance using image
-func (i *InstanceInfo) CreateOrGetInstance() error {
+func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	var err error
 	var instance *compute.Instance
 	klog.V(4).Infof("Creating instance: %v", i.name)
@@ -134,7 +134,20 @@ func (i *InstanceInfo) CreateOrGetInstance() error {
 			},
 		},
 	}
+	klog.Infof("=======Adding LocalSSD %v=============", localSSDCount)
 
+	localSSDConfig := &compute.AttachedDisk{
+		Type: "SCRATCH",
+		InitializeParams: &compute.AttachedDiskInitializeParams{
+			DiskType: fmt.Sprintf("zones/%s/diskTypes/local-ssd", i.zone),
+		},
+		AutoDelete: true,
+		Interface:  "NVME",
+	}
+
+	for i := 0; i < localSSDCount; i++ {
+		newInst.Disks = append(newInst.Disks, localSSDConfig)
+	}
 	saObj := &compute.ServiceAccount{
 		Email:  i.serviceAccount,
 		Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},

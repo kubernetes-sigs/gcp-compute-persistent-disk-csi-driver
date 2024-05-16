@@ -81,6 +81,7 @@ COPY --from=debian /sbin/blkdeactivate /sbin/blkdeactivate
 COPY --from=debian /sbin/dmsetup /sbin/dmsetup
 COPY --from=debian /sbin/dmstats /sbin/dmstats
 # End of dependencies for LVM
+COPY --from=debian /sbin/mdadm /sbin/mdadm
 COPY --from=debian /sbin/mke2fs /sbin/mke2fs
 COPY --from=debian /sbin/mkfs* /sbin/
 COPY --from=debian /sbin/resize2fs /sbin/resize2fs

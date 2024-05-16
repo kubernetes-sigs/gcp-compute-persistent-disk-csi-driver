@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,8 @@ var (
 	kmsClient           *cloudkms.KeyManagementClient
 )
 
+const localSSDCount = 2
+
 func init() {
 	klog.InitFlags(flag.CommandLine)
 }
@@ -68,6 +71,7 @@ var _ = BeforeSuite(func() {
 	defer close(tcc)
 
 	zones := strings.Split(*zones, ",")
+	// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -93,14 +97,21 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	for _, zone := range zones {
-		go func(curZone string) {
-			defer GinkgoRecover()
-			tcc <- NewTestContext(curZone)
-		}(zone)
+	numberOfInstancesPerZone := 2
+
+	setupContext := func(zones []string, randInt int) {
+		for _, zone := range zones {
+			go func(curZone string) {
+				defer GinkgoRecover()
+				tcc <- NewTestContext(curZone, strconv.Itoa(randInt))
+			}(zone)
+		}
+	}
+	for j := 0; j < numberOfInstancesPerZone; j++ {
+		setupContext(zones, j)
 	}
 
-	for i := 0; i < len(zones); i++ {
+	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
@@ -127,11 +138,10 @@ func getRemoteInstanceConfig() *remote.InstanceConfig {
 		CloudtopHost:   *cloudtopHost}
 }
 
-func NewTestContext(zone string) *remote.TestContext {
-	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+func NewTestContext(zone string, instanceNumber string) *remote.TestContext {
+	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s-%v", zone, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
-
-	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
+	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService, localSSDCount)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
@@ -150,7 +160,18 @@ func NewTestContext(zone string) *remote.TestContext {
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
+	pkgs := []string{"lvm2", "mdadm"}
+	for _, pkg := range pkgs {
+		err = testutils.InstallDependencies(i, pkg)
+		if err != nil {
+			klog.Errorf("Failed to install dependency package %v to node %v", pkg, i.GetNodeID())
+		}
+	}
 
+	err = testutils.SetupDataCachingConfig(i)
+	if err != nil {
+		klog.Errorf("Failed to setup data cache required config error %v", err)
+	}
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, "")
 	if err != nil {

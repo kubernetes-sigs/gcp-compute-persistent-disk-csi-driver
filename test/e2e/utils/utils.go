@@ -260,6 +260,30 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 	return nil
 }
 
+func InstallDependencies(instance *remote.InstanceInfo, pkg string) error {
+	output, err := instance.SSH("apt-get", "install", "-y", pkg)
+	if err != nil {
+		return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+	}
+	return nil
+}
+
+func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
+	output, err := instance.SSH("/bin/sed", "-i", "-e", "\"s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field allow_mixed_block_sizes, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_sync = 1.*/ udev_sync = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_sync, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_rules = 1.*/ udev_rules = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_rules, error:%v; output: %v", err, output)
+	}
+	return nil
+}
+
 // ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
 // link location - it then finds the backing PD using either scsi_id or
 // google_nvme_id (depending on the /dev path) and validates that it is the
