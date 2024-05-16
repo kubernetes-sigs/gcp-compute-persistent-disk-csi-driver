@@ -1571,7 +1571,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, false)
 		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
 
 		// Create private bind mount
