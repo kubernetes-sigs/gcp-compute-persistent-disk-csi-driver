@@ -1288,7 +1288,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 
 		zone := "us-central1-c"
-		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s-0", zone)
+		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
 		i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService, 0 /* localSSDCount */)
 
 		if err != nil {

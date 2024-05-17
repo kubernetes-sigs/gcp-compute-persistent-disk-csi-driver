@@ -60,6 +60,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 		"--multi-zone-volume-handle-disk-types=pd-standard",
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
+		"--enable-data-cache",
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
 

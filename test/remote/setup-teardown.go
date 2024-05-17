@@ -84,6 +84,12 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 		}
 	}()
 
+	// Copy dependencies
+	output, err := instance.SSH("apt-get", "install", "-y", "mdadm", "lvm2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to install dependencis. Output: %v, errror: %v", output, err.Error())
+	}
+
 	// Upload archive to instance and run binaries
 	driverPID, err := instance.UploadAndRun(archivePath, config.WorkspaceDir, config.RunDriverCmd)
 	if err != nil {
