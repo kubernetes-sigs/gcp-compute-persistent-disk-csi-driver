@@ -1206,8 +1206,11 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	// Check if PD snapshot already exists
 	var snapshot *compute.Snapshot
 	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
+	klog.Infof("Logging CreateSnapshot GetSnapshot for {project: %s, snapshotName %s}: %+v", project, snapshotName, snapshot)
 	if err != nil {
+		klog.Errorf("CreateSnapshot GetSnapshot for {project: %s, snapshotName %s}, error: %v", project, snapshotName, err)
 		if !gce.IsGCEError(err, "notFound") {
+			klog.Errorf("CreateSnapshot GetSnapshot for {project: %s, snapshotName %s}, is NOT a notFound error", project, snapshotName)
 			return nil, common.LoggedError("Failed to get snapshot: ", err)
 		}
 		// If we could not find the snapshot, we create a new one
@@ -1572,6 +1575,8 @@ func (gceCS *GCEControllerServer) getSnapshots(ctx context.Context, req *csi.Lis
 
 func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotID string) (*csi.ListSnapshotsResponse, error) {
 	project, snapshotType, key, err := common.SnapshotIDToProjectKey(snapshotID)
+	klog.Errorf("getSnapshotByID logging SnapshotIDToProjectKey for snapshotID: %s, project: %s, snapshotType: %s, key: %s, err: %v", snapshotID, project, snapshotType, key, err)
+
 	if err != nil {
 		// Cannot get snapshot ID from the passing request
 		klog.Warningf("invalid snapshot id format %s", snapshotID)
@@ -1582,9 +1587,16 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 	switch snapshotType {
 	case common.DiskSnapshotType:
 		snapshot, err := gceCS.CloudProvider.GetSnapshot(ctx, project, key)
+		klog.Infof("Logging CreateVolume GetSnapshot for {project: %s, snapshotID %s}: %+v", project, snapshotID, snapshot)
+		if snapshot != nil {
+			klog.Infof("Snapshot %s has status %v", snapshot.Name, snapshot.Status)
+		}
+
 		if err != nil {
+			klog.Errorf("getSnapshotByID GetSnapshot DiskSnapshotType for {project: %s, key %s}, error: %v", project, key, err)
 			if gce.IsGCEError(err, "notFound") {
 				// return empty list if no snapshot is found
+				klog.Errorf("getSnapshotByID GetSnapshot for DiskSnapshotType returned notFound error, so returning empty SnapshotList: %v", err)
 				return &csi.ListSnapshotsResponse{}, nil
 			}
 			return nil, common.LoggedError("Failed to list snapshot: ", err)
@@ -1597,7 +1609,9 @@ func (gceCS *GCEControllerServer) getSnapshotByID(ctx context.Context, snapshotI
 	case common.DiskImageType:
 		image, err := gceCS.CloudProvider.GetImage(ctx, project, key)
 		if err != nil {
+			klog.Errorf("getSnapshotByID GetSnapshot DiskImageType for {project: %s, key %s}, error: %v", project, key, err)
 			if gce.IsGCEError(err, "notFound") {
+				klog.Errorf("getSnapshotByID GetSnapshot for DiskImageType returned notFound error, so returning empty SnapshotList: %v", err)
 				// return empty list if no snapshot is found
 				return &csi.ListSnapshotsResponse{}, nil
 			}

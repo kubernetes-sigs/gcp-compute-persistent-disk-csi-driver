@@ -1362,6 +1362,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 			if err != nil {
 				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err.Error())
 			} else if snapshot != nil {
+				klog.Infof("Snapshot %s has status %v", snapshotName, snapshot.Status)
 				if snapshot.Status != "CREATING" {
 					klog.V(6).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
 					return snapshot, nil
