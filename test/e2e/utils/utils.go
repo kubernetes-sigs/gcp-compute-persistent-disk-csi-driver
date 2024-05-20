@@ -261,10 +261,12 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 	return nil
 }
 
-func InstallDependencies(instance *remote.InstanceInfo, pkg string) error {
-	output, err := instance.SSH("apt-get", "install", "-y", pkg)
-	if err != nil {
-		return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	for _, pkg := range pkgs {
+		output, err := instance.SSH("apt-get", "install", "-y", pkg)
+		if err != nil {
+			return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+		}
 	}
 	return nil
 }

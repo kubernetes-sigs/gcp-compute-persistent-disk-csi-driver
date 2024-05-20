@@ -80,6 +80,7 @@ COPY --from=debian /lib/udev/rules.d/95-dm-notify.rules /lib/udev/rules.d/95-dm-
 COPY --from=debian /sbin/blkdeactivate /sbin/blkdeactivate
 COPY --from=debian /sbin/dmsetup /sbin/dmsetup
 COPY --from=debian /sbin/dmstats /sbin/dmstats
+COPY --from=debian /bin/ls /bin/ls
 # End of dependencies for LVM
 COPY --from=debian /sbin/mdadm /sbin/mdadm
 COPY --from=debian /sbin/mke2fs /sbin/mke2fs

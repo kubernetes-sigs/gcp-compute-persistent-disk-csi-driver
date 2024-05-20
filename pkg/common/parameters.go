@@ -242,7 +242,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			p.StoragePools = storagePools
 		case ParameterKeyDataCacheSize:
 			if !enableDataCache {
-				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyDataCacheSize)
+				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
 			}
 			// TODO: need to parse or validate the string
 
@@ -254,7 +254,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 			klog.V(2).Infof("====== Data cache size is %v ======", v)
 		case ParameterKeyDataCacheMode:
 			if !enableDataCache {
-				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyDataCacheSize)
+				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
 			}
 			if err := ValidateDataCacheMode(v); err != nil {
 				return p, d, fmt.Errorf("parameters contains invalid option: %w", err)
