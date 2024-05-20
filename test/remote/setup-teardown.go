@@ -54,14 +54,14 @@ type processes struct {
 }
 
 // SetupInstance sets up the specified GCE Instance for E2E testing and returns a handle to the instance object for future use.
-func SetupInstance(config *InstanceConfig, instanceZone, instanceName string, cs *compute.Service) (*InstanceInfo, error) {
+func SetupInstance(config *InstanceConfig, instanceZone, instanceName string, cs *compute.Service, localSSDCount int) (*InstanceInfo, error) {
 	// Create the instance in the requisite zone
 	instance, err := CreateInstanceInfo(config, instanceZone, instanceName, cs)
 	if err != nil {
 		return nil, err
 	}
 
-	err = instance.CreateOrGetInstance()
+	err = instance.CreateOrGetInstance(localSSDCount)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +83,12 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 			klog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
 		}
 	}()
+
+	// Copy dependencies
+	output, err := instance.SSH("apt-get", "install", "-y", "mdadm", "lvm2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to install dependencis. Output: %v, errror: %v", output, err.Error())
+	}
 
 	// Upload archive to instance and run binaries
 	driverPID, err := instance.UploadAndRun(archivePath, config.WorkspaceDir, config.RunDriverCmd)

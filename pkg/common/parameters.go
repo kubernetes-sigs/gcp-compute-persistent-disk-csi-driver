@@ -18,7 +18,10 @@ package common
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -32,7 +35,11 @@ const (
 	ParameterAvailabilityClass                = "availability-class"
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
-	ParameterKeyResourceTags                  = "resource-tags"
+
+	// Parameters for Data Cache
+	ParameterKeyDataCacheSize = "data-cache-size"
+	ParameterKeyDataCacheMode = "data-cache-mode"
+	ParameterKeyResourceTags  = "resource-tags"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -67,6 +74,15 @@ const (
 	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
 	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
 )
+
+type DataCacheParameters struct {
+	// Values: {string} in int64 form
+	// Default: ""
+	DataCacheSize string
+	// Values: writethrough, writeback
+	// Default: writethrough
+	DataCacheMode string
+}
 
 // DiskParameters contains normalized and defaulted disk parameters
 type DiskParameters struct {
@@ -125,7 +141,7 @@ type StoragePool struct {
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool, extraTags map[string]string) (DiskParameters, error) {
+func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool, enableDataCache bool, extraTags map[string]string) (DiskParameters, DataCacheParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -133,6 +149,12 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
 		ResourceTags:         make(map[string]string), // Default
+	}
+
+	// Set data cache mode default
+	d := DataCacheParameters{}
+	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
+		d.DataCacheMode = DataCacheModeWriteThrough
 	}
 
 	for k, v := range extraVolumeLabels {
@@ -169,7 +191,7 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		case ParameterKeyLabels:
 			paramLabels, err := ConvertLabelsStringToMap(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
+				return p, d, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
 			}
 			// Override any existing labels with those from this parameter.
 			for labelKey, labelValue := range paramLabels {
@@ -178,19 +200,19 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		case ParameterKeyProvisionedIOPSOnCreate:
 			paramProvisionedIOPSOnCreate, err := ConvertStringToInt64(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid provisionedIOPSOnCreate parameter: %w", err)
+				return p, d, fmt.Errorf("parameters contain invalid provisionedIOPSOnCreate parameter: %w", err)
 			}
 			p.ProvisionedIOPSOnCreate = paramProvisionedIOPSOnCreate
 		case ParameterKeyProvisionedThroughputOnCreate:
 			paramProvisionedThroughputOnCreate, err := ConvertMiStringToInt64(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
+				return p, d, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}
 			p.ProvisionedThroughputOnCreate = paramProvisionedThroughputOnCreate
 		case ParameterAvailabilityClass:
 			paramAvailabilityClass, err := ConvertStringToAvailabilityClass(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid availability class parameter: %w", err)
+				return p, d, fmt.Errorf("parameters contain invalid availability class parameter: %w", err)
 			}
 			if paramAvailabilityClass == ParameterRegionalHardFailoverClass {
 				p.ForceAttach = true
@@ -198,38 +220,59 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 		case ParameterKeyEnableConfidentialCompute:
 			paramEnableConfidentialCompute, err := ConvertStringToBool(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid value for enable-confidential-storage parameter: %w", err)
+				return p, d, fmt.Errorf("parameters contain invalid value for enable-confidential-storage parameter: %w", err)
 			}
 
 			if paramEnableConfidentialCompute {
 				// DiskEncryptionKmsKey is needed to enable confidentialStorage
 				if val, ok := parameters[ParameterKeyDiskEncryptionKmsKey]; !ok || !isValidDiskEncryptionKmsKey(val) {
-					return p, fmt.Errorf("Valid %v is required to enable ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
+					return p, d, fmt.Errorf("Valid %v is required to enable ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
 				}
 			}
 
 			p.EnableConfidentialCompute = paramEnableConfidentialCompute
 		case ParameterKeyStoragePools:
 			if !enableStoragePools {
-				return p, fmt.Errorf("parameters contains invalid option %q", ParameterKeyStoragePools)
+				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyStoragePools)
 			}
 			storagePools, err := ParseStoragePools(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)
+				return p, d, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)
 			}
 			p.StoragePools = storagePools
+		case ParameterKeyDataCacheSize:
+			if !enableDataCache {
+				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
+			}
+			// TODO: need to parse or validate the string
+
+			paramDataCacheSize, err := ConvertGiStringToInt64(v)
+			if err != nil {
+				return p, d, fmt.Errorf("parameters contain invalid dataCacheSize parameter: %w", err)
+			}
+			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
+			klog.V(2).Infof("====== Data cache size is %v ======", v)
+		case ParameterKeyDataCacheMode:
+			if !enableDataCache {
+				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
+			}
+			if err := ValidateDataCacheMode(v); err != nil {
+				return p, d, fmt.Errorf("parameters contains invalid option: %w", err)
+			}
+			d.DataCacheMode = v
+			klog.V(2).Infof("====== Data cache mode is %v ======", v)
 		case ParameterKeyResourceTags:
 			if err := extractResourceTagsParameter(v, p.ResourceTags); err != nil {
-				return p, err
+				return p, d, err
 			}
 		default:
-			return p, fmt.Errorf("parameters contains invalid option %q", k)
+			return p, d, fmt.Errorf("parameters contains invalid option %q", k)
 		}
 	}
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
 	}
-	return p, nil
+	return p, d, nil
 }
 
 func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string, extraTags map[string]string) (SnapshotParameters, error) {

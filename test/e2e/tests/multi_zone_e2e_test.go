@@ -238,7 +238,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			if i >= 1 {
 				readOnly = true
 			}
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, readOnly)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, readOnly, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).To(BeNil(), "failed volume lifecycle checks")
 			i = i + 1
 		}
@@ -325,7 +325,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Attach disk to instance in the first zone.
 		tc0 := zoneToContext[zones[0]]
-		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, false /* useBlock */, false /* forceAttach */)
+		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, false /* useBlock */, false /* forceAttach */, false /* setupDataCache */)
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed attach in zone 0")
 		testFileName := filepath.Join(args.publishDir, "force-attach-test")
@@ -341,7 +341,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Now force attach to the second instance without detaching.
 		tc1 := zoneToContext[zones[1]]
-		err, detacher, args = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, false /* useBlock */, true /* forceAttach */)
+		err, detacher, args = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, false /* useBlock */, true /* forceAttach */, false /* setupDataCache */)
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed force attach in zone 1")
 		readContents, err = testutils.ReadFile(tc1.Instance, testFileName)
@@ -360,7 +360,12 @@ func deleteDisk(controllerClient *remote.CsiClient, p, zone, volID, volName stri
 	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 }
 
-func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
+func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool, detachAndReattach bool, setupDataCache bool) error {
+	writeFile, verifyReadFile := testWriteAndReadFile(instance, readOnly)
+	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile, detachAndReattach, setupDataCache)
+}
+
+func testWriteAndReadFile(instance *remote.InstanceInfo, readOnly bool) (verifyFunc, verifyFunc) {
 	var testFileContents = "test"
 	writeFile := func(a *verifyArgs) error {
 		if !readOnly {
@@ -386,35 +391,44 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		}
 		return nil
 	}
-	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile)
+	return writeFile, verifyReadFile
 }
 
-func testAttachAndMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, useBlock, forceAttach bool) (error, func(), *verifyArgs) {
+func testAttachAndMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, useBlock, forceAttach bool, setupDataCache bool) (error, func(), *verifyArgs) {
+	klog.Infof("Starting testAttachAndMount with volume %v node %v \n", volID, instance.GetNodeID())
+	err, unstageAndDetach, stageDir := testAttach(volID, volName, instance, client, useBlock, forceAttach, setupDataCache)
+	if err != nil {
+		return err, nil, nil
+	}
+	// Mount Disk
+	err, args := testMount(volID, volName, instance, client, useBlock, stageDir)
+	if err != nil {
+		unstageAndDetach()
+		return err, nil, nil
+	}
+	return nil, unstageAndDetach, args
+}
+
+func testAttach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, useBlock, forceAttach bool, setupDataCache bool) (error, func(), string) {
+	klog.Infof("Starting testAttach with volume %v node %v \n", volID, instance.GetNodeID())
 	// Attach Disk
+	var stageDir string
 	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), forceAttach)
 	if err != nil {
-		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error()), nil, nil
-	}
-
-	detach := func() {
-		// Detach Disk
-		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-		if err != nil {
-			klog.Errorf("Failed to detach disk: %v", err)
-		}
+		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error()), nil, stageDir
 	}
 
 	// Stage Disk
-	stageDir := filepath.Join("/tmp/", volName, "stage")
+	stageDir = filepath.Join("/tmp/", volName, "stage")
 	if useBlock {
-		err = client.NodeStageBlockVolume(volID, stageDir)
+		err = client.NodeStageBlockVolume(volID, stageDir, setupDataCache)
 	} else {
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, setupDataCache)
 	}
 
 	if err != nil {
-		detach()
-		return fmt.Errorf("NodeStageExt4Volume failed with error: %w", err), nil, nil
+		_ = detach(volID, instance, client)
+		return fmt.Errorf("NodeStageExt4Volume failed with error: %w for node: %v", err, instance.GetNodeID()), nil, stageDir
 	}
 
 	unstageAndDetach := func() {
@@ -429,9 +443,23 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
 		}
 
-		detach()
+		detach(volID, instance, client)
 	}
+	return nil, unstageAndDetach, stageDir
+}
 
+func detach(volID string, instance *remote.InstanceInfo, client *remote.CsiClient) error {
+	// Detach Disk
+	err := client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+	if err != nil {
+		klog.Errorf("Failed to detach disk  %v", err)
+		return fmt.Errorf("Failed to detach disk: %v", err)
+	}
+	return nil
+}
+
+func testMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, useBlock bool, stageDir string) (error, *verifyArgs) {
+	var err error
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
 
@@ -442,26 +470,22 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 	}
 
 	if err != nil {
-		unstageAndDetach()
-		return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error()), nil, nil
+		return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error()), nil
 	}
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
 	if err != nil {
-		unstageAndDetach()
-		return fmt.Errorf("Chmod failed with error: %v", err.Error()), nil, nil
+		return fmt.Errorf("Chmod failed with error: %v", err.Error()), nil
 	}
 
-	args := &verifyArgs{
+	return nil, &verifyArgs{
 		publishDir: publishDir,
 		stageDir:   stageDir,
 	}
-
-	return nil, unstageAndDetach, args
 }
 
-func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc) error {
+func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc, detachAndReattach bool, setupDataCache bool) error {
 	klog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
-	err, detacher, args := testAttachAndMount(volID, volName, instance, client, useBlock, false /* forceAttach */)
+	err, detacher, args := testAttachAndMount(volID, volName, instance, client, useBlock, false /* forceAttach */, setupDataCache)
 	if err != nil {
 		return fmt.Errorf("failed to attach and mount: %w", err)
 	}
@@ -478,13 +502,28 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err.Error())
 	}
 
+	stageDir := args.stageDir
+	if detachAndReattach {
+		// Unstage and detach
+		err = client.NodeUnstageVolume(volID, stageDir)
+		if err != nil {
+			klog.Errorf("Failed to unstage volume: %v", err)
+		}
+		detach(volID, instance, client)
+		// Reattach the volume
+		err, _, stageDir = testAttach(volID, volName, instance, client, useBlock, false /* forceAttach */, setupDataCache)
+		if err != nil {
+			return err
+		}
+	}
+
 	if secondMountVerify != nil {
 		// Mount disk somewhere else
 		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
 		if useBlock {
-			err = client.NodePublishBlockVolume(volID, args.stageDir, secondPublishDir)
+			err = client.NodePublishBlockVolume(volID, stageDir, secondPublishDir)
 		} else {
-			err = client.NodePublishVolume(volID, args.stageDir, secondPublishDir)
+			err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
 		}
 		if err != nil {
 			return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error())

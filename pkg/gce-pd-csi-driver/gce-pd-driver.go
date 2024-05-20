@@ -143,7 +143,7 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, enableDataCache bool) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:          gceDriver,
 		Mounter:         mounter,
@@ -151,10 +151,11 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		MetadataService: meta,
 		volumeLocks:     common.NewVolumeLocks(),
 		VolumeStatter:   statter,
+		EnableDataCache: enableDataCache,
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, enableDataCache bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig) *GCEControllerServer {
 	return &GCEControllerServer{
 		Driver:                      gceDriver,
 		CloudProvider:               cloudProvider,
@@ -163,6 +164,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		errorBackoff:                newCsiErrorBackoff(errorBackoffInitialDuration, errorBackoffMaxDuration),
 		fallbackRequisiteZones:      fallbackRequisiteZones,
 		enableStoragePools:          enableStoragePools,
+		enableDataCache:             enableDataCache,
 		multiZoneVolumeHandleConfig: multiZoneVolumeHandleConfig,
 		listVolumesConfig:           listVolumesConfig,
 	}
