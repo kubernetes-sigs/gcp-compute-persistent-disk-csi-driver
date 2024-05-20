@@ -181,12 +181,10 @@ func NewTestContext(zone string, instanceNumber string) *remote.TestContext {
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
-	pkgs := []string{"lvm2", "mdadm"}
-	for _, pkg := range pkgs {
-		err = testutils.InstallDependencies(i, pkg)
-		if err != nil {
-			klog.Errorf("Failed to install dependency package %v to node %v", pkg, i.GetNodeID())
-		}
+	pkgs := []string{"lvm2", "mdadm", "grep", "coreutils"}
+	err = testutils.InstallDependencies(i, pkgs)
+	if err != nil {
+		klog.Errorf("Failed to install dependency package on node %v: error : %v", i.GetNodeID(), err)
 	}
 
 	err = testutils.SetupDataCachingConfig(i)
