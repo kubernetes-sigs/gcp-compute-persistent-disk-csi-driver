@@ -1203,6 +1203,12 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid volume key: %v", volKey)
 	}
+
+	volumeIsMultiZone := isMultiZoneVolKey(volKey)
+	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
+		return nil, fmt.Errorf("Snapshots are not supported with the `multi-zone` PV volumeHandle feature.")
+	}
+
 	// Check if PD snapshot already exists
 	var snapshot *compute.Snapshot
 	snapshot, err = gceCS.CloudProvider.GetSnapshot(ctx, project, snapshotName)
@@ -1482,6 +1488,7 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 }
 
 func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+
 	var err error
 	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
 	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
@@ -1504,12 +1511,19 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerExpandVolume Volume ID is invalid: %v", err.Error())
 	}
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
+
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "ControllerExpandVolume could not find volume with ID %v: %v", volumeID, err.Error())
 		}
 		return nil, common.LoggedError("ControllerExpandVolume error repairing underspecified volume key: ", err)
 	}
+
+	volumeIsMultiZone := isMultiZoneVolKey(volKey)
+	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
+		return nil, fmt.Errorf("Resize operation is not supported with the `multi-zone` PVC volumeHandle feature. Please re-create the disk from source if you want a larger size.")
+	}
+
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
 	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(sourceDisk)
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
