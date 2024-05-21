@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"regexp"
 	"slices"
@@ -78,6 +79,7 @@ const (
 	// Full or partial URL of the zone resource, in the format:
 	//   projects/{project}/zones/{zone}
 	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
+	alphanums      = "bcdfghjklmnpqrstvwxz2456789"
 )
 
 var (
@@ -722,4 +724,17 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 	}
 
 	return limiter
+}
+
+// shortString is inspired by k8s.io/apimachinery/pkg/util/rand.SafeEncodeString, but takes data from a hash.
+func ShortString(s string) string {
+	hasher := fnv.New128a()
+	hasher.Write([]byte(s))
+	sum := hasher.Sum([]byte{})
+	const sz = 8
+	short := make([]byte, sz)
+	for i := 0; i < sz; i++ {
+		short[i] = alphanums[int(sum[i])%len(alphanums)]
+	}
+	return string(short)
 }
