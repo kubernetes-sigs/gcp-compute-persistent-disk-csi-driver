@@ -241,7 +241,8 @@ func cleanupCache(volumeId string, nodeId string) error {
 func getVolumeGroupName(nodePath string) string {
 	nodeSlice := strings.Split(nodePath, "/")
 	nodeId := nodeSlice[len(nodeSlice)-1]
-	return fmt.Sprintf("csi-vg-%s", nodeId)
+	nodeHash := common.ShortString(nodeId)
+	return fmt.Sprintf("csi-vg-%s", nodeHash)
 }
 
 func getLvName(suffix string, volumeId string) string {
@@ -257,12 +258,14 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 		"y",
 		volumeGroupName,
 		raidedLocalSsds,
+		"-v",
 	}
 	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgcreate", args...)
 	if err != nil {
 		klog.Errorf("vgcreate error %v: %s", err, info)
 		return fmt.Errorf("vgcreate error %w: %s", err, info)
 	}
+	klog.Infof("Volume group creation succeeded for %v", volumeGroupName)
 
 	klog.V(2).Infof("============================== vgscan after vgcreate ==============================")
 	args = []string{}
