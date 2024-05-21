@@ -332,7 +332,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Snapshot
@@ -413,11 +413,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
@@ -479,7 +479,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Snapshot
@@ -551,11 +551,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
@@ -617,7 +617,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Disk Image
@@ -707,11 +707,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 	})
 
@@ -806,18 +806,18 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volID0 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[0], volName)
 		volID1 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[1], volName)
 
-		err = testAttachWriteReadDetach(volID0, volName, tc0.Instance, tc0.Client, false /* readonly */)
+		err = testAttachWriteReadDetach(volID0, volName, tc0.Instance, tc0.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol1")
 
-		err = testAttachWriteReadDetach(volID1, volName, tc1.Instance, tc1.Client, false /* readonly */)
+		err = testAttachWriteReadDetach(volID1, volName, tc1.Instance, tc1.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol2")
 
 		// Validate disks can be used in multi-zone mode on both nodes
 		volIDMultiZone := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
-		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
-		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		// Validate disks are ROX now
@@ -1106,7 +1106,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// For each of the two instances
 		i := 0
 		for _, testContext := range zoneToContext {
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, false)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, false, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).To(BeNil(), "failed volume lifecycle checks")
 			i = i + 1
 		}

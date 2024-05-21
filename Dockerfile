@@ -57,8 +57,7 @@ COPY --from=debian /sbin/fsck /sbin/fsck
 COPY --from=debian /sbin/fsck* /sbin/
 COPY --from=debian /sbin/fsck.xfs /sbin/fsck.xfs
 # Add dependencies for LVM
-COPY --from=debian /etc/lvm /etc/lvm
-COPY --from=debian /etc/lvm* /etc/
+COPY --from=debian /etc/lvm /lvm-tmp/lvm
 COPY --from=debian /lib/systemd/system/blk-availability.service /lib/systemd/system/blk-availability.service
 COPY --from=debian /lib/systemd/system/lvm2-lvmpolld.service /lib/systemd/system/lvm2-lvmpolld.service
 COPY --from=debian /lib/systemd/system/lvm2-lvmpolld.socket /lib/systemd/system/lvm2-lvmpolld.socket
@@ -73,6 +72,7 @@ COPY --from=debian /usr/lib/tmpfiles.d/lvm2.conf /usr/lib/tmpfiles.d/lvm2.conf
 COPY --from=debian /sbin/lv* /sbin/
 COPY --from=debian /sbin/pv* /sbin/
 COPY --from=debian /sbin/vg* /sbin/
+COPY --from=debian /bin/lsblk /bin/lsblk
 COPY --from=debian /sbin/modprobe /sbin/modprobe
 COPY --from=debian /lib/udev /lib/udev
 COPY --from=debian /lib/udev/rules.d /lib/udev/rules.d
@@ -100,10 +100,13 @@ COPY --from=debian /bin/date /bin/date
 COPY --from=debian /bin/grep /bin/grep
 COPY --from=debian /bin/sed /bin/sed
 COPY --from=debian /bin/ln /bin/ln
+COPY --from=debian /bin/cp /bin/cp
 COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
 COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libdl.so.2 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libpthread.so.0 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libtinfo.so.6 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libe2p.so.2 \
                    # The following does not exist in either lib or usr/lib
@@ -133,6 +136,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libsmartcols.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libbsd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libinih.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \         
@@ -157,9 +161,17 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
 # Copy NVME support required script and rules into distroless base.
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
 
-SHELL ["/bin/bash", "-c"]
-RUN /bin/sed -i -e "s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/" /etc/lvm/lvm.conf
-RUN /bin/sed -i -e "s/.*udev_sync = 1.*/	udev_sync = 0/" /etc/lvm/lvm.conf
-RUN /bin/sed -i -e "s/.*udev_rules = 1.*/	udev_rules = 0/" /etc/lvm/lvm.conf
 
-ENTRYPOINT ["/gce-pd-csi-driver"]
+# # Build stage used for validation of the output-image
+# # See validate-container-linux-* targets in Makefile
+# FROM output-image as validation-image
+
+# COPY --from=debian /usr/bin/ldd /usr/bin/find /usr/bin/xargs /usr/bin/
+# COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/hack/print-missing-deps.sh /print-missing-deps.sh
+# SHELL ["/bin/bash", "-c"]
+# RUN /print-missing-deps.sh
+
+# # Final build stage, create the real Docker image with ENTRYPOINT
+# FROM output-image
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/initialize-driver.sh /initialize-driver.sh
+ENTRYPOINT ["/initialize-driver.sh"]

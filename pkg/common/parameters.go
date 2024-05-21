@@ -278,7 +278,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, fmt.Errorf("parameters contain invalid dataCacheSize parameter: %w", err)
 			}
 			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
-			klog.V(2).Infof("====== Data cache size is %v ======", v)
+			klog.V(2).Infof("====== Data cache size is %v GiB ======", d.DataCacheSize)
 		case ParameterKeyDataCacheMode:
 			if !enableDataCache {
 				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
@@ -287,7 +287,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, fmt.Errorf("parameters contains invalid option: %w", err)
 			}
 			d.DataCacheMode = v
-			klog.V(2).Infof("====== Data cache mode is %v ======", v)
+			klog.V(2).Infof("====== Data cache mode is %v ======", d.DataCacheMode)
 		case ParameterKeyResourceTags:
 			if err := extractResourceTagsParameter(v, p.ResourceTags); err != nil {
 				return p, d, err

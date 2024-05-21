@@ -59,6 +59,7 @@ type InstanceConfig struct {
 	ComputeService            *compute.Service
 	EnableConfidentialCompute bool
 	LocalSSDCount             int64
+	EnableDataCache           bool
 }
 
 type InstanceInfo struct {
@@ -315,7 +316,7 @@ func getexternalIP(instance *compute.Instance) string {
 }
 
 func getTimestamp() string {
-	return fmt.Sprintf(time.Now().Format(timestampFormat))
+	return fmt.Sprintf("%s", time.Now().Format(timestampFormat))
 }
 
 // Create default SSH filewall rule if it does not exist

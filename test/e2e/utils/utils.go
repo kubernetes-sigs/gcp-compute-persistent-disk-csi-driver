@@ -70,7 +70,9 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
 		"--allow-hdha-provisioning",
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
-		"--enable-data-cache",
+		"--enable-controller-data-cache",
+		"--enable-node-data-cache",
+		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
@@ -279,6 +281,7 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 }
 
 func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	_, _ = instance.SSH("apt-get", "update")
 	for _, pkg := range pkgs {
 		output, err := instance.SSH("apt-get", "install", "-y", pkg)
 		if err != nil {
@@ -307,7 +310,7 @@ func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
 // ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
 // link location - it then finds the backing PD using either scsi_id or
 // google_nvme_id (depending on the /dev path) and validates that it is the
-// same as diskName
+// same as diskName“
 func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName string) (bool, error) {
 	const (
 		scsiPattern       = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`

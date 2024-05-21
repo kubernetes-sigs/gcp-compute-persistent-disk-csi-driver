@@ -598,7 +598,6 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 	}
 
 	// Mount the disk
-	// Source should be /dev/{CACHE_GROUP}/main for the LVM cache
 	klog.V(4).Infof("Attempting to mount disk %s in %s format at %s", source, fstype, target)
 	if err := mounter.MountSensitive(source, target, fstype, options, sensitiveOptions); err != nil {
 		return NewMountError(mountErrorValue, err.Error())

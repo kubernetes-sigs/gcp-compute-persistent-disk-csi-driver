@@ -2,6 +2,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -39,16 +40,10 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	raidedLocalSsdPath = raidedLssdPrefix + infoString
 
 	klog.V(2).Infof("============================== vgscan before vgcreate ==============================")
-	args := []string{}
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
-	if err != nil {
-		klog.Errorf("vgscan error %v: %s", err, info)
-	}
-	klog.V(2).Infof("============================== vgscan info contains volumeGroupName or not %v ==============================", strings.Contains(string(info), volumeGroupName))
-	// Check if the required volume group already exists
-	if strings.Contains(string(info), volumeGroupName) {
-		klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
+	vgExists := checkVgExists(volumeGroupName)
+	klog.V(2).Infof("============================== vgscan info contains volumeGroupName or not %v ==============================", vgExists)
 
+	if vgExists {
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
 	} else {
@@ -58,8 +53,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 	}
 
+	klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
 	// Check if the Physical Volume(PV) is part of some other volume group
-	args = []string{
+	args := []string{
 		"--select",
 		"pv_name=" + devicePath,
 		"-o",
@@ -87,6 +83,42 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		if err != nil {
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
+
+		reduceVolumeGroup(vgNameForPv, false)
+		_, isCached := isCachingSetup(mainLvName)
+		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
+
+		if isCached {
+			klog.Infof("============================== Uncaching the LV %v==============================", mainLvName)
+			// Uncache LV
+			args = []string{
+				"--uncache",
+				vgNameForPv + "/" + mainLvName,
+				"--force",
+				"-y", // force remove cache without flushing data
+			}
+			info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
+			if err != nil {
+				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
+			}
+
+		reduceVolumeGroup(vgNameForPv, false)
+		_, isCached := isCachingSetup(mainLvName)
+		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
+
+		if isCached {
+			klog.Infof("============================== Uncaching the LV %v==============================", mainLvName)
+			// Uncache LV
+			args = []string{
+				"--uncache",
+				vgNameForPv + "/" + mainLvName,
+				"--force",
+				"-y", // force remove cache without flushing data
+			}
+			info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
+			if err != nil {
+				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
+			}
 
 		reduceVolumeGroup(vgNameForPv, false)
 		_, isCached := isCachingSetup(mainLvName)
@@ -163,14 +195,15 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	} else {
 		fastCacheSize := req.GetPublishContext()[common.ContexLocalSsdCacheSize]
 		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
-		klog.V(2).Infof("============================== fastCacheSize is %v ==============================", fastCacheSize)
+		klog.V(2).Infof("============================== fastCacheSize is %v GiB ==============================", fastCacheSize)
 		klog.V(2).Infof("============================== lvcreate fast cache layer again with the VolumeGroup %v==============================", volumeGroupName)
 		args = []string{
 			"--yes",
 			"-n",
 			cacheLvName,
 			"-L",
-			fastCacheSize,
+			// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
+			fastCacheSize + "g",
 			volumeGroupName,
 			raidedLocalSsdPath,
 		}
@@ -214,9 +247,24 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	return mainDevicePath, nil
 }
 
+func checkVgExists(volumeGroupName string) bool {
+	args := []string{}
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
+	if err != nil {
+		klog.Errorf("vgscan error %v: %s", err, info)
+		return false
+	}
+	// Check if the required volume group already exists
+	return strings.Contains(string(info), volumeGroupName)
+}
+
 func cleanupCache(volumeId string, nodeId string) error {
 
 	volumeGroupName := getVolumeGroupName(nodeId)
+	if !checkVgExists(volumeGroupName) {
+		// If volume group doesn't exist then there's nothing to uncache
+		return nil
+	}
 	mainLvName := getLvName(mainLvSuffix, volumeId)
 	klog.V(2).Infof("============================== Deactivating volume %s/%s ==============================", volumeGroupName, mainLvName)
 	args := []string{
@@ -230,6 +278,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 	args = []string{
 		"--uncache",
 		volumeGroupName + "/" + mainLvName,
+		"-y",
 	}
 	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
 	if err != nil {
@@ -241,7 +290,8 @@ func cleanupCache(volumeId string, nodeId string) error {
 func getVolumeGroupName(nodePath string) string {
 	nodeSlice := strings.Split(nodePath, "/")
 	nodeId := nodeSlice[len(nodeSlice)-1]
-	return fmt.Sprintf("csi-vg-%s", nodeId)
+	nodeHash := common.ShortString(nodeId)
+	return fmt.Sprintf("csi-vg-%s", nodeHash)
 }
 
 func getLvName(suffix string, volumeId string) string {
@@ -257,12 +307,14 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 		"y",
 		volumeGroupName,
 		raidedLocalSsds,
+		"-v",
 	}
 	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgcreate", args...)
 	if err != nil {
 		klog.Errorf("vgcreate error %v: %s", err, info)
 		return fmt.Errorf("vgcreate error %w: %s", err, info)
 	}
+	klog.Infof("Volume group creation succeeded for %v", volumeGroupName)
 
 	klog.V(2).Infof("============================== vgscan after vgcreate ==============================")
 	args = []string{}
@@ -298,20 +350,31 @@ func RaidLocalSsds() error {
 		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
 		return nil
 	}
-	info, err := common.RunCommand("grep" /* pipedCmd */, "DevicePath" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
-	if err != nil {
-		return fmt.Errorf("errored while scanning available NVME disks info: %v; err:%v", info, err)
-	}
-	infoString := strings.ReplaceAll(string(info), "\"", "")
-	infoString = strings.TrimSpace(strings.ReplaceAll(infoString, ",", " "))
-	infoSlice := strings.Split(infoString, "\n")
-	klog.V(2).Infof("============================== NVME list %v ==============================", infoSlice)
 	diskList := []string{}
-	for _, diskInfo := range infoSlice {
-		diskName := strings.TrimSpace(diskInfo)
-		diskName = strings.TrimSpace(strings.Split(diskName, ":")[1])
-		diskList = append(diskList, diskName)
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
+	if err != nil {
+		return fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
 	}
+	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
+	klog.Infof("============================== Got NVME disks %v ==============================", infoList)
+	re, err := regexp.Compile("nvme_card([0-9]+)?$")
+	if err != nil {
+		klog.V(2).ErrorS(err, "Errored while compiling to check PD or LSSD")
+	}
+	for _, ssd := range infoList {
+		klog.V(2).Infof("=========================== Checking for SSD %v ====================", ssd)
+		ssd = strings.TrimSpace(ssd)
+		if strings.HasPrefix(ssd, "/dev/nvme") {
+			ssdDetails := strings.Split(ssd, " ")
+			klog.V(2).Infof("=========================== Got SSD details %v ====================", ssdDetails)
+			lssd := re.MatchString(ssdDetails[1])
+			klog.Infof("=================== ssdDetails1 %v and compile string result %v", ssdDetails[1], lssd)
+			if lssd {
+				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
+			}
+		}
+	}
+	klog.V(2).Infof("============================== NVME list %v ==============================", diskList)
 	nvmeDiskCount := len(diskList)
 	nvmeDiskList := strings.Join(diskList, " ")
 	if nvmeDiskCount == 0 {
