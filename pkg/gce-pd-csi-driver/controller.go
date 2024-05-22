@@ -1158,6 +1158,11 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, status.Errorf(codes.InvalidArgument, "CreateSnapshot Volume ID is invalid: %v", err.Error())
 	}
 
+	volumeIsMultiZone := isMultiZoneVolKey(volKey)
+	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
+		return nil, fmt.Errorf("Snapshots are not supported with the `multi-zone` PV volumeHandle feature.")
+	}
+
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
@@ -1202,11 +1207,6 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 	volumeID, err := common.KeyToVolumeID(volKey, project)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid volume key: %v", volKey)
-	}
-
-	volumeIsMultiZone := isMultiZoneVolKey(volKey)
-	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
-		return nil, fmt.Errorf("Snapshots are not supported with the `multi-zone` PV volumeHandle feature.")
 	}
 
 	// Check if PD snapshot already exists
