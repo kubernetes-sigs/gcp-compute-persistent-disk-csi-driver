@@ -433,6 +433,9 @@ func CodeForError(sourceError error) codes.Code {
 	if code, err := isContextError(sourceError); err == nil {
 		return code
 	}
+	if code, err := isConnectionResetError(sourceError); err == nil {
+		return code
+	}
 
 	var apiErr *googleapi.Error
 	if !errors.As(sourceError, &apiErr) {
@@ -462,6 +465,20 @@ func isContextError(err error) (codes.Code, error) {
 		return codes.Canceled, nil
 	}
 	return codes.Unknown, fmt.Errorf("Not a context error: %w", err)
+}
+
+// isConnectionResetError returns the grpc error code Unavailable if the
+// passed in error contains the "connection reset by peer" string.
+func isConnectionResetError(err error) (codes.Code, error) {
+	if err == nil {
+		return codes.Unknown, fmt.Errorf("null error")
+	}
+
+	errStr := err.Error()
+	if strings.Contains(errStr, "connection reset by peer") {
+		return codes.Unavailable, nil
+	}
+	return codes.Unknown, fmt.Errorf("Not a connection reset error: %w", err)
 }
 
 // isUserMultiAttachError returns an InvalidArgument if the error is
