@@ -241,7 +241,8 @@ func cleanupCache(volumeId string, nodeId string) error {
 func getVolumeGroupName(nodePath string) string {
 	nodeSlice := strings.Split(nodePath, "/")
 	nodeId := nodeSlice[len(nodeSlice)-1]
-	return fmt.Sprintf("csi-vg-%s", nodeId)
+	nodeHash := common.ShortString(nodeId)
+	return fmt.Sprintf("csi-vg-%s", nodeHash)
 }
 
 func getLvName(suffix string, volumeId string) string {
@@ -257,12 +258,14 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 		"y",
 		volumeGroupName,
 		raidedLocalSsds,
+		"-v",
 	}
 	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgcreate", args...)
 	if err != nil {
 		klog.Errorf("vgcreate error %v: %s", err, info)
 		return fmt.Errorf("vgcreate error %w: %s", err, info)
 	}
+	klog.Infof("Volume group creation succeeded for %v", volumeGroupName)
 
 	klog.V(2).Infof("============================== vgscan after vgcreate ==============================")
 	args = []string{}
@@ -298,19 +301,27 @@ func RaidLocalSsds() error {
 		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
 		return nil
 	}
-	info, err := common.RunCommand("grep" /* pipedCmd */, "DevicePath" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
 	if err != nil {
 		return fmt.Errorf("errored while scanning available NVME disks info: %v; err:%v", info, err)
 	}
-	infoString := strings.ReplaceAll(string(info), "\"", "")
-	infoString = strings.TrimSpace(strings.ReplaceAll(infoString, ",", " "))
-	infoSlice := strings.Split(infoString, "\n")
-	klog.V(2).Infof("============================== NVME list %v ==============================", infoSlice)
+	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
+	klog.V(2).Infof("============================== NVME list %v ==============================", infoString)
+	infoString = strings.ReplaceAll(infoString, "\"", "")
+	infoString = strings.ReplaceAll(infoString, " :", ":")
+	infoString = strings.ReplaceAll(infoString, ": ", ":")
+	infoString = strings.ReplaceAll(infoString, ",", " ")
+	infoSlice := strings.Split(infoString, " ")
+
 	diskList := []string{}
 	for _, diskInfo := range infoSlice {
 		diskName := strings.TrimSpace(diskInfo)
-		diskName = strings.TrimSpace(strings.Split(diskName, ":")[1])
-		diskList = append(diskList, diskName)
+
+		if strings.Contains(diskName, "DevicePath") {
+			diskName := strings.TrimSpace(strings.Split(diskName, ":")[1])
+
+			diskList = append(diskList, diskName)
+		}
 	}
 	nvmeDiskCount := len(diskList)
 	nvmeDiskList := strings.Join(diskList, " ")
