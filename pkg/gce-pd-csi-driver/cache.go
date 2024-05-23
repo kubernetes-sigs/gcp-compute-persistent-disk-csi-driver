@@ -301,19 +301,27 @@ func RaidLocalSsds() error {
 		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
 		return nil
 	}
-	info, err := common.RunCommand("grep" /* pipedCmd */, "DevicePath" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
 	if err != nil {
 		return fmt.Errorf("errored while scanning available NVME disks info: %v; err:%v", info, err)
 	}
-	infoString := strings.ReplaceAll(string(info), "\"", "")
-	infoString = strings.TrimSpace(strings.ReplaceAll(infoString, ",", " "))
-	infoSlice := strings.Split(infoString, "\n")
-	klog.V(2).Infof("============================== NVME list %v ==============================", infoSlice)
+	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
+	klog.V(2).Infof("============================== NVME list %v ==============================", infoString)
+	infoString = strings.ReplaceAll(infoString, "\"", "")
+	infoString = strings.ReplaceAll(infoString, " :", ":")
+	infoString = strings.ReplaceAll(infoString, ": ", ":")
+	infoString = strings.ReplaceAll(infoString, ",", " ")
+	infoSlice := strings.Split(infoString, " ")
+
 	diskList := []string{}
 	for _, diskInfo := range infoSlice {
 		diskName := strings.TrimSpace(diskInfo)
-		diskName = strings.TrimSpace(strings.Split(diskName, ":")[1])
-		diskList = append(diskList, diskName)
+
+		if strings.Contains(diskName, "DevicePath") {
+			diskName := strings.TrimSpace(strings.Split(diskName, ":")[1])
+
+			diskList = append(diskList, diskName)
+		}
 	}
 	nvmeDiskCount := len(diskList)
 	nvmeDiskList := strings.Join(diskList, " ")
