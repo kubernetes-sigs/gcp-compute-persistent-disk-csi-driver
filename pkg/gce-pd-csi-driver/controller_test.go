@@ -255,6 +255,77 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	}
 }
 
+func TestUnsupporteddMultiZoneCreateSnapshot(t *testing.T) {
+	testCase := struct {
+		name       string
+		req        *csi.CreateSnapshotRequest
+		expErrCode codes.Code
+	}{
+		name: "failed create snapshot for multi-zone PV", // Example values
+		req: &csi.CreateSnapshotRequest{
+			Name:           name,
+			SourceVolumeId: multiZoneVolumeID,
+		},
+		expErrCode: codes.InvalidArgument,
+	}
+
+	t.Logf("test case: %s", testCase.name)
+
+	gceDriver := initGCEDriver(t, nil)
+	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
+		Enable: true,
+	}
+
+	// Start Test
+	_, err := gceDriver.cs.CreateSnapshot(context.Background(), testCase.req)
+	if err != nil {
+		serverError, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("Could not get error status code from err: %v", serverError)
+		}
+		if serverError.Code() != testCase.expErrCode {
+			t.Fatalf("Expected error code: %v, got: %v. err : %v", testCase.expErrCode, serverError.Code(), err)
+		}
+	} else {
+		t.Fatalf("Expected error: %v, got no error", testCase.expErrCode)
+	}
+}
+
+func TestUnsupportedMultiZoneControllerExpandVolume(t *testing.T) {
+	testCase := struct {
+		name       string
+		req        *csi.ControllerExpandVolumeRequest
+		expErrCode codes.Code
+	}{
+		name: "failed create snapshot for multi-zone PV", // Example values
+		req: &csi.ControllerExpandVolumeRequest{
+			VolumeId: multiZoneVolumeID,
+		},
+		expErrCode: codes.InvalidArgument,
+	}
+
+	t.Logf("test case: %s", testCase.name)
+
+	gceDriver := initGCEDriver(t, nil)
+	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
+		Enable: true,
+	}
+
+	// Start Test
+	_, err := gceDriver.cs.ControllerExpandVolume(context.Background(), testCase.req)
+	if err != nil {
+		serverError, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("Could not get error status code from err: %v", serverError)
+		}
+		if serverError.Code() != testCase.expErrCode {
+			t.Fatalf("Expected error code: %v, got: %v. err : %v", testCase.expErrCode, serverError.Code(), err)
+		}
+	} else {
+		t.Fatalf("Expected error: %v, got no error", testCase.expErrCode)
+	}
+}
+
 func TestDeleteSnapshot(t *testing.T) {
 	testCases := []struct {
 		name       string

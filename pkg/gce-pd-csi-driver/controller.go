@@ -1160,7 +1160,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 
 	volumeIsMultiZone := isMultiZoneVolKey(volKey)
 	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
-		return nil, fmt.Errorf("Snapshots are not supported with the `multi-zone` PV volumeHandle feature.")
+		return nil, status.Errorf(codes.InvalidArgument, "Snapshots are not supported with the multi-zone PV volumeHandle feature")
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -1521,7 +1521,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	volumeIsMultiZone := isMultiZoneVolKey(volKey)
 	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
-		return nil, fmt.Errorf("Resize operation is not supported with the `multi-zone` PVC volumeHandle feature. Please re-create the disk from source if you want a larger size.")
+		return nil, status.Errorf(codes.InvalidArgument, "ControllerExpandVolume is not supported with the multi-zone PVC volumeHandle feature. Please re-create the volume %v from source if you want a larger size", volumeID)
 	}
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
