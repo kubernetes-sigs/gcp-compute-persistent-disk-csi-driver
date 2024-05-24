@@ -1160,7 +1160,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 
 	volumeIsMultiZone := isMultiZoneVolKey(volKey)
 	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
-		return nil, status.Errorf(codes.InvalidArgument, "Snapshots are not supported with the multi-zone PV volumeHandle feature")
+		return nil, status.Errorf(codes.InvalidArgument, "CreateSnapshot for volume %v failed. Snapshots are not supported with the multi-zone PV volumeHandle feature", volumeID)
 	}
 
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
