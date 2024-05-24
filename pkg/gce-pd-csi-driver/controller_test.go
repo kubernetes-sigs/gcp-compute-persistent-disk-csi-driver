@@ -255,7 +255,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	}
 }
 
-func TestUnsupporteddMultiZoneCreateSnapshot(t *testing.T) {
+func TestUnsupportedMultiZoneCreateSnapshot(t *testing.T) {
 	testCase := struct {
 		name       string
 		req        *csi.CreateSnapshotRequest
