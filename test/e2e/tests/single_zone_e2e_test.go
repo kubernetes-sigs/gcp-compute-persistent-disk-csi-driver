@@ -50,6 +50,7 @@ const (
 	defaultRepdSizeGb                 int64 = 200
 	defaultMwSizeGb                   int64 = 200
 	defaultVolumeLimit                int64 = 127
+	invalidSizeGb                     int64 = 66000
 	readyState                              = "READY"
 	standardDiskType                        = "pd-standard"
 	extremeDiskType                         = "pd-extreme"
@@ -265,6 +266,33 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 			_, err = computeService.Disks.Get(p, zone, volName).Do()
 			Expect(err).To(BeNil(), "Could not find disk in correct zone")
+		}
+	})
+
+	It("Should return InvalidArgument when disk size exceeds limit", func() {
+		// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}
+
+		for _, zone := range zones {
+			volName := testNamePrefix + string(uuid.NewUUID())
+			topReq := &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			}
+			volume, err := testContext.Client.CreateVolume(volName, nil, invalidSizeGb, topReq, nil)
+			Expect(err).ToNot(BeNil(), "Failed to fetch error from create volume.")
+			Expect(err.Error()).To(ContainSubstring("InvalidArgument"), "Failed to verify error code matches InvalidArgument.")
+			defer func() {
+				if volume != nil {
+					testContext.Client.DeleteVolume(volume.VolumeId)
+				}
+			}()
 		}
 	})
 
