@@ -27,6 +27,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
+	"github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1206,6 +1207,17 @@ func TestParseMachineType(t *testing.T) {
 }
 
 func TestCodeForError(t *testing.T) {
+	getGoogleAPIWrappedError := func(err error) *googleapi.Error {
+		apierr, _ := apierror.ParseError(err, false)
+		wrappedError := &googleapi.Error{}
+		wrappedError.Wrap(apierr)
+
+		return wrappedError
+	}
+	getAPIError := func(err error) *apierror.APIError {
+		apierror, _ := apierror.ParseError(err, true)
+		return apierror
+	}
 	testCases := []struct {
 		name     string
 		inputErr error
@@ -1220,6 +1232,36 @@ func TestCodeForError(t *testing.T) {
 			name:     "User error",
 			inputErr: &googleapi.Error{Code: http.StatusBadRequest, Message: "User error with bad request"},
 			expCode:  codes.InvalidArgument,
+		},
+		{
+			name: "googleapi.Error that wraps apierror.APIError of http kind",
+			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
+				Code:    404,
+				Message: "data requested not found error",
+			}),
+			expCode: codes.NotFound,
+		},
+		{
+			name: "googleapi.Error that wraps apierror.APIError of status kind",
+			inputErr: getGoogleAPIWrappedError(status.New(
+				codes.Internal, "Internal status error",
+			).Err()),
+			expCode: codes.Internal,
+		},
+		{
+			name: "apierror.APIError of http kind",
+			inputErr: getAPIError(&googleapi.Error{
+				Code:    404,
+				Message: "data requested not found error",
+			}),
+			expCode: codes.NotFound,
+		},
+		{
+			name: "apierror.APIError of status kind",
+			inputErr: getAPIError(status.New(
+				codes.Canceled, "Internal status error",
+			).Err()),
+			expCode: codes.Canceled,
 		},
 		{
 			name:     "googleapi.Error but not a user error",
