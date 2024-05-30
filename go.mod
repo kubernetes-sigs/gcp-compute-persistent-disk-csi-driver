@@ -15,8 +15,8 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.4
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/csi-test/v4 v4.4.0
-	github.com/onsi/ginkgo/v2 v2.17.2
-	github.com/onsi/gomega v1.33.0
+	github.com/onsi/ginkgo/v2 v2.19.0
+	github.com/onsi/gomega v1.33.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0
 	go.opentelemetry.io/otel v1.24.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.21.0
@@ -106,7 +106,7 @@ require (
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/term v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
-	golang.org/x/tools v0.20.0 // indirect
+	golang.org/x/tools v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240513163218-0867130af1f8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240521202816-d264139d666e // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
