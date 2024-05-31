@@ -33,6 +33,15 @@ readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-true}
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
+# Install golang.
+version=1.22.3
+wget -O go_tar.tar.gz https://go.dev/dl/go${version}.linux-amd64.tar.gz -q
+# Remove the existing GoLang installation directory
+rm -rf /usr/local/go && tar -xzf go_tar.tar.gz -C /usr/local
+# Add the GoLang binary directory to systems PATH env, allowing prow tests
+# to run go commands with this go version.
+export PATH=$PATH:/usr/local/go/bin && go version && rm go_tar.tar.gz
+
 storage_classes=sc-balanced.yaml,sc-ssd.yaml,sc-xfs.yaml
 
 if [[ $test_pd_labels = true ]] ; then
