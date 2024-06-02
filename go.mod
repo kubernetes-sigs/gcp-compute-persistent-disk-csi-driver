@@ -6,8 +6,8 @@ toolchain go1.22.2
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0
-	cloud.google.com/go/kms v1.15.8
-	cloud.google.com/go/resourcemanager v1.9.6
+	cloud.google.com/go/kms v1.17.1
+	cloud.google.com/go/resourcemanager v1.9.7
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.24.0
 	github.com/container-storage-interface/spec v1.6.0
 	github.com/google/go-cmp v0.6.0
@@ -43,10 +43,10 @@ require (
 
 require (
 	cloud.google.com/go v0.114.0 // indirect
-	cloud.google.com/go/auth v0.4.2 // indirect
+	cloud.google.com/go/auth v0.5.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
-	cloud.google.com/go/iam v1.1.7 // indirect
-	cloud.google.com/go/longrunning v0.5.6 // indirect
+	cloud.google.com/go/iam v1.1.8 // indirect
+	cloud.google.com/go/longrunning v0.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect

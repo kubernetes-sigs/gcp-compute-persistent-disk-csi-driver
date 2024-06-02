@@ -28,6 +28,8 @@ import (
 
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
+	"cloud.google.com/go/longrunning"
+	lroauto "cloud.google.com/go/longrunning/autogen"
 	longrunningpb "cloud.google.com/go/longrunning/autogen/longrunningpb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/googleapi"
@@ -43,26 +45,22 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var newEkmClientHook clientHook
+var newAutokeyClientHook clientHook
 
-// EkmCallOptions contains the retry settings for each method of EkmClient.
-type EkmCallOptions struct {
-	ListEkmConnections  []gax.CallOption
-	GetEkmConnection    []gax.CallOption
-	CreateEkmConnection []gax.CallOption
-	UpdateEkmConnection []gax.CallOption
-	GetEkmConfig        []gax.CallOption
-	UpdateEkmConfig     []gax.CallOption
-	VerifyConnectivity  []gax.CallOption
-	GetLocation         []gax.CallOption
-	ListLocations       []gax.CallOption
-	GetIamPolicy        []gax.CallOption
-	SetIamPolicy        []gax.CallOption
-	TestIamPermissions  []gax.CallOption
-	GetOperation        []gax.CallOption
+// AutokeyCallOptions contains the retry settings for each method of AutokeyClient.
+type AutokeyCallOptions struct {
+	CreateKeyHandle    []gax.CallOption
+	GetKeyHandle       []gax.CallOption
+	ListKeyHandles     []gax.CallOption
+	GetLocation        []gax.CallOption
+	ListLocations      []gax.CallOption
+	GetIamPolicy       []gax.CallOption
+	SetIamPolicy       []gax.CallOption
+	TestIamPermissions []gax.CallOption
+	GetOperation       []gax.CallOption
 }
 
-func defaultEkmGRPCClientOptions() []option.ClientOption {
+func defaultAutokeyGRPCClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("cloudkms.googleapis.com:443"),
 		internaloption.WithDefaultEndpointTemplate("cloudkms.UNIVERSE_DOMAIN:443"),
@@ -77,9 +75,12 @@ func defaultEkmGRPCClientOptions() []option.ClientOption {
 	}
 }
 
-func defaultEkmCallOptions() *EkmCallOptions {
-	return &EkmCallOptions{
-		ListEkmConnections: []gax.CallOption{
+func defaultAutokeyCallOptions() *AutokeyCallOptions {
+	return &AutokeyCallOptions{
+		CreateKeyHandle: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+		},
+		GetKeyHandle: []gax.CallOption{
 			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
@@ -92,7 +93,7 @@ func defaultEkmCallOptions() *EkmCallOptions {
 				})
 			}),
 		},
-		GetEkmConnection: []gax.CallOption{
+		ListKeyHandles: []gax.CallOption{
 			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
@@ -105,35 +106,6 @@ func defaultEkmCallOptions() *EkmCallOptions {
 				})
 			}),
 		},
-		CreateEkmConnection: []gax.CallOption{
-			gax.WithTimeout(60000 * time.Millisecond),
-			gax.WithRetry(func() gax.Retryer {
-				return gax.OnCodes([]codes.Code{
-					codes.Unavailable,
-					codes.DeadlineExceeded,
-				}, gax.Backoff{
-					Initial:    100 * time.Millisecond,
-					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
-				})
-			}),
-		},
-		UpdateEkmConnection: []gax.CallOption{
-			gax.WithTimeout(60000 * time.Millisecond),
-			gax.WithRetry(func() gax.Retryer {
-				return gax.OnCodes([]codes.Code{
-					codes.Unavailable,
-					codes.DeadlineExceeded,
-				}, gax.Backoff{
-					Initial:    100 * time.Millisecond,
-					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
-				})
-			}),
-		},
-		GetEkmConfig:       []gax.CallOption{},
-		UpdateEkmConfig:    []gax.CallOption{},
-		VerifyConnectivity: []gax.CallOption{},
 		GetLocation:        []gax.CallOption{},
 		ListLocations:      []gax.CallOption{},
 		GetIamPolicy:       []gax.CallOption{},
@@ -143,9 +115,12 @@ func defaultEkmCallOptions() *EkmCallOptions {
 	}
 }
 
-func defaultEkmRESTCallOptions() *EkmCallOptions {
-	return &EkmCallOptions{
-		ListEkmConnections: []gax.CallOption{
+func defaultAutokeyRESTCallOptions() *AutokeyCallOptions {
+	return &AutokeyCallOptions{
+		CreateKeyHandle: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+		},
+		GetKeyHandle: []gax.CallOption{
 			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
@@ -157,7 +132,7 @@ func defaultEkmRESTCallOptions() *EkmCallOptions {
 					http.StatusGatewayTimeout)
 			}),
 		},
-		GetEkmConnection: []gax.CallOption{
+		ListKeyHandles: []gax.CallOption{
 			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
@@ -169,33 +144,6 @@ func defaultEkmRESTCallOptions() *EkmCallOptions {
 					http.StatusGatewayTimeout)
 			}),
 		},
-		CreateEkmConnection: []gax.CallOption{
-			gax.WithTimeout(60000 * time.Millisecond),
-			gax.WithRetry(func() gax.Retryer {
-				return gax.OnHTTPCodes(gax.Backoff{
-					Initial:    100 * time.Millisecond,
-					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
-				},
-					http.StatusServiceUnavailable,
-					http.StatusGatewayTimeout)
-			}),
-		},
-		UpdateEkmConnection: []gax.CallOption{
-			gax.WithTimeout(60000 * time.Millisecond),
-			gax.WithRetry(func() gax.Retryer {
-				return gax.OnHTTPCodes(gax.Backoff{
-					Initial:    100 * time.Millisecond,
-					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
-				},
-					http.StatusServiceUnavailable,
-					http.StatusGatewayTimeout)
-			}),
-		},
-		GetEkmConfig:       []gax.CallOption{},
-		UpdateEkmConfig:    []gax.CallOption{},
-		VerifyConnectivity: []gax.CallOption{},
 		GetLocation:        []gax.CallOption{},
 		ListLocations:      []gax.CallOption{},
 		GetIamPolicy:       []gax.CallOption{},
@@ -205,18 +153,15 @@ func defaultEkmRESTCallOptions() *EkmCallOptions {
 	}
 }
 
-// internalEkmClient is an interface that defines the methods available from Cloud Key Management Service (KMS) API.
-type internalEkmClient interface {
+// internalAutokeyClient is an interface that defines the methods available from Cloud Key Management Service (KMS) API.
+type internalAutokeyClient interface {
 	Close() error
 	setGoogleClientInfo(...string)
 	Connection() *grpc.ClientConn
-	ListEkmConnections(context.Context, *kmspb.ListEkmConnectionsRequest, ...gax.CallOption) *EkmConnectionIterator
-	GetEkmConnection(context.Context, *kmspb.GetEkmConnectionRequest, ...gax.CallOption) (*kmspb.EkmConnection, error)
-	CreateEkmConnection(context.Context, *kmspb.CreateEkmConnectionRequest, ...gax.CallOption) (*kmspb.EkmConnection, error)
-	UpdateEkmConnection(context.Context, *kmspb.UpdateEkmConnectionRequest, ...gax.CallOption) (*kmspb.EkmConnection, error)
-	GetEkmConfig(context.Context, *kmspb.GetEkmConfigRequest, ...gax.CallOption) (*kmspb.EkmConfig, error)
-	UpdateEkmConfig(context.Context, *kmspb.UpdateEkmConfigRequest, ...gax.CallOption) (*kmspb.EkmConfig, error)
-	VerifyConnectivity(context.Context, *kmspb.VerifyConnectivityRequest, ...gax.CallOption) (*kmspb.VerifyConnectivityResponse, error)
+	CreateKeyHandle(context.Context, *kmspb.CreateKeyHandleRequest, ...gax.CallOption) (*CreateKeyHandleOperation, error)
+	CreateKeyHandleOperation(name string) *CreateKeyHandleOperation
+	GetKeyHandle(context.Context, *kmspb.GetKeyHandleRequest, ...gax.CallOption) (*kmspb.KeyHandle, error)
+	ListKeyHandles(context.Context, *kmspb.ListKeyHandlesRequest, ...gax.CallOption) (*kmspb.ListKeyHandlesResponse, error)
 	GetLocation(context.Context, *locationpb.GetLocationRequest, ...gax.CallOption) (*locationpb.Location, error)
 	ListLocations(context.Context, *locationpb.ListLocationsRequest, ...gax.CallOption) *LocationIterator
 	GetIamPolicy(context.Context, *iampb.GetIamPolicyRequest, ...gax.CallOption) (*iampb.Policy, error)
@@ -225,35 +170,51 @@ type internalEkmClient interface {
 	GetOperation(context.Context, *longrunningpb.GetOperationRequest, ...gax.CallOption) (*longrunningpb.Operation, error)
 }
 
-// EkmClient is a client for interacting with Cloud Key Management Service (KMS) API.
+// AutokeyClient is a client for interacting with Cloud Key Management Service (KMS) API.
 // Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
 //
-// # Google Cloud Key Management EKM Service
+// Provides interfaces for using Cloud KMS Autokey to provision new
+// CryptoKeys, ready for Customer Managed
+// Encryption Key (CMEK) use, on-demand. To support certain client tooling, this
+// feature is modeled around a KeyHandle
+// resource: creating a KeyHandle in a resource
+// project and given location triggers Cloud KMS Autokey to provision a
+// CryptoKey in the configured key project and
+// the same location.
 //
-// Manages external cryptographic keys and operations using those keys.
-// Implements a REST model with the following objects:
-//
-//	EkmConnection
-type EkmClient struct {
+// Prior to use in a given resource project,
+// UpdateAutokeyConfig
+// should have been called on an ancestor folder, setting the key project where
+// Cloud KMS Autokey should create new
+// CryptoKeys. See documentation for additional
+// prerequisites. To check what key project, if any, is currently configured on
+// a resource project’s ancestor folder, see
+// ShowEffectiveAutokeyConfig.
+type AutokeyClient struct {
 	// The internal transport-dependent client.
-	internalClient internalEkmClient
+	internalClient internalAutokeyClient
 
 	// The call options for this service.
-	CallOptions *EkmCallOptions
+	CallOptions *AutokeyCallOptions
+
+	// LROClient is used internally to handle long-running operations.
+	// It is exposed so that its CallOptions can be modified if required.
+	// Users should not Close this client.
+	LROClient *lroauto.OperationsClient
 }
 
 // Wrapper methods routed to the internal client.
 
 // Close closes the connection to the API service. The user should invoke this when
 // the client is no longer required.
-func (c *EkmClient) Close() error {
+func (c *AutokeyClient) Close() error {
 	return c.internalClient.Close()
 }
 
 // setGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
-func (c *EkmClient) setGoogleClientInfo(keyval ...string) {
+func (c *AutokeyClient) setGoogleClientInfo(keyval ...string) {
 	c.internalClient.setGoogleClientInfo(keyval...)
 }
 
@@ -261,66 +222,50 @@ func (c *EkmClient) setGoogleClientInfo(keyval ...string) {
 //
 // Deprecated: Connections are now pooled so this method does not always
 // return the same resource.
-func (c *EkmClient) Connection() *grpc.ClientConn {
+func (c *AutokeyClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
 
-// ListEkmConnections lists EkmConnections.
-func (c *EkmClient) ListEkmConnections(ctx context.Context, req *kmspb.ListEkmConnectionsRequest, opts ...gax.CallOption) *EkmConnectionIterator {
-	return c.internalClient.ListEkmConnections(ctx, req, opts...)
+// CreateKeyHandle creates a new KeyHandle, triggering the
+// provisioning of a new CryptoKey for CMEK
+// use with the given resource type in the configured key project and the same
+// location. GetOperation should be used to resolve
+// the resulting long-running operation and get the resulting
+// KeyHandle and
+// CryptoKey.
+func (c *AutokeyClient) CreateKeyHandle(ctx context.Context, req *kmspb.CreateKeyHandleRequest, opts ...gax.CallOption) (*CreateKeyHandleOperation, error) {
+	return c.internalClient.CreateKeyHandle(ctx, req, opts...)
 }
 
-// GetEkmConnection returns metadata for a given
-// EkmConnection.
-func (c *EkmClient) GetEkmConnection(ctx context.Context, req *kmspb.GetEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	return c.internalClient.GetEkmConnection(ctx, req, opts...)
+// CreateKeyHandleOperation returns a new CreateKeyHandleOperation from a given name.
+// The name must be that of a previously created CreateKeyHandleOperation, possibly from a different process.
+func (c *AutokeyClient) CreateKeyHandleOperation(name string) *CreateKeyHandleOperation {
+	return c.internalClient.CreateKeyHandleOperation(name)
 }
 
-// CreateEkmConnection creates a new EkmConnection in a given
-// Project and Location.
-func (c *EkmClient) CreateEkmConnection(ctx context.Context, req *kmspb.CreateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	return c.internalClient.CreateEkmConnection(ctx, req, opts...)
+// GetKeyHandle returns the KeyHandle.
+func (c *AutokeyClient) GetKeyHandle(ctx context.Context, req *kmspb.GetKeyHandleRequest, opts ...gax.CallOption) (*kmspb.KeyHandle, error) {
+	return c.internalClient.GetKeyHandle(ctx, req, opts...)
 }
 
-// UpdateEkmConnection updates an EkmConnection's metadata.
-func (c *EkmClient) UpdateEkmConnection(ctx context.Context, req *kmspb.UpdateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	return c.internalClient.UpdateEkmConnection(ctx, req, opts...)
-}
-
-// GetEkmConfig returns the EkmConfig singleton resource
-// for a given project and location.
-func (c *EkmClient) GetEkmConfig(ctx context.Context, req *kmspb.GetEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
-	return c.internalClient.GetEkmConfig(ctx, req, opts...)
-}
-
-// UpdateEkmConfig updates the EkmConfig singleton resource
-// for a given project and location.
-func (c *EkmClient) UpdateEkmConfig(ctx context.Context, req *kmspb.UpdateEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
-	return c.internalClient.UpdateEkmConfig(ctx, req, opts...)
-}
-
-// VerifyConnectivity verifies that Cloud KMS can successfully connect to the external key
-// manager specified by an EkmConnection.
-// If there is an error connecting to the EKM, this method returns a
-// FAILED_PRECONDITION status containing structured information as described
-// at https://cloud.google.com/kms/docs/reference/ekm_errors (at https://cloud.google.com/kms/docs/reference/ekm_errors).
-func (c *EkmClient) VerifyConnectivity(ctx context.Context, req *kmspb.VerifyConnectivityRequest, opts ...gax.CallOption) (*kmspb.VerifyConnectivityResponse, error) {
-	return c.internalClient.VerifyConnectivity(ctx, req, opts...)
+// ListKeyHandles lists KeyHandles.
+func (c *AutokeyClient) ListKeyHandles(ctx context.Context, req *kmspb.ListKeyHandlesRequest, opts ...gax.CallOption) (*kmspb.ListKeyHandlesResponse, error) {
+	return c.internalClient.ListKeyHandles(ctx, req, opts...)
 }
 
 // GetLocation gets information about a location.
-func (c *EkmClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
+func (c *AutokeyClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
 	return c.internalClient.GetLocation(ctx, req, opts...)
 }
 
 // ListLocations lists information about the supported locations for this service.
-func (c *EkmClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
+func (c *AutokeyClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
 	return c.internalClient.ListLocations(ctx, req, opts...)
 }
 
 // GetIamPolicy gets the access control policy for a resource. Returns an empty policy
 // if the resource exists and does not have a policy set.
-func (c *EkmClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *AutokeyClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	return c.internalClient.GetIamPolicy(ctx, req, opts...)
 }
 
@@ -329,7 +274,7 @@ func (c *EkmClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyReq
 //
 // Can return NOT_FOUND, INVALID_ARGUMENT, and PERMISSION_DENIED
 // errors.
-func (c *EkmClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *AutokeyClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	return c.internalClient.SetIamPolicy(ctx, req, opts...)
 }
 
@@ -340,27 +285,32 @@ func (c *EkmClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyReq
 // Note: This operation is designed to be used for building
 // permission-aware UIs and command-line tools, not for authorization
 // checking. This operation may “fail open” without warning.
-func (c *EkmClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
+func (c *AutokeyClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
 	return c.internalClient.TestIamPermissions(ctx, req, opts...)
 }
 
 // GetOperation is a utility method from google.longrunning.Operations.
-func (c *EkmClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+func (c *AutokeyClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
 	return c.internalClient.GetOperation(ctx, req, opts...)
 }
 
-// ekmGRPCClient is a client for interacting with Cloud Key Management Service (KMS) API over gRPC transport.
+// autokeyGRPCClient is a client for interacting with Cloud Key Management Service (KMS) API over gRPC transport.
 //
 // Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
-type ekmGRPCClient struct {
+type autokeyGRPCClient struct {
 	// Connection pool of gRPC connections to the service.
 	connPool gtransport.ConnPool
 
-	// Points back to the CallOptions field of the containing EkmClient
-	CallOptions **EkmCallOptions
+	// Points back to the CallOptions field of the containing AutokeyClient
+	CallOptions **AutokeyCallOptions
 
 	// The gRPC API client.
-	ekmClient kmspb.EkmServiceClient
+	autokeyClient kmspb.AutokeyClient
+
+	// LROClient is used internally to handle long-running operations.
+	// It is exposed so that its CallOptions can be modified if required.
+	// Users should not Close this client.
+	LROClient **lroauto.OperationsClient
 
 	operationsClient longrunningpb.OperationsClient
 
@@ -372,19 +322,30 @@ type ekmGRPCClient struct {
 	xGoogHeaders []string
 }
 
-// NewEkmClient creates a new ekm service client based on gRPC.
+// NewAutokeyClient creates a new autokey client based on gRPC.
 // The returned client must be Closed when it is done being used to clean up its underlying connections.
 //
-// # Google Cloud Key Management EKM Service
+// Provides interfaces for using Cloud KMS Autokey to provision new
+// CryptoKeys, ready for Customer Managed
+// Encryption Key (CMEK) use, on-demand. To support certain client tooling, this
+// feature is modeled around a KeyHandle
+// resource: creating a KeyHandle in a resource
+// project and given location triggers Cloud KMS Autokey to provision a
+// CryptoKey in the configured key project and
+// the same location.
 //
-// Manages external cryptographic keys and operations using those keys.
-// Implements a REST model with the following objects:
-//
-//	EkmConnection
-func NewEkmClient(ctx context.Context, opts ...option.ClientOption) (*EkmClient, error) {
-	clientOpts := defaultEkmGRPCClientOptions()
-	if newEkmClientHook != nil {
-		hookOpts, err := newEkmClientHook(ctx, clientHookParams{})
+// Prior to use in a given resource project,
+// UpdateAutokeyConfig
+// should have been called on an ancestor folder, setting the key project where
+// Cloud KMS Autokey should create new
+// CryptoKeys. See documentation for additional
+// prerequisites. To check what key project, if any, is currently configured on
+// a resource project’s ancestor folder, see
+// ShowEffectiveAutokeyConfig.
+func NewAutokeyClient(ctx context.Context, opts ...option.ClientOption) (*AutokeyClient, error) {
+	clientOpts := defaultAutokeyGRPCClientOptions()
+	if newAutokeyClientHook != nil {
+		hookOpts, err := newAutokeyClientHook(ctx, clientHookParams{})
 		if err != nil {
 			return nil, err
 		}
@@ -395,11 +356,11 @@ func NewEkmClient(ctx context.Context, opts ...option.ClientOption) (*EkmClient,
 	if err != nil {
 		return nil, err
 	}
-	client := EkmClient{CallOptions: defaultEkmCallOptions()}
+	client := AutokeyClient{CallOptions: defaultAutokeyCallOptions()}
 
-	c := &ekmGRPCClient{
+	c := &autokeyGRPCClient{
 		connPool:         connPool,
-		ekmClient:        kmspb.NewEkmServiceClient(connPool),
+		autokeyClient:    kmspb.NewAutokeyClient(connPool),
 		CallOptions:      &client.CallOptions,
 		operationsClient: longrunningpb.NewOperationsClient(connPool),
 		iamPolicyClient:  iampb.NewIAMPolicyClient(connPool),
@@ -409,6 +370,17 @@ func NewEkmClient(ctx context.Context, opts ...option.ClientOption) (*EkmClient,
 
 	client.internalClient = c
 
+	client.LROClient, err = lroauto.NewOperationsClient(ctx, gtransport.WithConnPool(connPool))
+	if err != nil {
+		// This error "should not happen", since we are just reusing old connection pool
+		// and never actually need to dial.
+		// If this does happen, we could leak connp. However, we cannot close conn:
+		// If the user invoked the constructor with option.WithGRPCConn,
+		// we would close a connection that's still in use.
+		// TODO: investigate error conditions.
+		return nil, err
+	}
+	c.LROClient = &client.LROClient
 	return &client, nil
 }
 
@@ -416,14 +388,14 @@ func NewEkmClient(ctx context.Context, opts ...option.ClientOption) (*EkmClient,
 //
 // Deprecated: Connections are now pooled so this method does not always
 // return the same resource.
-func (c *ekmGRPCClient) Connection() *grpc.ClientConn {
+func (c *autokeyGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }
 
 // setGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
-func (c *ekmGRPCClient) setGoogleClientInfo(keyval ...string) {
+func (c *autokeyGRPCClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
 	c.xGoogHeaders = []string{
@@ -433,52 +405,78 @@ func (c *ekmGRPCClient) setGoogleClientInfo(keyval ...string) {
 
 // Close closes the connection to the API service. The user should invoke this when
 // the client is no longer required.
-func (c *ekmGRPCClient) Close() error {
+func (c *autokeyGRPCClient) Close() error {
 	return c.connPool.Close()
 }
 
 // Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
-type ekmRESTClient struct {
+type autokeyRESTClient struct {
 	// The http endpoint to connect to.
 	endpoint string
 
 	// The http client.
 	httpClient *http.Client
 
+	// LROClient is used internally to handle long-running operations.
+	// It is exposed so that its CallOptions can be modified if required.
+	// Users should not Close this client.
+	LROClient **lroauto.OperationsClient
+
 	// The x-goog-* headers to be sent with each request.
 	xGoogHeaders []string
 
-	// Points back to the CallOptions field of the containing EkmClient
-	CallOptions **EkmCallOptions
+	// Points back to the CallOptions field of the containing AutokeyClient
+	CallOptions **AutokeyCallOptions
 }
 
-// NewEkmRESTClient creates a new ekm service rest client.
+// NewAutokeyRESTClient creates a new autokey rest client.
 //
-// # Google Cloud Key Management EKM Service
+// Provides interfaces for using Cloud KMS Autokey to provision new
+// CryptoKeys, ready for Customer Managed
+// Encryption Key (CMEK) use, on-demand. To support certain client tooling, this
+// feature is modeled around a KeyHandle
+// resource: creating a KeyHandle in a resource
+// project and given location triggers Cloud KMS Autokey to provision a
+// CryptoKey in the configured key project and
+// the same location.
 //
-// Manages external cryptographic keys and operations using those keys.
-// Implements a REST model with the following objects:
-//
-//	EkmConnection
-func NewEkmRESTClient(ctx context.Context, opts ...option.ClientOption) (*EkmClient, error) {
-	clientOpts := append(defaultEkmRESTClientOptions(), opts...)
+// Prior to use in a given resource project,
+// UpdateAutokeyConfig
+// should have been called on an ancestor folder, setting the key project where
+// Cloud KMS Autokey should create new
+// CryptoKeys. See documentation for additional
+// prerequisites. To check what key project, if any, is currently configured on
+// a resource project’s ancestor folder, see
+// ShowEffectiveAutokeyConfig.
+func NewAutokeyRESTClient(ctx context.Context, opts ...option.ClientOption) (*AutokeyClient, error) {
+	clientOpts := append(defaultAutokeyRESTClientOptions(), opts...)
 	httpClient, endpoint, err := httptransport.NewClient(ctx, clientOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	callOpts := defaultEkmRESTCallOptions()
-	c := &ekmRESTClient{
+	callOpts := defaultAutokeyRESTCallOptions()
+	c := &autokeyRESTClient{
 		endpoint:    endpoint,
 		httpClient:  httpClient,
 		CallOptions: &callOpts,
 	}
 	c.setGoogleClientInfo()
 
-	return &EkmClient{internalClient: c, CallOptions: callOpts}, nil
+	lroOpts := []option.ClientOption{
+		option.WithHTTPClient(httpClient),
+		option.WithEndpoint(endpoint),
+	}
+	opClient, err := lroauto.NewOperationsRESTClient(ctx, lroOpts...)
+	if err != nil {
+		return nil, err
+	}
+	c.LROClient = &opClient
+
+	return &AutokeyClient{internalClient: c, CallOptions: callOpts}, nil
 }
 
-func defaultEkmRESTClientOptions() []option.ClientOption {
+func defaultAutokeyRESTClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("https://cloudkms.googleapis.com"),
 		internaloption.WithDefaultEndpointTemplate("https://cloudkms.UNIVERSE_DOMAIN"),
@@ -493,7 +491,7 @@ func defaultEkmRESTClientOptions() []option.ClientOption {
 // setGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
-func (c *ekmRESTClient) setGoogleClientInfo(keyval ...string) {
+func (c *autokeyRESTClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN")
 	c.xGoogHeaders = []string{
@@ -503,7 +501,7 @@ func (c *ekmRESTClient) setGoogleClientInfo(keyval ...string) {
 
 // Close closes the connection to the API service. The user should invoke this when
 // the client is no longer required.
-func (c *ekmRESTClient) Close() error {
+func (c *autokeyRESTClient) Close() error {
 	// Replace httpClient with nil to force cleanup.
 	c.httpClient = nil
 	return nil
@@ -512,65 +510,39 @@ func (c *ekmRESTClient) Close() error {
 // Connection returns a connection to the API service.
 //
 // Deprecated: This method always returns nil.
-func (c *ekmRESTClient) Connection() *grpc.ClientConn {
+func (c *autokeyRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
-func (c *ekmGRPCClient) ListEkmConnections(ctx context.Context, req *kmspb.ListEkmConnectionsRequest, opts ...gax.CallOption) *EkmConnectionIterator {
+func (c *autokeyGRPCClient) CreateKeyHandle(ctx context.Context, req *kmspb.CreateKeyHandleRequest, opts ...gax.CallOption) (*CreateKeyHandleOperation, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "parent", url.QueryEscape(req.GetParent()))}
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).ListEkmConnections[0:len((*c.CallOptions).ListEkmConnections):len((*c.CallOptions).ListEkmConnections)], opts...)
-	it := &EkmConnectionIterator{}
-	req = proto.Clone(req).(*kmspb.ListEkmConnectionsRequest)
-	it.InternalFetch = func(pageSize int, pageToken string) ([]*kmspb.EkmConnection, string, error) {
-		resp := &kmspb.ListEkmConnectionsResponse{}
-		if pageToken != "" {
-			req.PageToken = pageToken
-		}
-		if pageSize > math.MaxInt32 {
-			req.PageSize = math.MaxInt32
-		} else if pageSize != 0 {
-			req.PageSize = int32(pageSize)
-		}
-		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-			var err error
-			resp, err = c.ekmClient.ListEkmConnections(ctx, req, settings.GRPC...)
-			return err
-		}, opts...)
-		if err != nil {
-			return nil, "", err
-		}
-
-		it.Response = resp
-		return resp.GetEkmConnections(), resp.GetNextPageToken(), nil
+	opts = append((*c.CallOptions).CreateKeyHandle[0:len((*c.CallOptions).CreateKeyHandle):len((*c.CallOptions).CreateKeyHandle)], opts...)
+	var resp *longrunningpb.Operation
+	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
+		var err error
+		resp, err = c.autokeyClient.CreateKeyHandle(ctx, req, settings.GRPC...)
+		return err
+	}, opts...)
+	if err != nil {
+		return nil, err
 	}
-	fetch := func(pageSize int, pageToken string) (string, error) {
-		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
-		if err != nil {
-			return "", err
-		}
-		it.items = append(it.items, items...)
-		return nextPageToken, nil
-	}
-
-	it.pageInfo, it.nextFunc = iterator.NewPageInfo(fetch, it.bufLen, it.takeBuf)
-	it.pageInfo.MaxSize = int(req.GetPageSize())
-	it.pageInfo.Token = req.GetPageToken()
-
-	return it
+	return &CreateKeyHandleOperation{
+		lro: longrunning.InternalNewOperation(*c.LROClient, resp),
+	}, nil
 }
 
-func (c *ekmGRPCClient) GetEkmConnection(ctx context.Context, req *kmspb.GetEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
+func (c *autokeyGRPCClient) GetKeyHandle(ctx context.Context, req *kmspb.GetKeyHandleRequest, opts ...gax.CallOption) (*kmspb.KeyHandle, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).GetEkmConnection[0:len((*c.CallOptions).GetEkmConnection):len((*c.CallOptions).GetEkmConnection)], opts...)
-	var resp *kmspb.EkmConnection
+	opts = append((*c.CallOptions).GetKeyHandle[0:len((*c.CallOptions).GetKeyHandle):len((*c.CallOptions).GetKeyHandle)], opts...)
+	var resp *kmspb.KeyHandle
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.ekmClient.GetEkmConnection(ctx, req, settings.GRPC...)
+		resp, err = c.autokeyClient.GetKeyHandle(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -579,16 +551,16 @@ func (c *ekmGRPCClient) GetEkmConnection(ctx context.Context, req *kmspb.GetEkmC
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) CreateEkmConnection(ctx context.Context, req *kmspb.CreateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
+func (c *autokeyGRPCClient) ListKeyHandles(ctx context.Context, req *kmspb.ListKeyHandlesRequest, opts ...gax.CallOption) (*kmspb.ListKeyHandlesResponse, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "parent", url.QueryEscape(req.GetParent()))}
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).CreateEkmConnection[0:len((*c.CallOptions).CreateEkmConnection):len((*c.CallOptions).CreateEkmConnection)], opts...)
-	var resp *kmspb.EkmConnection
+	opts = append((*c.CallOptions).ListKeyHandles[0:len((*c.CallOptions).ListKeyHandles):len((*c.CallOptions).ListKeyHandles)], opts...)
+	var resp *kmspb.ListKeyHandlesResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.ekmClient.CreateEkmConnection(ctx, req, settings.GRPC...)
+		resp, err = c.autokeyClient.ListKeyHandles(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -597,79 +569,7 @@ func (c *ekmGRPCClient) CreateEkmConnection(ctx context.Context, req *kmspb.Crea
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) UpdateEkmConnection(ctx context.Context, req *kmspb.UpdateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "ekm_connection.name", url.QueryEscape(req.GetEkmConnection().GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).UpdateEkmConnection[0:len((*c.CallOptions).UpdateEkmConnection):len((*c.CallOptions).UpdateEkmConnection)], opts...)
-	var resp *kmspb.EkmConnection
-	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		var err error
-		resp, err = c.ekmClient.UpdateEkmConnection(ctx, req, settings.GRPC...)
-		return err
-	}, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (c *ekmGRPCClient) GetEkmConfig(ctx context.Context, req *kmspb.GetEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).GetEkmConfig[0:len((*c.CallOptions).GetEkmConfig):len((*c.CallOptions).GetEkmConfig)], opts...)
-	var resp *kmspb.EkmConfig
-	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		var err error
-		resp, err = c.ekmClient.GetEkmConfig(ctx, req, settings.GRPC...)
-		return err
-	}, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (c *ekmGRPCClient) UpdateEkmConfig(ctx context.Context, req *kmspb.UpdateEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "ekm_config.name", url.QueryEscape(req.GetEkmConfig().GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).UpdateEkmConfig[0:len((*c.CallOptions).UpdateEkmConfig):len((*c.CallOptions).UpdateEkmConfig)], opts...)
-	var resp *kmspb.EkmConfig
-	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		var err error
-		resp, err = c.ekmClient.UpdateEkmConfig(ctx, req, settings.GRPC...)
-		return err
-	}, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (c *ekmGRPCClient) VerifyConnectivity(ctx context.Context, req *kmspb.VerifyConnectivityRequest, opts ...gax.CallOption) (*kmspb.VerifyConnectivityResponse, error) {
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	opts = append((*c.CallOptions).VerifyConnectivity[0:len((*c.CallOptions).VerifyConnectivity):len((*c.CallOptions).VerifyConnectivity)], opts...)
-	var resp *kmspb.VerifyConnectivityResponse
-	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		var err error
-		resp, err = c.ekmClient.VerifyConnectivity(ctx, req, settings.GRPC...)
-		return err
-	}, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (c *ekmGRPCClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
+func (c *autokeyGRPCClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -687,7 +587,7 @@ func (c *ekmGRPCClient) GetLocation(ctx context.Context, req *locationpb.GetLoca
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
+func (c *autokeyGRPCClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -733,7 +633,7 @@ func (c *ekmGRPCClient) ListLocations(ctx context.Context, req *locationpb.ListL
 	return it
 }
 
-func (c *ekmGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *autokeyGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -751,7 +651,7 @@ func (c *ekmGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolic
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *autokeyGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -769,7 +669,7 @@ func (c *ekmGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolic
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
+func (c *autokeyGRPCClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -787,7 +687,7 @@ func (c *ekmGRPCClient) TestIamPermissions(ctx context.Context, req *iampb.TestI
 	return resp, nil
 }
 
-func (c *ekmGRPCClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+func (c *autokeyGRPCClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
 	hds = append(c.xGoogHeaders, hds...)
@@ -805,167 +705,16 @@ func (c *ekmGRPCClient) GetOperation(ctx context.Context, req *longrunningpb.Get
 	return resp, nil
 }
 
-// ListEkmConnections lists EkmConnections.
-func (c *ekmRESTClient) ListEkmConnections(ctx context.Context, req *kmspb.ListEkmConnectionsRequest, opts ...gax.CallOption) *EkmConnectionIterator {
-	it := &EkmConnectionIterator{}
-	req = proto.Clone(req).(*kmspb.ListEkmConnectionsRequest)
-	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	it.InternalFetch = func(pageSize int, pageToken string) ([]*kmspb.EkmConnection, string, error) {
-		resp := &kmspb.ListEkmConnectionsResponse{}
-		if pageToken != "" {
-			req.PageToken = pageToken
-		}
-		if pageSize > math.MaxInt32 {
-			req.PageSize = math.MaxInt32
-		} else if pageSize != 0 {
-			req.PageSize = int32(pageSize)
-		}
-		baseUrl, err := url.Parse(c.endpoint)
-		if err != nil {
-			return nil, "", err
-		}
-		baseUrl.Path += fmt.Sprintf("/v1/%v/ekmConnections", req.GetParent())
-
-		params := url.Values{}
-		params.Add("$alt", "json;enum-encoding=int")
-		if req.GetFilter() != "" {
-			params.Add("filter", fmt.Sprintf("%v", req.GetFilter()))
-		}
-		if req.GetOrderBy() != "" {
-			params.Add("orderBy", fmt.Sprintf("%v", req.GetOrderBy()))
-		}
-		if req.GetPageSize() != 0 {
-			params.Add("pageSize", fmt.Sprintf("%v", req.GetPageSize()))
-		}
-		if req.GetPageToken() != "" {
-			params.Add("pageToken", fmt.Sprintf("%v", req.GetPageToken()))
-		}
-
-		baseUrl.RawQuery = params.Encode()
-
-		// Build HTTP headers from client and context metadata.
-		hds := append(c.xGoogHeaders, "Content-Type", "application/json")
-		headers := gax.BuildHeaders(ctx, hds...)
-		e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-			if settings.Path != "" {
-				baseUrl.Path = settings.Path
-			}
-			httpReq, err := http.NewRequest("GET", baseUrl.String(), nil)
-			if err != nil {
-				return err
-			}
-			httpReq.Header = headers
-
-			httpRsp, err := c.httpClient.Do(httpReq)
-			if err != nil {
-				return err
-			}
-			defer httpRsp.Body.Close()
-
-			if err = googleapi.CheckResponse(httpRsp); err != nil {
-				return err
-			}
-
-			buf, err := io.ReadAll(httpRsp.Body)
-			if err != nil {
-				return err
-			}
-
-			if err := unm.Unmarshal(buf, resp); err != nil {
-				return err
-			}
-
-			return nil
-		}, opts...)
-		if e != nil {
-			return nil, "", e
-		}
-		it.Response = resp
-		return resp.GetEkmConnections(), resp.GetNextPageToken(), nil
-	}
-
-	fetch := func(pageSize int, pageToken string) (string, error) {
-		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
-		if err != nil {
-			return "", err
-		}
-		it.items = append(it.items, items...)
-		return nextPageToken, nil
-	}
-
-	it.pageInfo, it.nextFunc = iterator.NewPageInfo(fetch, it.bufLen, it.takeBuf)
-	it.pageInfo.MaxSize = int(req.GetPageSize())
-	it.pageInfo.Token = req.GetPageToken()
-
-	return it
-}
-
-// GetEkmConnection returns metadata for a given
-// EkmConnection.
-func (c *ekmRESTClient) GetEkmConnection(ctx context.Context, req *kmspb.GetEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	baseUrl, err := url.Parse(c.endpoint)
-	if err != nil {
-		return nil, err
-	}
-	baseUrl.Path += fmt.Sprintf("/v1/%v", req.GetName())
-
-	params := url.Values{}
-	params.Add("$alt", "json;enum-encoding=int")
-
-	baseUrl.RawQuery = params.Encode()
-
-	// Build HTTP headers from client and context metadata.
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	hds = append(hds, "Content-Type", "application/json")
-	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).GetEkmConnection[0:len((*c.CallOptions).GetEkmConnection):len((*c.CallOptions).GetEkmConnection)], opts...)
-	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.EkmConnection{}
-	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		if settings.Path != "" {
-			baseUrl.Path = settings.Path
-		}
-		httpReq, err := http.NewRequest("GET", baseUrl.String(), nil)
-		if err != nil {
-			return err
-		}
-		httpReq = httpReq.WithContext(ctx)
-		httpReq.Header = headers
-
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
-		if err != nil {
-			return err
-		}
-
-		if err := unm.Unmarshal(buf, resp); err != nil {
-			return err
-		}
-
-		return nil
-	}, opts...)
-	if e != nil {
-		return nil, e
-	}
-	return resp, nil
-}
-
-// CreateEkmConnection creates a new EkmConnection in a given
-// Project and Location.
-func (c *ekmRESTClient) CreateEkmConnection(ctx context.Context, req *kmspb.CreateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
+// CreateKeyHandle creates a new KeyHandle, triggering the
+// provisioning of a new CryptoKey for CMEK
+// use with the given resource type in the configured key project and the same
+// location. GetOperation should be used to resolve
+// the resulting long-running operation and get the resulting
+// KeyHandle and
+// CryptoKey.
+func (c *autokeyRESTClient) CreateKeyHandle(ctx context.Context, req *kmspb.CreateKeyHandleRequest, opts ...gax.CallOption) (*CreateKeyHandleOperation, error) {
 	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
-	body := req.GetEkmConnection()
+	body := req.GetKeyHandle()
 	jsonReq, err := m.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -975,11 +724,13 @@ func (c *ekmRESTClient) CreateEkmConnection(ctx context.Context, req *kmspb.Crea
 	if err != nil {
 		return nil, err
 	}
-	baseUrl.Path += fmt.Sprintf("/v1/%v/ekmConnections", req.GetParent())
+	baseUrl.Path += fmt.Sprintf("/v1/%v/keyHandles", req.GetParent())
 
 	params := url.Values{}
 	params.Add("$alt", "json;enum-encoding=int")
-	params.Add("ekmConnectionId", fmt.Sprintf("%v", req.GetEkmConnectionId()))
+	if req.GetKeyHandleId() != "" {
+		params.Add("keyHandleId", fmt.Sprintf("%v", req.GetKeyHandleId()))
+	}
 
 	baseUrl.RawQuery = params.Encode()
 
@@ -989,9 +740,8 @@ func (c *ekmRESTClient) CreateEkmConnection(ctx context.Context, req *kmspb.Crea
 	hds = append(c.xGoogHeaders, hds...)
 	hds = append(hds, "Content-Type", "application/json")
 	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).CreateEkmConnection[0:len((*c.CallOptions).CreateEkmConnection):len((*c.CallOptions).CreateEkmConnection)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.EkmConnection{}
+	resp := &longrunningpb.Operation{}
 	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		if settings.Path != "" {
 			baseUrl.Path = settings.Path
@@ -1027,86 +777,16 @@ func (c *ekmRESTClient) CreateEkmConnection(ctx context.Context, req *kmspb.Crea
 	if e != nil {
 		return nil, e
 	}
-	return resp, nil
+
+	override := fmt.Sprintf("/v1/%s", resp.GetName())
+	return &CreateKeyHandleOperation{
+		lro:      longrunning.InternalNewOperation(*c.LROClient, resp),
+		pollPath: override,
+	}, nil
 }
 
-// UpdateEkmConnection updates an EkmConnection's metadata.
-func (c *ekmRESTClient) UpdateEkmConnection(ctx context.Context, req *kmspb.UpdateEkmConnectionRequest, opts ...gax.CallOption) (*kmspb.EkmConnection, error) {
-	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
-	body := req.GetEkmConnection()
-	jsonReq, err := m.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	baseUrl, err := url.Parse(c.endpoint)
-	if err != nil {
-		return nil, err
-	}
-	baseUrl.Path += fmt.Sprintf("/v1/%v", req.GetEkmConnection().GetName())
-
-	params := url.Values{}
-	params.Add("$alt", "json;enum-encoding=int")
-	if req.GetUpdateMask() != nil {
-		updateMask, err := protojson.Marshal(req.GetUpdateMask())
-		if err != nil {
-			return nil, err
-		}
-		params.Add("updateMask", string(updateMask[1:len(updateMask)-1]))
-	}
-
-	baseUrl.RawQuery = params.Encode()
-
-	// Build HTTP headers from client and context metadata.
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "ekm_connection.name", url.QueryEscape(req.GetEkmConnection().GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	hds = append(hds, "Content-Type", "application/json")
-	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).UpdateEkmConnection[0:len((*c.CallOptions).UpdateEkmConnection):len((*c.CallOptions).UpdateEkmConnection)], opts...)
-	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.EkmConnection{}
-	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		if settings.Path != "" {
-			baseUrl.Path = settings.Path
-		}
-		httpReq, err := http.NewRequest("PATCH", baseUrl.String(), bytes.NewReader(jsonReq))
-		if err != nil {
-			return err
-		}
-		httpReq = httpReq.WithContext(ctx)
-		httpReq.Header = headers
-
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
-		if err != nil {
-			return err
-		}
-
-		if err := unm.Unmarshal(buf, resp); err != nil {
-			return err
-		}
-
-		return nil
-	}, opts...)
-	if e != nil {
-		return nil, e
-	}
-	return resp, nil
-}
-
-// GetEkmConfig returns the EkmConfig singleton resource
-// for a given project and location.
-func (c *ekmRESTClient) GetEkmConfig(ctx context.Context, req *kmspb.GetEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
+// GetKeyHandle returns the KeyHandle.
+func (c *autokeyRESTClient) GetKeyHandle(ctx context.Context, req *kmspb.GetKeyHandleRequest, opts ...gax.CallOption) (*kmspb.KeyHandle, error) {
 	baseUrl, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
@@ -1124,9 +804,9 @@ func (c *ekmRESTClient) GetEkmConfig(ctx context.Context, req *kmspb.GetEkmConfi
 	hds = append(c.xGoogHeaders, hds...)
 	hds = append(hds, "Content-Type", "application/json")
 	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).GetEkmConfig[0:len((*c.CallOptions).GetEkmConfig):len((*c.CallOptions).GetEkmConfig)], opts...)
+	opts = append((*c.CallOptions).GetKeyHandle[0:len((*c.CallOptions).GetKeyHandle):len((*c.CallOptions).GetKeyHandle)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.EkmConfig{}
+	resp := &kmspb.KeyHandle{}
 	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		if settings.Path != "" {
 			baseUrl.Path = settings.Path
@@ -1165,107 +845,31 @@ func (c *ekmRESTClient) GetEkmConfig(ctx context.Context, req *kmspb.GetEkmConfi
 	return resp, nil
 }
 
-// UpdateEkmConfig updates the EkmConfig singleton resource
-// for a given project and location.
-func (c *ekmRESTClient) UpdateEkmConfig(ctx context.Context, req *kmspb.UpdateEkmConfigRequest, opts ...gax.CallOption) (*kmspb.EkmConfig, error) {
-	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
-	body := req.GetEkmConfig()
-	jsonReq, err := m.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
+// ListKeyHandles lists KeyHandles.
+func (c *autokeyRESTClient) ListKeyHandles(ctx context.Context, req *kmspb.ListKeyHandlesRequest, opts ...gax.CallOption) (*kmspb.ListKeyHandlesResponse, error) {
 	baseUrl, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
 	}
-	baseUrl.Path += fmt.Sprintf("/v1/%v", req.GetEkmConfig().GetName())
+	baseUrl.Path += fmt.Sprintf("/v1/%v/keyHandles", req.GetParent())
 
 	params := url.Values{}
 	params.Add("$alt", "json;enum-encoding=int")
-	if req.GetUpdateMask() != nil {
-		updateMask, err := protojson.Marshal(req.GetUpdateMask())
-		if err != nil {
-			return nil, err
-		}
-		params.Add("updateMask", string(updateMask[1:len(updateMask)-1]))
+	if req.GetFilter() != "" {
+		params.Add("filter", fmt.Sprintf("%v", req.GetFilter()))
 	}
 
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "ekm_config.name", url.QueryEscape(req.GetEkmConfig().GetName()))}
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "parent", url.QueryEscape(req.GetParent()))}
 
 	hds = append(c.xGoogHeaders, hds...)
 	hds = append(hds, "Content-Type", "application/json")
 	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).UpdateEkmConfig[0:len((*c.CallOptions).UpdateEkmConfig):len((*c.CallOptions).UpdateEkmConfig)], opts...)
+	opts = append((*c.CallOptions).ListKeyHandles[0:len((*c.CallOptions).ListKeyHandles):len((*c.CallOptions).ListKeyHandles)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.EkmConfig{}
-	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		if settings.Path != "" {
-			baseUrl.Path = settings.Path
-		}
-		httpReq, err := http.NewRequest("PATCH", baseUrl.String(), bytes.NewReader(jsonReq))
-		if err != nil {
-			return err
-		}
-		httpReq = httpReq.WithContext(ctx)
-		httpReq.Header = headers
-
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
-		if err != nil {
-			return err
-		}
-
-		if err := unm.Unmarshal(buf, resp); err != nil {
-			return err
-		}
-
-		return nil
-	}, opts...)
-	if e != nil {
-		return nil, e
-	}
-	return resp, nil
-}
-
-// VerifyConnectivity verifies that Cloud KMS can successfully connect to the external key
-// manager specified by an EkmConnection.
-// If there is an error connecting to the EKM, this method returns a
-// FAILED_PRECONDITION status containing structured information as described
-// at https://cloud.google.com/kms/docs/reference/ekm_errors (at https://cloud.google.com/kms/docs/reference/ekm_errors).
-func (c *ekmRESTClient) VerifyConnectivity(ctx context.Context, req *kmspb.VerifyConnectivityRequest, opts ...gax.CallOption) (*kmspb.VerifyConnectivityResponse, error) {
-	baseUrl, err := url.Parse(c.endpoint)
-	if err != nil {
-		return nil, err
-	}
-	baseUrl.Path += fmt.Sprintf("/v1/%v:verifyConnectivity", req.GetName())
-
-	params := url.Values{}
-	params.Add("$alt", "json;enum-encoding=int")
-
-	baseUrl.RawQuery = params.Encode()
-
-	// Build HTTP headers from client and context metadata.
-	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
-
-	hds = append(c.xGoogHeaders, hds...)
-	hds = append(hds, "Content-Type", "application/json")
-	headers := gax.BuildHeaders(ctx, hds...)
-	opts = append((*c.CallOptions).VerifyConnectivity[0:len((*c.CallOptions).VerifyConnectivity):len((*c.CallOptions).VerifyConnectivity)], opts...)
-	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-	resp := &kmspb.VerifyConnectivityResponse{}
+	resp := &kmspb.ListKeyHandlesResponse{}
 	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		if settings.Path != "" {
 			baseUrl.Path = settings.Path
@@ -1305,7 +909,7 @@ func (c *ekmRESTClient) VerifyConnectivity(ctx context.Context, req *kmspb.Verif
 }
 
 // GetLocation gets information about a location.
-func (c *ekmRESTClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
+func (c *autokeyRESTClient) GetLocation(ctx context.Context, req *locationpb.GetLocationRequest, opts ...gax.CallOption) (*locationpb.Location, error) {
 	baseUrl, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
@@ -1365,7 +969,7 @@ func (c *ekmRESTClient) GetLocation(ctx context.Context, req *locationpb.GetLoca
 }
 
 // ListLocations lists information about the supported locations for this service.
-func (c *ekmRESTClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
+func (c *autokeyRESTClient) ListLocations(ctx context.Context, req *locationpb.ListLocationsRequest, opts ...gax.CallOption) *LocationIterator {
 	it := &LocationIterator{}
 	req = proto.Clone(req).(*locationpb.ListLocationsRequest)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
@@ -1458,7 +1062,7 @@ func (c *ekmRESTClient) ListLocations(ctx context.Context, req *locationpb.ListL
 
 // GetIamPolicy gets the access control policy for a resource. Returns an empty policy
 // if the resource exists and does not have a policy set.
-func (c *ekmRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *autokeyRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	baseUrl, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
@@ -1525,7 +1129,7 @@ func (c *ekmRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolic
 //
 // Can return NOT_FOUND, INVALID_ARGUMENT, and PERMISSION_DENIED
 // errors.
-func (c *ekmRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
+func (c *autokeyRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
 	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
 	jsonReq, err := m.Marshal(req)
 	if err != nil {
@@ -1597,7 +1201,7 @@ func (c *ekmRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolic
 // Note: This operation is designed to be used for building
 // permission-aware UIs and command-line tools, not for authorization
 // checking. This operation may “fail open” without warning.
-func (c *ekmRESTClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
+func (c *autokeyRESTClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
 	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
 	jsonReq, err := m.Marshal(req)
 	if err != nil {
@@ -1663,7 +1267,7 @@ func (c *ekmRESTClient) TestIamPermissions(ctx context.Context, req *iampb.TestI
 }
 
 // GetOperation is a utility method from google.longrunning.Operations.
-func (c *ekmRESTClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+func (c *autokeyRESTClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
 	baseUrl, err := url.Parse(c.endpoint)
 	if err != nil {
 		return nil, err
@@ -1720,4 +1324,22 @@ func (c *ekmRESTClient) GetOperation(ctx context.Context, req *longrunningpb.Get
 		return nil, e
 	}
 	return resp, nil
+}
+
+// CreateKeyHandleOperation returns a new CreateKeyHandleOperation from a given name.
+// The name must be that of a previously created CreateKeyHandleOperation, possibly from a different process.
+func (c *autokeyGRPCClient) CreateKeyHandleOperation(name string) *CreateKeyHandleOperation {
+	return &CreateKeyHandleOperation{
+		lro: longrunning.InternalNewOperation(*c.LROClient, &longrunningpb.Operation{Name: name}),
+	}
+}
+
+// CreateKeyHandleOperation returns a new CreateKeyHandleOperation from a given name.
+// The name must be that of a previously created CreateKeyHandleOperation, possibly from a different process.
+func (c *autokeyRESTClient) CreateKeyHandleOperation(name string) *CreateKeyHandleOperation {
+	override := fmt.Sprintf("/v1/%s", name)
+	return &CreateKeyHandleOperation{
+		lro:      longrunning.InternalNewOperation(*c.LROClient, &longrunningpb.Operation{Name: name}),
+		pollPath: override,
+	}
 }
