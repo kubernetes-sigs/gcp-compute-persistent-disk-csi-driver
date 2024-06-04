@@ -43,7 +43,12 @@ var (
 	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
 
-func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint string) (*remote.TestContext, error) {
+type DriverConfig struct {
+	ComputeEndpoint string
+	ExtraFlags      []string
+}
+
+func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverConfig) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
@@ -61,7 +66,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
 	}
-	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
+	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
+	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
@@ -150,7 +156,7 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	return project, serviceAccount
 }
 
-func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string) error {
+func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string, recursive bool) error {
 	originalumask, err := instance.SSHNoSudo("umask")
 	if err != nil {
 		return fmt.Errorf("failed to umask. Output: %v, errror: %v", originalumask, err.Error())
@@ -159,7 +165,13 @@ func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string) er
 	if err != nil {
 		return fmt.Errorf("failed to umask. Output: %v, errror: %v", output, err.Error())
 	}
-	output, err = instance.SSH("chmod", "-R", perms, filePath)
+	chmodOptions := []string{}
+	if recursive {
+		chmodOptions = []string{"-R"}
+	}
+	chmodOptions = append(chmodOptions, perms, filePath)
+	chmodCmd := append([]string{"chmod"}, chmodOptions...)
+	output, err = instance.SSH(chmodCmd...)
 	if err != nil {
 		return fmt.Errorf("failed to chmod file %s. Output: %v, errror: %v", filePath, output, err.Error())
 	}

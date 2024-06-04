@@ -325,7 +325,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Attach disk to instance in the first zone.
 		tc0 := zoneToContext[zones[0]]
-		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, false /* useBlock */, false /* forceAttach */)
+		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, attachAndMountArgs{
+			readOnly:    false,
+			useBlock:    false,
+			forceAttach: false,
+		})
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed attach in zone 0")
 		testFileName := filepath.Join(args.publishDir, "force-attach-test")
@@ -341,7 +345,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Now force attach to the second instance without detaching.
 		tc1 := zoneToContext[zones[1]]
-		err, detacher, args = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, false /* useBlock */, true /* forceAttach */)
+		err, detacher, _ = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, attachAndMountArgs{
+			readOnly:    false,
+			useBlock:    false,
+			forceAttach: true,
+		})
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed force attach in zone 1")
 		readContents, err = testutils.ReadFile(tc1.Instance, testFileName)
@@ -389,9 +397,20 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile)
 }
 
-func testAttachAndMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, useBlock, forceAttach bool) (error, func(), *verifyArgs) {
+type attachAndMountArgs struct {
+	readOnly    bool
+	useBlock    bool
+	forceAttach bool
+}
+
+func testAttachAndMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, args attachAndMountArgs) (error, func(), *verifyArgs) {
 	// Attach Disk
-	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), forceAttach)
+	var err error
+	if args.readOnly {
+		err = client.ControllerPublishVolumeReadOnly(volID, instance.GetNodeID())
+	} else {
+		err = client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), args.forceAttach)
+	}
 	if err != nil {
 		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error()), nil, nil
 	}
@@ -406,7 +425,7 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 
 	// Stage Disk
 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	if useBlock {
+	if args.useBlock {
 		err = client.NodeStageBlockVolume(volID, stageDir)
 	} else {
 		err = client.NodeStageExt4Volume(volID, stageDir)
@@ -435,7 +454,7 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
 
-	if useBlock {
+	if args.useBlock {
 		err = client.NodePublishBlockVolume(volID, stageDir, publishDir)
 	} else {
 		err = client.NodePublishVolume(volID, stageDir, publishDir)
@@ -445,23 +464,40 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 		unstageAndDetach()
 		return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error()), nil, nil
 	}
-	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
-	if err != nil {
+
+	unpublish := func() {
+		// Unpublish Disk
+		err = client.NodeUnpublishVolume(volID, publishDir)
+		if err != nil {
+			klog.Errorf("Failed to unpublish volume: %v", err)
+		}
+	}
+	unpublishUnstageAndDetach := func() {
+		unpublish()
 		unstageAndDetach()
+	}
+
+	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777", !args.readOnly /* recursive */)
+	if err != nil {
+		unpublishUnstageAndDetach()
 		return fmt.Errorf("Chmod failed with error: %v", err.Error()), nil, nil
 	}
 
-	args := &verifyArgs{
+	returnArgs := &verifyArgs{
 		publishDir: publishDir,
 		stageDir:   stageDir,
 	}
 
-	return nil, unstageAndDetach, args
+	return nil, unpublishUnstageAndDetach, returnArgs
 }
 
 func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc) error {
 	klog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
-	err, detacher, args := testAttachAndMount(volID, volName, instance, client, useBlock, false /* forceAttach */)
+	err, detacher, args := testAttachAndMount(volID, volName, instance, client, attachAndMountArgs{
+		readOnly:    readOnly,
+		useBlock:    useBlock,
+		forceAttach: false,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to attach and mount: %w", err)
 	}
@@ -489,7 +525,7 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		if err != nil {
 			return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error())
 		}
-		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777")
+		err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777", !readOnly /* recursive */)
 		if err != nil {
 			return fmt.Errorf("Chmod failed with error: %v", err)
 		}
