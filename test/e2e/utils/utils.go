@@ -46,6 +46,7 @@ var (
 type DriverConfig struct {
 	ComputeEndpoint string
 	ExtraFlags      []string
+	Zones           []string
 }
 
 func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverConfig) (*remote.TestContext, error) {
@@ -62,9 +63,10 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
 		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
 		"--multi-zone-volume-handle-enable",
-		"--multi-zone-volume-handle-disk-types=pd-standard",
+		"--multi-zone-volume-handle-disk-types=pd-standard,hyperdisk-ml",
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
+		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)

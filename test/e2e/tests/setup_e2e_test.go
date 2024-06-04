@@ -126,6 +126,7 @@ func notEmpty(v string) bool {
 func getDriverConfig() testutils.DriverConfig {
 	return testutils.DriverConfig{
 		ExtraFlags: slices.Filter(nil, strings.Split(*extraDriverFlags, ","), notEmpty),
+		Zones:      strings.Split(*zones, ","),
 	}
 }
 

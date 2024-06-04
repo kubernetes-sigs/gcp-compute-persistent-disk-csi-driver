@@ -256,3 +256,14 @@ func (d *CloudDisk) GetLabels() map[string]string {
 		return nil
 	}
 }
+
+func (d *CloudDisk) GetAccessMode() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.AccessMode
+	case d.betaDisk != nil:
+		return d.betaDisk.AccessMode
+	default:
+		return ""
+	}
+}

@@ -39,6 +39,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -63,6 +64,8 @@ const (
 	// Beta key type
 	GCEAPIVersionBeta GCEAPIVersion = "beta"
 )
+
+var GCEAPIVersions = []GCEAPIVersion{GCEAPIVersionBeta, GCEAPIVersionV1}
 
 // AttachDiskBackoff is backoff used to wait for AttachDisk to complete.
 // Default values are similar to Poll every 5 seconds with 2 minute timeout.
@@ -99,15 +102,18 @@ type GCECompute interface {
 	GetDisk(ctx context.Context, project string, volumeKey *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
-	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error
+	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
+	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
+	ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error)
 	GetDiskSourceURI(project string, volKey *meta.Key) string
 	GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string
 	WaitForAttach(ctx context.Context, project string, volKey *meta.Key, diskType, instanceZone, instanceName string) error
 	ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error)
 	ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error)
+	ListDisksWithFilter(ctx context.Context, fields []googleapi.Field, filter string) ([]*computev1.Disk, string, error)
 	ListInstances(ctx context.Context, fields []googleapi.Field) ([]*computev1.Instance, string, error)
 	// Regional Disk Methods
 	GetReplicaZoneURI(project string, zone string) string
@@ -138,6 +144,15 @@ func (cloud *CloudProvider) GetDefaultZone() string {
 // ListDisks lists disks based on maxEntries and pageToken only in the project
 // and region that the driver is running in.
 func (cloud *CloudProvider) ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error) {
+	filter := ""
+	return cloud.listDisksInternal(ctx, fields, filter)
+}
+
+func (cloud *CloudProvider) ListDisksWithFilter(ctx context.Context, fields []googleapi.Field, filter string) ([]*computev1.Disk, string, error) {
+	return cloud.listDisksInternal(ctx, fields, filter)
+}
+
+func (cloud *CloudProvider) listDisksInternal(ctx context.Context, fields []googleapi.Field, filter string) ([]*computev1.Disk, string, error) {
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get region from zones: %w", err)
@@ -151,6 +166,7 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context, fields []googleapi.Fi
 	// listing out regional disks in the region
 	rlCall := cloud.service.RegionDisks.List(cloud.project, region)
 	rlCall.Fields(fields...)
+	rlCall.Filter(filter)
 	nextPageToken := "pageToken"
 	for nextPageToken != "" {
 		rDiskList, err := rlCall.Do()
@@ -166,6 +182,7 @@ func (cloud *CloudProvider) ListDisks(ctx context.Context, fields []googleapi.Fi
 	for _, zone := range zones {
 		lCall := cloud.service.Disks.List(cloud.project, zone)
 		lCall.Fields(fields...)
+		lCall.Filter(filter)
 		nextPageToken := "pageToken"
 		for nextPageToken != "" {
 			diskList, err := lCall.Do()
@@ -418,7 +435,7 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 	return nil
 }
 
-func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error {
+func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
 
 	description, err := encodeTags(params.Tags)
@@ -431,7 +448,7 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volK
 		if description == "" {
 			description = "Disk created by GCE-PD CSI Driver"
 		}
-		return cloud.insertZonalDisk(ctx, project, volKey, params, capBytes, capacityRange, snapshotID, volumeContentSourceVolumeID, description, multiWriter)
+		return cloud.insertZonalDisk(ctx, project, volKey, params, capBytes, capacityRange, snapshotID, volumeContentSourceVolumeID, description, multiWriter, accessMode)
 	case meta.Regional:
 		if description == "" {
 			description = "Regional disk created by GCE-PD CSI Driver"
@@ -492,6 +509,7 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 		Status:            v1Disk.Status,
 		SelfLink:          v1Disk.SelfLink,
 		Params:            params,
+		AccessMode:        v1Disk.AccessMode,
 	}
 
 	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
@@ -646,7 +664,8 @@ func (cloud *CloudProvider) insertZonalDisk(
 	snapshotID string,
 	volumeContentSourceVolumeID string,
 	description string,
-	multiWriter bool) error {
+	multiWriter bool,
+	accessMode string) error {
 	var (
 		err           error
 		opName        string
@@ -714,6 +733,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 			ResourceManagerTags: resourceTags,
 		}
 	}
+	diskToCreate.AccessMode = accessMode
 
 	if gceAPIVersion == GCEAPIVersionBeta {
 		var insertOp *computebeta.Operation
@@ -873,6 +893,73 @@ func (cloud *CloudProvider) DetachDisk(ctx context.Context, project, deviceName,
 		return err
 	}
 	return nil
+}
+
+func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {
+	diskMask := &computev1.Disk{
+		AccessMode: accessMode,
+		Name:       volKey.Name,
+	}
+	switch volKey.Type() {
+	case meta.Zonal:
+		op, err := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
+		if err != nil {
+			return fmt.Errorf("failed to set access mode for zonal volume %v: %w", volKey, err)
+		}
+		klog.V(5).Infof("SetDiskAccessMode operation %s for disk %s", op.Name, volKey.Name)
+
+		err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
+		if err != nil {
+			return fmt.Errorf("failed waiting for op for zonal disk update for %v: %w", volKey, err)
+		}
+	case meta.Regional:
+		op, err := cloud.service.RegionDisks.Update(project, volKey.Region, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
+		if err != nil {
+			return fmt.Errorf("failed to set access mode for regional volume %v: %w", volKey, err)
+		}
+		klog.V(5).Infof("SetDiskAccessMode operation %s for disk %s", op.Name, volKey.Name)
+
+		err = cloud.waitForRegionalOp(ctx, project, op.Name, volKey.Region)
+		if err != nil {
+			return fmt.Errorf("failed waiting for op for regional disk update for %v: %w", volKey, err)
+		}
+	default:
+		return fmt.Errorf("volume key %v not zonal nor regional", volKey.Name)
+	}
+
+	return nil
+}
+
+func (cloud *CloudProvider) ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error) {
+	diskTypeFilter := fmt.Sprintf("name=%s", diskType)
+	filters := []string{diskTypeFilter}
+	diskTypeListCall := cloud.service.DiskTypes.AggregatedList(project).Context(ctx).Filter(strings.Join(filters, " "))
+
+	supportedZones := []string{}
+	nextPageToken := "pageToken"
+	for nextPageToken != "" {
+		diskTypeList, err := diskTypeListCall.Do()
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range diskTypeList.Items {
+			for _, diskType := range item.DiskTypes {
+				zone, err := common.ParseZoneFromURI(diskType.Zone)
+				if err != nil {
+					klog.Warningf("Failed to parse zone %q from diskTypes API: %v", diskType.Zone, err)
+					continue
+				}
+				if slices.Contains(zones, zone) {
+					supportedZones = append(supportedZones, zone)
+				}
+			}
+		}
+
+		nextPageToken = diskTypeList.NextPageToken
+		diskTypeListCall.PageToken(nextPageToken)
+	}
+
+	return supportedZones, nil
 }
 
 func (cloud *CloudProvider) GetDiskSourceURI(project string, volKey *meta.Key) string {
