@@ -55,8 +55,7 @@ COPY --from=debian /sbin/fsck /sbin/fsck
 COPY --from=debian /sbin/fsck* /sbin/
 COPY --from=debian /sbin/fsck.xfs /sbin/fsck.xfs
 # Add dependencies for LVM
-COPY --from=debian /etc/lvm /etc/lvm
-COPY --from=debian /etc/lvm* /etc/
+COPY --from=debian /etc/lvm /lvm-tmp/lvm
 COPY --from=debian /lib/systemd/system/blk-availability.service /lib/systemd/system/blk-availability.service
 COPY --from=debian /lib/systemd/system/lvm2-lvmpolld.service /lib/systemd/system/lvm2-lvmpolld.service
 COPY --from=debian /lib/systemd/system/lvm2-lvmpolld.socket /lib/systemd/system/lvm2-lvmpolld.socket
@@ -98,6 +97,7 @@ COPY --from=debian /bin/date /bin/date
 COPY --from=debian /bin/grep /bin/grep
 COPY --from=debian /bin/sed /bin/sed
 COPY --from=debian /bin/ln /bin/ln
+COPY --from=debian /bin/cp /bin/cp
 COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
@@ -144,12 +144,6 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
 # Copy NVME support required script and rules into distroless base.
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
 
-SHELL ["/bin/bash", "-c"]
-RUN /bin/sed -i -e "s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/" /etc/lvm/lvm.conf
-RUN /bin/sed -i -e "s/.*udev_sync = 1.*/	udev_sync = 0/" /etc/lvm/lvm.conf
-RUN /bin/sed -i -e "s/.*udev_rules = 1.*/	udev_rules = 0/" /etc/lvm/lvm.conf
-RUN /bin/sed -i -e "s/.*locking_dir = .*/	 locking_dir = \"\/tmp\"/" /etc/lvm/lvm.conf
-
 
 # Build stage used for validation of the output-image
 # See validate-container-linux-* targets in Makefile
@@ -162,5 +156,5 @@ RUN /print-missing-deps.sh
 
 # Final build stage, create the real Docker image with ENTRYPOINT
 FROM output-image
-
-ENTRYPOINT ["/gce-pd-csi-driver"]
+COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/initialize-driver.sh /initialize-driver.sh
+ENTRYPOINT ["/initialize-driver.sh"]
