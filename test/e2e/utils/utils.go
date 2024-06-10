@@ -96,7 +96,7 @@ func getBoskosProject(resourceType string) *common.Resource {
 		case <-ticker.C:
 			p, err := boskos.Acquire(resourceType, "free", "busy")
 			if err != nil {
-				klog.Warningf("boskos failed to acquire project: %w", err)
+				klog.Warningf("boskos failed to acquire project: %v", err)
 			} else if p == nil {
 				klog.Warningf("boskos does not have a free %s at the moment", resourceType)
 			} else {
@@ -128,17 +128,17 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 
 	c, err := google.DefaultClient(context.Background(), cloudresourcemanager.CloudPlatformScope)
 	if err != nil {
-		klog.Fatalf("Failed to get Google Default Client: %w", err)
+		klog.Fatalf("Failed to get Google Default Client: %v", err)
 	}
 
 	cloudresourcemanagerService, err := cloudresourcemanager.New(c)
 	if err != nil {
-		klog.Fatalf("Failed to create new cloudresourcemanager: %w", err)
+		klog.Fatalf("Failed to create new cloudresourcemanager: %v", err)
 	}
 
 	resp, err := cloudresourcemanagerService.Projects.Get(project).Do()
 	if err != nil {
-		klog.Fatalf("Failed to get project %v from Cloud Resource Manager: %w", project, err)
+		klog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", project, err)
 	}
 
 	// Default Compute Engine service account
