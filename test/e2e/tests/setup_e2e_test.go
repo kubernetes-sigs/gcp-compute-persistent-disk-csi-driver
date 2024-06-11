@@ -122,28 +122,28 @@ func NewTestContext(zone string) *remote.TestContext {
 
 	i, err := remote.SetupInstance(*project, *architecture, zone, nodeID, *machineType, *serviceAccount, *imageURL, computeService)
 	if err != nil {
-		klog.Fatalf("Failed to setup instance %v: %w", nodeID, err)
+		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
 
 	err = testutils.MkdirAll(i, "/lib/udev_containerized")
 	if err != nil {
-		klog.Fatalf("Failed to make scsi_id containerized directory: %w", err)
+		klog.Fatalf("Failed to make scsi_id containerized directory: %v", err)
 	}
 
 	err = testutils.CopyFile(i, "/lib/udev/scsi_id", "/lib/udev_containerized/scsi_id")
 	if err != nil {
-		klog.Fatalf("Failed to copy scsi_id to containerized directory: %w", err)
+		klog.Fatalf("Failed to copy scsi_id to containerized directory: %v", err)
 	}
 
 	err = testutils.CopyFile(i, "/lib/udev/google_nvme_id", "/lib/udev_containerized/google_nvme_id")
 	if err != nil {
-		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %w", err)
+		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
 
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, "")
 	if err != nil {
-		klog.Fatalf("Failed to set up TestContext for instance %v: %w", i.GetName(), err)
+		klog.Fatalf("Failed to set up TestContext for instance %v: %v", i.GetName(), err)
 	}
 
 	klog.Infof("Finished creating TestContext for node %s", tc.Instance.GetName())
