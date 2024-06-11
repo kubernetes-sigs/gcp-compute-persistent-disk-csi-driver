@@ -92,6 +92,20 @@ func (mm *MetricsManager) recordComponentVersionMetric() error {
 	return nil
 }
 
+type Fields struct {
+	DiskType                  string
+	EnableConfidentialCompute string
+	EnableStoragePools        string
+}
+
+func NewFields() Fields {
+	return Fields{
+		DiskType:                  DefaultDiskTypeForMetric,
+		EnableConfidentialCompute: DefaultEnableConfidentialCompute,
+		EnableStoragePools:        DefaultEnableStoragePools,
+	}
+}
+
 func (mm *MetricsManager) RecordOperationErrorMetrics(
 	operationName string,
 	operationErr error,
@@ -101,6 +115,14 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	errCode := errorCodeLabelValue(operationErr)
 	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
 	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
+}
+
+func (mm *MetricsManager) RecordOperationErrorMetricsFields(
+	operationName string,
+	operationErr error,
+	fields Fields,
+) {
+	RecordOperationErrorMetrics(operationName, operationErr, fields.DiskType, fields.EnableConfidentialCompute, fields.EnableStoragePools)
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
