@@ -47,6 +47,7 @@ const (
 	defaultSizeGb                     int64 = 5
 	defaultExtremeSizeGb              int64 = 500
 	defaultHdTSizeGb                  int64 = 2048
+	defaultHdmlSizeGb                 int64 = 200
 	defaultRepdSizeGb                 int64 = 200
 	defaultMwSizeGb                   int64 = 200
 	defaultVolumeLimit                int64 = 127
@@ -56,6 +57,7 @@ const (
 	ssdDiskType                             = "pd-ssd"
 	extremeDiskType                         = "pd-extreme"
 	hdtDiskType                             = "hyperdisk-throughput"
+	hdmlDiskType                            = "hyperdisk-ml"
 	provisionedIOPSOnCreate                 = "12345"
 	provisionedIOPSOnCreateInt              = int64(12345)
 	provisionedIOPSOnCreateDefaultInt       = int64(100000)
@@ -1579,6 +1581,8 @@ func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, 
 		diskSize = defaultExtremeSizeGb
 	case hdtDiskType:
 		diskSize = defaultHdTSizeGb
+	case hdmlDiskType:
+		diskSize = defaultHdmlSizeGb
 	}
 	volume, err := client.CreateVolume(volName, disk.params, diskSize,
 		&csi.TopologyRequirement{
@@ -1757,6 +1761,14 @@ var typeToDisk = map[string]*disk{
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(ssdDiskType))
+		},
+	},
+	"hyperdisk-ml": {
+		params: map[string]string{
+			common.ParameterKeyType: "hyperdisk-ml",
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring("hyperdisk-ml"))
 		},
 	},
 }

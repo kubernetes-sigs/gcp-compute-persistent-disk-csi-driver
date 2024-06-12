@@ -29,6 +29,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		parameters         map[string]string
 		labels             map[string]string
 		enableStoragePools bool
+		enableMultiZone    bool
 		extraTags          map[string]string
 		expectParams       DiskParameters
 		expectErr          bool
@@ -350,11 +351,53 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			labels:             map[string]string{},
 			expectErr:          true,
 		},
+		{
+			name:            "multi-zone-enable parameters, multi-zone label is set, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
+			labels:          map[string]string{MultiZoneLabel: "true"},
+			enableMultiZone: true,
+			expectParams: DiskParameters{
+				DiskType:              "hyperdisk-ml",
+				ReplicationType:       "none",
+				Tags:                  map[string]string{},
+				Labels:                map[string]string{MultiZoneLabel: "true"},
+				ResourceTags:          map[string]string{},
+				MultiZoneProvisioning: true,
+			},
+		},
+		{
+			name:            "multi-zone-enable parameters, multi-zone label is false, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "false"},
+			enableMultiZone: true,
+			expectParams: DiskParameters{
+				DiskType:        "hyperdisk-ml",
+				ReplicationType: "none",
+				Tags:            map[string]string{},
+				ResourceTags:    map[string]string{},
+				Labels:          map[string]string{},
+			},
+		},
+		{
+			name:            "multi-zone-enable parameters, invalid value, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "unknown"},
+			enableMultiZone: true,
+			expectErr:       true,
+		},
+		{
+			name:       "multi-zone-enable parameters, multi-zone label is set, multi-zone feature disabled",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
+			expectErr:  true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, tc.extraTags)
+			pp := ParameterProcessor{
+				DriverName:         "testDriver",
+				EnableStoragePools: tc.enableStoragePools,
+				EnableMultiZone:    tc.enableMultiZone,
+			}
+			p, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
@@ -362,7 +405,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(p, tc.expectParams); diff != "" {
+			if diff := cmp.Diff(tc.expectParams, p); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 		})
