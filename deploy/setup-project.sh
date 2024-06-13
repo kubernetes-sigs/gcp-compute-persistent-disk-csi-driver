@@ -30,6 +30,8 @@ ensure_var GCE_PD_SA_NAME
 ensure_var ENABLE_KMS
 ensure_var ENABLE_KMS_ADMIN
 
+check_dev_roles
+
 # Allow the user to pass CREATE_SA_KEY=false to skip the SA key creation
 # Ensure the SA directory set, if we're creating the SA_KEY
 CREATE_SA_KEY="${CREATE_SA_KEY:-true}"
