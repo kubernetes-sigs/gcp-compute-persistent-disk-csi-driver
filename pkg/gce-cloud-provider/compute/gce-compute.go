@@ -479,9 +479,24 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 }
 
 func (cloud *CloudProvider) updateRegionalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
-	// TODO : Implement this
+
+	updatedDisk := &computev1.Disk{
+		Name:                  existingDisk.GetName(),
+		ProvisionedIops:       params.IOPS,
+		ProvisionedThroughput: params.Throughput,
+	}
+
+	diskUpdateOp := cloud.service.RegionDisks.Update(project, volKey.Region, volKey.Name, updatedDisk)
+	diskUpdateOp.Paths("provisionedIops", "provisionedThroughput")
+	updateOpResult, err := diskUpdateOp.Context(ctx).Do()
+
+	if err != nil {
+		return fmt.Errorf("error updating disk %v: %w", volKey, err)
+	}
+	fmt.Printf("http status : %d", updateOpResult.HTTPStatusCode)
 	return nil
 }
+
 func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey) *computebeta.CustomerEncryptionKey {
 	return &computebeta.CustomerEncryptionKey{
 		KmsKeyName:      v1Key.KmsKeyName,
