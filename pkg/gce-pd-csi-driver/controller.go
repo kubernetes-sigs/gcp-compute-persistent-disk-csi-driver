@@ -541,6 +541,7 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 }
 
 func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	var err error
 
 	volumeID := req.GetVolumeId()
 	klog.V(4).Infof("Modifying Volume ID: %s", volumeID)
@@ -548,6 +549,14 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
 	}
+
+	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
+	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
+	enableStoragePools := metrics.DefaultEnableStoragePools
+
+	defer func() {
+		gceCS.Metrics.RecordOperationErrorMetrics("ModifyVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
+	}()
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 
@@ -571,6 +580,12 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	if existingDisk == nil || existingDisk.GetSelfLink() == "" {
 
 		return nil, status.Errorf(codes.Internal, "failed to get volume : %s", volumeID)
+	}
+	diskTypeForMetric = existingDisk.GetPDType()
+	if existingDisk.GetEnableStoragePools() {
+		enableStoragePools = "enabled"
+	} else {
+		enableStoragePools = "disabled"
 	}
 
 	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
