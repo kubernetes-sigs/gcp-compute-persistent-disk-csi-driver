@@ -568,7 +568,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, status.Errorf(codes.NotFound, "failed to get volume: %v", err)
 	}
 
-	if existingDisk != nil || existingDisk.GetSelfLink() == "" {
+	if existingDisk == nil || existingDisk.GetSelfLink() == "" {
 
 		return nil, status.Errorf(codes.Internal, "failed to get volume : %s", volumeID)
 	}

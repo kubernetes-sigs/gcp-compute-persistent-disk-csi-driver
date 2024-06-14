@@ -461,13 +461,11 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 
 	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
 	diskUpdateOp.Paths("provisionedIops", "provisionedThroughput")
-	updateOpResult, err := diskUpdateOp.Context(ctx).Do()
+	_, err := diskUpdateOp.Context(ctx).Do()
 
 	if err != nil {
 		return fmt.Errorf("error updating disk %v: %w", volKey, err)
 	}
-
-	fmt.Printf("http status : %d", updateOpResult.HTTPStatusCode)
 
 	return nil
 }
