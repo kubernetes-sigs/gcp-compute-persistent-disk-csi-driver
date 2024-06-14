@@ -317,6 +317,19 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
+
+	// https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume
+	// mutable_parameters MUST take precedence over the values from parameters.
+	mutableParams := req.GetMutableParameters()
+	if mutableParams != nil {
+		p, err := common.ExtractModifyVolumeParameters(mutableParams)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid mutable parameters: %v", err)
+		}
+		params.ProvisionedIOPSOnCreate = p.IOPS
+		params.ProvisionedThroughputOnCreate = p.Throughput
+	}
+
 	// Determine multiWriter
 	gceAPIVersion := gce.GCEAPIVersionV1
 	multiWriter, _ := getMultiWriterFromCapabilities(volumeCapabilities)
