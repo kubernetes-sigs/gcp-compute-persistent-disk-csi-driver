@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go/kms v1.17.1
 	cloud.google.com/go/resourcemanager v1.9.7
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.24.0
-	github.com/container-storage-interface/spec v1.6.0
+	github.com/container-storage-interface/spec v1.9.0
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.12.4
