@@ -266,6 +266,11 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	return nil
 }
 
+func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+
+	return nil
+}
+
 func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, volKey *meta.Key) error {
 	delete(cloud.disks, volKey.Name)
 	return nil

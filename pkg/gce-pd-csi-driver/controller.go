@@ -527,6 +527,48 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 }
 
+func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+
+	volumeID := req.GetVolumeId()
+	klog.V(4).Infof("Modifying Volume ID: %s", volumeID)
+
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
+	}
+
+	project, volKey, err := common.VolumeIDToKey(volumeID)
+
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "volume ID is invalid: %v", err.Error())
+	}
+
+	volumeModifyParams, err := common.ExtractModifyVolumeParameters(req.GetMutableParameters())
+	if err != nil {
+		klog.Errorf("Failed to extract parameters for volume %s: %v", volumeID, err)
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid parameters: %v", err)
+	}
+	klog.V(4).Infof("Modify Volume Parameters for %s: %v", volumeID, volumeModifyParams)
+
+	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionBeta)
+
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "failed to get volume: %v", err)
+	}
+
+	if existingDisk != nil || existingDisk.GetSelfLink() == "" {
+
+		return nil, status.Errorf(codes.Internal, "failed to get volume : %s", volumeID)
+	}
+
+	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
+	if err != nil {
+		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "Failed to modify volume %s: %v", volumeID, err)
+	}
+
+	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	var err error
 	diskTypeForMetric := metrics.DefaultDiskTypeForMetric

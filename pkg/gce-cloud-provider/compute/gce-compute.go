@@ -101,6 +101,7 @@ type GCECompute interface {
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
 	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
+	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	GetDiskSourceURI(project string, volKey *meta.Key) string
@@ -442,6 +443,45 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volK
 	}
 }
 
+func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+
+	klog.V(5).Infof("Updating disk %v", volKey)
+
+	switch volKey.Type() {
+	case meta.Zonal:
+		return cloud.updateZonalDisk(ctx, project, volKey, existingDisk, params)
+	case meta.Regional:
+		return cloud.updateRegionalDisk(ctx, project, volKey, existingDisk, params)
+	default:
+		return fmt.Errorf("could not update disk, key was neither zonal nor regional, instead got: %v", volKey.String())
+	}
+}
+
+func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+
+	updatedDisk := &computev1.Disk{
+		Name:                  existingDisk.GetName(),
+		ProvisionedIops:       params.IOPS,
+		ProvisionedThroughput: params.Throughput,
+	}
+
+	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
+	diskUpdateOp.Paths("provisionedIops", "provisionedThroughput")
+	updateOpResult, err := diskUpdateOp.Context(ctx).Do()
+
+	if err != nil {
+		return fmt.Errorf("error updating disk %v: %w", volKey, err)
+	}
+
+	fmt.Printf("http status : %d", updateOpResult.HTTPStatusCode)
+
+	return nil
+}
+
+func (cloud *CloudProvider) updateRegionalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+	// TODO : Implement this
+	return nil
+}
 func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey) *computebeta.CustomerEncryptionKey {
 	return &computebeta.CustomerEncryptionKey{
 		KmsKeyName:      v1Key.KmsKeyName,
