@@ -321,13 +321,16 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	// https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume
 	// mutable_parameters MUST take precedence over the values from parameters.
 	mutableParams := req.GetMutableParameters()
-	if mutableParams != nil {
+	// If the disk type is pd-*, the IOPS and Throughput parameters are ignored.
+	if mutableParams != nil && !strings.HasPrefix(params.DiskType, "pd") {
 		p, err := common.ExtractModifyVolumeParameters(mutableParams)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "Invalid mutable parameters: %v", err)
 		}
 		params.ProvisionedIOPSOnCreate = p.IOPS
 		params.ProvisionedThroughputOnCreate = p.Throughput
+	} else {
+		klog.V(4).Infof("Ignoring IOPS and throughput parameters for unsupported disk type %s", params.DiskType)
 	}
 
 	// Determine multiWriter
@@ -550,12 +553,12 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
 	}
 
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
+	diskType := metrics.DefaultDiskTypeForMetric
 	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
 	enableStoragePools := metrics.DefaultEnableStoragePools
 
 	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ModifyVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
+		gceCS.Metrics.RecordOperationErrorMetrics("ModifyVolume", err, diskType, enableConfidentialCompute, enableStoragePools)
 	}()
 
 	project, volKey, err := common.VolumeIDToKey(volumeID)
@@ -581,7 +584,8 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 
 		return nil, status.Errorf(codes.Internal, "failed to get volume : %s", volumeID)
 	}
-	diskTypeForMetric = existingDisk.GetPDType()
+	diskType = existingDisk.GetPDType()
+	// TODO : not sure how this metric should be reported
 	if existingDisk.GetEnableStoragePools() {
 		enableStoragePools = "enabled"
 	} else {
