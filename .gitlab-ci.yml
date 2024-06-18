@@ -3,7 +3,9 @@ include: https://gitlab-templates.ddbuild.io/compute-delivery/v2/compute-deliver
 test:
   stage: verify
   tags: [ "arch:amd64" ]
-  image: registry.ddbuild.io/images/mirror/golang:1.20
+  image: registry.ddbuild.io/images/mirror/golang:1.22.2
+  variables:
+    GOTOOLCHAIN: "auto"
   script:
     - cd pkg && go test ./... -v
 
