@@ -148,3 +148,50 @@ func TestGetLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestGetAccessMode(t *testing.T) {
+	testCases := []struct {
+		name           string
+		cloudDisk      *CloudDisk
+		wantAccessMode string
+	}{
+		{
+			name: "v1 disk accessMode",
+			cloudDisk: &CloudDisk{
+				disk: &computev1.Disk{
+					AccessMode: "READ_WRITE_SINGLE",
+				},
+			},
+			wantAccessMode: "READ_WRITE_SINGLE",
+		},
+		{
+			name: "beta disk accessMode",
+			cloudDisk: &CloudDisk{
+				betaDisk: &computebeta.Disk{
+					AccessMode: "READ_ONLY_MANY",
+				},
+			},
+			wantAccessMode: "READ_ONLY_MANY",
+		},
+		{
+			name: "unset disk accessMode",
+			cloudDisk: &CloudDisk{
+				betaDisk: &computebeta.Disk{},
+			},
+			wantAccessMode: "",
+		},
+		{
+			name:           "unset disk",
+			cloudDisk:      &CloudDisk{},
+			wantAccessMode: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		gotAccessMode := tc.cloudDisk.GetAccessMode()
+		if gotAccessMode != tc.wantAccessMode {
+			t.Errorf("GetAccessMode() got %v, want %v", gotAccessMode, tc.wantAccessMode)
+		}
+	}
+}

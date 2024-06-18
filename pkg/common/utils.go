@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,6 +74,10 @@ const (
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type
 	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
+
+	// Full or partial URL of the zone resource, in the format:
+	//   projects/{project}/zones/{zone}
+	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
 )
 
 var (
@@ -84,6 +89,8 @@ var (
 	machineTypeRegex = regexp.MustCompile(machineTypePattern)
 
 	storagePoolFieldsRegex = regexp.MustCompile(`^projects/([^/]+)/zones/([^/]+)/storagePools/([^/]+)$`)
+
+	zoneURIRegex = regexp.MustCompile(zoneURIPattern)
 
 	// userErrorCodeMap tells how API error types are translated to error codes.
 	userErrorCodeMap = map[int]codes.Code{
@@ -97,6 +104,8 @@ var (
 	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
 	regexKey    = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
 	regexValue  = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.@%=+:,*#&()\[\]{}\-\s]{0,61}[a-zA-Z0-9])?$`)
+
+	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -545,15 +554,51 @@ func isGoogleAPIError(err error) (codes.Code, error) {
 	return codes.Unknown, fmt.Errorf("googleapi.Error %w does not map to any known errors", err)
 }
 
-func LoggedError(msg string, err error) error {
+func loggedErrorForCode(msg string, code codes.Code, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
-	return status.Errorf(CodeForError(err), msg+"%v", err.Error())
+	return status.Errorf(code, msg+"%v", err.Error())
+}
+
+func LoggedError(msg string, err error) error {
+	return loggedErrorForCode(msg, CodeForError(err), err)
+}
+
+// NewCombinedError tries to return an appropriate wrapped error that captures
+// useful information as an error code
+// If there are multiple errors, it extracts the first "retryable" error
+// as interpreted by the CSI sidecar.
+func NewCombinedError(msg string, errs []error) error {
+	// If there is only one error, return it as the single error code
+	if len(errs) == 1 {
+		LoggedError(msg, errs[0])
+	}
+
+	for _, err := range errs {
+		code := CodeForError(err)
+		if slices.Contains(csiRetryableErrorCodes, code) {
+			// Return this as a TemporaryError to lock-in the retryable code
+			// This will invoke the "existing" error code check in CodeForError
+			return NewTemporaryError(code, fmt.Errorf("%s: %w", msg, err))
+		}
+	}
+
+	// None of these error codes were retryable. Just return a combined error
+	// The first matching error (based on our CodeForError) logic will be returned.
+	return LoggedError(msg, errors.Join(errs...))
 }
 
 func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
 	// Validate key against default kmskey pattern
 	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
 	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
+}
+
+func ParseZoneFromURI(zoneURI string) (string, error) {
+	zoneMatch := zoneURIRegex.FindStringSubmatch(zoneURI)
+	if zoneMatch == nil {
+		return "", fmt.Errorf("failed to parse zone URI. Expected projects/{project}/zones/{zone}. Got: %s", zoneURI)
+	}
+	return zoneMatch[1], nil
 }
 
 // ParseStoragePools returns an error if none of the given storagePools

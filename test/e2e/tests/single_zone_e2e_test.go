@@ -47,6 +47,7 @@ const (
 	defaultSizeGb                     int64 = 5
 	defaultExtremeSizeGb              int64 = 500
 	defaultHdTSizeGb                  int64 = 2048
+	defaultHdmlSizeGb                 int64 = 200
 	defaultRepdSizeGb                 int64 = 200
 	defaultMwSizeGb                   int64 = 200
 	defaultVolumeLimit                int64 = 127
@@ -56,6 +57,7 @@ const (
 	ssdDiskType                             = "pd-ssd"
 	extremeDiskType                         = "pd-extreme"
 	hdtDiskType                             = "hyperdisk-throughput"
+	hdmlDiskType                            = "hyperdisk-ml"
 	provisionedIOPSOnCreate                 = "12345"
 	provisionedIOPSOnCreateInt              = int64(12345)
 	provisionedIOPSOnCreateDefaultInt       = int64(100000)
@@ -1327,7 +1329,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create new driver and client with valid, empty endpoint
 		klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
-		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, "")
+		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 		if err != nil {
 			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
@@ -1336,7 +1338,9 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed empty compute url")
 
 		// Create new driver and client w/ valid, passed-in endpoint
-		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")
+		driverConfig := getDriverConfig()
+		driverConfig.ComputeEndpoint = "https://compute.googleapis.com"
+		tcValid, err := testutils.GCEClientAndDriverSetup(i, driverConfig)
 		if err != nil {
 			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
@@ -1577,6 +1581,8 @@ func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, 
 		diskSize = defaultExtremeSizeGb
 	case hdtDiskType:
 		diskSize = defaultHdTSizeGb
+	case hdmlDiskType:
+		diskSize = defaultHdmlSizeGb
 	}
 	volume, err := client.CreateVolume(volName, disk.params, diskSize,
 		&csi.TopologyRequirement{
@@ -1755,6 +1761,14 @@ var typeToDisk = map[string]*disk{
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(ssdDiskType))
+		},
+	},
+	"hyperdisk-ml": {
+		params: map[string]string{
+			common.ParameterKeyType: "hyperdisk-ml",
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring("hyperdisk-ml"))
 		},
 	},
 }

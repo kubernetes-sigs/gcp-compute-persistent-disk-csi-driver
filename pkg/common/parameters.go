@@ -33,6 +33,7 @@ const (
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
 	ParameterKeyResourceTags                  = "resource-tags"
+	ParameterKeyEnableMultiZoneProvisioning   = "enable-multi-zone-provisioning"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -102,6 +103,9 @@ type DiskParameters struct {
 	// Values: {map[string]string}
 	// Default: ""
 	ResourceTags map[string]string
+	// Values: {bool}
+	// Default: false
+	MultiZoneProvisioning bool
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -126,11 +130,17 @@ type ModifyVolumeParameters struct {
 	Throughput int64
 }
 
+type ParameterProcessor struct {
+	DriverName         string
+	EnableStoragePools bool
+	EnableMultiZone    bool
+}
+
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func ExtractAndDefaultParameters(parameters map[string]string, driverName string, extraVolumeLabels map[string]string, enableStoragePools bool, extraTags map[string]string) (DiskParameters, error) {
+func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string, extraVolumeLabels map[string]string, extraTags map[string]string) (DiskParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -215,24 +225,37 @@ func ExtractAndDefaultParameters(parameters map[string]string, driverName string
 
 			p.EnableConfidentialCompute = paramEnableConfidentialCompute
 		case ParameterKeyStoragePools:
-			if !enableStoragePools {
+			if !pp.EnableStoragePools {
 				return p, fmt.Errorf("parameters contains invalid option %q", ParameterKeyStoragePools)
 			}
 			storagePools, err := ParseStoragePools(v)
 			if err != nil {
-				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyStoragePools, err)
+				return p, fmt.Errorf("parameters contains invalid value for %s parameter %q: %w", ParameterKeyStoragePools, v, err)
 			}
 			p.StoragePools = storagePools
 		case ParameterKeyResourceTags:
 			if err := extractResourceTagsParameter(v, p.ResourceTags); err != nil {
 				return p, err
 			}
+		case ParameterKeyEnableMultiZoneProvisioning:
+			if !pp.EnableMultiZone {
+				return p, fmt.Errorf("parameters contains invalid option %q", ParameterKeyEnableMultiZoneProvisioning)
+			}
+			paramEnableMultiZoneProvisioning, err := ConvertStringToBool(v)
+			if err != nil {
+				return p, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyEnableMultiZoneProvisioning, err)
+			}
+
+			p.MultiZoneProvisioning = paramEnableMultiZoneProvisioning
+			if paramEnableMultiZoneProvisioning {
+				p.Labels[MultiZoneLabel] = "true"
+			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
 		}
 	}
 	if len(p.Tags) > 0 {
-		p.Tags[tagKeyCreatedBy] = driverName
+		p.Tags[tagKeyCreatedBy] = pp.DriverName
 	}
 	return p, nil
 }
