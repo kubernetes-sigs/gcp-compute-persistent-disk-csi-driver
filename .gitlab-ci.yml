@@ -11,5 +11,5 @@ test:
 
 build-docker-image:
   variables:
-    EXTRA_ARGS: "--build-arg=BUILDPLATFORM=linux --build-arg=STAGINGVERSION=$CI_COMMIT_TAG"
+    EXTRA_ARGS: "--build-arg=BUILDPLATFORM=linux --build-arg=STAGINGVERSION=$CI_COMMIT_TAG -f Dockerfile.dd"
   extends: .build-docker-image
