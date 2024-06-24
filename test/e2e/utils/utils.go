@@ -293,11 +293,13 @@ func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName str
 
 	devFsPath, err := instance.SSH("find", link, "-printf", "'%l'")
 	if err != nil {
-		return false, fmt.Errorf("failed to find symbolic link for %s. Output: %v, errror: %v", link, devFsPath, err.Error())
+		// Skip over if there is no matching symlink.
+		return false, nil
 	}
 	if len(devFsPath) == 0 {
 		return false, nil
 	}
+
 	if sdx := sdRegex.FindString(devFsPath); len(sdx) != 0 {
 		fullDevPath := path.Join("/dev/", string(sdx))
 		scsiIDOut, err := instance.SSH("/lib/udev_containerized/scsi_id", "--page=0x83", "--whitelisted", fmt.Sprintf("--device=%v", fullDevPath))
