@@ -96,6 +96,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libnvme-mi.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libnvme.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libsystemd.so.0 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libgpg-error.so.0 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
