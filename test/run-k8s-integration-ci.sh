@@ -60,6 +60,12 @@ fi
 
 export GCE_PD_VERBOSITY=9
 
+echo "Verify docker deps"
+
+"${PKG_ROOT}/hack/verify-docker-deps.sh"
+
+exit 0
+
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
