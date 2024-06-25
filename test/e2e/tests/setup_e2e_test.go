@@ -87,7 +87,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil())
 
 	if *runInProw {
-		*project, *serviceAccount = testutils.SetupProwConfig("gce-project")
+		projectInfo := testutils.SetupProwConfig("gce-project")
+		if *serviceAccount == "" {
+			*serviceAccount = testutils.GetDefaultServiceAccount(projectInfo)
+		}
+		*project = projectInfo.ProjectName
+		klog.Infof("Using project %v and service account %v", *project, *serviceAccount)
 	}
 
 	Expect(*project).ToNot(BeEmpty(), "Project should not be empty")
