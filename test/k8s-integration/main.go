@@ -265,7 +265,8 @@ func handle() error {
 		if err != nil {
 			return fmt.Errorf("failed to get gcloud project: %s, err: %w", oldProject, err)
 		}
-		newproject, _ := testutils.SetupProwConfig(*boskosResourceType)
+		projectInfo := testutils.SetupProwConfig(*boskosResourceType)
+		newproject := projectInfo.ProjectName
 		err = setEnvProject(newproject)
 		if err != nil {
 			return fmt.Errorf("failed to set project environment to %s: %w", newproject, err)

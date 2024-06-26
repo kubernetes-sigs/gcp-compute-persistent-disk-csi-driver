@@ -117,13 +117,17 @@ func getBoskosProject(resourceType string) *common.Resource {
 
 }
 
-func SetupProwConfig(resourceType string) (project, serviceAccount string) {
+type ProjectInfo struct {
+	ProjectName   string
+	ProjectNumber int64
+}
+
+func SetupProwConfig(resourceType string) (projectInfo ProjectInfo) {
 	// Try to get a Boskos project
 	klog.V(4).Infof("Running in PROW")
 	klog.V(4).Infof("Fetching a Boskos loaned project")
 
 	p := getBoskosProject(resourceType)
-	project = p.Name
 
 	go func(c *boskosclient.Client, proj string) {
 		for range time.Tick(time.Minute * 5) {
@@ -146,16 +150,21 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 		klog.Fatalf("Failed to create new cloudresourcemanager: %v", err)
 	}
 
-	resp, err := cloudresourcemanagerService.Projects.Get(project).Do()
+	resp, err := cloudresourcemanagerService.Projects.Get(p.Name).Do()
 	if err != nil {
-		klog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", project, err)
+		klog.Fatalf("Failed to get project %v from Cloud Resource Manager: %v", p.Name, err)
 	}
 
+	return ProjectInfo{
+		ProjectName:   p.Name,
+		ProjectNumber: resp.ProjectNumber,
+	}
+}
+
+func GetDefaultServiceAccount(projectInfo ProjectInfo) string {
 	// Default Compute Engine service account
 	// [PROJECT_NUMBER]-compute@developer.gserviceaccount.com
-	serviceAccount = fmt.Sprintf("%v-compute@developer.gserviceaccount.com", resp.ProjectNumber)
-	klog.Infof("Using project %v and service account %v", project, serviceAccount)
-	return project, serviceAccount
+	return fmt.Sprintf("%v-compute@developer.gserviceaccount.com", projectInfo.ProjectNumber)
 }
 
 func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string, recursive bool) error {
