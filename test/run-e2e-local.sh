@@ -16,4 +16,4 @@ if hostname | grep -q c.googlers.com ; then
   CLOUDTOP_HOST=--cloudtop-host
 fi
 
-ginkgo --v "test/e2e/tests" -- --project "${PROJECT}" --service-account "${IAM_NAME}" "${CLOUDTOP_HOST}" --v=6 --logtostderr
+ginkgo --v "test/e2e/tests" -- --project "${PROJECT}" --service-account "${IAM_NAME}" "${CLOUDTOP_HOST}" --v=6 --logtostderr $@
