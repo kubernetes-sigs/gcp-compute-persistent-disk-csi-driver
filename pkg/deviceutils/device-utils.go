@@ -170,7 +170,7 @@ func getNvmeSerial(devicePath string) (string, error) {
 		nvmeIdPath,
 		fmt.Sprintf("-d%s", devicePath)).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("google_nvme_id failed for device %q with output %v: %w", devicePath, out, err)
+		return "", fmt.Errorf("google_nvme_id failed for device %q with output %s: %w", devicePath, out, err)
 	}
 
 	return parseNvmeSerial(string(out))
