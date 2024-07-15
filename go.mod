@@ -35,8 +35,8 @@ require (
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/cloud-provider v0.24.1
 	k8s.io/component-base v0.24.1
-	k8s.io/klog/v2 v2.120.1
-	k8s.io/mount-utils v0.30.1
+	k8s.io/klog/v2 v2.130.1
+	k8s.io/mount-utils v0.30.2
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	sigs.k8s.io/boskos v0.0.0-20220711194915-6cb8a6fb2dd1
 )
