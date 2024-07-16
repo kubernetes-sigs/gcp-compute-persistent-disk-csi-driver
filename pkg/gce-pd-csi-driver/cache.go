@@ -2,6 +2,7 @@ package gceGCEDriver
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -301,28 +302,31 @@ func RaidLocalSsds() error {
 		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
 		return nil
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "nvme", []string{"list", "-o", "json"}...)
-	if err != nil {
-		return fmt.Errorf("errored while scanning available NVME disks info: %v; err:%v", info, err)
-	}
-	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
-	klog.V(2).Infof("============================== NVME list %v ==============================", infoString)
-	infoString = strings.ReplaceAll(infoString, "\"", "")
-	infoString = strings.ReplaceAll(infoString, " :", ":")
-	infoString = strings.ReplaceAll(infoString, ": ", ":")
-	infoString = strings.ReplaceAll(infoString, ",", " ")
-	infoSlice := strings.Split(infoString, " ")
-
 	diskList := []string{}
-	for _, diskInfo := range infoSlice {
-		diskName := strings.TrimSpace(diskInfo)
-
-		if strings.Contains(diskName, "DevicePath") {
-			diskName := strings.TrimSpace(strings.Split(diskName, ":")[1])
-
-			diskList = append(diskList, diskName)
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
+	if err != nil {
+		return fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
+	}
+	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
+	klog.Infof("============================== Got NVME disks %v ==============================", infoList)
+	re, err := regexp.Compile("nvme_card([0-9]+)?$")
+	if err != nil {
+		klog.V(2).ErrorS(err, "Errored while compiling to check PD or LSSD")
+	}
+	for _, ssd := range infoList {
+		klog.V(2).Infof("=========================== Checking for SSD %v ====================", ssd)
+		ssd = strings.TrimSpace(ssd)
+		if strings.HasPrefix(ssd, "/dev/nvme") {
+			ssdDetails := strings.Split(ssd, " ")
+			klog.V(2).Infof("=========================== Got SSD details %v ====================", ssdDetails)
+			lssd := re.MatchString(ssdDetails[1])
+			klog.Infof("=================== ssdDetails1 %v and compile string result %v", ssdDetails[1], lssd)
+			if lssd {
+				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
+			}
 		}
 	}
+	klog.V(2).Infof("============================== NVME list %v ==============================", diskList)
 	nvmeDiskCount := len(diskList)
 	nvmeDiskList := strings.Join(diskList, " ")
 	if nvmeDiskCount == 0 {
