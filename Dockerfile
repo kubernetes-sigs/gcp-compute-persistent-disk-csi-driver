@@ -70,6 +70,7 @@ COPY --from=debian /usr/lib/tmpfiles.d/lvm2.conf /usr/lib/tmpfiles.d/lvm2.conf
 COPY --from=debian /sbin/lv* /sbin/
 COPY --from=debian /sbin/pv* /sbin/
 COPY --from=debian /sbin/vg* /sbin/
+COPY --from=debian /bin/lsblk /bin/lsblk
 COPY --from=debian /sbin/modprobe /sbin/modprobe
 COPY --from=debian /lib/udev /lib/udev
 COPY --from=debian /lib/udev/rules.d /lib/udev/rules.d
