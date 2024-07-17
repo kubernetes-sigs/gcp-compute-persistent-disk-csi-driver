@@ -1450,7 +1450,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, hdtDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 		defer deleteVolumeOrError(client, volID)
 
 		// Attach Disk
@@ -1484,7 +1484,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContextForVm1.Client
 		firstInstance := testContextForVm1.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, hdtDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 		defer deleteVolumeOrError(client, volID)
 
 		testContextForVm2 := testZoneContexts[1]
