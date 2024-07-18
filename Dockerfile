@@ -104,7 +104,10 @@ COPY --from=debian /bin/cp /bin/cp
 COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
-COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
+COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre.so.3 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libdl.so.2 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libpthread.so.0 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libtinfo.so.6 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libe2p.so.2 \
                    # The following does not exist in either lib or usr/lib
@@ -134,6 +137,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libsmartcols.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libbsd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libinih.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \         
