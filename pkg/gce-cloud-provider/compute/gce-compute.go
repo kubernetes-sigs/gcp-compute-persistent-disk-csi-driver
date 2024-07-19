@@ -1129,7 +1129,7 @@ func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 		"RESOURCE_NOT_FOUND":                        codes.NotFound,
 		"RESOURCE_ALREADY_EXISTS":                   codes.AlreadyExists,
 		"RESOURCE_IN_USE_BY_ANOTHER_RESOURCE":       codes.InvalidArgument,
-		"OPERATION_CANCELED_BY_USER":                codes.Aborted,
+		"OPERATION_CANCELED_BY_USER":                codes.Canceled,
 		"QUOTA_EXCEEDED":                            codes.ResourceExhausted,
 		"ZONE_RESOURCE_POOL_EXHAUSTED":              codes.Unavailable,
 		"ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS": codes.Unavailable,
