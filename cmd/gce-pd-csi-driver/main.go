@@ -29,6 +29,9 @@ import (
 
 	"k8s.io/klog/v2"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -36,6 +39,11 @@ import (
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+)
+
+const (
+	dataCacheLabel      = "datacache.storage.gke.io"
+	dataCacheLabelValue = "enabled"
 )
 
 var (
@@ -73,6 +81,8 @@ var (
 	enableStoragePoolsFlag        = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
 	enableControllerDataCacheFlag = flag.Bool("enable-controller-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
 	enableNodeDataCacheFlag       = flag.Bool("enable-node-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
+
+	nodeName = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -170,6 +180,15 @@ func handle() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if *enableNodeDataCacheFlag {
+		if *nodeName == "" {
+			klog.Fatalf("Data cache enabled, but --node-name not passed")
+		}
+		if err := maybeSetupDataCache(ctx, *nodeName); err != nil {
+			klog.Fatalf("DataCache setup failed: %v", err)
+		}
+	}
+
 	// Initialize driver
 	gceDriver := driver.GetGCEDriver()
 
@@ -234,13 +253,6 @@ func handle() {
 		}
 	}
 
-	if *enableNodeDataCacheFlag {
-		klog.V(2).Info("Raiding local ssds to setup data cache")
-		err := driver.RaidLocalSsds()
-		if err != nil {
-			klog.Fatalf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
-		}
-	}
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
@@ -288,4 +300,32 @@ func urlFlag(target **url.URL, name string, usage string) {
 		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
+}
+
+func maybeSetupDataCache(ctx context.Context, nodeName string) error {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return err
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
+		return err
+	}
+	if val, found := node.GetLabels()[dataCacheLabel]; !found || val != dataCacheLabelValue {
+		klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
+		return nil
+	}
+
+	klog.V(2).Info("Raiding local ssds to setup data cache")
+	if err := driver.RaidLocalSsds(); err != nil {
+		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
+	}
+
+	klog.V(2).Infof("Datacache enabled for node %s", nodeName)
+	return nil
 }
