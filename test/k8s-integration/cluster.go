@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -159,7 +160,7 @@ func setImageTypeEnvs(imageType string) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
+func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, machineType string, isAlpha bool, imageType string, useManagedDriver bool) error {
 	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
 	if err != nil {
 		return err
@@ -181,9 +182,18 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	}
 
 	var cmd *exec.Cmd
+
 	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2", "--image-type", imageType, "--no-enable-autoupgrade"}
+		"--quiet", "--machine-type", machineType, "--image-type", imageType, "--no-enable-autoupgrade", "--service-account", "test-sa-travisx@travisx-joonix.iam.gserviceaccount.com"}
+
+	if isAlpha {
+		// prepend beta to be used with gcloud beta container clusters create
+		cmdParams = slices.Insert(cmdParams, 0, "beta")
+		cmdParams = append(cmdParams, "--enable-kubernetes-alpha")
+		cmdParams = append(cmdParams, "--no-enable-autoupgrade")
+		cmdParams = append(cmdParams, "--no-enable-autorepair")
+	}
 	if isVariableSet(gkeClusterVer) {
 		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
 	} else {

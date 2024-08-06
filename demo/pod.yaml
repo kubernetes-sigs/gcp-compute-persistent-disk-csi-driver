@@ -1,0 +1,34 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: tmp-sc
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tmp-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: tmp-sc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tmp-pod
+spec:
+  containers:
+  - name: tmp-container
+    image: nginx
+    volumeMounts:
+    - mountPath: "/vol"
+      name: test-storage
+  volumes:
+  - name: test-storage
+    persistentVolumeClaim:
+      claimName: tmp-pvc

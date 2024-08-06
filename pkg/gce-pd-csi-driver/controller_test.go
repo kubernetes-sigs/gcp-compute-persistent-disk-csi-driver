@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,10 +35,10 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
+	clock "k8s.io/utils/clock/testing"
 	"k8s.io/utils/strings/slices"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -1710,7 +1711,233 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 		}
 	}
 }
+func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
+	// When volume attribute class specifies iops / throughput they should take precedence over storage class parameters
 
+	testCases := []struct {
+		name          string
+		req           *csi.CreateVolumeRequest
+		expIops       int64
+		expThroughput int64
+		wantErr       bool
+		expErrCode    codes.Code
+	}{
+		{
+			name: "Volume attribute class parameters should take precedence over storage class parameters",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "hyperdisk-balanced",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "500",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			expIops:       20000,
+			expThroughput: 600,
+			wantErr:       false,
+		},
+		{
+			name: "Volume attribute class parameters should be ignored for incompatible disk types",
+			req: &csi.CreateVolumeRequest{
+				Name:          "pd-ssd-vol",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "pd-ssd",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "500",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			expIops:       0,
+			expThroughput: 0,
+			wantErr:       true,
+			expErrCode:    codes.InvalidArgument,
+		},
+	}
+
+	for _, tc := range testCases {
+		var d []*gce.CloudDisk
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, d)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+
+		createVolReq := tc.req
+
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), createVolReq)
+		if tc.wantErr {
+			if status.Code(err) != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, status.Code(err), err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("Failed to create volume: %v", err)
+		}
+
+		volumeId := resp.GetVolume().VolumeId
+		project, volumeKey, err := common.VolumeIDToKey(volumeId)
+		if err != nil {
+			t.Fatalf("Failed to convert volume id to key: %v", err)
+		}
+
+		disk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+
+		if err != nil {
+			t.Fatalf("Failed to get disk: %v", err)
+		}
+		if disk != nil {
+			if disk.GetProvisionedIops() != tc.expIops {
+				t.Errorf("Expected IOPS to be %d, got: %v", tc.expIops, disk.GetProvisionedIops())
+			}
+			if disk.GetProvisionedThroughput() != tc.expThroughput {
+				t.Errorf("Expected Throughput to be %d, got: %v", tc.expThroughput, disk.GetProvisionedThroughput())
+			}
+		}
+	}
+
+}
+func TestVolumeModifyOperation(t *testing.T) {
+
+	testCases := []struct {
+		name          string
+		req           *csi.ControllerModifyVolumeRequest
+		diskType      string
+		params        *common.DiskParameters
+		expIops       int64
+		expThroughput int64
+		expErrMessage string
+	}{
+		{
+			name: "Update volume with valid parameters",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			diskType: "hyperdisk-balanced",
+			params: &common.DiskParameters{
+				DiskType:                      "hyperdisk-balanced",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       20000,
+			expThroughput: 600,
+			expErrMessage: "",
+		},
+		{
+			name: "Update volume with invalid parameters",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "0", "throughput": "0"},
+			},
+			diskType: "hyperdisk-balanced",
+			params: &common.DiskParameters{
+				DiskType:                      "hyperdisk-balanced",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       10000,
+			expThroughput: 500,
+			expErrMessage: "no IOPS or Throughput specified for disk",
+		},
+		{
+			name: "Update volume with valid parameters but invalid disk type",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			diskType: "pd-ssd",
+			params: &common.DiskParameters{
+				DiskType: "pd-ssd",
+			},
+			expIops:       0,
+			expThroughput: 0,
+			expErrMessage: fmt.Sprintf("modifications not supported for disk type %s", "pd-ssd"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Arrange
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+
+		if err != nil {
+			t.Fatalf("Failed to create mock cloud provider: %v", err)
+		}
+
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		project, volKey, err := common.VolumeIDToKey(testVolumeID)
+		if err != nil {
+			t.Fatalf("Failed convert key: %v", err)
+		}
+
+		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "")
+		if err != nil {
+			t.Fatalf("Failed to insert disk: %v", err)
+		}
+		// Act
+		_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), tc.req)
+
+		// Assert
+		if err != nil {
+			msg := err.Error()
+			if !strings.ContainsAny(msg, tc.expErrMessage) {
+				t.Errorf("Failed to modify volume: %v", err)
+			}
+		}
+
+		modifiedVol, err := fcp.GetDisk(context.Background(), project, volKey, gce.GCEAPIVersionBeta)
+
+		if err != nil {
+			t.Errorf("Failed to get volume: %v", err)
+		}
+
+		diskIops := modifiedVol.GetProvisionedIops()
+		throughput := modifiedVol.GetProvisionedThroughput()
+
+		if diskIops != tc.expIops && throughput != tc.expThroughput {
+			t.Errorf("Failed to modify volume: %v", err)
+		}
+	}
+}
 func TestListVolumePagination(t *testing.T) {
 	testCases := []struct {
 		name            string

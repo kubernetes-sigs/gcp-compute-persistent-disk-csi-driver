@@ -2,7 +2,7 @@
 
 set -o nounset
 set -o errexit
-
+set -x 
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
 readonly kube_version=${KUBE_VERSION:-master}
@@ -15,12 +15,14 @@ make -C "${PKGDIR}" test-k8s-integration
 # This version of the command creates a GKE cluster. It also downloads and builds a k8s release
 # so that it can run the test specified
 
-# ${PKGDIR}/bin/k8s-integration-test --run-in-prow=false \
-# --staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
-# --deploy-overlay-name=dev --storageclass-files=sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml \
-# --test-focus="External.Storage" --gce-zone="us-central1-b" \
-# --deployment-strategy=gke --gke-cluster-version=${gke_cluster_version} \
-# --test-version=${test_version} --num-nodes=3
+${PKGDIR}/bin/k8s-integration-test --run-in-prow=false --do-driver-build=true \
+--gke-cluster-prefix="csitest-" --gke-is-alpha=true --machine-type="n4-standard-8" \
+--gke-cluster-version=1.30.1-gke.1329000 \
+--staging-image=${GCE_PD_CSI_STAGING_IMAGE} --service-account-file=${GCE_PD_SA_DIR}/cloud-sa.json \
+--deploy-overlay-name="noauth-debug" --storageclass-files="sc-standard.yaml,sc-balanced.yaml,sc-ssd.yaml" \
+--test-focus="External.Storage" --gce-zone="europe-west1-c" \
+--deployment-strategy=gke --gke-cluster-version=${gke_cluster_version} \
+--test-version=${test_version} --num-nodes=3 --teardown-driver=false 
 
 # This version of the command creates a GCE cluster. It downloads and builds two k8s releases,
 # one for the cluster and one for the tests, unless the cluster and test versioning is the same.
@@ -94,10 +96,10 @@ make -C "${PKGDIR}" test-k8s-integration
 #
 # As with all other methods local credentials must be set by running 
 #  gcloud auth application-default login
-"${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
---deploy-overlay-name=noauth --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
---storageclass-files=sc-standard.yaml --do-driver-build=false --test-focus='External.Storage' \
---gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"
+# "${PKGDIR}/bin/k8s-integration-test" --run-in-prow=false \
+# --deploy-overlay-name=noauth --bringup-cluster=false --teardown-cluster=false --local-k8s-dir="$KTOP" \
+# --storageclass-files=sc-standard.yaml --do-driver-build=false --test-focus='External.Storage' \
+# --gce-zone="us-central1-b" --num-nodes="${NUM_NODES:-3}"
 
 
 # This version of the command does not build the driver or K8s, points to a

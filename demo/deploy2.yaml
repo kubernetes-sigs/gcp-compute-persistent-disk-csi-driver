@@ -1,0 +1,60 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-gce-pd-controller
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/gce-pd-driver: unconfined
+spec:
+  template:
+    spec:
+      containers:
+        - name: gce-pd-driver
+          imagePullPolicy: Always
+#          command: ["/go/bin/dlv"]
+#          args:
+#            - "--listen=:2345"
+#            - "--headless=true"
+#            - "--api-version=2"
+#            - "--accept-multiclient"
+#            - "--continue"
+#            - "--log"
+#            - "exec"
+#            - "/go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver"
+#            - "--"
+#            - "--v=5"
+#            - "--endpoint=unix:/csi/csi.sock"
+          ports:
+            - containerPort: 2345
+          securityContext:
+            capabilities:
+              add:
+              - SYS_PTRACE
+#
+#      - name: csi-provisioner
+#        image: gcr.io/k8s-staging-sig-storage/csi-provisioner:canary
+#        args:
+#          - "--v=5"
+#          - "--csi-address=/csi/csi.sock"
+#          - "--feature-gates=Topology=true"
+#          - "--http-endpoint=:22011"
+#          - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+#          - "--timeout=250s"
+#          - "--extra-create-metadata"
+#        # - "--run-controller-service=false"  # disable the controller service of the CSI driver
+#        # - "--run-node-service=false"        # disable the node service of the CSI driver
+#          - "--leader-election"
+#          - "--default-fstype=ext4"
+#          - "--controller-publish-readonly=true"
+#          - "--feature-gates=VolumeAttributesClass=true"
+#
+#      - name: csi-resizer
+#        image: registry.k8s.io/sig-storage/csi-resizer
+#        imagePullPolicy: Always
+#        args:
+#          - "--v=5"
+#          - "--csi-address=/csi/csi.sock"
+#          - "--http-endpoint=:22013"
+#          - "--leader-election"
+#          - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
+#          - "--handle-volume-inuse-error=false"
+#          - "--feature-gates=VolumeAttributesClass=true"

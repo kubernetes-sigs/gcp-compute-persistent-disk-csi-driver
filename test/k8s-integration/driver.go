@@ -17,14 +17,17 @@ func getOverlayDir(pkgDir, deployOverlayName string) string {
 }
 
 func installDriver(testParams *testParameters, stagingImage, deployOverlayName string, doDriverBuild bool) error {
+	fmt.Println("Doing driver build and install")
 	if doDriverBuild {
 		// Install kustomize
 		klog.Infof("Installing kustomize")
 		out, err := exec.Command(filepath.Join(testParams.pkgDir, "deploy", "kubernetes", "install-kustomize.sh")).CombinedOutput()
+		klog.Infof("Done Installing kustomize")
 		if err != nil {
 			return fmt.Errorf("failed to install kustomize: %s, err: %v", out, err.Error())
 		}
-
+		
+		klog.Infof("Applying overlays")
 		// Edit ci kustomization to use given image tag
 		overlayDir := getOverlayDir(testParams.pkgDir, deployOverlayName)
 		err = os.Chdir(overlayDir)

@@ -1,0 +1,48 @@
+apiVersion: storage.k8s.io/v1alpha1
+kind: VolumeAttributesClass
+metadata:
+  name: silver
+driverName: pd.csi.storage.gke.io
+parameters:
+  provisioned-iops: "3000"
+  provisioned-throughput: "151"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: test-sc-name
+provisioner: pd.csi.storage.gke.io
+parameters:
+  disk-type: "hyperdisk-balanced"
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pv-claim
+spec:
+  storageClassName: test-sc-name
+  volumeAttributesClassName: silver
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+        ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  volumes:
+  - name: vol
+    persistentVolumeClaim:
+      claimName: test-pv-claim
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - mountPath: "/vol"
+      name: vol

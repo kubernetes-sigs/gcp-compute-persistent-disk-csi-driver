@@ -34,6 +34,12 @@ import (
 
 var (
 	// Kubernetes cluster flags
+	// The code `teardown-cluster` is likely a command or function call
+	// in a script or program written in the Go programming language. It
+	// is used to tear down or dismantle a cluster, which could refer to
+	// a group of interconnected servers or nodes used for distributed
+	// computing or other purposes. This command is likely used to clean
+	// up resources and shut down the cluster after it has been used.
 	teardownCluster      = flag.Bool("teardown-cluster", true, "teardown the cluster after the e2e test")
 	teardownDriver       = flag.Bool("teardown-driver", true, "teardown the driver after the e2e test")
 	bringupCluster       = flag.Bool("bringup-cluster", true, "build kubernetes and bringup a cluster")
@@ -54,8 +60,11 @@ var (
 	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
 	gkeTestClusterName   = flag.String("gke-cluster-name", "", "Name of existing cluster")
 	gkeNodeVersion       = flag.String("gke-node-version", "", "GKE cluster worker node version")
+	gkeIsAlpha           = flag.Bool("gke-is-alpha", false, "Deploy alpha GKE cluster")
 	isRegionalCluster    = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
+	machineType          = flag.String("machine-type", "n1-standard-2", "machine type to use for the cluster")
 
+	// TODO: update flages to have the same for vacs as storage classes
 	// Test infrastructure flags
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFiles  = flag.String("storageclass-files", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
@@ -65,7 +74,7 @@ var (
 	// Driver flags
 	stagingImage        = flag.String("staging-image", "", "name of image to stage to")
 	saFile              = flag.String("service-account-file", "", "path of service account file")
-	deployOverlayName   = flag.String("deploy-overlay-name", "", "which kustomize overlay to deploy the driver with")
+	deployOverlayName   = flag.String("deploy-overlay-name", "noauth-debug", "which kustomize overlay to deploy the driver with")
 	doDriverBuild       = flag.Bool("do-driver-build", true, "building the driver from source")
 	doK8sBuild          = flag.Bool("do-k8s-build", true, "building the driver from source. If false, will fetch precompiled artifacts")
 	useGKEManagedDriver = flag.Bool("use-gke-managed-driver", false, "use GKE managed PD CSI driver for the tests")
@@ -137,7 +146,7 @@ func main() {
 	}
 
 	if !*useGKEManagedDriver {
-		ensureVariable(deployOverlayName, true, "deploy-overlay-name is a required flag")
+		// ensureVariable(deployOverlayName, false, "deploy-overlay-name is a required flag")
 		if *deployOverlayName != "noauth" {
 			ensureVariable(saFile, true, "service-account-file is a required flag")
 		}
@@ -366,7 +375,7 @@ func handle() error {
 		case "gce":
 			err = clusterUpGCE(testParams.k8sSourceDir, *gceZone, *numNodes, *numWindowsNodes, testParams.imageType)
 		case "gke":
-			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *numWindowsNodes, testParams.imageType, testParams.useGKEManagedDriver)
+			err = clusterUpGKE(*gceZone, *gceRegion, *numNodes, *numWindowsNodes, *machineType, *gkeIsAlpha, testParams.imageType, testParams.useGKEManagedDriver)
 		default:
 			err = fmt.Errorf("deployment-strategy must be set to 'gce' or 'gke', but is: %s", testParams.deploymentStrategy)
 		}

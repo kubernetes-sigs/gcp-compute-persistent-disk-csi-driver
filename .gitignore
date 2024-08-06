@@ -49,3 +49,6 @@ test/k8s-integration/config/test-config.yaml
 *.un~
 Session.vim
 .netrwhist
+
+# Credentials
+creds/cloud-sa.json
