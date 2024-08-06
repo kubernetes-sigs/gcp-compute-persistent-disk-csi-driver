@@ -35,23 +35,23 @@ type goTooOldError struct {
 	error
 }
 
-// responseDeduper wraps a DriverResponse, deduplicating its contents.
+// responseDeduper wraps a driverResponse, deduplicating its contents.
 type responseDeduper struct {
 	seenRoots    map[string]bool
 	seenPackages map[string]*Package
-	dr           *DriverResponse
+	dr           *driverResponse
 }
 
 func newDeduper() *responseDeduper {
 	return &responseDeduper{
-		dr:           &DriverResponse{},
+		dr:           &driverResponse{},
 		seenRoots:    map[string]bool{},
 		seenPackages: map[string]*Package{},
 	}
 }
 
-// addAll fills in r with a DriverResponse.
-func (r *responseDeduper) addAll(dr *DriverResponse) {
+// addAll fills in r with a driverResponse.
+func (r *responseDeduper) addAll(dr *driverResponse) {
 	for _, pkg := range dr.Packages {
 		r.addPackage(pkg)
 	}
@@ -128,7 +128,7 @@ func (state *golistState) mustGetEnv() map[string]string {
 // goListDriver uses the go list command to interpret the patterns and produce
 // the build system package structure.
 // See driver for more details.
-func goListDriver(cfg *Config, patterns ...string) (_ *DriverResponse, err error) {
+func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
 	// Make sure that any asynchronous go commands are killed when we return.
 	parentCtx := cfg.Context
 	if parentCtx == nil {
@@ -146,18 +146,16 @@ func goListDriver(cfg *Config, patterns ...string) (_ *DriverResponse, err error
 	}
 
 	// Fill in response.Sizes asynchronously if necessary.
+	var sizeserr error
+	var sizeswg sync.WaitGroup
 	if cfg.Mode&NeedTypesSizes != 0 || cfg.Mode&NeedTypes != 0 {
-		errCh := make(chan error)
+		sizeswg.Add(1)
 		go func() {
 			compiler, arch, err := packagesdriver.GetSizesForArgsGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
+			sizeserr = err
 			response.dr.Compiler = compiler
 			response.dr.Arch = arch
-			errCh <- err
-		}()
-		defer func() {
-			if sizesErr := <-errCh; sizesErr != nil {
-				err = sizesErr
-			}
+			sizeswg.Done()
 		}()
 	}
 
@@ -210,7 +208,10 @@ extractQueries:
 		}
 	}
 
-	// (We may yet return an error due to defer.)
+	sizeswg.Wait()
+	if sizeserr != nil {
+		return nil, sizeserr
+	}
 	return response.dr, nil
 }
 
@@ -265,7 +266,7 @@ func (state *golistState) runContainsQueries(response *responseDeduper, queries 
 
 // adhocPackage attempts to load or construct an ad-hoc package for a given
 // query, if the original call to the driver produced inadequate results.
-func (state *golistState) adhocPackage(pattern, query string) (*DriverResponse, error) {
+func (state *golistState) adhocPackage(pattern, query string) (*driverResponse, error) {
 	response, err := state.createDriverResponse(query)
 	if err != nil {
 		return nil, err
@@ -356,7 +357,7 @@ func otherFiles(p *jsonPackage) [][]string {
 
 // createDriverResponse uses the "go list" command to expand the pattern
 // words and return a response for the specified packages.
-func (state *golistState) createDriverResponse(words ...string) (*DriverResponse, error) {
+func (state *golistState) createDriverResponse(words ...string) (*driverResponse, error) {
 	// go list uses the following identifiers in ImportPath and Imports:
 	//
 	// 	"p"			-- importable package or main (command)
@@ -383,7 +384,7 @@ func (state *golistState) createDriverResponse(words ...string) (*DriverResponse
 	pkgs := make(map[string]*Package)
 	additionalErrors := make(map[string][]Error)
 	// Decode the JSON and convert it to Package form.
-	response := &DriverResponse{
+	response := &driverResponse{
 		GoVersion: goVersion,
 	}
 	for dec := json.NewDecoder(buf); dec.More(); {

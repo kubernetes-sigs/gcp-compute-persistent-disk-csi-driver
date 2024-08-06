@@ -74,21 +74,12 @@ func AddReportEntry(name string, args ...interface{}) {
 
 /*
 ReportBeforeEach nodes are run for each spec, even if the spec is skipped or pending.  ReportBeforeEach nodes take a function that
-receives a SpecReport or both SpecContext and Report for interruptible behavior. They are called before the spec starts.
-
-Example:
-
-	ReportBeforeEach(func(report SpecReport) { // process report  })
-	ReportBeforeEach(func(ctx SpecContext, report SpecReport) {
-		// process report
-	}), NodeTimeout(1 * time.Minute))
+receives a SpecReport.  They are called before the spec starts.
 
 You cannot nest any other Ginkgo nodes within a ReportBeforeEach node's closure.
 You can learn more about ReportBeforeEach here: https://onsi.github.io/ginkgo/#generating-reports-programmatically
-
-You can learn about interruptible nodes here: https://onsi.github.io/ginkgo/#spec-timeouts-and-interruptible-nodes
 */
-func ReportBeforeEach(body any, args ...any) bool {
+func ReportBeforeEach(body func(SpecReport), args ...interface{}) bool {
 	combinedArgs := []interface{}{body}
 	combinedArgs = append(combinedArgs, args...)
 
@@ -96,23 +87,13 @@ func ReportBeforeEach(body any, args ...any) bool {
 }
 
 /*
-ReportAfterEach nodes are run for each spec, even if the spec is skipped or pending.
-ReportAfterEach nodes take a function that receives a SpecReport or both SpecContext and Report for interruptible behavior.
-They are called after the spec has completed and receive the final report for the spec.
-
-Example:
-
-	ReportAfterEach(func(report SpecReport) { // process report  })
-	ReportAfterEach(func(ctx SpecContext, report SpecReport) {
-		// process report
-	}), NodeTimeout(1 * time.Minute))
+ReportAfterEach nodes are run for each spec, even if the spec is skipped or pending.  ReportAfterEach nodes take a function that
+receives a SpecReport.  They are called after the spec has completed and receive the final report for the spec.
 
 You cannot nest any other Ginkgo nodes within a ReportAfterEach node's closure.
 You can learn more about ReportAfterEach here: https://onsi.github.io/ginkgo/#generating-reports-programmatically
-
-You can learn about interruptible nodes here: https://onsi.github.io/ginkgo/#spec-timeouts-and-interruptible-nodes
 */
-func ReportAfterEach(body any, args ...any) bool {
+func ReportAfterEach(body func(SpecReport), args ...interface{}) bool {
 	combinedArgs := []interface{}{body}
 	combinedArgs = append(combinedArgs, args...)
 
@@ -120,15 +101,7 @@ func ReportAfterEach(body any, args ...any) bool {
 }
 
 /*
-ReportBeforeSuite nodes are run at the beginning of the suite.  ReportBeforeSuite nodes take a function
-that can either receive Report or both SpecContext and Report for interruptible behavior.
-
-Example Usage:
-
-	ReportBeforeSuite(func(r Report) { // process report })
-	ReportBeforeSuite(func(ctx SpecContext, r Report) {
-		// process report
-	}, NodeTimeout(1 * time.Minute))
+ReportBeforeSuite nodes are run at the beginning of the suite.  ReportBeforeSuite nodes take a function that receives a suite Report.
 
 They are called at the beginning of the suite, before any specs have run and any BeforeSuite or SynchronizedBeforeSuite nodes, and are passed in the initial report for the suite.
 ReportBeforeSuite nodes must be created at the top-level (i.e. not nested in a Context/Describe/When node)
@@ -139,28 +112,18 @@ You cannot nest any other Ginkgo nodes within a ReportAfterSuite node's closure.
 You can learn more about ReportAfterSuite here: https://onsi.github.io/ginkgo/#generating-reports-programmatically
 
 You can learn more about Ginkgo's reporting infrastructure, including generating reports with the CLI here: https://onsi.github.io/ginkgo/#generating-machine-readable-reports
-
-You can learn about interruptible nodes here: https://onsi.github.io/ginkgo/#spec-timeouts-and-interruptible-nodes
 */
-func ReportBeforeSuite(body any, args ...any) bool {
+func ReportBeforeSuite(body func(Report), args ...interface{}) bool {
 	combinedArgs := []interface{}{body}
 	combinedArgs = append(combinedArgs, args...)
 	return pushNode(internal.NewNode(deprecationTracker, types.NodeTypeReportBeforeSuite, "", combinedArgs...))
 }
 
 /*
-ReportAfterSuite nodes are run at the end of the suite. ReportAfterSuite nodes execute at the suite's conclusion,
-and accept a function that can either receive Report or both SpecContext and Report for interruptible behavior.
-
-Example Usage:
-
-	ReportAfterSuite("Non-interruptible ReportAfterSuite", func(r Report) { // process report })
-	ReportAfterSuite("Interruptible ReportAfterSuite", func(ctx SpecContext, r Report) {
-		// process report
-	}, NodeTimeout(1 * time.Minute))
+ReportAfterSuite nodes are run at the end of the suite.  ReportAfterSuite nodes take a function that receives a suite Report.
 
 They are called at the end of the suite, after all specs have run and any AfterSuite or SynchronizedAfterSuite nodes, and are passed in the final report for the suite.
-ReportAfterSuite nodes must be created at the top-level (i.e. not nested in a Context/Describe/When node)
+ReportAftersuite nodes must be created at the top-level (i.e. not nested in a Context/Describe/When node)
 
 When running in parallel, Ginkgo ensures that only one of the parallel nodes runs the ReportAfterSuite and that it is passed a report that is aggregated across
 all parallel nodes
@@ -171,10 +134,8 @@ You cannot nest any other Ginkgo nodes within a ReportAfterSuite node's closure.
 You can learn more about ReportAfterSuite here: https://onsi.github.io/ginkgo/#generating-reports-programmatically
 
 You can learn more about Ginkgo's reporting infrastructure, including generating reports with the CLI here: https://onsi.github.io/ginkgo/#generating-machine-readable-reports
-
-You can learn about interruptible nodes here: https://onsi.github.io/ginkgo/#spec-timeouts-and-interruptible-nodes
 */
-func ReportAfterSuite(text string, body any, args ...interface{}) bool {
+func ReportAfterSuite(text string, body func(Report), args ...interface{}) bool {
 	combinedArgs := []interface{}{body}
 	combinedArgs = append(combinedArgs, args...)
 	return pushNode(internal.NewNode(deprecationTracker, types.NodeTypeReportAfterSuite, text, combinedArgs...))

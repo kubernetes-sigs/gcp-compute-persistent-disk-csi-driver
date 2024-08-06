@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"sync"
 	"time"
+
+	"sync"
 
 	"github.com/onsi/ginkgo/v2/types"
 )
@@ -15,8 +16,8 @@ var _global_node_id_counter = uint(0)
 var _global_id_mutex = &sync.Mutex{}
 
 func UniqueNodeID() uint {
-	// There's a reace in the internal integration tests if we don't make
-	// accessing _global_node_id_counter safe across goroutines.
+	//There's a reace in the internal integration tests if we don't make
+	//accessing _global_node_id_counter safe across goroutines.
 	_global_id_mutex.Lock()
 	defer _global_id_mutex.Unlock()
 	_global_node_id_counter += 1
@@ -43,8 +44,8 @@ type Node struct {
 	SynchronizedAfterSuiteProc1Body              func(SpecContext)
 	SynchronizedAfterSuiteProc1BodyHasContext    bool
 
-	ReportEachBody  func(SpecContext, types.SpecReport)
-	ReportSuiteBody func(SpecContext, types.Report)
+	ReportEachBody  func(types.SpecReport)
+	ReportSuiteBody func(types.Report)
 
 	MarkedFocus             bool
 	MarkedPending           bool
@@ -208,7 +209,7 @@ func NewNode(deprecationTracker *types.DeprecationTracker, nodeType types.NodeTy
 	args = unrollInterfaceSlice(args)
 
 	remainingArgs := []interface{}{}
-	// First get the CodeLocation up-to-date
+	//First get the CodeLocation up-to-date
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case Offset:
@@ -224,11 +225,11 @@ func NewNode(deprecationTracker *types.DeprecationTracker, nodeType types.NodeTy
 	trackedFunctionError := false
 	args = remainingArgs
 	remainingArgs = []interface{}{}
-	// now process the rest of the args
+	//now process the rest of the args
 	for _, arg := range args {
 		switch t := reflect.TypeOf(arg); {
 		case t == reflect.TypeOf(float64(0)):
-			break // ignore deprecated timeouts
+			break //ignore deprecated timeouts
 		case t == reflect.TypeOf(Focus):
 			node.MarkedFocus = bool(arg.(focusType))
 			if !nodeType.Is(types.NodeTypesForContainerAndIt) {
@@ -324,12 +325,7 @@ func NewNode(deprecationTracker *types.DeprecationTracker, nodeType types.NodeTy
 				node.Body = func(SpecContext) { body() }
 			} else if nodeType.Is(types.NodeTypeReportBeforeEach | types.NodeTypeReportAfterEach) {
 				if node.ReportEachBody == nil {
-					if fn, ok := arg.(func(types.SpecReport)); ok {
-						node.ReportEachBody = func(_ SpecContext, r types.SpecReport) { fn(r) }
-					} else {
-						node.ReportEachBody = arg.(func(SpecContext, types.SpecReport))
-						node.HasContext = true
-					}
+					node.ReportEachBody = arg.(func(types.SpecReport))
 				} else {
 					appendError(types.GinkgoErrors.MultipleBodyFunctions(node.CodeLocation, nodeType))
 					trackedFunctionError = true
@@ -337,12 +333,7 @@ func NewNode(deprecationTracker *types.DeprecationTracker, nodeType types.NodeTy
 				}
 			} else if nodeType.Is(types.NodeTypeReportBeforeSuite | types.NodeTypeReportAfterSuite) {
 				if node.ReportSuiteBody == nil {
-					if fn, ok := arg.(func(types.Report)); ok {
-						node.ReportSuiteBody = func(_ SpecContext, r types.Report) { fn(r) }
-					} else {
-						node.ReportSuiteBody = arg.(func(SpecContext, types.Report))
-						node.HasContext = true
-					}
+					node.ReportSuiteBody = arg.(func(types.Report))
 				} else {
 					appendError(types.GinkgoErrors.MultipleBodyFunctions(node.CodeLocation, nodeType))
 					trackedFunctionError = true
@@ -404,7 +395,7 @@ func NewNode(deprecationTracker *types.DeprecationTracker, nodeType types.NodeTy
 		}
 	}
 
-	// validations
+	//validations
 	if node.MarkedPending && node.MarkedFocus {
 		appendError(types.GinkgoErrors.InvalidDeclarationOfFocusedAndPending(node.CodeLocation, nodeType))
 	}

@@ -20,7 +20,6 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 
@@ -118,7 +117,7 @@ func (pw *pickerWrapper) pick(ctx context.Context, failfast bool, info balancer.
 				if lastPickErr != nil {
 					errStr = "latest balancer error: " + lastPickErr.Error()
 				} else {
-					errStr = fmt.Sprintf("received context error while waiting for new LB policy update: %s", ctx.Err().Error())
+					errStr = ctx.Err().Error()
 				}
 				switch ctx.Err() {
 				case context.DeadlineExceeded:
