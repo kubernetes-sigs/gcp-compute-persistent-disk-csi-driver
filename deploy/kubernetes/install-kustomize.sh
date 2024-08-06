@@ -31,11 +31,11 @@ if [[ ! "$tmpDir" || ! -d "$tmpDir" ]]; then
   exit 1
 fi
 
-# function cleanup {
-#   rm -rf "$tmpDir"
-# }
+function cleanup {
+  rm -rf "$tmpDir"
+}
 
-# trap cleanup EXIT
+trap cleanup EXIT
 
 pushd $tmpDir >& /dev/null
 
