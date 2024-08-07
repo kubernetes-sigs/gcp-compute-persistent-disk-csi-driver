@@ -348,7 +348,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	mutableParams := req.GetMutableParameters()
 	// If the disk type is pd-balanced, pd-ssd, pd-standard except for pd-extreme,
 	// the IOPS and Throughput parameters are ignored.
-	if _, valid := diskSupportsIopsChange[params.DiskType]; !valid {
+	if _, valid := diskSupportsIopsChange[params.DiskType]; len(mutableParams) > 0 && !valid {
 		return nil, status.Errorf(codes.InvalidArgument, "Disk type %s does not support VolumeAttributesClass", params.DiskType)
 	}
 	supportsIopsChange := diskSupportsIopsChange[params.DiskType]

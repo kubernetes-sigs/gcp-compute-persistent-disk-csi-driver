@@ -468,16 +468,18 @@ func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volK
 }
 
 func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
-	if params.IOPS == nil && params.Throughput == nil {
+	specifiedIops := params.IOPS != nil && *params.IOPS != 0
+	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
+	if !specifiedIops && !specifiedThroughput {
 		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
 	}
 	updatedDisk := &computev1.Disk{
 		Name: existingDisk.GetName(),
 	}
-	if params.IOPS != nil {
+	if params.IOPS != nil && *params.IOPS != 0 {
 		updatedDisk.ProvisionedIops = *params.IOPS
 	}
-	if params.Throughput != nil {
+	if params.Throughput != nil && *params.Throughput != 0 {
 		updatedDisk.ProvisionedThroughput = *params.Throughput
 	}
 

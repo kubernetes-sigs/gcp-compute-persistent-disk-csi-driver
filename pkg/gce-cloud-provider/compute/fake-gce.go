@@ -281,7 +281,9 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 }
 
 func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
-	if params.IOPS == nil || params.Throughput == nil {
+	specifiedIops := params.IOPS != nil && *params.IOPS != 0
+	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
+	if !specifiedIops && !specifiedThroughput {
 		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
 	}
 
@@ -289,7 +291,7 @@ func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, 
 		if params.IOPS != nil {
 			existingDisk.betaDisk.ProvisionedIops = *params.IOPS
 		}
-		if params.Throughput!= nil {
+		if params.Throughput != nil {
 			existingDisk.betaDisk.ProvisionedThroughput = *params.Throughput
 		}
 		cloud.disks[volKey.String()] = existingDisk
