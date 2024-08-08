@@ -104,6 +104,7 @@ type GCECompute interface {
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
 	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
+	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
@@ -457,6 +458,46 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volK
 	default:
 		return fmt.Errorf("could not insert disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
+}
+
+func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+	klog.V(5).Infof("Updating disk %v", volKey)
+	// hyperdisks are zonal disks
+	// pd-disks do not support modification of IOPS and Throughput
+	return cloud.updateZonalDisk(ctx, project, volKey, existingDisk, params)
+}
+
+func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+	specifiedIops := params.IOPS != nil && *params.IOPS != 0
+	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
+	if !specifiedIops && !specifiedThroughput {
+		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
+	}
+	updatedDisk := &computev1.Disk{
+		Name: existingDisk.GetName(),
+	}
+	if params.IOPS != nil && *params.IOPS != 0 {
+		updatedDisk.ProvisionedIops = *params.IOPS
+	}
+	if params.Throughput != nil && *params.Throughput != 0 {
+		updatedDisk.ProvisionedThroughput = *params.Throughput
+	}
+
+	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
+	if params.IOPS != nil && params.Throughput != nil {
+		diskUpdateOp.Paths("provisionedIops", "provisionedThroughput")
+	} else if params.IOPS != nil {
+		diskUpdateOp.Paths("provisionedIops")
+	} else {
+		diskUpdateOp.Paths("provisionedThroughput")
+	}
+	_, err := diskUpdateOp.Context(ctx).Do()
+
+	if err != nil {
+		return fmt.Errorf("error updating disk %v: %w", volKey, err)
+	}
+
+	return nil
 }
 
 func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey) *computebeta.CustomerEncryptionKey {
