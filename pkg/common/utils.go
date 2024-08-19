@@ -17,6 +17,7 @@ limitations under the License.
 package common
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -78,6 +79,8 @@ const (
 	// Full or partial URL of the zone resource, in the format:
 	//   projects/{project}/zones/{zone}
 	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
+
+	escapeRune = '\\'
 )
 
 var (
@@ -280,7 +283,7 @@ func ConvertLabelsStringToMap(labels string) (map[string]string, error) {
 // See https://cloud.google.com/resource-manager/docs/tags/tags-overview,
 // https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details
 func ConvertTagsStringToMap(tags string) (map[string]string, error) {
-	const tagsDelimiter = ","
+	const tagsDelimiter = ','
 	const tagsParentIDKeyValueDelimiter = "/"
 
 	tagsMap := make(map[string]string)
@@ -311,7 +314,7 @@ func ConvertTagsStringToMap(tags string) (map[string]string, error) {
 	}
 
 	checkTagParentIDKey := sets.String{}
-	parentIDkeyValueStrings := strings.Split(tags, tagsDelimiter)
+	parentIDkeyValueStrings := splitWithEscape(tags, tagsDelimiter, escapeRune)
 	for _, parentIDkeyValueString := range parentIDkeyValueStrings {
 		parentIDKeyValue := strings.Split(parentIDkeyValueString, tagsParentIDKeyValueDelimiter)
 
