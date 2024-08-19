@@ -1734,3 +1734,79 @@ func TestNewCombinedError(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitWithEscape(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  string
+		delim  rune
+		escape rune
+		want   []string
+	}{
+		{
+			name:   "basic split",
+			input:  "a,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			name:   "escaped delimiter",
+			input:  "a\\,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a,b", "c"},
+		},
+		{
+			name:   "escaped escape character",
+			input:  "a\\\\,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a,b", "c"},
+		},
+		{
+			name:   "empty parts",
+			input:  "a,,b,c,",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "", "b", "c", ""},
+		},
+		{
+			name:   "only delimiters",
+			input:  ",,,",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"", "", "", ""},
+		},
+		{
+			name:   "no delimiters",
+			input:  "abc",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"abc"},
+		},
+		{
+			name:   "escape at end",
+			input:  "a,b,c\\",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			name:   "different delimiter and escape",
+			input:  "a|b#|c|d",
+			delim:  '|',
+			escape: '#',
+			want:   []string{"a", "b|c", "d"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitWithEscape(tc.input, tc.delim, tc.escape)
+			if diff := cmp.Diff(got, tc.want); diff != "" {
+				t.Errorf("splitWithEscape() mismatch (-got +want):\n%s", diff)
+			}
+		})
+	}
+}

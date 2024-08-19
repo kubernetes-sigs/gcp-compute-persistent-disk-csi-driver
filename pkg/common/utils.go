@@ -695,3 +695,29 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 
 	return limiter
 }
+
+// splitWithEscape splits a string with the given delimiter and escape character.
+func splitWithEscape(s string, delim rune, escape rune) []string {
+	var parts []string
+	var buf bytes.Buffer
+	escaped := false
+
+	for _, r := range s {
+		switch {
+		case escaped:
+			if r != escape {
+				buf.WriteRune(r)
+				escaped = false
+			}
+		case r == escape:
+			escaped = true
+		case r == delim:
+			parts = append(parts, buf.String())
+			buf.Reset()
+		default:
+			buf.WriteRune(r)
+		}
+	}
+	parts = append(parts, buf.String())
+	return parts
+}
