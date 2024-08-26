@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"syscall"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -1004,6 +1005,16 @@ func TestCodeForError(t *testing.T) {
 			name:     "context deadline exceeded error",
 			inputErr: context.DeadlineExceeded,
 			expCode:  codes.DeadlineExceeded,
+		},
+		{
+			name:     "connection reset error",
+			inputErr: fmt.Errorf("failed to getDisk: connection reset by peer"),
+			expCode:  codes.Unavailable,
+		},
+		{
+			name:     "wrapped connection reset error",
+			inputErr: fmt.Errorf("received error: %v", syscall.ECONNRESET),
+			expCode:  codes.Unavailable,
 		},
 		{
 			name:     "status error with Aborted error code",
