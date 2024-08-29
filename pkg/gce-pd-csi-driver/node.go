@@ -59,6 +59,10 @@ type GCENodeServer struct {
 	// been observed).
 	formatAndMountSemaphore chan any
 	formatAndMountTimeout   time.Duration
+
+	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
+	// new RPC methods that might be introduced in future versions of the spec.
+	csi.UnimplementedNodeServer
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
