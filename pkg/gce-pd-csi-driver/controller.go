@@ -108,6 +108,10 @@ type GCEControllerServer struct {
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
+
+	// Embed UnimplementedControllerServer to ensure the driver returns Unimplemented for any
+	// new RPC methods that might be introduced in future versions of the spec.
+	csi.UnimplementedControllerServer
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -714,6 +718,10 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 
 	klog.V(4).Infof("CreateVolume succeeded for disk %v", volKey)
 	return disk, nil
+}
+
+func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ControllerModifyVolume unsupported")
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {

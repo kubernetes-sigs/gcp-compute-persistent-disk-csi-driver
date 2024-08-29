@@ -26,7 +26,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
-	sanity "github.com/kubernetes-csi/csi-test/v4/pkg/sanity"
+	sanity "github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
 	compute "google.golang.org/api/compute/v1"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"

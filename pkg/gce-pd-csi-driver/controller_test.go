@@ -1518,7 +1518,45 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		sortTopologies := func(t1, t2 *csi.Topology) bool {
 			return t1.Segments[common.TopologyKeyZone] < t2.Segments[common.TopologyKeyZone]
 		}
-		if diff := cmp.Diff(expVol, vol, cmpopts.SortSlices(sortTopologies)); diff != "" {
+
+		// Custom comparers to compare two volumes
+		contentSourceComparer := cmp.Comparer(func(a, b *csi.VolumeContentSource) bool {
+			if a == nil {
+				return b == nil
+			}
+			if b == nil {
+				return false
+			}
+			if vcsA, ok := a.Type.(*csi.VolumeContentSource_Snapshot); ok {
+				if vcsB, valid := b.Type.(*csi.VolumeContentSource_Snapshot); valid {
+					return vcsA.Snapshot.SnapshotId == vcsB.Snapshot.SnapshotId
+				}
+				return false
+			}
+			if vcsA, ok := a.Type.(*csi.VolumeContentSource_Volume); ok {
+				if vcsB, valid := b.Type.(*csi.VolumeContentSource_Volume); valid {
+					return vcsA.Volume.VolumeId == vcsB.Volume.VolumeId
+				}
+				return false
+			}
+			return false
+		})
+		topComparer := cmp.Comparer(func(a, b *csi.Topology) bool {
+			return cmp.Diff(a.Segments, b.Segments) == ""
+		})
+		volComparer := cmp.Comparer(func(a, b *csi.Volume) bool {
+			if a == nil {
+				return b == nil
+			}
+			if b == nil {
+				return false
+			}
+			topEqual := cmp.Diff(a.AccessibleTopology, b.AccessibleTopology, cmpopts.SortSlices(sortTopologies), topComparer) == ""
+			vcEqual := cmp.Diff(a.VolumeContext, b.VolumeContext) == ""
+			csEqual := cmp.Diff(a.ContentSource, b.ContentSource, contentSourceComparer) == ""
+			return a.CapacityBytes == b.CapacityBytes && a.VolumeId == b.VolumeId && vcEqual && topEqual && csEqual
+		})
+		if diff := cmp.Diff(expVol, vol, volComparer); diff != "" {
 			t.Errorf("Accessible topologies mismatch (-want +got):\n%s", diff)
 		}
 
@@ -2124,7 +2162,7 @@ func TestListVolumeResponse(t *testing.T) {
 	}
 }
 
-func entryToVolumeId(e csi.ListVolumesResponse_Entry) string {
+func entryToVolumeId(e *csi.ListVolumesResponse_Entry) string {
 	return e.Volume.VolumeId
 }
 
