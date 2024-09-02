@@ -47,6 +47,7 @@ var (
 	metricsPath          = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 	grpcLogCharCap       = flag.Int("grpc-log-char-cap", 10000, "The maximum amount of characters logged for every grpc responses")
 	enableOtelTracing    = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
+	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster")
 
 	errorBackoffInitialDurationMs = flag.Int("backoff-initial-duration-ms", 200, "The amount of ms for the initial duration of the backoff condition for controller publish/unpublish CSI operations. Default is 200.")
 	errorBackoffMaxDurationMs     = flag.Int("backoff-max-duration-ms", 300000, "The amount of ms for the max duration of the backoff condition for controller publish/unpublish CSI operations. Default is 300000 (5m).")
@@ -93,6 +94,8 @@ var (
 	diskSupportsThroughputChangeFlag = flag.String("supports-dynamic-throughput-provisioning", "", "Comma separated list of disk types that support dynamic throughput provisioning")
 
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
+
+	removeNotReadyTaint = flag.Bool("remove-not-ready-taint", true, "remove NotReady taint from node when node is ready")
 
 	version string
 )
@@ -255,6 +258,15 @@ func handle() {
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
+
+		if *removeNotReadyTaint {
+			client, err := common.GetKubeClient(*kubeconfig)
+			if err != nil {
+				klog.Errorf("Failed to get kube client: %v. Will not remove startup taint.", err.Error())
+			}
+			nodeServer.RemoveStartupTaint(client)
+		}
+
 		if *enableDataCacheFlag {
 			if nodeName == nil || *nodeName == "" {
 				klog.Errorf("Data Cache enabled, but --node-name not passed")

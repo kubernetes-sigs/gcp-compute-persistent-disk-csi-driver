@@ -18,8 +18,14 @@ package gceGCEDriver
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"strings"
 	"testing"
 	"time"
@@ -1127,4 +1133,165 @@ func TestBlockingFormatAndMount(t *testing.T) {
 	readyToExecute := make(chan chan struct{}, 1)
 	gceDriver := getTestBlockingFormatAndMountGCEDriver(t, readyToExecute)
 	runBlockingFormatAndMount(t, gceDriver, readyToExecute)
+}
+
+const startupTaintKey = common.PDCSIDriverName + agentNotReadyNodeTaintKeySuffix
+
+func TestRemoveNotReadyTaint(t *testing.T) {
+	var count int32 = 1
+	testCases := []struct {
+		name          string
+		nodes         []v1.Node
+		csiNodes      []storagev1.CSINode
+		expectedTaint *v1.Taint
+	}{
+		{
+			name: "node with startup taint",
+			nodes: []v1.Node{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+				},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{
+						Key:    startupTaintKey,
+						Effect: v1.TaintEffectNoSchedule,
+					}},
+				},
+			}},
+			csiNodes: []storagev1.CSINode{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+				},
+				Spec: storagev1.CSINodeSpec{
+					Drivers: []storagev1.CSINodeDriver{{
+						Name:        common.PDCSIDriverName,
+						NodeID:      "node1",
+						Allocatable: &storagev1.VolumeNodeResources{Count: &count},
+					}},
+				},
+			}},
+			expectedTaint: nil,
+		},
+		{
+			name: "node without startup taint",
+			nodes: []v1.Node{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+				},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{
+						Key:    "foo",
+						Effect: v1.TaintEffectNoSchedule,
+					}},
+				},
+			}},
+			csiNodes: []storagev1.CSINode{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+				},
+				Spec: storagev1.CSINodeSpec{
+					Drivers: []storagev1.CSINodeDriver{{
+						Name:        common.PDCSIDriverName,
+						NodeID:      "node2",
+						Allocatable: &storagev1.VolumeNodeResources{Count: &count},
+					}},
+				},
+			}},
+			expectedTaint: nil,
+		},
+		{
+			name: "node not found",
+			nodes: []v1.Node{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node3",
+				},
+			}},
+			csiNodes:      []storagev1.CSINode{},
+			expectedTaint: nil,
+		},
+		{
+			name: "node without allocatable set",
+			nodes: []v1.Node{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node4",
+				},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{
+						Key:    startupTaintKey,
+						Effect: v1.TaintEffectNoSchedule,
+					}},
+				},
+			}},
+			csiNodes: []storagev1.CSINode{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node4",
+				},
+				Spec: storagev1.CSINodeSpec{
+					Drivers: []storagev1.CSINodeDriver{{
+						Name:        common.PDCSIDriverName,
+						NodeID:      "node4",
+						Allocatable: nil,
+					}},
+				},
+			}},
+			expectedTaint: &v1.Taint{
+				Key:    startupTaintKey,
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fake clientset
+			clientSet := fake.NewSimpleClientset()
+
+			// Create the test driver
+			d := getTestGCEDriver(t)
+
+			// Set up the test environment
+			for _, node := range tc.nodes {
+				_, err := clientSet.CoreV1().Nodes().Create(context.Background(), &node, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create node: %v", err)
+				}
+			}
+
+			for _, csiNode := range tc.csiNodes {
+				_, err := clientSet.StorageV1().CSINodes().Create(context.Background(), &csiNode, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create CSINode: %v", err)
+				}
+			}
+
+			// Set the environment variable for the node name
+			t.Setenv("CSI_NODE_NAME", tc.nodes[0].Name)
+
+			// Call the function to remove the startup taint
+			d.ns.RemoveStartupTaint(clientSet)
+
+			// Wait for a short period to allow the taint removal to complete
+			time.Sleep(2 * time.Second)
+
+			// Verify the result
+			node, err := clientSet.CoreV1().Nodes().Get(context.Background(), tc.nodes[0].Name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get node: %v", err)
+			}
+
+			taint := getTaintByKey(node.Spec.Taints, startupTaintKey)
+			if !reflect.DeepEqual(taint, tc.expectedTaint) {
+				t.Fatalf("Expected taint %v, but got %v", tc.expectedTaint, taint)
+			}
+		})
+	}
+}
+
+func getTaintByKey(taints []v1.Taint, key string) *v1.Taint {
+	for _, taint := range taints {
+		if taint.Key == key {
+			return &taint
+		}
+	}
+	return nil
 }
