@@ -164,14 +164,15 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	} else {
 		fastCacheSize := req.GetPublishContext()[common.ContexLocalSsdCacheSize]
 		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
-		klog.V(2).Infof("============================== fastCacheSize is %v ==============================", fastCacheSize)
+		klog.V(2).Infof("============================== fastCacheSize is %v GiB ==============================", fastCacheSize)
 		klog.V(2).Infof("============================== lvcreate fast cache layer again with the VolumeGroup %v==============================", volumeGroupName)
 		args = []string{
 			"--yes",
 			"-n",
 			cacheLvName,
 			"-L",
-			fastCacheSize,
+			// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
+			fastCacheSize + "g",
 			volumeGroupName,
 			raidedLocalSsdPath,
 		}
