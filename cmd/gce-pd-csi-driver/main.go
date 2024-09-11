@@ -256,10 +256,10 @@ func handle() {
 
 	if *enableNodeDataCacheFlag {
 		if nodeName == nil || *nodeName == "" {
-			klog.Fatalf("Data cache enabled, but --node-name not passed")
+			klog.Errorf("Data cache enabled, but --node-name not passed")
 		}
 		if err := setupDataCache(ctx, *nodeName); err != nil {
-			klog.Fatalf("DataCache setup failed: %v", err)
+			klog.Errorf("DataCache setup failed: %v", err)
 		}
 	}
 
