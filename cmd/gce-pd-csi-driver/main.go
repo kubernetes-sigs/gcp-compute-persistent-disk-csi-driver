@@ -299,24 +299,26 @@ func urlFlag(target **url.URL, name string, usage string) {
 }
 
 func setupDataCache(ctx context.Context, nodeName string) error {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return err
+	klog.V(2).Infof("Seting up data cache for node %s", nodeName)
+	if nodeName != common.TestNode {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			return err
+		}
+		kubeClient, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			return err
+		}
+		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
+			return err
+		}
+		if val, found := node.GetLabels()[dataCacheLabel]; !found || val != dataCacheLabelValue {
+			klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
+			return nil
+		}
 	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return err
-	}
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
-		return err
-	}
-	if val, found := node.GetLabels()[dataCacheLabel]; !found || val != dataCacheLabelValue {
-		klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
-		return nil
-	}
-	// Setup data cache only if enabled fro nodes
 	klog.V(2).Info("Raiding local ssds to setup data cache")
 	if err := driver.RaidLocalSsds(); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
