@@ -62,6 +62,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 		"--use-instance-api-to-list-volumes-published-nodes",
 		"--enable-controller-data-cache",
 		"--enable-node-data-cache",
+		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
 
