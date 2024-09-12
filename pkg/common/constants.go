@@ -42,4 +42,6 @@ const (
 
 	// Keys in the publish context
 	ContexLocalSsdCacheSize = "local-ssd-cache-size"
+	// Node name for E2E tests
+	TestNode = "test-node-csi-e2e"
 )
