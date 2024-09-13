@@ -1648,3 +1648,89 @@ func TestUnorderedSlicesEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestParseZoneFromURI(t *testing.T) {
+	testcases := []struct {
+		name      string
+		zoneURI   string
+		wantZone  string
+		expectErr bool
+	}{
+		{
+			name:     "ParseZoneFromURI_FullURI",
+			zoneURI:  "https://www.googleapis.com/compute/v1/projects/psch-gke-dev/zones/us-east4-a",
+			wantZone: "us-east4-a",
+		},
+		{
+			name:     "ParseZoneFromURI_ProjectZoneString",
+			zoneURI:  "projects/psch-gke-dev/zones/us-east4-a",
+			wantZone: "us-east4-a",
+		},
+		{
+			name:      "ParseZoneFromURI_Malformed",
+			zoneURI:   "projects/psch-gke-dev/regions/us-east4",
+			expectErr: true,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotZone, err := ParseZoneFromURI(tc.zoneURI)
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatalf("Expected err, but none was returned. Zone result: %v", gotZone)
+			}
+			if gotZone != tc.wantZone {
+				t.Errorf("ParseZoneFromURI(%v): got %v, want %v", tc.zoneURI, gotZone, tc.wantZone)
+			}
+		})
+	}
+}
+
+func TestNewCombinedError(t *testing.T) {
+	testcases := []struct {
+		name     string
+		errors   []error
+		wantCode codes.Code
+	}{
+		{
+			name:     "single generic error",
+			errors:   []error{fmt.Errorf("my internal error")},
+			wantCode: codes.Internal,
+		},
+		{
+			name:     "single retryable error",
+			errors:   []error{&googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"}},
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name:     "multi generic error",
+			errors:   []error{fmt.Errorf("my internal error"), fmt.Errorf("my other internal error")},
+			wantCode: codes.Internal,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("my internal error"), &googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"}},
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("my internal error"), &googleapi.Error{Code: http.StatusGatewayTimeout, Message: "connection reset by peer"}, fmt.Errorf("my other internal error")},
+			wantCode: codes.Unavailable,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("The disk resource is already being used"), &googleapi.Error{Code: http.StatusGatewayTimeout, Message: "connection reset by peer"}},
+			wantCode: codes.Unavailable,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotCode := CodeForError(NewCombinedError("message", tc.errors))
+			if gotCode != tc.wantCode {
+				t.Errorf("NewCombinedError(%v): got %v, want %v", tc.errors, gotCode, tc.wantCode)
+			}
+		})
+	}
+}

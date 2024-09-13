@@ -42,7 +42,6 @@ import (
 )
 
 type Environment string
-type Version string
 
 const (
 	TokenURL                        = "https://accounts.google.com/o/oauth2/token"
@@ -54,8 +53,6 @@ const (
 	regionURITemplate = "projects/%s/regions/%s"
 
 	replicaZoneURITemplateSingleZone             = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
-	versionV1                        Version     = "v1"
-	versionBeta                      Version     = "beta"
 	EnvironmentStaging               Environment = "staging"
 	EnvironmentProduction            Environment = "production"
 
@@ -229,7 +226,7 @@ func readConfig(configPath string) (*ConfigFile, error) {
 }
 
 func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computebeta.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionBeta)
+	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionBeta)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
 	}
@@ -242,7 +239,7 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 }
 
 func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*compute.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, versionV1)
+	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionV1)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
 	}
@@ -254,7 +251,7 @@ func createCloudService(ctx context.Context, vendorVersion string, tokenSource o
 	return service, nil
 }
 
-func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion Version) ([]option.ClientOption, error) {
+func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion GCEAPIVersion) ([]option.ClientOption, error) {
 	client, err := newOauthClient(ctx, tokenSource)
 	if err != nil {
 		return nil, err
@@ -270,7 +267,7 @@ func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, comp
 	return computeOpts, nil
 }
 
-func constructComputeEndpointPath(env Environment, version Version) string {
+func constructComputeEndpointPath(env Environment, version GCEAPIVersion) string {
 	prefix := ""
 	if env == EnvironmentStaging {
 		prefix = fmt.Sprintf("%s_", env)

@@ -4,13 +4,17 @@ StorageClass:
 SnapshotClass:
   FromFile: {{ .SnapshotClassFile }}
 {{end}}
+{{if .VolumeAttributesClassFile }}
+VolumeAttributesClass:
+  FromFile: {{ .VolumeAttributesClassFile }}
+{{end}}
 {{if .Timeouts}}
 Timeouts:
   {{ range $key, $value := .Timeouts }}{{ $key }}: {{ $value }}
   {{ end }}
 {{end}}
 DriverInfo:
-  Name: csi-gcepd-{{.StorageClass}}--{{.SnapshotClass}}
+  Name: csi-gcepd-{{.StorageClass}}--{{.SnapshotClass}}--{{.VolumeAttributesClass}}
   SupportedFsType:
   {{range .SupportedFsType}}  {{ . }}:
   {{end}}

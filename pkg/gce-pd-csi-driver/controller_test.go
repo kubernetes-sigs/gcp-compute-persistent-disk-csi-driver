@@ -16,11 +16,14 @@ package gceGCEDriver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,16 +33,19 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/klog/v2"
+	clock "k8s.io/utils/clock/testing"
 	"k8s.io/utils/strings/slices"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 const (
@@ -1131,6 +1137,1010 @@ func TestCreateVolumeArguments(t *testing.T) {
 	}
 }
 
+func TestMultiZoneVolumeCreation(t *testing.T) {
+	testCases := []struct {
+		name               string
+		req                *csi.CreateVolumeRequest
+		enableStoragePools bool
+		fallbackZones      []string
+		expZones           []string
+		expErrCode         codes.Code
+	}{
+		{
+			name: "success single ROX multi-zone disk",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expZones: []string{"us-central1-a"},
+		},
+		{
+			name: "single ROX multi-zone disk empty topology fallback zones",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{},
+			},
+			fallbackZones: []string{zone, secondZone},
+			expZones:      []string{zone, secondZone},
+		},
+		{
+			name: "success triple ROX multi-zone disk",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						},
+					},
+				},
+			},
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name: "success triple rwo multi-zone disk",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						},
+					},
+				},
+			},
+			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+		},
+		{
+			name: "err single ROX multi-zone no topology",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "err rwo access mode",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: testSnapshotID,
+						},
+					},
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "err no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "err cloning not supported",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				VolumeContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: testVolumeID,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
+		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
+		gceDriver.cs.fallbackRequisiteZones = tc.fallbackZones
+
+		if tc.req.VolumeContentSource.GetType() != nil {
+			snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+			if err != nil {
+				t.Errorf("Got error extracting snapshot parameters: %v", err)
+			}
+			if snapshotParams.SnapshotType == common.DiskSnapshotType {
+				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, common.MultiZoneValue), name, snapshotParams)
+			} else {
+				t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
+			}
+		}
+
+		// Start Test
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if tc.expErrCode != codes.OK {
+			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		topologies := make([]*csi.Topology, 0, len(tc.expZones))
+		for _, zone := range tc.expZones {
+			topologies = append(topologies, &csi.Topology{
+				Segments: map[string]string{common.TopologyKeyZone: zone},
+			})
+		}
+
+		expVol := &csi.Volume{
+			CapacityBytes:      common.GbToBytes(20),
+			VolumeId:           fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", project, name),
+			VolumeContext:      nil,
+			AccessibleTopology: topologies,
+			ContentSource:      tc.req.VolumeContentSource,
+		}
+
+		// Make sure responses match
+		vol := resp.GetVolume()
+		if vol == nil {
+			// If one is nil but not both
+			t.Fatalf("Expected volume %v, got nil volume", expVol)
+		}
+
+		klog.Warningf("Got accessible topology: %v", vol.GetAccessibleTopology())
+
+		sortTopologies := func(t1, t2 *csi.Topology) bool {
+			return t1.Segments[common.TopologyKeyZone] < t2.Segments[common.TopologyKeyZone]
+		}
+
+		// Custom comparers to compare two volumes
+		contentSourceComparer := cmp.Comparer(func(a, b *csi.VolumeContentSource) bool {
+			if a == nil {
+				return b == nil
+			}
+			if b == nil {
+				return false
+			}
+			if vcsA, ok := a.Type.(*csi.VolumeContentSource_Snapshot); ok {
+				if vcsB, valid := b.Type.(*csi.VolumeContentSource_Snapshot); valid {
+					return vcsA.Snapshot.SnapshotId == vcsB.Snapshot.SnapshotId
+				}
+				return false
+			}
+			if vcsA, ok := a.Type.(*csi.VolumeContentSource_Volume); ok {
+				if vcsB, valid := b.Type.(*csi.VolumeContentSource_Volume); valid {
+					return vcsA.Volume.VolumeId == vcsB.Volume.VolumeId
+				}
+				return false
+			}
+			return false
+		})
+		topComparer := cmp.Comparer(func(a, b *csi.Topology) bool {
+			return cmp.Diff(a.Segments, b.Segments) == ""
+		})
+		volComparer := cmp.Comparer(func(a, b *csi.Volume) bool {
+			if a == nil {
+				return b == nil
+			}
+			if b == nil {
+				return false
+			}
+			topEqual := cmp.Diff(a.AccessibleTopology, b.AccessibleTopology, cmpopts.SortSlices(sortTopologies), topComparer) == ""
+			vcEqual := cmp.Diff(a.VolumeContext, b.VolumeContext) == ""
+			csEqual := cmp.Diff(a.ContentSource, b.ContentSource, contentSourceComparer) == ""
+			return a.CapacityBytes == b.CapacityBytes && a.VolumeId == b.VolumeId && vcEqual && topEqual && csEqual
+		})
+		if diff := cmp.Diff(expVol, vol, volComparer); diff != "" {
+			t.Errorf("Accessible topologies mismatch (-want +got):\n%s", diff)
+		}
+
+		for _, zone := range tc.expZones {
+			volumeKey := meta.ZonalKey(name, zone)
+			disk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+			if err != nil {
+				t.Fatalf("Get Disk failed for created disk with error: %v", err)
+			}
+			if disk.GetLabels()[common.MultiZoneLabel] != "true" {
+				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, common.MultiZoneLabel, disk.GetLabels())
+			}
+		}
+	}
+}
+
+type FakeCloudProviderInsertDiskErr struct {
+	*gce.FakeCloudProvider
+	insertDiskErrors map[string]error
+}
+
+func NewFakeCloudProviderInsertDiskErr(project, zone string) (*FakeCloudProviderInsertDiskErr, error) {
+	provider, err := gce.CreateFakeCloudProvider(project, zone, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &FakeCloudProviderInsertDiskErr{
+		FakeCloudProvider: provider,
+		insertDiskErrors:  map[string]error{},
+	}, nil
+}
+
+func (cloud *FakeCloudProviderInsertDiskErr) AddDiskForErr(volKey *meta.Key, err error) {
+	cloud.insertDiskErrors[volKey.String()] = err
+}
+
+func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+	if err, ok := cloud.insertDiskErrors[volKey.String()]; ok {
+		return err
+	}
+
+	return cloud.FakeCloudProvider.InsertDisk(ctx, project, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+}
+
+func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
+	testCases := []struct {
+		name           string
+		req            *csi.CreateVolumeRequest
+		insertDiskErrs map[*meta.Key]error
+		expErrCode     codes.Code
+		wantDisks      []*meta.Key
+	}{
+		{
+			name: "ResourceExhausted errors",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			insertDiskErrs: map[*meta.Key]error{
+				meta.ZonalKey(name, "us-central1-b"): &googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"},
+			},
+			expErrCode: codes.ResourceExhausted,
+			wantDisks: []*meta.Key{
+				meta.ZonalKey(name, "us-central1-a"),
+				meta.ZonalKey(name, "us-central1-c"),
+			},
+		},
+		{
+			name: "Unavailable errors",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			insertDiskErrs: map[*meta.Key]error{
+				meta.ZonalKey(name, "us-central1-b"): &googleapi.Error{Code: http.StatusGatewayTimeout, Message: "connection reset by peer"},
+				meta.ZonalKey(name, "us-central1-c"): &googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"},
+			},
+			expErrCode: codes.Unavailable,
+			wantDisks: []*meta.Key{
+				meta.ZonalKey(name, "us-central1-a"),
+			},
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		fcp, err := NewFakeCloudProviderInsertDiskErr(project, zone)
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
+		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
+
+		for volKey, err := range tc.insertDiskErrs {
+			fcp.AddDiskForErr(volKey, err)
+		}
+
+		// Start Test
+		_, err = gceDriver.cs.CreateVolume(context.Background(), tc.req)
+
+		if err == nil {
+			t.Errorf("Expected error: %v, got no error", tc.expErrCode)
+		}
+
+		serverError, ok := status.FromError(err)
+		if !ok {
+			t.Errorf("Could not get error status code from err: %v", serverError)
+		}
+		if serverError.Code() != tc.expErrCode {
+			t.Errorf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+		}
+
+		for _, volKey := range tc.wantDisks {
+			disk, err := fcp.GetDisk(context.Background(), project, volKey, gce.GCEAPIVersionV1)
+			if err != nil {
+				t.Errorf("Unexpected err fetching disk %v: %v", volKey, err)
+			}
+			if disk == nil {
+				t.Errorf("Expected disk for %v but got nil", volKey)
+			}
+		}
+	}
+}
+
+func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
+	// When volume attribute class specifies iops / throughput they should take precedence over storage class parameters
+	testCases := []struct {
+		name          string
+		req           *csi.CreateVolumeRequest
+		expIops       int64
+		expThroughput int64
+		wantErr       bool
+		expErrCode    codes.Code
+	}{
+		{
+			name: "VolumeAttributesClass parameters should take precedence over storage class parameters",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "hyperdisk-balanced",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			expIops:       20000,
+			expThroughput: 600,
+			wantErr:       false,
+		},
+		{
+			name: "VolumeAttributesClass parameters should throw an error for incompatible disk types",
+			req: &csi.CreateVolumeRequest{
+				Name:          "pd-ssd-vol",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "pd-ssd",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			expIops:       0,
+			expThroughput: 0,
+			wantErr:       true,
+			expErrCode:    codes.InvalidArgument,
+		},
+	}
+
+	for _, tc := range testCases {
+		var d []*gce.CloudDisk
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, d)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+
+		createVolReq := tc.req
+
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), createVolReq)
+		if tc.wantErr {
+			if status.Code(err) != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, status.Code(err), err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("Failed to create volume: %v", err)
+		}
+
+		volumeId := resp.GetVolume().VolumeId
+		project, volumeKey, err := common.VolumeIDToKey(volumeId)
+		if err != nil {
+			t.Fatalf("Failed to convert volume id to key: %v", err)
+		}
+
+		disk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+
+		if err != nil {
+			t.Fatalf("Failed to get disk: %v", err)
+		}
+		if disk != nil {
+			if disk.GetProvisionedIops() != tc.expIops {
+				t.Errorf("Expected IOPS to be %d, got: %v", tc.expIops, disk.GetProvisionedIops())
+			}
+			if disk.GetProvisionedThroughput() != tc.expThroughput {
+				t.Errorf("Expected Throughput to be %d, got: %v", tc.expThroughput, disk.GetProvisionedThroughput())
+			}
+		}
+	}
+
+}
+
+func TestVolumeModifyOperation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		req           *csi.ControllerModifyVolumeRequest
+		diskType      string
+		params        *common.DiskParameters
+		expIops       int64
+		expThroughput int64
+		expErrMessage string
+	}{
+		{
+			name: "Update volume with valid parameters",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			diskType: "hyperdisk-balanced",
+			params: &common.DiskParameters{
+				DiskType:                      "hyperdisk-balanced",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       20000,
+			expThroughput: 600,
+			expErrMessage: "",
+		},
+		{
+			name: "Update volume with invalid parameters",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "0", "throughput": "0"},
+			},
+			diskType: "hyperdisk-balanced",
+			params: &common.DiskParameters{
+				DiskType:                      "hyperdisk-balanced",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       10000,
+			expThroughput: 500,
+			expErrMessage: "no IOPS or Throughput specified for disk",
+		},
+		{
+			name: "Update volume with valid parameters but invalid disk type",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+			},
+			diskType: "pd-ssd",
+			params: &common.DiskParameters{
+				DiskType: "pd-ssd",
+			},
+			expIops:       0,
+			expThroughput: 0,
+			expErrMessage: fmt.Sprintf("modifications not supported for disk type %s", "pd-ssd"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Arrange
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+
+		if err != nil {
+			t.Fatalf("Failed to create mock cloud provider: %v", err)
+		}
+
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		project, volKey, err := common.VolumeIDToKey(testVolumeID)
+		if err != nil {
+			t.Fatalf("Failed convert key: %v", err)
+		}
+
+		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "")
+		if err != nil {
+			t.Fatalf("Failed to insert disk: %v", err)
+		}
+		// Act
+		_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), tc.req)
+
+		// Assert
+		if err != nil {
+			msg := err.Error()
+			if !strings.ContainsAny(msg, tc.expErrMessage) {
+				t.Errorf("Failed to modify volume: %v", err)
+			}
+		}
+
+		modifiedVol, err := fcp.GetDisk(context.Background(), project, volKey, gce.GCEAPIVersionBeta)
+
+		if err != nil {
+			t.Errorf("Failed to get volume: %v", err)
+		}
+
+		diskIops := modifiedVol.GetProvisionedIops()
+		throughput := modifiedVol.GetProvisionedThroughput()
+
+		if diskIops != tc.expIops && throughput != tc.expThroughput {
+			t.Errorf("Failed to modify volume: %v", err)
+		}
+	}
+}
+
+type FakeCloudProviderUpdateDiskErr struct {
+	*gce.FakeCloudProvider
+	updateDiskErrors map[string]error
+}
+
+func NewFakeCloudProviderUpdateDiskErr(project, zone string) (*FakeCloudProviderUpdateDiskErr, error) {
+	provider, err := gce.CreateFakeCloudProvider(project, zone, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &FakeCloudProviderUpdateDiskErr{
+		FakeCloudProvider: provider,
+		updateDiskErrors:  map[string]error{},
+	}, nil
+}
+
+func (cloud *FakeCloudProviderUpdateDiskErr) AddDiskForErr(volKey *meta.Key, err error) {
+	cloud.updateDiskErrors[volKey.String()] = err
+}
+
+func (cloud *FakeCloudProviderUpdateDiskErr) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *gcecloudprovider.CloudDisk, params common.ModifyVolumeParameters) error {
+	if err, ok := cloud.updateDiskErrors[volKey.String()]; ok {
+		return err
+	}
+
+	return cloud.FakeCloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, params)
+}
+
+type modifyVolumeErrorTest struct {
+	expErrCode int
+	wantReason bool
+	reason     string
+}
+
+func TestVolumeModifyErrorHandling(t *testing.T) {
+	testCases := []struct {
+		name               string
+		modifyVolumeErrors map[*meta.Key]error
+		createReq          *csi.CreateVolumeRequest
+		modifyReq          *csi.ControllerModifyVolumeRequest
+		expErr             *modifyVolumeErrorTest
+	}{
+		{
+			name:      "disk notFound errors",
+			modifyReq: &csi.ControllerModifyVolumeRequest{},
+			expErr: &modifyVolumeErrorTest{
+				wantReason: true,
+				reason:     "notFound",
+			},
+		},
+		{
+			name: "Too Many Requests errors",
+			createReq: &csi.CreateVolumeRequest{
+				Name: name,
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "hyperdisk-balanced",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+				},
+				VolumeCapabilities: stdVolCaps,
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			modifyReq: &csi.ControllerModifyVolumeRequest{
+				MutableParameters: map[string]string{"iops": "3001", "throughput": "151"},
+			},
+			modifyVolumeErrors: map[*meta.Key]error{
+				meta.ZonalKey(name, "us-central1-a"): &googleapi.Error{
+					Code:    http.StatusTooManyRequests,
+					Message: "too many IOPS/Throughput modifications in a 6 hour window",
+				},
+			},
+			expErr: &modifyVolumeErrorTest{
+				expErrCode: http.StatusTooManyRequests,
+			},
+		},
+		{
+			name: "InvalidArgument errors",
+			createReq: &csi.CreateVolumeRequest{
+				Name: name,
+				Parameters: map[string]string{
+					common.ParameterKeyType:                          "hyperdisk-balanced",
+					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+				},
+				VolumeCapabilities: stdVolCaps,
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			modifyReq: &csi.ControllerModifyVolumeRequest{
+				MutableParameters: map[string]string{"iops": "10000", "throughput": "2400"},
+			},
+			modifyVolumeErrors: map[*meta.Key]error{
+				meta.ZonalKey(name, "us-central1-a"): &googleapi.Error{Code: int(codes.InvalidArgument), Message: "InvalidArgument"},
+			},
+			expErr: &modifyVolumeErrorTest{
+				expErrCode: int(codes.InvalidArgument),
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		fcp, err := NewFakeCloudProviderUpdateDiskErr(project, zone)
+		if err != nil {
+			t.Fatalf("Failed to create mock cloud provider")
+		}
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+
+		for volKey, err := range tc.modifyVolumeErrors {
+			fcp.AddDiskForErr(volKey, err)
+		}
+
+		volId := testVolumeID
+		if tc.createReq != nil {
+			fmt.Printf("Creating volume")
+			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.createReq)
+			if err != nil {
+				t.Errorf("Expected no error, got %v", err)
+			}
+			volId = resp.GetVolume().VolumeId
+		}
+
+		tc.modifyReq.VolumeId = volId
+		_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), tc.modifyReq)
+		if err == nil {
+			t.Errorf("Expected err: %v, got no error", tc.expErr.expErrCode)
+		}
+
+		var e *googleapi.Error
+		if ok := errors.As(err, &e); ok {
+			if e.Code != tc.expErr.expErrCode {
+				t.Errorf("Expected error: %v, got: %v", tc.expErr.expErrCode, e.Code)
+			}
+			if tc.expErr.wantReason && !googleapiErrContainsReason(e, tc.expErr.reason) {
+				t.Errorf("Expected error to contain reason %s", tc.expErr.reason)
+			}
+		} else {
+			t.Errorf("Expected error %v to be a googleapi error", err)
+		}
+	}
+}
+
 func TestListVolumePagination(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -1544,7 +2554,7 @@ func TestListVolumeResponse(t *testing.T) {
 	}
 }
 
-func entryToVolumeId(e csi.ListVolumesResponse_Entry) string {
+func entryToVolumeId(e *csi.ListVolumesResponse_Entry) string {
 	return e.Volume.VolumeId
 }
 
@@ -2463,6 +3473,14 @@ func createZonalCloudDisk(name string) *gce.CloudDisk {
 	})
 }
 
+func createZonalCloudDiskWithZone(name, zone string) *gce.CloudDisk {
+	return gce.CloudDiskFromV1(&compute.Disk{
+		Name:     name,
+		SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/name/%s", name),
+		Zone:     zone,
+	})
+}
+
 func TestDeleteVolume(t *testing.T) {
 	testCases := []struct {
 		name      string
@@ -2524,6 +3542,63 @@ func TestDeleteVolume(t *testing.T) {
 			continue
 		}
 
+	}
+}
+
+func TestMultiZoneDeleteVolume(t *testing.T) {
+	testCases := []struct {
+		name      string
+		seedDisks []*gce.CloudDisk
+		req       *csi.DeleteVolumeRequest
+		expErr    bool
+	}{
+		{
+			name: "single-zone",
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDiskWithZone(name, zone),
+			},
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+			},
+		},
+		{
+			name: "multi-zone",
+			seedDisks: []*gce.CloudDisk{
+				createZonalCloudDiskWithZone(name, zone),
+				createZonalCloudDiskWithZone(name, secondZone),
+			},
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		// Setup new driver each time so no interference
+		fcp, err := gce.CreateFakeCloudProvider(project, zone, tc.seedDisks)
+		if err != nil {
+			t.Fatalf("Failed to create fake cloud provider: %v", err)
+		}
+		// Setup new driver each time so no interference
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
+		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
+		_, err = gceDriver.cs.DeleteVolume(context.Background(), tc.req)
+		if err == nil && tc.expErr {
+			t.Errorf("Expected error but got none")
+		}
+		if err != nil && !tc.expErr {
+			t.Errorf("Did not expect error but got: %v", err)
+		}
+
+		disks, _, _ := fcp.ListDisks(context.TODO(), []googleapi.Field{})
+		if len(disks) > 0 {
+			t.Errorf("Expected all disks to be deleted. Got: %v", disks)
+		}
+
+		if err != nil {
+			continue
+		}
 	}
 }
 
@@ -4238,4 +5313,13 @@ func isInternalError(err error) bool {
 	}
 
 	return st.Code().String() == "Internal"
+}
+
+func googleapiErrContainsReason(err *googleapi.Error, reason string) bool {
+	for _, errItem := range err.Errors {
+		if strings.Contains(errItem.Reason, reason) {
+			return true
+		}
+	}
+	return false
 }

@@ -30,20 +30,25 @@ import (
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
 var (
-	project         = flag.String("project", "", "Project to run tests in")
-	serviceAccount  = flag.String("service-account", "", "Service account to bring up instance with")
-	architecture    = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	zones           = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
-	machineType     = flag.String("machine-type", "n2-standard-2", "Type of machine to provision instance on")
-	imageURL        = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
-	runInProw       = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
-	deleteInstances = flag.Bool("delete-instances", false, "Delete the instances after tests run")
-	cloudtopHost    = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
+	project                   = flag.String("project", "", "Project to run tests in")
+	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
+	vmNamePrefix              = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
+	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
+	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Milan", "Minimum CPU architecture")
+	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	machineType               = flag.String("machine-type", "n2d-standard-2", "Type of machine to provision instance on")
+	imageURL                  = flag.String("image-url", "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-2404-lts-amd64", "OS image url to get image from")
+	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
+	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
+	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
+	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
+	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
 
 	testContexts        = []*remote.TestContext{}
 	computeService      *compute.Service
@@ -117,21 +122,35 @@ var _ = AfterSuite(func() {
 	}
 })
 
-func getRemoteInstanceConfig() *remote.InstanceConfig {
-	return &remote.InstanceConfig{
-		Project:        *project,
-		Architecture:   *architecture,
-		MachineType:    *machineType,
-		ServiceAccount: *serviceAccount,
-		ImageURL:       *imageURL,
-		CloudtopHost:   *cloudtopHost}
+func notEmpty(v string) bool {
+	return v != ""
+}
+
+func getDriverConfig() testutils.DriverConfig {
+	return testutils.DriverConfig{
+		ExtraFlags: slices.Filter(nil, strings.Split(*extraDriverFlags, ","), notEmpty),
+		Zones:      strings.Split(*zones, ","),
+	}
 }
 
 func NewTestContext(zone string) *remote.TestContext {
-	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+	nodeID := fmt.Sprintf("%s-%s", *vmNamePrefix, zone)
 	klog.Infof("Setting up node %s", nodeID)
 
-	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
+	instanceConfig := remote.InstanceConfig{
+		Project:                   *project,
+		Architecture:              *architecture,
+		MinCpuPlatform:            *minCpuPlatform,
+		Zone:                      zone,
+		Name:                      nodeID,
+		MachineType:               *machineType,
+		ServiceAccount:            *serviceAccount,
+		ImageURL:                  *imageURL,
+		CloudtopHost:              *cloudtopHost,
+		EnableConfidentialCompute: *enableConfidentialCompute,
+		ComputeService:            computeService,
+	}
+	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
@@ -152,7 +171,7 @@ func NewTestContext(zone string) *remote.TestContext {
 	}
 
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
-	tc, err := testutils.GCEClientAndDriverSetup(i, "")
+	tc, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 	if err != nil {
 		klog.Fatalf("Failed to set up TestContext for instance %v: %v", i.GetName(), err)
 	}

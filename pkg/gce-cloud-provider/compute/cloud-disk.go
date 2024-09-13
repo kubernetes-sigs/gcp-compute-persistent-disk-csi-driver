@@ -256,3 +256,36 @@ func (d *CloudDisk) GetLabels() map[string]string {
 		return nil
 	}
 }
+
+func (d *CloudDisk) GetAccessMode() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.AccessMode
+	case d.betaDisk != nil:
+		return d.betaDisk.AccessMode
+	default:
+		return ""
+	}
+}
+
+func (d *CloudDisk) GetProvisionedIops() int64 {
+	switch {
+	case d.disk != nil:
+		return d.disk.ProvisionedIops
+	case d.betaDisk != nil:
+		return d.betaDisk.ProvisionedIops
+	default:
+		return 0
+	}
+}
+
+func (d *CloudDisk) GetProvisionedThroughput() int64 {
+	switch {
+	case d.disk != nil:
+		return d.disk.ProvisionedThroughput
+	case d.betaDisk != nil:
+		return d.betaDisk.ProvisionedThroughput
+	default:
+		return 0
+	}
+}

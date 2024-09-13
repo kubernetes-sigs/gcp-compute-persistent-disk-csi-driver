@@ -122,7 +122,7 @@ func TestCodeForGCEOpError(t *testing.T) {
 		{
 			name:     "OPERATION_CANCELED_BY_USER error",
 			inputErr: computev1.OperationErrorErrors{Code: "OPERATION_CANCELED_BY_USER"},
-			expCode:  codes.Aborted,
+			expCode:  codes.Canceled,
 		},
 		{
 			name:     "QUOTA_EXCEEDED error",

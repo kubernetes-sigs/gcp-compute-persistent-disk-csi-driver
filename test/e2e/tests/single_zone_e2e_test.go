@@ -47,6 +47,7 @@ const (
 	defaultSizeGb                     int64 = 5
 	defaultExtremeSizeGb              int64 = 500
 	defaultHdTSizeGb                  int64 = 2048
+	defaultHdmlSizeGb                 int64 = 200
 	defaultRepdSizeGb                 int64 = 200
 	defaultMwSizeGb                   int64 = 200
 	defaultVolumeLimit                int64 = 127
@@ -56,6 +57,7 @@ const (
 	ssdDiskType                             = "pd-ssd"
 	extremeDiskType                         = "pd-extreme"
 	hdtDiskType                             = "hyperdisk-throughput"
+	hdmlDiskType                            = "hyperdisk-ml"
 	provisionedIOPSOnCreate                 = "12345"
 	provisionedIOPSOnCreateInt              = int64(12345)
 	provisionedIOPSOnCreateDefaultInt       = int64(100000)
@@ -74,7 +76,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
 	})
 
-	It("Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
+	It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -171,7 +173,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
+	It("[NVMe] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -329,7 +331,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-ssd", ssdDiskType),
 	)
 
-	DescribeTable("Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
+	DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
 		func(diskType string) {
 			testContext := getRandomTestContext()
 
@@ -1315,19 +1317,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		_, err := getRandomTestContext().Client.ListVolumes()
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 
-		zone := "us-central1-c"
-		nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
-		i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
-
-		if err != nil {
-			klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
-		}
-
-		klog.Infof("Creating new driver and client for node %s\n", i.GetName())
+		i := getRandomTestContext().Instance
 
 		// Create new driver and client with valid, empty endpoint
 		klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
-		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, "")
+		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 		if err != nil {
 			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
@@ -1336,7 +1330,9 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed empty compute url")
 
 		// Create new driver and client w/ valid, passed-in endpoint
-		tcValid, err := testutils.GCEClientAndDriverSetup(i, "https://compute.googleapis.com")
+		driverConfig := getDriverConfig()
+		driverConfig.ComputeEndpoint = "https://compute.googleapis.com"
+		tcValid, err := testutils.GCEClientAndDriverSetup(i, driverConfig)
 		if err != nil {
 			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
 		}
@@ -1345,7 +1341,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 	})
 
-	It("Should update readahead if read_ahead_kb passed on mount", func() {
+	It("[NVMe] Should update readahead if read_ahead_kb passed on mount", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -1406,7 +1402,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Expect(err).To(BeNil(), "Failed to symlink devicePath")
 				devFsPathPieces := strings.Split(devFsPath, "/")
 				devName = devFsPathPieces[len(devFsPathPieces)-1]
-
+				break
 			}
 		}
 		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
@@ -1577,6 +1573,8 @@ func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, 
 		diskSize = defaultExtremeSizeGb
 	case hdtDiskType:
 		diskSize = defaultHdTSizeGb
+	case hdmlDiskType:
+		diskSize = defaultHdmlSizeGb
 	}
 	volume, err := client.CreateVolume(volName, disk.params, diskSize,
 		&csi.TopologyRequirement{
@@ -1755,6 +1753,14 @@ var typeToDisk = map[string]*disk{
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(ssdDiskType))
+		},
+	},
+	"hyperdisk-ml": {
+		params: map[string]string{
+			common.ParameterKeyType: "hyperdisk-ml",
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring("hyperdisk-ml"))
 		},
 	},
 }
