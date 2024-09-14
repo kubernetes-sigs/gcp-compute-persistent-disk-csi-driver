@@ -65,13 +65,17 @@ func TestSanity(t *testing.T) {
 	enableStoragePools := false
 	multiZoneVolumeHandleConfig := driver.MultiZoneVolumeHandleConfig{}
 	listVolumesConfig := driver.ListVolumesConfig{}
+	provisionableDisksConfig := driver.ProvisionableDisksConfig{
+		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-extreme"},
+		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
+	}
 
 	mounter := mountmanager.NewFakeSafeMounter()
 	deviceUtils := deviceutils.NewFakeDeviceUtils(true)
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
 	fakeStatter := mountmanager.NewFakeStatterWithOptions(mounter, mountmanager.FakeStatterOptions{IsBlock: false})
 	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), fakeStatter)
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, nil, identityServer, controllerServer, nodeServer)
@@ -112,6 +116,12 @@ func TestSanity(t *testing.T) {
 		DialOptions:    []grpc.DialOption{grpc.WithInsecure()},
 		IDGen:          newPDIDGenerator(project, zone),
 		TestVolumeSize: common.GbToBytes(200),
+		TestVolumeParameters: map[string]string{
+			common.ParameterKeyType:                          "hyperdisk-balanced",
+			common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+			common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+		},
+		TestVolumeMutableParameters: map[string]string{"iops": "3013", "throughput": "151"},
 	}
 	sanity.Test(t, config)
 }

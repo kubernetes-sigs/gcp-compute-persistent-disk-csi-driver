@@ -1,0 +1,7 @@
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml
+
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme

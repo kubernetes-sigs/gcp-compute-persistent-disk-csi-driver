@@ -47,7 +47,9 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} \
             --do-k8s-build=${do_k8s_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files=sc-standard.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
+            --storageclass-files=sc-hdb.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
+            --volumeattributesclass-files=hdb-volumeattributesclass.yaml \
+            --kube-runtime-config=api/all=true \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
@@ -64,7 +66,7 @@ if [ "$deployment_strategy" = "gke" ]; then
     base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
   fi
 else
-  base_cmd="${base_cmd} --kube-version=${kube_version}"
+  base_cmd="${base_cmd} --kube-version=${kube_version} --kube-feature-gates=VolumeAttributesClass=true"
 fi
 
 if [ -z "$gce_region" ]; then

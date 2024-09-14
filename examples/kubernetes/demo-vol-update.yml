@@ -1,0 +1,99 @@
+apiVersion: storage.k8s.io/v1beta1
+kind: VolumeAttributesClass
+metadata:
+  name: silver
+driverName: pd.csi.storage.gke.io
+parameters:
+  throughput: "350"
+  iops: "6000"
+---
+apiVersion: storage.k8s.io/v1beta1
+kind: VolumeAttributesClass
+metadata:
+  name: gold
+driverName: pd.csi.storage.gke.io
+parameters:
+  throughput: "550"
+  iops: "15000"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: balanced
+provisioner: pd.csi.storage.gke.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: hyperdisk-balanced
+  provisioned-throughput-on-create: "300Mi"
+  provisioned-iops-on-create: "5000"
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: throughput-optimized
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: hyperdisk-balanced
+  provisioned-throughput-on-create: "500Mi"
+  provisioned-iops-on-create: "10000"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: balanced-pvc
+spec:
+  volumeAttributesClassName: silver
+  storageClassName: balanced
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: throughput-optimized-pvc
+spec:
+  volumeAttributesClassName: silver
+  storageClassName: throughput-optimized
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Gi
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: pod-demo
+spec:
+  volumes:
+    - name: pvc-demo-vol
+      persistentVolumeClaim:
+       claimName: balanced-pvc
+    - name: data-vol
+      persistentVolumeClaim:
+        claimName: throughput-optimized-pvc
+  containers:
+    - name: pod-demo
+      image: nginx:latest
+      resources:
+        limits:
+          cpu: 10m
+          memory: 80Mi
+        requests:
+          cpu: 10m
+          memory: 80Mi
+      ports:
+        - containerPort: 80
+          name: "http-server"
+      volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: pvc-demo-vol
+        - mountPath: "/data"
+          name: data-vol

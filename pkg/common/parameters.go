@@ -131,6 +131,11 @@ type ParameterProcessor struct {
 	EnableMultiZone    bool
 }
 
+type ModifyVolumeParameters struct {
+	IOPS       *int64
+	Throughput *int64
+}
+
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
@@ -323,4 +328,29 @@ func extractResourceTagsParameter(tagsString string, resourceTags map[string]str
 		resourceTags[tagParentIDKey] = tagValue
 	}
 	return nil
+}
+
+func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumeParameters, error) {
+
+	modifyVolumeParams := ModifyVolumeParameters{}
+
+	for key, value := range parameters {
+		switch strings.ToLower(key) {
+		case "iops":
+			iops, err := ConvertStringToInt64(value)
+			if err != nil {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
+			}
+			modifyVolumeParams.IOPS = &iops
+		case "throughput":
+			throughput, err := ConvertStringToInt64(value)
+			if err != nil {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
+			}
+			modifyVolumeParams.Throughput = &throughput
+		default:
+			return ModifyVolumeParameters{}, fmt.Errorf("parameters contain unknown parameter: %s", key)
+		}
+	}
+	return modifyVolumeParams, nil
 }

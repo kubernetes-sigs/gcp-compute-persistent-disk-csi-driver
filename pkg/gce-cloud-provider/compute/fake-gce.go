@@ -143,7 +143,12 @@ func (cloud *FakeCloudProvider) ListDisksWithFilter(ctx context.Context, fields 
 func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error) {
 	d := []*computev1.Disk{}
 	for _, cd := range cloud.disks {
-		d = append(d, cd.disk)
+		if cd.disk != nil {
+			d = append(d, cd.disk)
+		} else if cd.betaDisk != nil {
+			betaDisk := convertBetaDiskToV1Disk(cd.betaDisk)
+			d = append(d, betaDisk)
+		}
 	}
 	return d, "", nil
 }
@@ -228,14 +233,15 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	computeDisk := &computev1.Disk{
-		Name:            volKey.Name,
-		SizeGb:          common.BytesToGbRoundUp(capBytes),
-		Description:     "Disk created by GCE-PD CSI Driver",
-		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		SourceDiskId:    volumeContentSourceVolumeID,
-		Status:          cloud.mockDiskStatus,
-		Labels:          params.Labels,
-		ProvisionedIops: params.ProvisionedIOPSOnCreate,
+		Name:                  volKey.Name,
+		SizeGb:                common.BytesToGbRoundUp(capBytes),
+		Description:           "Disk created by GCE-PD CSI Driver",
+		Type:                  cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		SourceDiskId:          volumeContentSourceVolumeID,
+		Status:                cloud.mockDiskStatus,
+		Labels:                params.Labels,
+		ProvisionedIops:       params.ProvisionedIOPSOnCreate,
+		ProvisionedThroughput: params.ProvisionedThroughputOnCreate,
 	}
 
 	if snapshotID != "" {
@@ -276,6 +282,35 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	} else {
 		cloud.disks[volKey.String()] = CloudDiskFromV1(computeDisk)
 	}
+	return nil
+}
+
+func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+	_, ok := cloud.disks[volKey.String()]
+	if !ok {
+		return notFoundError()
+	}
+	specifiedIops := params.IOPS != nil && *params.IOPS != 0
+	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
+	if !specifiedIops && !specifiedThroughput {
+		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
+	}
+
+	if params.IOPS != nil {
+		if existingDisk.betaDisk != nil {
+			existingDisk.betaDisk.ProvisionedIops = *params.IOPS
+		} else if existingDisk.disk != nil {
+			existingDisk.disk.ProvisionedIops = *params.IOPS
+		}
+	}
+	if params.Throughput != nil {
+		if existingDisk.betaDisk != nil {
+			existingDisk.betaDisk.ProvisionedThroughput = *params.Throughput
+		} else if existingDisk.disk != nil {
+			existingDisk.disk.ProvisionedThroughput = *params.Throughput
+		}
+	}
+	cloud.disks[volKey.String()] = existingDisk
 	return nil
 }
 

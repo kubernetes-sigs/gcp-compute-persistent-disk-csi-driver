@@ -84,6 +84,9 @@ var (
 	useInstanceAPIForListVolumesPublishedNodesFlag = flag.Bool("use-instance-api-to-list-volumes-published-nodes", false, "Enables using the instances.list API to determine published_node_ids in ListVolumes. When false (default), the disks.list API is used")
 	instancesListFiltersFlag                       = flag.String("instances-list-filters", "", "Comma separated list of filters to use when calling the instances.list API. By default instances.list fetches all instances in a region")
 
+	diskSupportsIopsChangeFlag       = flag.String("supports-dynamic-iops-provisioning", "", "Comma separated list of disk types that support dynamic IOPS provisioning")
+	diskSupportsThroughputChangeFlag = flag.String("supports-dynamic-throughput-provisioning", "", "Comma separated list of disk types that support dynamic throughput provisioning")
+
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
 
 	version string
@@ -200,6 +203,14 @@ func handle() {
 		UseInstancesAPIForPublishedNodes: *useInstanceAPIForListVolumesPublishedNodesFlag,
 	}
 
+	// Initialize provisionableDisks config
+	supportsIopsChange := parseCSVFlag(*diskSupportsIopsChangeFlag)
+	supportsThroughputChange := parseCSVFlag(*diskSupportsThroughputChangeFlag)
+	provisionableDisksConfig := driver.ProvisionableDisksConfig{
+		SupportsIopsChange:       supportsIopsChange,
+		SupportsThroughputChange: supportsThroughputChange,
+	}
+
 	// Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
@@ -209,7 +220,7 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig)
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
