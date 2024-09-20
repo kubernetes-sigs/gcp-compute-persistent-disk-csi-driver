@@ -24,5 +24,11 @@ patchesJson6902:
     kind: Deployment
     name: csi-gce-pd-controller
     version: v1
+- path: driver-args.yaml
+  target:
+    group: apps
+    kind: Deployment
+    name: csi-gce-pd-controller
+    version: v1
 transformers:
 - ../../images/prow-stable-sidecar-rc-master
