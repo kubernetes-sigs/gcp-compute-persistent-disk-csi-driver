@@ -30,6 +30,7 @@ readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
 readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-true}
+readonly test_volumeattributesclass=${TEST_VOLUMEATTRIBUTESCLASS:-true}
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
@@ -42,12 +43,12 @@ rm -rf /usr/local/go && tar -xzf go_tar.tar.gz -C /usr/local
 # to run go commands with this go version.
 export PATH=$PATH:/usr/local/go/bin && go version && rm go_tar.tar.gz
 
-storage_classes=sc-balanced.yaml,sc-ssd.yaml,sc-xfs.yaml
+storage_classes=sc-ssd.yaml,sc-xfs.yaml
 
 if [[ $test_pd_labels = true ]] ; then
-  storage_classes=${storage_classes},sc-standard.yaml
+  storage_classes=${storage_classes},sc-balanced.yaml
 else
-  storage_classes=${storage_classes},sc-standard-no-labels.yaml
+  storage_classes=${storage_classes},sc-balanced-no-labels.yaml
 fi
 
 if [[ -n $gce_region ]] ; then
