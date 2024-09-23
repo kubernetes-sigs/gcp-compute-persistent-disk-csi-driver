@@ -23,7 +23,7 @@ RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$
 
 # Start from Kubernetes Debian base.
 
-FROM gke.gcr.io/debian-base:bookworm-v1.0.3-gke.0 as debian
+FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.2 as debian
 
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
