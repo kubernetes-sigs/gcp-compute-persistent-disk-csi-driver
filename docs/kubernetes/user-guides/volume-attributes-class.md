@@ -1,8 +1,8 @@
-# ControllerModifyVolume User Guide
+# VolumeAttributesClass User Guide
 
 >**Attention:** VolumeAttributesClass is a Kubernetes Beta feature since v1.31, but was initially introduced as an alpha feature in v1.29. See [this blog post](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/) for more information on VolumeAttributesClasses and how to enable the feature gate.
 
-### ControllerModifyVolume Example
+### VolumeAttributesClass Example
 
 This example provisions a hyperdisk-balanced and then updates its IOPS and throughput.
 
