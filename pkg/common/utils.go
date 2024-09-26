@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -336,7 +337,6 @@ func CodeForError(sourceError error) codes.Code {
 	if sourceError == nil {
 		return codes.Internal
 	}
-
 	if code, err := isUserMultiAttachError(sourceError); err == nil {
 		return code
 	}
@@ -349,12 +349,7 @@ func CodeForError(sourceError error) codes.Code {
 	if code, err := isConnectionResetError(sourceError); err == nil {
 		return code
 	}
-
-	var apiErr *googleapi.Error
-	if !errors.As(sourceError, &apiErr) {
-		return codes.Internal
-	}
-	if code, ok := userErrorCodeMap[apiErr.Code]; ok {
+	if code, err := isGoogleAPIError(sourceError); err == nil {
 		return code
 	}
 
@@ -405,14 +400,62 @@ func isUserMultiAttachError(err error) (codes.Code, error) {
 	return codes.Unknown, fmt.Errorf("Not a user multiattach error: %w", err)
 }
 
+// existingErrorCode returns the existing gRPC Status error code for the given error, if one exists,
+// or an error if one doesn't exist. Since github.com/googleapis/gax-go/v2/apierror now wraps googleapi
+// errors (returned from GCE API calls), and sets their status error code to Unknown, we now have to
+// make sure we only return existing error codes from errors that are either TemporaryErrors, or errors
+// that do not wrap googleAPI errors. Otherwise, we will return Unknown for all GCE API calls that
+// return googleapi errors.
 func existingErrorCode(err error) (codes.Code, error) {
 	if err == nil {
 		return codes.Unknown, fmt.Errorf("null error")
 	}
-	if status, ok := status.FromError(err); ok {
-		return status.Code(), nil
+	var tmpError *TemporaryError
+	// This explicitly checks our error is a temporary error before extracting its
+	// status, as there can be other errors that can qualify as statusable
+	// while not necessarily being temporary.
+	if errors.As(err, &tmpError) {
+		if status, ok := status.FromError(err); ok {
+			return status.Code(), nil
+		}
 	}
+	// We want to make sure we catch other error types that are statusable.
+	// (eg. grpc-go/internal/status/status.go Error struct that wraps a status)
+	var googleErr *googleapi.Error
+	if !errors.As(err, &googleErr) {
+		if status, ok := status.FromError(err); ok {
+			return status.Code(), nil
+		}
+	}
+
 	return codes.Unknown, fmt.Errorf("no existing error code for %w", err)
+}
+
+// isGoogleAPIError returns the gRPC status code for the given googleapi error by mapping
+// the googleapi error's HTTP code to the corresponding gRPC error code. If the error is
+// wrapped in an APIError (github.com/googleapis/gax-go/v2/apierror), it maps the wrapped
+// googleAPI error's HTTP code to the corresponding gRPC error code. Returns an error if
+// the given error is not a googleapi error.
+func isGoogleAPIError(err error) (codes.Code, error) {
+	var googleErr *googleapi.Error
+	if !errors.As(err, &googleErr) {
+		return codes.Unknown, fmt.Errorf("error %w is not a googleapi.Error", err)
+	}
+	var sourceCode int
+	var apiErr *apierror.APIError
+	if errors.As(err, &apiErr) {
+		// When googleapi.Err is used as a wrapper, we return the error code of the wrapped contents.
+		sourceCode = apiErr.HTTPCode()
+	} else {
+		// Rely on error code in googleapi.Err when it is our primary error.
+		sourceCode = googleErr.Code
+	}
+	// Map API error code to user error code.
+	if code, ok := userErrorCodeMap[sourceCode]; ok {
+		return code, nil
+	}
+
+	return codes.Unknown, fmt.Errorf("googleapi.Error %w does not map to any known errors", err)
 }
 
 func LoggedError(msg string, err error) error {
