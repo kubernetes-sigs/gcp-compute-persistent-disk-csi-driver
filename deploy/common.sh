@@ -28,3 +28,30 @@ function ensure_kustomize()
   ensure_var PKGDIR
   "${PKGDIR}/deploy/kubernetes/install-kustomize.sh"
 }
+
+# This is a heuristic list of roles that appear to be necessary to run the full developer workflow.
+function check_dev_roles()
+{
+  local needed_roles="
+    roles/artifactregistry.admin
+    roles/compute.admin
+    roles/container.admin
+    roles/iam.roleAdmin
+    roles/iam.serviceAccountAdmin
+    roles/iam.serviceAccountKeyAdmin
+    roles/iam.serviceAccountUser
+    roles/resourcemanager.projectIamAdmin
+    roles/serviceusage.serviceUsageAdmin
+  "
+  local have_roles=$(gcloud projects get-iam-policy "${PROJECT}")
+
+  missing_roles=
+  for r in $needed_roles; do
+    echo $have_roles | grep -q $r || missing_roles="$missing_roles $r"
+  done
+
+  if [ -n "$missing_roles" ]; then
+    echo "${PROJECT} is missing the following roles needed for development: $missing_roles"
+    echo $have_roles | egrep -q '(roles/editor|roles/owner)' && echo "${PROJECT} does include roles/editor and/or roles/owner, so the missing roles may not be necessary"
+  fi
+}
