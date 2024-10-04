@@ -1789,7 +1789,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 						},
 					},
 				},
-				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			expIops:       20000,
 			expThroughput: 600,
@@ -1822,7 +1822,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 						},
 					},
 				},
-				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			expIops:       0,
 			expThroughput: 0,
@@ -1890,7 +1890,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			name: "Update volume with valid parameters",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId:          testVolumeID,
-				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "hyperdisk-balanced",
 			params: &common.DiskParameters{
@@ -1906,7 +1906,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			name: "Update volume with invalid parameters",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId:          testVolumeID,
-				MutableParameters: map[string]string{"iops": "0", "throughput": "0"},
+				MutableParameters: map[string]string{"iops": "0", "throughput": "0Mi"},
 			},
 			diskType: "hyperdisk-balanced",
 			params: &common.DiskParameters{
@@ -1922,7 +1922,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			name: "Update volume with valid parameters but invalid disk type",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId:          testVolumeID,
-				MutableParameters: map[string]string{"iops": "20000", "throughput": "600"},
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "pd-ssd",
 			params: &common.DiskParameters{
@@ -2053,7 +2053,7 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 				},
 			},
 			modifyReq: &csi.ControllerModifyVolumeRequest{
-				MutableParameters: map[string]string{"iops": "3001", "throughput": "151"},
+				MutableParameters: map[string]string{"iops": "3001", "throughput": "151Mi"},
 			},
 			modifyVolumeErrors: map[*meta.Key]error{
 				meta.ZonalKey(name, "us-central1-a"): &googleapi.Error{
@@ -2089,7 +2089,7 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 				},
 			},
 			modifyReq: &csi.ControllerModifyVolumeRequest{
-				MutableParameters: map[string]string{"iops": "10000", "throughput": "2400"},
+				MutableParameters: map[string]string{"iops": "10000", "throughput": "2400Mi"},
 			},
 			modifyVolumeErrors: map[*meta.Key]error{
 				meta.ZonalKey(name, "us-central1-a"): &googleapi.Error{Code: int(codes.InvalidArgument), Message: "InvalidArgument"},
