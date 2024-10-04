@@ -9,14 +9,6 @@ resources:
 # Here dev overlay is using the same image as alpha
 transformers:
 - ../../images/stable-master
-# Apply patches to support dynamic provisioning for hyperdisks
-patches:
-- path: ./driver-args.yaml
-  target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: csi-gce-pd-controller
 # To change the dev image, add something like the following.
 #images:
 #- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
