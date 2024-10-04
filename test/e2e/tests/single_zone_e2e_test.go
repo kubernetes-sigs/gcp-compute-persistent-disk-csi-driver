@@ -1622,7 +1622,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			stringPtr(provisionedIOPSOnCreateHdb),
 			stringPtr(provisionedThroughputOnCreateHdb),
 			stringPtr("3013"),
-			stringPtr("181"),
+			stringPtr("181Mi"),
 		),
 		Entry(
 			"for hyperdisk-extreme",
@@ -1640,7 +1640,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			nil,
 			stringPtr(provisionedThroughputOnCreate),
 			nil,
-			stringPtr("70"),
+			stringPtr("70Mi"),
 		),
 	)
 })
