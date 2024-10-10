@@ -14,7 +14,10 @@ limitations under the License.
 
 package deviceutils
 
-import "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
+import (
+	"k8s.io/mount-utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
+)
 
 type fakeDeviceUtils struct {
 	skipResize bool
@@ -49,4 +52,10 @@ func (du *fakeDeviceUtils) Resize(resizer resizefs.Resizefs, devicePath string, 
 		return false, nil
 	}
 	return resizer.Resize(devicePath, deviceMountPath)
+}
+
+func (_ *fakeDeviceUtils) IsDeviceFilesystemInUse(mounter *mount.SafeFormatAndMount, devicePath, devFsPath string) (bool, error) {
+	// We don't support checking if a device filesystem is captured elsewhere by the system
+	// Return false, to skip this check.
+	return false, nil
 }
