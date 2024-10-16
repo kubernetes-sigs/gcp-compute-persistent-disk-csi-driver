@@ -1242,6 +1242,14 @@ func TestCodeForError(t *testing.T) {
 			expCode: codes.NotFound,
 		},
 		{
+			name: "googleapi.Error that wraps apierror.APIError of http kind status conflict",
+			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
+				Code:    409,
+				Message: "status conflict error",
+			}),
+			expCode: codes.FailedPrecondition,
+		},
+		{
 			name: "googleapi.Error that wraps apierror.APIError of status kind",
 			inputErr: getGoogleAPIWrappedError(status.New(
 				codes.Internal, "Internal status error",
