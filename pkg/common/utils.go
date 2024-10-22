@@ -98,6 +98,7 @@ var (
 		http.StatusBadRequest:      codes.InvalidArgument,
 		http.StatusTooManyRequests: codes.ResourceExhausted,
 		http.StatusNotFound:        codes.NotFound,
+		http.StatusConflict:        codes.FailedPrecondition,
 	}
 
 	// Regular expressions for validating parent_id, key and value of a resource tag.
