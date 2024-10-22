@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
@@ -56,7 +57,30 @@ func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) 
 	}
 
 	controllerServer := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
-	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, controllerServer, nil)
+	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, nil, controllerServer, nil)
+	if err != nil {
+		t.Fatalf("Failed to setup GCE Driver: %v", err)
+	}
+	return gceDriver
+}
+
+func initGCEDriverWithKubeClient(t *testing.T, kubeClient kubernetes.Interface) *GCEDriver {
+	gceDriver := GetGCEDriver()
+	cloudProvider, err := gce.CreateFakeCloudProvider(project, zone, nil)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	fallbackRequisiteZones := []string{}
+	enableStoragePools := false
+	multiZoneVolumeHandleConfig := MultiZoneVolumeHandleConfig{}
+	listVolumesConfig := ListVolumesConfig{}
+	provisionableDisksConfig := ProvisionableDisksConfig{
+		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-extreme"},
+		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
+	}
+
+	controllerServer := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+	err = gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, kubeClient, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

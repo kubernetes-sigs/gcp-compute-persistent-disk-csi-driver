@@ -51,6 +51,7 @@ const (
 	diskTypeURITemplateRegional     = "projects/%s/regions/%s/diskTypes/%s" // {gce.projectID}/regions/{disk.Region}/diskTypes/{disk.Type}"
 
 	regionURITemplate = "projects/%s/regions/%s"
+	locationHintURITemplate = "projects/%s/zone/%s/instance/%s"
 
 	replicaZoneURITemplateSingleZone             = "projects/%s/zones/%s" // {gce.projectID}/zones/{disk.Zone}
 	EnvironmentStaging               Environment = "staging"

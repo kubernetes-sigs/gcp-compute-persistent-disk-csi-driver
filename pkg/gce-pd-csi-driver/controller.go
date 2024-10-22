@@ -38,6 +38,8 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
@@ -208,6 +210,8 @@ const (
 	listDisksUsersField = googleapi.Field("items/users")
 
 	readOnlyManyAccessMode = "READ_ONLY_MANY"
+
+	annSelectedNode = "volume.kubernetes.io/selected-node"
 )
 
 var (
@@ -720,13 +724,15 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	// Create the disk
 	var disk *gce.CloudDisk
 	name := req.GetName()
+	pvcName, pvcNamespace := req.Parameters[common.ParameterKeyPVCName], req.Parameters[common.ParameterKeyPVCNamespace]
+	hostName := getHostNameFromPVC(ctx, pvcName, pvcNamespace, gceCS.Driver.kubeClient)
 
 	switch params.ReplicationType {
 	case replicationTypeNone:
 		if len(zones) != 1 {
 			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones)
 		}
-		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, hostName)
 		if err != nil {
 			return nil, common.LoggedError("CreateVolume failed to create single zonal disk "+name+": ", err)
 		}
@@ -734,7 +740,7 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 		if len(zones) != 2 {
 			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones)
 		}
-		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+		disk, err = createRegionalDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, "")
 		if err != nil {
 			return nil, common.LoggedError("CreateVolume failed to create regional disk "+name+": ", err)
 		}
@@ -870,6 +876,25 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 
 	// Delete zonal or regional disk
 	return gceCS.deleteSingleDeviceDisk(ctx, req, project, volKey)
+}
+
+func getHostNameFromPVC(ctx context.Context, pvcName, pvcNamespace string, client kubernetes.Interface) string {
+	if client == nil {
+		// Client is initialized only when location hint is enabled
+		return ""
+	}
+
+	pvc, err := client.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Failed to get persistent volume claim %s: %v", pvcName, err)
+		// Don't return the error as create volume request can be continued without hostname
+		return ""
+	}
+	if hostName, ok := pvc.Annotations[annSelectedNode]; ok {
+		klog.V(4).Infof("Retrieved hostname %q from PVC %v", hostName, pvcName)
+		return hostName
+	}
+	return ""
 }
 
 func getGCEApiVersion(multiWriter bool) gce.GCEAPIVersion {
@@ -2482,7 +2507,7 @@ func getResourceId(resourceLink string) (string, error) {
 	return strings.Join(elts[3:], "/"), nil
 }
 
-func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) (*gce.CloudDisk, error) {
+func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) (*gce.CloudDisk, error) {
 	project := cloudProvider.GetDefaultProject()
 	region, err := common.GetRegionFromZones(zones)
 	if err != nil {
@@ -2495,7 +2520,7 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 			fullyQualifiedReplicaZones, cloudProvider.GetReplicaZoneURI(project, replicaZone))
 	}
 
-	err = cloudProvider.InsertDisk(ctx, project, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+	err = cloudProvider.InsertDisk(ctx, project, meta.RegionalKey(name, region), params, capBytes, capacityRange, fullyQualifiedReplicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, hostName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert regional disk: %w", err)
 	}
@@ -2512,13 +2537,13 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 	return disk, nil
 }
 
-func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) (*gce.CloudDisk, error) {
+func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, name string, zones []string, params common.DiskParameters, capacityRange *csi.CapacityRange, capBytes int64, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) (*gce.CloudDisk, error) {
 	project := cloudProvider.GetDefaultProject()
 	if len(zones) != 1 {
 		return nil, fmt.Errorf("got wrong number of zones for zonal create volume: %v", len(zones))
 	}
 	diskZone := zones[0]
-	err := cloudProvider.InsertDisk(ctx, project, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+	err := cloudProvider.InsertDisk(ctx, project, meta.ZonalKey(name, diskZone), params, capBytes, capacityRange, nil, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, hostName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert zonal disk: %w", err)
 	}

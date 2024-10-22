@@ -221,7 +221,7 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	return ValidateDiskParameters(resp, params)
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) error {
 	if disk, ok := cloud.disks[volKey.String()]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
@@ -242,6 +242,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 		Labels:                params.Labels,
 		ProvisionedIops:       params.ProvisionedIOPSOnCreate,
 		ProvisionedThroughput: params.ProvisionedThroughputOnCreate,
+		LocationHint:          cloud.GetLocationHintURI(project, volKey.Zone, hostName),
 	}
 
 	if snapshotID != "" {
@@ -380,6 +381,10 @@ func (cloud *FakeCloudProvider) GetDiskTypeURI(project string, volKey *meta.Key,
 	default:
 		return fmt.Sprintf("could not get disk type uri, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
+}
+
+func (cloud *FakeCloudProvider) GetLocationHintURI(project, zone, hostName string) string {
+	return fmt.Sprintf(locationHintURITemplate, project, zone, hostName)
 }
 
 func (cloud *FakeCloudProvider) getZonalDiskTypeURI(project, zone, diskType string) string {

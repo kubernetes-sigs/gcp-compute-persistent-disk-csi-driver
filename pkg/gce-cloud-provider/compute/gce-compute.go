@@ -102,7 +102,7 @@ type GCECompute interface {
 	GetDisk(ctx context.Context, project string, volumeKey *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error)
 	ValidateExistingDisk(ctx context.Context, disk *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error
-	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
+	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
 	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
@@ -436,7 +436,7 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 	return nil
 }
 
-func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
 
 	description, err := encodeTags(params.Tags)
@@ -449,7 +449,7 @@ func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volK
 		if description == "" {
 			description = "Disk created by GCE-PD CSI Driver"
 		}
-		return cloud.insertZonalDisk(ctx, project, volKey, params, capBytes, capacityRange, snapshotID, volumeContentSourceVolumeID, description, multiWriter, accessMode)
+		return cloud.insertZonalDisk(ctx, project, volKey, params, capBytes, capacityRange, snapshotID, volumeContentSourceVolumeID, description, multiWriter, accessMode, hostName)
 	case meta.Regional:
 		if description == "" {
 			description = "Regional disk created by GCE-PD CSI Driver"
@@ -772,7 +772,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 	volumeContentSourceVolumeID string,
 	description string,
 	multiWriter bool,
-	accessMode string) error {
+	accessMode, hostName string) error {
 	var (
 		err           error
 		opName        string
@@ -788,6 +788,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		Description: description,
 		Type:        cloud.GetDiskTypeURI(project, volKey, params.DiskType),
 		Labels:      params.Labels,
+		LocationHint: cloud.GetLocationHintURI(project, volKey.Zone, hostName),
 	}
 
 	if params.ProvisionedIOPSOnCreate > 0 {
@@ -1105,6 +1106,10 @@ func (cloud *CloudProvider) GetDiskTypeURI(project string, volKey *meta.Key, dis
 	default:
 		return fmt.Sprintf("could get disk type URI, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
+}
+
+func (cloud *CloudProvider) GetLocationHintURI(project, zone, hostName string) string {
+	return fmt.Sprintf(locationHintURITemplate, project, zone, hostName)
 }
 
 func (cloud *CloudProvider) getZonalDiskTypeURI(project string, zone, diskType string) string {
