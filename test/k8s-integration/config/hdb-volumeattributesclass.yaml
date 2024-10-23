@@ -5,4 +5,4 @@ metadata:
 driverName: pd.csi.storage.gke.io
 parameters:
   iops: "3600"
-  throughput: "290"
+  throughput: "290Mi"
