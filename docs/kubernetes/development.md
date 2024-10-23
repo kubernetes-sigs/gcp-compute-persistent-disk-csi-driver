@@ -5,7 +5,8 @@
 To build and install a development version of the driver:
 
 ```sh
-GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
+# Repository image location. Don't add a tag (eg :test), as the build process adds one.
+GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image
 make push-container
 
 # Modify controller.yaml and node.yaml in ./deploy/kubernetes/dev to use dev image
