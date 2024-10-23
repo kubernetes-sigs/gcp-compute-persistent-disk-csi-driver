@@ -52,7 +52,7 @@ func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAn
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	nodeServer := NewNodeServer(gceDriver, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter(mounter))
-	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -63,7 +63,7 @@ func getTestBlockingMountGCEDriver(t *testing.T, readyToExecute chan chan struct
 	gceDriver := GetGCEDriver()
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
 	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
-	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}
@@ -75,7 +75,7 @@ func getTestBlockingFormatAndMountGCEDriver(t *testing.T, readyToExecute chan ch
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
 	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter)).WithSerializedFormatAndMount(5*time.Second, 1)
 
-	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
+	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
 	}

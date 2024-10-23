@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
@@ -72,6 +74,7 @@ var (
 	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	enableVMLocationHint        = flag.Bool("enable-vm-location-hint", false, "If set to true, the location hint field for create volume request will have hostname set")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -244,7 +247,20 @@ func handle() {
 		}
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
+	var kubeClient *kubernetes.Clientset
+	if *enableVMLocationHint {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			klog.Fatalf("Could not fetch in-cluster config: %v", err.Error())
+		}
+
+		kubeClient, err = kubernetes.NewForConfig(cfg)
+		if err != nil {
+			klog.Fatalf("Could not fetch in-cluster client: %v", err.Error())
+		}
+	}
+
+	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, kubeClient, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}

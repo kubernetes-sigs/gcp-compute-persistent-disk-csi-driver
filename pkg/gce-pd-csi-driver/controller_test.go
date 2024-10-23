@@ -1596,12 +1596,12 @@ func (cloud *FakeCloudProviderInsertDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.insertDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) error {
 	if err, ok := cloud.insertDiskErrors[volKey.String()]; ok {
 		return err
 	}
 
-	return cloud.FakeCloudProvider.InsertDisk(ctx, project, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+	return cloud.FakeCloudProvider.InsertDisk(ctx, project, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, hostName)
 }
 
 func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
@@ -1949,7 +1949,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			t.Fatalf("Failed convert key: %v", err)
 		}
 
-		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "")
+		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "", "")
 		if err != nil {
 			t.Fatalf("Failed to insert disk: %v", err)
 		}
