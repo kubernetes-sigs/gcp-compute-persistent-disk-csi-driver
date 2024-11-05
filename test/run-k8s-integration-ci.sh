@@ -13,7 +13,9 @@ set -o errexit
 readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
-readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
+# TODO: Replace do_driver_build with the commented version below once PR #1841 is included in a release
+# readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
+readonly do_driver_build=true
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
 readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
