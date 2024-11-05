@@ -117,4 +117,11 @@ else
   base_cmd="${base_cmd} --snapshotclass-files=pd-volumesnapshotclass.yaml"
 fi
 
+if [ "$test_volumeattributesclass" = true ]; then
+  base_cmd="${base_cmd} --volumeattributesclass-files=hdb-volumeattributesclass.yaml --storageclass-for-vac-file=sc-hdb.yaml --kube-runtime-config=api/all=true"
+  if [ "$deployment_strategy" = "gce" ]; then
+    base_cmd="${base_cmd} --kube-feature-gates=VolumeAttributesClass=true"
+  fi
+fi
+
 eval "$base_cmd"

@@ -17,8 +17,10 @@ package tests
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,26 +46,36 @@ import (
 const (
 	testNamePrefix = "gcepd-csi-e2e-"
 
-	defaultSizeGb                     int64 = 5
-	defaultExtremeSizeGb              int64 = 500
-	defaultHdTSizeGb                  int64 = 2048
-	defaultHdmlSizeGb                 int64 = 200
-	defaultRepdSizeGb                 int64 = 200
-	defaultMwSizeGb                   int64 = 200
-	defaultVolumeLimit                int64 = 127
-	invalidSizeGb                     int64 = 66000
-	readyState                              = "READY"
-	standardDiskType                        = "pd-standard"
-	ssdDiskType                             = "pd-ssd"
-	extremeDiskType                         = "pd-extreme"
-	hdtDiskType                             = "hyperdisk-throughput"
-	hdmlDiskType                            = "hyperdisk-ml"
-	provisionedIOPSOnCreate                 = "12345"
-	provisionedIOPSOnCreateInt              = int64(12345)
-	provisionedIOPSOnCreateDefaultInt       = int64(100000)
-	provisionedThroughputOnCreate           = "66Mi"
-	provisionedThroughputOnCreateInt        = int64(66)
-	defaultEpsilon                          = 500000000 // 500M
+	defaultSizeGb                       int64 = 5
+	defaultExtremeSizeGb                int64 = 500
+	defaultHdBSizeGb                    int64 = 100
+	defaultHdXSizeGb                    int64 = 100
+	defaultHdTSizeGb                    int64 = 2048
+	defaultHdmlSizeGb                   int64 = 200
+	defaultRepdSizeGb                   int64 = 200
+	defaultMwSizeGb                     int64 = 200
+	defaultVolumeLimit                  int64 = 127
+	invalidSizeGb                       int64 = 66000
+	readyState                                = "READY"
+	standardDiskType                          = "pd-standard"
+	ssdDiskType                               = "pd-ssd"
+	extremeDiskType                           = "pd-extreme"
+	hdbDiskType                               = "hyperdisk-balanced"
+	hdxDiskType                               = "hyperdisk-extreme"
+	hdtDiskType                               = "hyperdisk-throughput"
+	hdmlDiskType                              = "hyperdisk-ml"
+	provisionedIOPSOnCreate                   = "12345"
+	provisionedIOPSOnCreateInt                = int64(12345)
+	provisionedIOPSOnCreateDefaultInt         = int64(100000)
+	provisionedIOPSOnCreateHdb                = "3000"
+	provisionedIOPSOnCreateHdbInt             = int64(3000)
+	provisionedIOPSOnCreateHdx                = "200"
+	provisionedIOPSOnCreateHdxInt             = int64(200)
+	provisionedThroughputOnCreate             = "66Mi"
+	provisionedThroughputOnCreateInt          = int64(66)
+	provisionedThroughputOnCreateHdb          = "150Mi"
+	provisionedThroughputOnCreateHdbInt       = int64(150)
+	defaultEpsilon                            = 500000000 // 500M
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
@@ -1549,6 +1561,88 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("with missing multi-zone label", multiZoneTestConfig{diskType: standardDiskType, readOnly: true, hasMultiZoneLabel: false, wantErrSubstring: "points to disk that is missing label \"goog-gke-multi-zone\""}),
 		Entry("with unsupported disk-type pd-extreme", multiZoneTestConfig{diskType: extremeDiskType, readOnly: true, hasMultiZoneLabel: true, wantErrSubstring: "points to disk with unsupported disk type"}),
 	)
+
+	// Mark tests as pending while VolumeAttributesClasses are in beta
+	DescribeTable("Should update metadata when providing valid metadata",
+		func(
+			diskType string,
+			diskSize int64,
+			initialIops *string,
+			initialThroughput *string,
+			updatedIops *string,
+			updatedThroughput *string,
+		) {
+			if !runCMVTests() {
+				Skip("Not running ControllerModifyVolume tests, as RUN_CONTROLLER_MODIFY_VOLUME_TESTS is falsy")
+			}
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			client := testContext.Client
+			instance := testContext.Instance
+			p, z, _ := instance.GetIdentity()
+
+			volName, volId := createAndValidateUniqueZonalDisk(client, p, z, diskType)
+			defer func() {
+				err := client.DeleteVolume(volId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+			}()
+
+			// Validate disk created
+			_, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+
+			mutableParams := map[string]string{}
+			if updatedIops != nil {
+				mutableParams["iops"] = *updatedIops
+			}
+			if updatedThroughput != nil {
+				mutableParams["throughput"] = *updatedThroughput
+			}
+			err = client.ControllerModifyVolume(volId, mutableParams)
+			Expect(err).To(BeNil(), "Expected ControllerModifyVolume to succeed")
+
+			err = waitForMetadataUpdate(6, p, z, volName, initialIops, initialThroughput)
+			Expect(err).To(BeNil(), "Expected ControllerModifyVolume to update metadata")
+
+			// Assert ControllerModifyVolume successfully updated metadata
+			disk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			if updatedIops != nil {
+				Expect(strconv.FormatInt(disk.ProvisionedIops, 10)).To(Equal(*updatedIops))
+			}
+			if updatedThroughput != nil {
+				Expect(strconv.FormatInt(disk.ProvisionedThroughput, 10)).To(Equal(*updatedThroughput))
+			}
+		},
+		Entry(
+			"for hyperdisk-balanced",
+			hdbDiskType,
+			defaultHdBSizeGb,
+			stringPtr(provisionedIOPSOnCreateHdb),
+			stringPtr(provisionedThroughputOnCreateHdb),
+			stringPtr("3013"),
+			stringPtr("181Mi"),
+		),
+		Entry(
+			"for hyperdisk-extreme",
+			hdxDiskType,
+			defaultHdXSizeGb,
+			stringPtr(provisionedIOPSOnCreateHdx),
+			nil,
+			stringPtr("250"),
+			nil,
+		),
+		Entry(
+			"for hyperdisk-throughput",
+			hdtDiskType,
+			defaultHdTSizeGb,
+			nil,
+			stringPtr(provisionedThroughputOnCreate),
+			nil,
+			stringPtr("70Mi"),
+		),
+	)
 })
 
 func equalWithinEpsilon(a, b, epsiolon int64) bool {
@@ -1571,6 +1665,10 @@ func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, 
 	switch diskType {
 	case extremeDiskType:
 		diskSize = defaultExtremeSizeGb
+	case hdbDiskType:
+		diskSize = defaultHdBSizeGb
+	case hdxDiskType:
+		diskSize = defaultHdXSizeGb
 	case hdtDiskType:
 		diskSize = defaultHdTSizeGb
 	case hdmlDiskType:
@@ -1737,6 +1835,28 @@ var typeToDisk = map[string]*disk{
 			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt))
 		},
 	},
+	hdbDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType:                          hdbDiskType,
+			common.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreateHdb,
+			common.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(hdbDiskType))
+			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateHdbInt))
+			Expect(disk.ProvisionedThroughput).To(Equal(provisionedThroughputOnCreateHdbInt))
+		},
+	},
+	hdxDiskType: {
+		params: map[string]string{
+			common.ParameterKeyType:                    hdxDiskType,
+			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreateHdx,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(hdxDiskType))
+			Expect(disk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateHdxInt))
+		},
+	},
 	hdtDiskType: {
 		params: map[string]string{
 			common.ParameterKeyType:                          hdtDiskType,
@@ -1774,4 +1894,50 @@ func merge(a, b map[string]string) map[string]string {
 		res[k] = v
 	}
 	return res
+}
+
+func runCMVTests() bool {
+	runCMVStr, ok := os.LookupEnv("RUN_CONTROLLER_MODIFY_VOLUME_TESTS")
+	if !ok {
+		return false
+	}
+
+	runCMVTests, err := strconv.ParseBool(runCMVStr)
+	if err != nil {
+		return false
+	}
+
+	return runCMVTests
+}
+
+func stringPtr(str string) *string {
+	return &str
+}
+
+// waitForMetadataUpdate tries to poll every minute until numMinutes and tests if IOPS/throughput are updated
+func waitForMetadataUpdate(numMinutes int, project, zone, volName string, initialIops *string, initialThroughput *string) error {
+	backoff := wait.Backoff{
+		Duration: 1 * time.Minute,
+		Factor:   1.0,
+		Steps:    numMinutes,
+		Cap:      time.Duration(numMinutes) * time.Minute,
+	}
+	err := wait.ExponentialBackoffWithContext(context.Background(), backoff, func() (bool, error) {
+		disk, err := computeService.Disks.Get(project, zone, volName).Do()
+		if err != nil {
+			return false, nil
+		}
+		if initialIops != nil && strconv.FormatInt(disk.ProvisionedIops, 10) != *initialIops {
+			return true, nil
+		}
+		if initialThroughput != nil {
+			throughput := *initialThroughput
+			// Strip "Mi" from throughput
+			if len(throughput) > 2 && strconv.FormatInt(disk.ProvisionedThroughput, 10) != throughput[:len(throughput)-2] {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	return err
 }
