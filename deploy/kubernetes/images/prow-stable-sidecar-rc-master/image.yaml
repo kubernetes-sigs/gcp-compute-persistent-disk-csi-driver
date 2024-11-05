@@ -48,6 +48,6 @@ metadata:
 imageTag:
   name: registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
   newName: gcr.io/k8s-staging-cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
-  newTag: "v1.15.2-rc1"
+  newTag: "v1.15.2-rc2"
 ---
 
