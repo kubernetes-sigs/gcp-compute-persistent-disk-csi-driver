@@ -651,7 +651,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
-	if multiWriter {
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
@@ -778,7 +778,7 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
-	if multiWriter {
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
