@@ -468,6 +468,7 @@ func handle() error {
 			cancel()
 		}
 	}()
+	fmt.Println("test")
 
 	// For windows cluster, it has both Windows nodes and Linux nodes. Before triggering the tests, taint Linux nodes
 	// with NoSchedule to avoid test pods being scheduled on Linux. Need to do this step after driver is deployed.
