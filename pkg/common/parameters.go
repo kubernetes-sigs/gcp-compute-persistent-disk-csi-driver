@@ -343,7 +343,7 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			}
 			modifyVolumeParams.IOPS = &iops
 		case "throughput":
-			throughput, err := ConvertMiStringToInt64(value)
+			throughput, err := ConvertStringToInt64(value)
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
 			}
