@@ -553,9 +553,6 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 		AccessMode:        v1Disk.AccessMode,
 	}
 
-	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
-	// but if multiWriter + hyperdisk is supported in the future, we want the PDCSI driver to support this feature without
-	// any additional code change.
 	if v1Disk.ProvisionedIops > 0 {
 		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
 	}
@@ -619,9 +616,6 @@ func convertBetaDiskToV1Disk(betaDisk *computebeta.Disk) *computev1.Disk {
 		AccessMode:        betaDisk.AccessMode,
 	}
 
-	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
-	// but if multiWriter + hyperdisk is supported in the future, we want the PDCSI driver to support this feature without
-	// any additional code change.
 	if betaDisk.ProvisionedIops > 0 {
 		v1Disk.ProvisionedIops = betaDisk.ProvisionedIops
 	}
@@ -651,6 +645,7 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
+	// Use beta API for non-hyperdisk types in multi-writer mode.
 	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
@@ -778,6 +773,8 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
+
+	// Use beta API for non-hyperdisk types in multi-writer mode.
 	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
