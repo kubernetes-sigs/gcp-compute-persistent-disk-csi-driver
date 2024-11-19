@@ -1670,6 +1670,8 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 		return nil, status.Errorf(codes.Internal, "Snapshot had error checking ready status: %v", err.Error())
 	}
 
+	klog.V(5).Infof("Setting csi.Snapshot %s ReadyToUse to %t based on computSnapshot.status %+v", snapshotName, ready, snapshot.Status)
+
 	return &csi.Snapshot{
 		SizeBytes:      common.GbToBytes(snapshot.DiskSizeGb),
 		SnapshotId:     snapshotId,
@@ -2077,6 +2079,8 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 	// TODO: If the snapshot is in "FAILED" state we need to think through what this
 	// should actually look like.
 	ready, _ := isCSISnapshotReady(snapshot.Status)
+
+	klog.V(5).Infof("Setting csi.Snapshot %s ReadyToUse to %t based on computSnapshot.status %+v", snapshot.Name, ready, snapshot.Status)
 
 	entry := &csi.ListSnapshotsResponse_Entry{
 		Snapshot: &csi.Snapshot{
