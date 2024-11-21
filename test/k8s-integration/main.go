@@ -133,7 +133,7 @@ func main() {
 	}
 
 	if *useGKEManagedDriver {
-		ensureVariableVal(deploymentStrat, "gke", "deployment strategy must be GKE for using managed driver")
+		// ensureVariableVal(deploymentStrat, "gke", "deployment strategy must be GKE for using managed driver")
 		ensureFlag(doDriverBuild, false, "'do-driver-build' must be false when using GKE managed driver")
 		ensureFlag(teardownDriver, false, "'teardown-driver' must be false when using GKE managed driver")
 		ensureVariable(stagingImage, false, "'staging-image' must not be set when using GKE managed driver")
@@ -904,6 +904,7 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 	kubeTestArgs := []string{
 		"--test",
 		"--ginkgo-parallel",
+		"--provider=gce",
 		"--check-version-skew=false",
 		fmt.Sprintf("--test_args=%s", testArgs),
 	}

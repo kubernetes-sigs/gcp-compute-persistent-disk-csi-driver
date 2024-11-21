@@ -47,11 +47,18 @@ else
 	$(warning gcp-pd-driver-windows only supports amd64.)
 endif
 
+# build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
+# 	$(DOCKER) buildx build --platform=linux --progress=plain \
+# 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
+# 		--build-arg BUILDPLATFORM=linux \
+# 		--build-arg STAGINGVERSION=$(STAGINGVERSION)
+# 	  --push .
+
 build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
-	$(DOCKER) buildx build --platform=linux --progress=plain \
+	$(DOCKER) build --load --platform=linux --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \
 		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION)
 	  --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
@@ -88,11 +95,20 @@ validate-container-linux-arm64: init-buildx
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) .
 
+# build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+# 	$(DOCKER) buildx build --platform=linux/amd64 \
+# 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+# 		--build-arg BUILDPLATFORM=linux \
+# 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+
+
 build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --platform=linux/amd64 \
-		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
-		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+	$(DOCKER) build  -f . 
+	
+	# --platform=linux/amd64 \
+	# 	-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+	# 	--build-arg BUILDPLATFORM=linux \
+	# 	--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
 
 build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
