@@ -1,0 +1,43 @@
+StorageClass:
+  FromFile: /usr/local/google/home/amacaskill/go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/k8s-integration/config/sc-standard.yaml
+
+SnapshotClass:
+  FromFile: /usr/local/google/home/amacaskill/go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/k8s-integration/config/pd-volumesnapshotclass.yaml
+
+
+Timeouts:
+  DataSourceProvision: 480s
+  
+
+DriverInfo:
+  Name: csi-gcepd-sc-standard--pd-volumesnapshotclass
+  SupportedFsType:
+    ext2:
+    ext3:
+    ext4:
+    xfs:
+  
+  Capabilities:
+    persistence: true
+    block: true
+    fsGroup: true
+    exec: true
+    multipods: true
+    topology: true
+    controllerExpansion: true
+    nodeExpansion: true
+    snapshotDataSource: true
+    pvcDataSource: true
+  
+  StressTestOptions:
+    NumPods: 10
+    NumRestarts: 10
+  SupportedMountOption:
+    debug:
+    noatime:
+  SupportedSizeRange:
+    Min: 5Gi
+    Max: 64Ti
+  TopologyKeys:
+    - topology.gke.io/zone
+  NumAllowedTopologies: 1

@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=$BUILDPLATFORM golang:1.23.0 as builder
+FROM --platform=linux golang:1.23.0 as builder
 
 ARG STAGINGVERSION
 ARG TARGETPLATFORM
 
 WORKDIR /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ADD . .
-RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION make gce-pd-driver
+RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=test-e2e-v1 make gce-pd-driver TARGETPLATFORM=linux/amd64
 
 # Start from Kubernetes Debian base.
 
