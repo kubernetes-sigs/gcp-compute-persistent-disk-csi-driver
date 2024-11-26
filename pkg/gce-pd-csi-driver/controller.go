@@ -21,7 +21,6 @@ import (
 	"math/rand"
 	neturl "net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -303,12 +302,14 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 
 func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("CreateVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
+	// Apply Parameters (case-insensitive). We leave validation of
+	// the values to the cloud provider.
+	params, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.Driver.extraTags)
+	metrics.UpdateRequestMetadataFromParams(ctx, params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
+	}
+
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
 	capacityRange := req.GetCapacityRange()
@@ -327,17 +328,6 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	err = validateVolumeCapabilities(volumeCapabilities)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "VolumeCapabilities is invalid: %v", err.Error())
-	}
-
-	// Apply Parameters (case-insensitive). We leave validation of
-	// the values to the cloud provider.
-	params, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.Driver.extraTags)
-	diskTypeForMetric = params.DiskType
-	enableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
-	hasStoragePools := len(params.StoragePools) > 0
-	enableStoragePools = strconv.FormatBool(hasStoragePools)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
 	// https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume
 	// mutable_parameters MUST take precedence over the values from parameters.
@@ -782,14 +772,6 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, status.Error(codes.InvalidArgument, "volume ID must be provided")
 	}
 
-	diskType := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ControllerModifyVolume", err, diskType, enableConfidentialCompute, enableStoragePools)
-	}()
-
 	project, volKey, err := common.VolumeIDToKey(volumeID)
 	if err != nil {
 		// Cannot find volume associated with this ID because VolumeID is not in the correct format
@@ -806,6 +788,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	klog.V(4).Infof("Modify Volume Parameters for %s: %v", volumeID, volumeModifyParams)
 
 	existingDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionBeta)
+	metrics.UpdateRequestMetadataFromDisk(ctx, existingDisk)
 
 	if err != nil {
 		err = fmt.Errorf("Failed to get volume: %w", err)
@@ -816,9 +799,9 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.Internal, "failed to get volume : %s", volumeID)
 		return nil, err
 	}
-	diskType = existingDisk.GetPDType()
 
 	// Check if the disk supports dynamic IOPS/Throughput provisioning
+	diskType := existingDisk.GetPDType()
 	supportsIopsChange := gceCS.diskSupportsIopsChange(diskType)
 	supportsThroughputChange := gceCS.diskSupportsThroughputChange(diskType)
 	if !supportsIopsChange && !supportsThroughputChange {
@@ -833,8 +816,6 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.InvalidArgument, "Cannot specify throughput for disk type %s", diskType)
 		return nil, err
 	}
-
-	enableStoragePools = strconv.FormatBool(existingDisk.GetEnableStoragePools())
 
 	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
 	if err != nil {
@@ -883,12 +864,6 @@ func getGCEApiVersion(multiWriter bool) gce.GCEAPIVersion {
 func (gceCS *GCEControllerServer) deleteMultiZoneDisk(ctx context.Context, req *csi.DeleteVolumeRequest, project string, volKey *meta.Key) (*csi.DeleteVolumeResponse, error) {
 	// List disks with same name
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("DeleteVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	existingZones := []string{gceCS.CloudProvider.GetDefaultZone()}
 	zones, err := getDefaultZonesInRegion(ctx, gceCS, existingZones)
 	if err != nil {
@@ -910,7 +885,7 @@ func (gceCS *GCEControllerServer) deleteMultiZoneDisk(ctx context.Context, req *
 		}
 		disk, _ := gceCS.CloudProvider.GetDisk(ctx, project, zonalVolKey, gce.GCEAPIVersionV1)
 		// TODO: Consolidate the parameters here, rather than taking the last.
-		diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+		metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 		err := gceCS.CloudProvider.DeleteDisk(ctx, project, zonalVolKey)
 		if err != nil {
 			deleteDiskErrs = append(deleteDiskErrs, gceCS.CloudProvider.DeleteDisk(ctx, project, volKey))
@@ -927,12 +902,6 @@ func (gceCS *GCEControllerServer) deleteMultiZoneDisk(ctx context.Context, req *
 
 func (gceCS *GCEControllerServer) deleteSingleDeviceDisk(ctx context.Context, req *csi.DeleteVolumeRequest, project string, volKey *meta.Key) (*csi.DeleteVolumeResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("DeleteVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	volumeID := req.GetVolumeId()
 	project, volKey, err = gceCS.CloudProvider.RepairUnderspecifiedVolumeKey(ctx, project, volKey)
 	if err != nil {
@@ -948,7 +917,7 @@ func (gceCS *GCEControllerServer) deleteSingleDeviceDisk(ctx context.Context, re
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 	disk, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 	err = gceCS.CloudProvider.DeleteDisk(ctx, project, volKey)
 	if err != nil {
 		return nil, common.LoggedError("Failed to delete disk: ", err)
@@ -960,12 +929,6 @@ func (gceCS *GCEControllerServer) deleteSingleDeviceDisk(ctx context.Context, re
 
 func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ControllerPublishVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	// Only valid requests will be accepted
 	_, _, _, err = gceCS.validateControllerPublishVolumeRequest(ctx, req)
 	if err != nil {
@@ -978,7 +941,7 @@ func (gceCS *GCEControllerServer) ControllerPublishVolume(ctx context.Context, r
 	}
 
 	resp, err, disk := gceCS.executeControllerPublishVolume(ctx, req)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 	if err != nil {
 		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
 		gceCS.errorBackoff.next(backoffId, common.CodeForError(err))
@@ -1192,12 +1155,6 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 
 func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ControllerUnpublishVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	_, _, err = gceCS.validateControllerUnpublishVolumeRequest(ctx, req)
 	if err != nil {
 		return nil, err
@@ -1209,7 +1166,7 @@ func (gceCS *GCEControllerServer) ControllerUnpublishVolume(ctx context.Context,
 		return nil, status.Errorf(gceCS.errorBackoff.code(backoffId), "ControllerUnpublish not permitted on node %q due to backoff condition", req.NodeId)
 	}
 	resp, err, disk := gceCS.executeControllerUnpublishVolume(ctx, req)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 	if err != nil {
 		klog.Infof("For node %s adding backoff due to error for volume %s: %v", req.NodeId, req.VolumeId, err)
 		gceCS.errorBackoff.next(backoffId, common.CodeForError(err))
@@ -1316,12 +1273,6 @@ func (gceCS *GCEControllerServer) parameterProcessor() *common.ParameterProcesso
 
 func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ValidateVolumeCapabilities", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	if req.GetVolumeCapabilities() == nil || len(req.GetVolumeCapabilities()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities must be provided")
 	}
@@ -1348,7 +1299,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	defer gceCS.volumeLocks.Release(volumeID)
 
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.Name, err.Error())
@@ -1564,12 +1515,6 @@ func (gceCS *GCEControllerServer) ControllerGetCapabilities(ctx context.Context,
 
 func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("CreateSnapshot", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	// Validate arguments
 	volumeID := req.GetSourceVolumeId()
 	if len(req.Name) == 0 {
@@ -1595,7 +1540,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 
 	// Check if volume exists
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(disk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "CreateSnapshot could not find disk %v: %v", volKey.String(), err.Error())
@@ -1823,12 +1768,6 @@ func isCSISnapshotReady(status string) (bool, error) {
 
 func (gceCS *GCEControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("DeleteSnapshot", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	// Validate arguments
 	snapshotID := req.GetSnapshotId()
 	if len(snapshotID) == 0 {
@@ -1913,14 +1852,7 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 }
 
 func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-
 	var err error
-	diskTypeForMetric := metrics.DefaultDiskTypeForMetric
-	enableConfidentialCompute := metrics.DefaultEnableConfidentialCompute
-	enableStoragePools := metrics.DefaultEnableStoragePools
-	defer func() {
-		gceCS.Metrics.RecordOperationErrorMetrics("ControllerExpandVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
-	}()
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID must be provided")
@@ -1950,7 +1882,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	}
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
-	diskTypeForMetric, enableConfidentialCompute, enableStoragePools = metrics.GetMetricParameters(sourceDisk)
+	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
 
 	if err != nil {

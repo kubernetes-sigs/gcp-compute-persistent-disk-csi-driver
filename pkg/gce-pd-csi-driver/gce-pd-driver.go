@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
@@ -170,12 +171,12 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 	}
 }
 
-func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelTracing bool) {
+func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelTracing bool, metricsManager *metrics.MetricsManager) {
 	maxLogChar = grpcLogCharCap
 
 	klog.V(4).Infof("Driver: %v", gceDriver.name)
 	//Start the nonblocking GRPC
-	s := NewNonBlockingGRPCServer(enableOtelTracing)
+	s := NewNonBlockingGRPCServer(enableOtelTracing, metricsManager)
 	// TODO(#34): Only start specific servers based on a flag.
 	// In the future have this only run specific combinations of servers depending on which version this is.
 	// The schema for that was in util. basically it was just s.start but with some nil servers.

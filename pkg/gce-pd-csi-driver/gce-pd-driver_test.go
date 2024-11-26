@@ -41,8 +41,7 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 	return initGCEDriverWithCloudProvider(t, fakeBlockingBlockProvider)
 }
 
-func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
-	vendorVersion := "test-vendor"
+func controllerServerForTest(cloudProvider gce.GCECompute) *GCEControllerServer {
 	gceDriver := GetGCEDriver()
 	errorBackoffInitialDuration := 200 * time.Millisecond
 	errorBackoffMaxDuration := 5 * time.Minute
@@ -55,7 +54,13 @@ func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) 
 		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
 	}
 
-	controllerServer := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+	return NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+}
+
+func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
+	vendorVersion := "test-vendor"
+	gceDriver := GetGCEDriver()
+	controllerServer := controllerServerForTest(cloudProvider)
 	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
