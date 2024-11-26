@@ -102,7 +102,7 @@ func TestSanity(t *testing.T) {
 	}()
 
 	go func() {
-		gceDriver.Run(endpoint, 10000, false)
+		gceDriver.Run(endpoint, 10000, false /* enableOtelTracing */, nil /* metricsManager */)
 	}()
 
 	// TODO(#818): Fix failing tests and remove test skip flag.
