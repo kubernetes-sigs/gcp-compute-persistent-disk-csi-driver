@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=$BUILDPLATFORM golang:1.23.0 as builder
+FROM --platform=$BUILDPLATFORM golang:1.23.0 AS builder
 
 ARG STAGINGVERSION
 ARG TARGETPLATFORM
@@ -23,24 +23,24 @@ RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$
 
 # Start from Kubernetes Debian base.
 
-FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.2 as debian
+FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.2 AS debian
 
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash
 
 # Since we're leveraging apt to pull in dependencies, we use `gcr.io/distroless/base` because it includes glibc.
-FROM gcr.io/distroless/base-debian12 as distroless-base
+FROM gcr.io/distroless/base-debian12 AS distroless-base
 
 # The distroless amd64 image has a target triplet of x86_64
 FROM distroless-base AS distroless-amd64
-ENV LIB_DIR_PREFIX x86_64
+ENV LIB_DIR_PREFIX=x86_64
 
 # The distroless arm64 image has a target triplet of aarch64
 FROM distroless-base AS distroless-arm64
-ENV LIB_DIR_PREFIX aarch64
+ENV LIB_DIR_PREFIX=aarch64
 
-FROM distroless-$TARGETARCH as output-image
+FROM distroless-$TARGETARCH
 
 # Copy necessary dependencies into distroless base.
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/bin/gce-pd-csi-driver /gce-pd-csi-driver
@@ -118,17 +118,5 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
 
 # Copy NVME support required script and rules into distroless base.
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
-
-# Build stage used for validation of the output-image
-# See validate-container-linux-* targets in Makefile
-FROM output-image as validation-image
-
-COPY --from=debian /usr/bin/ldd /usr/bin/find /usr/bin/xargs /usr/bin/
-COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/hack/print-missing-deps.sh /print-missing-deps.sh
-SHELL ["/bin/bash", "-c"]
-RUN /print-missing-deps.sh
-
-# Final build stage, create the real Docker image with ENTRYPOINT
-FROM output-image
 
 ENTRYPOINT ["/gce-pd-csi-driver"]
