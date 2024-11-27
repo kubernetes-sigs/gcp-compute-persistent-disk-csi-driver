@@ -73,20 +73,24 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 push-container: build-container
 
 # Used by hack/verify-docker-deps.sh, not used for building artifacts
-validate-container-linux-amd64: init-buildx
-	$(DOCKER) buildx build --platform=linux/amd64 \
-		-t validation_linux_amd64 \
-		--target validation-image \
-		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) .
+validate-container-linux-amd64: build-and-load-container-linux-amd64
+	./hack/print-missing-deps.sh $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64
 
 # Used by hack/verify-docker-deps.sh, not used for building artifacts
-validate-container-linux-arm64: init-buildx
-	$(DOCKER) buildx build --platform=linux/arm64 \
-		-t validation_linux_arm64 \
-		--target validation-image \
-		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) .
+validate-container-linux-arm64: build-and-load-container-linux-arm64
+	./hack/print-missing-deps.sh $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64
+
+validate-container-linux: validate-container-linux-amd64 validate-container-linux-arm64
+
+build-and-load-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --platform=linux/amd64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --load .
+
+build-and-load-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --load .
 
 build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/amd64 \

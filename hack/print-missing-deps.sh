@@ -20,13 +20,33 @@ set -o pipefail
 
 echo "Verifying Docker Executables have appropriate dependencies"
 
+TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$TEMP_DIR"' EXIT
+
+export CONTAINER_IMAGE="$1"
+export CONTAINER_EXPORT_DIR="$TEMP_DIR/image_dir"
+
+extractContainerImage() {
+  CONTAINER_ID="$(docker create "$CONTAINER_IMAGE")"
+  CONTAINER_EXPORT_TAR="$TEMP_DIR/image.tar"
+  docker export "$CONTAINER_ID" -o "$CONTAINER_EXPORT_TAR"
+  mkdir -p "$CONTAINER_EXPORT_DIR"
+  tar xf "$CONTAINER_EXPORT_TAR" -C "$CONTAINER_EXPORT_DIR"
+}
+
+printNeededDeps() {
+  readelf -d "$@" 2>&1 | grep NEEDED | awk '{print $5}' | sed -e 's@\[@@g' -e 's@\]@@g'
+}
+
 printMissingDep() {
-  if /usr/bin/ldd "$@" | grep "not found"; then
+  if ! find "$CONTAINER_EXPORT_DIR" -name "$@" > /dev/null; then
     echo "!!! Missing deps for $@ !!!"
     exit 1
   fi
 }
 
+export -f printNeededDeps
 export -f printMissingDep
 
-/usr/bin/find / -type f -executable -print | /usr/bin/xargs -I {} /bin/bash -c 'printMissingDep "{}"'
+extractContainerImage
+/usr/bin/find "$CONTAINER_EXPORT_DIR" -type f -executable -print | /usr/bin/xargs -I {} /bin/bash -c 'printNeededDeps "{}"' | sort | uniq | /usr/bin/xargs -I {} /bin/bash -c 'printMissingDep "{}"'

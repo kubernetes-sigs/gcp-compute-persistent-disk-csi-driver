@@ -22,4 +22,5 @@ echo "Verifying Docker Image Dependencies"
 
 PKG_ROOT=$(git rev-parse --show-toplevel)
 
-make -C "${PKG_ROOT}" validate-container-linux-amd64 validate-container-linux-arm64
+export GCE_PD_CSI_STAGING_IMAGE=validation-image
+make -C "${PKG_ROOT}" validate-container-linux
