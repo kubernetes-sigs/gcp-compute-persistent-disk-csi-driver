@@ -37,12 +37,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	clock "k8s.io/utils/clock/testing"
 	"k8s.io/utils/strings/slices"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -57,6 +61,9 @@ const (
 	name                         = "test-name"
 	parameterConfidentialCompute = "EnableConfidentialCompute"
 	testDiskEncryptionKmsKey     = "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY"
+	pvcName                      = "test-pvc"
+	pvcNamespace                 = "test-ns"
+	hostName                     = "test-node"
 )
 
 var (
@@ -1137,6 +1144,85 @@ func TestCreateVolumeArguments(t *testing.T) {
 	}
 }
 
+func TestCreateVolumeWithLocationHint(t *testing.T) {
+	testCases := []struct {
+		name       string
+		client     kubernetes.Interface
+		req        *csi.CreateVolumeRequest
+		expVol     *csi.Volume
+		expErrCode codes.Code
+	}{
+		{
+			name: "create volume with location hint set",
+			client: fake.NewSimpleClientset(&v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        pvcName,
+					Namespace:   pvcNamespace,
+					Annotations: map[string]string{annSelectedNode: hostName},
+				},
+			}),
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					common.ParameterKeyPVCName:      pvcName,
+					common.ParameterKeyPVCNamespace: pvcNamespace,
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+		{
+			name: "create volume with empty host name",
+			client: fake.NewSimpleClientset(&v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        pvcName,
+					Namespace:   pvcNamespace,
+				},
+			}),
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					common.ParameterKeyPVCName:      pvcName,
+					common.ParameterKeyPVCNamespace: pvcNamespace,
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		gceDriver := initGCEDriverWithKubeClient(t, tc.client)
+		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+		vol := resp.GetVolume()
+		if err != nil {
+			serverError, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Could not get error status code from err: %v", serverError)
+			}
+			if serverError.Code() != tc.expErrCode {
+				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+			}
+			continue
+		}
+		if vol == nil {
+			t.Fatalf("Expected volume %v, got nil volume", tc.expVol)
+		}
+	}
+}
+
 func TestMultiZoneVolumeCreation(t *testing.T) {
 	testCases := []struct {
 		name               string
@@ -1596,12 +1682,12 @@ func (cloud *FakeCloudProviderInsertDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.insertDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode, hostName string) error {
 	if err, ok := cloud.insertDiskErrors[volKey.String()]; ok {
 		return err
 	}
 
-	return cloud.FakeCloudProvider.InsertDisk(ctx, project, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+	return cloud.FakeCloudProvider.InsertDisk(ctx, project, volKey, params, capBytes, capacityRange, replicaZones, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode, hostName)
 }
 
 func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
@@ -1949,7 +2035,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			t.Fatalf("Failed convert key: %v", err)
 		}
 
-		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "")
+		err = fcp.InsertDisk(context.Background(), project, volKey, *tc.params, 200000, nil, nil, "", "", false, "", "")
 		if err != nil {
 			t.Fatalf("Failed to insert disk: %v", err)
 		}
@@ -4539,6 +4625,55 @@ func zonesEqual(gotZones, expectedZones []string) bool {
 		}
 	}
 	return true
+}
+
+func TestGetHostNameFromPVC(t *testing.T) {
+	ctx := context.Background()
+
+	// Test cases
+	tests := []struct {
+		name        string
+		client      kubernetes.Interface
+		pvc         *v1.PersistentVolumeClaim
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "nil kube client",
+			client:   nil,
+			expected: "",
+		},
+		{
+			name:     "PVC not found",
+			client:   fake.NewSimpleClientset(),
+			expected: "",
+		},
+		{
+			name:     "PVC with no annotation",
+			client:   fake.NewSimpleClientset(&v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: pvcName, Namespace: pvcNamespace}}),
+			expected: "",
+		},
+		{
+			name: "PVC with selected node annotation",
+			client: fake.NewSimpleClientset(&v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        pvcName,
+					Namespace:   pvcNamespace,
+					Annotations: map[string]string{annSelectedNode: hostName},
+				},
+			}),
+			expected: hostName,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := getHostNameFromPVC(ctx, pvcName, pvcNamespace, tc.client)
+			if actual != tc.expected {
+				t.Errorf("Expected hostname %q, but got %q", tc.expected, actual)
+			}
+		})
+	}
 }
 
 func TestVolumeOperationConcurrency(t *testing.T) {

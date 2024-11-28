@@ -21,6 +21,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -37,6 +38,7 @@ type GCEDriver struct {
 	vendorVersion     string
 	extraVolumeLabels map[string]string
 	extraTags         map[string]string
+	kubeClient        kubernetes.Interface // In-cluster client
 
 	ids *GCEIdentityServer
 	ns  *GCENodeServer
@@ -51,7 +53,7 @@ func GetGCEDriver() *GCEDriver {
 	return &GCEDriver{}
 }
 
-func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolumeLabels map[string]string, extraTags map[string]string, identityServer *GCEIdentityServer, controllerServer *GCEControllerServer, nodeServer *GCENodeServer) error {
+func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolumeLabels map[string]string, extraTags map[string]string, kubeClient kubernetes.Interface, identityServer *GCEIdentityServer, controllerServer *GCEControllerServer, nodeServer *GCENodeServer) error {
 	if name == "" {
 		return fmt.Errorf("Driver name missing")
 	}
@@ -87,6 +89,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolu
 	gceDriver.vendorVersion = vendorVersion
 	gceDriver.extraVolumeLabels = extraVolumeLabels
 	gceDriver.extraTags = extraTags
+	gceDriver.kubeClient = kubeClient
 	gceDriver.ids = identityServer
 	gceDriver.cs = controllerServer
 	gceDriver.ns = nodeServer
