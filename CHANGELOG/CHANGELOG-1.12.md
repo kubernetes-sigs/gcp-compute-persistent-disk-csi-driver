@@ -1,3 +1,45 @@
+# v1.12.13 - Changelog since v1.12.11
+
+## Changes by Kind
+
+### Bug
+- Update Go version and dependencies to fix CVE-2024-24790,CVE-2024-24789 by @Sneha-at in #1851
+
+# v1.12.12 - Changelog since v1.12.11
+
+## Changes by Kind
+
+### Bug
+- Automated cherry pick of #1658: Add support for checking if a device is being used by a filesystem by @pwschuurman in #1845
+
+
+# v1.12.11 - Changelog since v1.12.10
+
+## Changes by Kind
+
+### Bug
+- [release-1.12] Update debian image from bullseye to bookworm to fix CVEs by @k8s-infra-cherrypick-robot in #1735
+- Reverting the Dockerfile debian image from bookworm to bullseye due to regression by @Sneha-at in #1774
+- [release-1.12] Return Unavailable for 'connection reset by peer' errors by @k8s-infra-cherrypick-robot in #1813
+- Automated cherry pick of #1708: Properly unwrap gce-compute error code. by @hime in #1840
+
+# v1.12.10 - Changelog since v1.12.9
+
+## Changes by Kind
+
+### Bug
+- Fix CVE-2023-45288 by @dannawang0221 in #1682
+
+
+# v1.12.9 - Changelog since v1.12.8
+
+## Changes by Kind
+
+### Bug
+
+- Change GetDisk error reporting to temporary in CreateVolume codepath ([#1600])https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1600), [@k8s-infra-cherrypick-robot](https://github.com/k8s-infra-cherrypick-robot))
+- [release-1.12] Fix nvme path filtering logic for udevadm trigger by @k8s-infra-cherrypick-robot in #1647
+
 # v1.12.8 - Changelog since v1.12.7
 
 ## Changes by Kind
