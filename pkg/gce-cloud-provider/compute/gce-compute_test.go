@@ -164,6 +164,11 @@ func TestCodeForGCEOpError(t *testing.T) {
 			inputErr: computev1.OperationErrorErrors{Code: "UNSUPPORTED_OPERATION"},
 			expCode:  codes.InvalidArgument,
 		},
+		{
+			name:     "RESOURCE_OPERATION_RATE_EXCEEDED error",
+			inputErr: computev1.OperationErrorErrors{Code: "RESOURCE_OPERATION_RATE_EXCEEDED"},
+			expCode:  codes.ResourceExhausted,
+		},
 	}
 
 	for _, tc := range testCases {
