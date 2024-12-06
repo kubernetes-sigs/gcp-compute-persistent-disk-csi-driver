@@ -84,7 +84,6 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzma.so.5 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libreadline.so.8 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libz.so.1 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libc.so.6 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/liburcu.so.8 \ 
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libcap.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libcrypto.so.3 \
