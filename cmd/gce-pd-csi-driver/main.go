@@ -143,6 +143,7 @@ func handle() {
 		}()
 	}
 
+	var metricsManager *metrics.MetricsManager = nil
 	if *runControllerService && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
@@ -151,6 +152,7 @@ func handle() {
 		if metrics.IsGKEComponentVersionAvailable() {
 			mm.EmitGKEComponentVersion()
 		}
+		metricsManager = &mm
 	}
 
 	if len(*extraVolumeLabelsStr) > 0 && !*runControllerService {
@@ -261,7 +263,7 @@ func handle() {
 	gce.WaitForOpBackoff.Steps = *waitForOpBackoffSteps
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
-	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing)
+	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
 }
 
 func notEmpty(v string) bool {
