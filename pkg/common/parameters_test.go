@@ -485,7 +485,7 @@ func TestSnapshotParameters(t *testing.T) {
 func TestExtractModifyVolumeParameters(t *testing.T) {
 	parameters := map[string]string{
 		"iops":       "1000",
-		"throughput": "500",
+		"throughput": "500Mi",
 	}
 
 	iops := int64(1000)
