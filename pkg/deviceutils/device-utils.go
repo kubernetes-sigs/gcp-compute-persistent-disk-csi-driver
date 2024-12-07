@@ -194,7 +194,7 @@ func ensureUdevToolExists(toolPath string) error {
 	if !exists {
 		// The driver should be containerized with the tool so maybe something is
 		// wrong with the build process
-		return fmt.Errorf("could not find tool at %q, unable to verify device paths", nvmeIdPath)
+		return fmt.Errorf("could not find tool at %q, unable to verify device paths", toolPath)
 	}
 	return nil
 }
