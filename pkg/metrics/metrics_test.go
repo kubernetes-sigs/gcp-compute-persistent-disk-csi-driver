@@ -99,15 +99,18 @@ func TestGetMetricParameters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Logf("Running test: %v", tc.name)
-		diskType, confidentialCompute, enableStoragePools := GetMetricParameters(tc.disk)
-		if confidentialCompute != tc.expectedEnableConfidentialCompute {
-			t.Fatalf("Got confidentialCompute value %q expected %q", confidentialCompute, tc.expectedEnableConfidentialCompute)
+		ctx := context.TODO()
+		requestMetadata := newRequestMetadata()
+		newCtx := context.WithValue(ctx, requestMetadataKey, requestMetadata)
+		UpdateRequestMetadataFromDisk(newCtx, tc.disk)
+		if requestMetadata.enableConfidentialStorage != tc.expectedEnableConfidentialCompute {
+			t.Fatalf("Got confidentialCompute value %q expected %q", requestMetadata.enableConfidentialStorage, tc.expectedEnableConfidentialCompute)
 		}
-		if diskType != tc.expectedDiskType {
-			t.Fatalf("Got diskType value %q expected %q", diskType, tc.expectedDiskType)
+		if requestMetadata.diskType != tc.expectedDiskType {
+			t.Fatalf("Got diskType value %q expected %q", requestMetadata.enableConfidentialStorage, tc.expectedDiskType)
 		}
-		if enableStoragePools != tc.expectedEnableStoragePools {
-			t.Fatalf("Got enableStoragePools value %q expected %q", enableStoragePools, tc.expectedEnableStoragePools)
+		if requestMetadata.enableStoragePools != tc.expectedEnableStoragePools {
+			t.Fatalf("Got enableStoragePools value %q expected %q", requestMetadata.enableStoragePools, tc.expectedEnableStoragePools)
 		}
 	}
 }
