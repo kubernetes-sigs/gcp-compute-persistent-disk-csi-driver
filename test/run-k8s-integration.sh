@@ -28,6 +28,7 @@ readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
+readonly volumeattributesclass_files=${VOLUME_ATTRIBUTES_CLASS_FILES:-hdb-volumeattributesclass.yaml}
 
 export GCE_PD_VERBOSITY=9
 
@@ -48,11 +49,14 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} \
             --do-k8s-build=${do_k8s_build} --boskos-resource-type=${boskos_resource_type} \
             --storageclass-files=sc-balanced.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
-            --volumeattributesclass-files=hdb-volumeattributesclass.yaml \
             --storageclass-for-vac-file=sc-hdb.yaml \
             --kube-runtime-config=api/all=true \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
+
+if [[ -n "${volumeattributesclass_files}" ]]; then
+  base_cmd+=" --volumeattributesclass-files=${volumeattributesclass_files}"
+fi
 
 if [ "$use_gke_managed_driver" = false ]; then
   base_cmd="${base_cmd} --deploy-overlay-name=${overlay_name}"
