@@ -635,6 +635,9 @@ func handle() error {
 
 func generateGCETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
+	// Skip mount options test until we fix the invalid mount options for xfs.
+	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
+
 	v := apimachineryversion.MustParseSemantic(testParams.clusterVersion)
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
