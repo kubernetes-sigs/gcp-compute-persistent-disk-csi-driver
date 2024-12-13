@@ -47,8 +47,9 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} \
             --do-k8s-build=${do_k8s_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files=sc-hdb.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
+            --storageclass-files=sc-balanced.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
             --volumeattributesclass-files=hdb-volumeattributesclass.yaml \
+            --storageclass-for-vac-file=sc-hdb.yaml \
             --kube-runtime-config=api/all=true \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
