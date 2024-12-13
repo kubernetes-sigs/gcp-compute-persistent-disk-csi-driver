@@ -618,6 +618,41 @@ func TestConvertTagsStringToMap(t *testing.T) {
 				expectedOutput: nil,
 				expectedError:  true,
 			},
+			{
+				name: "tag value contains escaped delimiters",
+				tags: "parent1/key1/value\\,with\\,commas,parent2/key2/value3",
+				expectedOutput: map[string]string{
+					"parent1/key1": "value,with,commas",
+					"parent2/key2": "value3",
+				},
+				expectedError: false,
+			},
+			{
+				name: "tag value contains unescaped commas",
+				tags: "parent1/key1/value,with,commas,parent2/key2/value3",
+				expectedOutput: map[string]string{
+					"parent1/key1": "value,with,commas",
+					"parent2/key2": "value3",
+				},
+				expectedError: true,
+			},
+			{
+				name: "tag value contains escapes for non delimiter characters",
+				tags: "p\\arent1/key1/value1,parent2/key2/value2",
+				expectedOutput: map[string]string{
+					"parent1/key1": "value1",
+					"parent2/key2": "value2",
+				},
+				expectedError: false,
+			},
+			{
+				name: "tag value contains a sequence of escape characters",
+				tags: "parent1/key1/\\\\value\\",
+				expectedOutput: map[string]string{
+					"parent1/key1": "value",
+				},
+				expectedError: false,
+			},
 		}
 
 		for _, tc := range testCases {
@@ -754,6 +789,11 @@ func TestConvertTagsStringToMap(t *testing.T) {
 			{
 				name:          "tag key can contain uppercase, lowercase alphanumeric characters, and the following special characters `_-.@%%=+:,*#&(){}[]` and spaces",
 				tags:          "parent/k/Special@value[10]{20}(30)-example",
+				expectedError: false,
+			},
+			{
+				name:          "tag value may contain escaped commas",
+				tags:          "parent/k/v\\,v",
 				expectedError: false,
 			},
 		}
@@ -1738,6 +1778,82 @@ func TestNewCombinedError(t *testing.T) {
 			gotCode := CodeForError(NewCombinedError("message", tc.errors))
 			if gotCode != tc.wantCode {
 				t.Errorf("NewCombinedError(%v): got %v, want %v", tc.errors, gotCode, tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestSplitWithEscape(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  string
+		delim  rune
+		escape rune
+		want   []string
+	}{
+		{
+			name:   "basic split",
+			input:  "a,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			name:   "escaped delimiter",
+			input:  "a\\,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a,b", "c"},
+		},
+		{
+			name:   "escaped escape character",
+			input:  "a\\\\,b,c",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a,b", "c"},
+		},
+		{
+			name:   "empty parts",
+			input:  "a,,b,c,",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "", "b", "c", ""},
+		},
+		{
+			name:   "only delimiters",
+			input:  ",,,",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"", "", "", ""},
+		},
+		{
+			name:   "no delimiters",
+			input:  "abc",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"abc"},
+		},
+		{
+			name:   "escape at end",
+			input:  "a,b,c\\",
+			delim:  ',',
+			escape: '\\',
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			name:   "different delimiter and escape",
+			input:  "a|b#|c|d",
+			delim:  '|',
+			escape: '#',
+			want:   []string{"a", "b|c", "d"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitWithEscape(tc.input, tc.delim, tc.escape)
+			if diff := cmp.Diff(got, tc.want); diff != "" {
+				t.Errorf("splitWithEscape() mismatch (-got +want):\n%s", diff)
 			}
 		})
 	}
