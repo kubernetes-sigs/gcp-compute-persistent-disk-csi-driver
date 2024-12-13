@@ -1264,9 +1264,8 @@ func opIsDone(op *computev1.Operation) (bool, error) {
 
 func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*computev1.Instance, error) {
 	klog.V(5).Infof("Getting instance %v from zone %v", instanceName, instanceZone)
-	svc := cloud.service
 	project := cloud.project
-	instance, err := svc.Instances.Get(project, instanceZone, instanceName).Do()
+	instance, err := cloud.service.Instances.Get(project, instanceZone, instanceName).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -1275,9 +1274,9 @@ func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone
 
 func (cloud *CloudProvider) GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Getting snapshot %v", snapshotName)
-	svc := cloud.service
-	snapshot, err := svc.Snapshots.Get(project, snapshotName).Context(ctx).Do()
+	snapshot, err := cloud.service.Snapshots.Get(project, snapshotName).Context(ctx).Do()
 	if err != nil {
+		klog.V(5).Infof("Error getting snapshot %v: %v", snapshotName, err)
 		return nil, err
 	}
 	return snapshot, nil
@@ -1313,15 +1312,34 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, 
 		if description == "" {
 			description = "Snapshot created by GCE-PD CSI Driver"
 		}
-		return cloud.createZonalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams, description)
 	case meta.Regional:
 		if description == "" {
 			description = "Regional Snapshot created by GCE-PD CSI Driver"
 		}
-		return cloud.createRegionalDiskSnapshot(ctx, project, volKey, snapshotName, snapshotParams, description)
 	default:
 		return nil, fmt.Errorf("could not create snapshot, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
+
+	snapshotToCreate := &computev1.Snapshot{
+		Name:             snapshotName,
+		StorageLocations: snapshotParams.StorageLocations,
+		Description:      description,
+		Labels:           snapshotParams.Labels,
+		SourceDisk:       cloud.GetDiskSourceURI(project, volKey),
+	}
+	_, err = cloud.service.Snapshots.Insert(project, snapshotToCreate).Context(ctx).Do()
+
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
+
+	if err == nil {
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
+	}
+
+	return snapshot, err
 }
 
 func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
@@ -1497,52 +1515,6 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 	return requestGb, nil
 }
 
-func (cloud *CloudProvider) createZonalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters, description string) (*computev1.Snapshot, error) {
-	snapshotToCreate := &computev1.Snapshot{
-		Name:             snapshotName,
-		StorageLocations: snapshotParams.StorageLocations,
-		Description:      description,
-		Labels:           snapshotParams.Labels,
-	}
-
-	_, err := cloud.service.Disks.CreateSnapshot(project, volKey.Zone, volKey.Name, snapshotToCreate).Context(ctx).Do()
-
-	if err != nil {
-		return nil, err
-	}
-
-	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
-
-	if err == nil {
-		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
-	}
-
-	return snapshot, err
-}
-
-func (cloud *CloudProvider) createRegionalDiskSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters, description string) (*computev1.Snapshot, error) {
-	snapshotToCreate := &computev1.Snapshot{
-		Name:             snapshotName,
-		StorageLocations: snapshotParams.StorageLocations,
-		Description:      description,
-		Labels:           snapshotParams.Labels,
-	}
-
-	_, err := cloud.service.RegionDisks.CreateSnapshot(project, volKey.Region, volKey.Name, snapshotToCreate).Context(ctx).Do()
-	if err != nil {
-		return nil, err
-	}
-
-	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
-
-	if err == nil {
-		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
-	}
-
-	return snapshot, err
-
-}
-
 func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -1558,7 +1530,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 				klog.Warningf("Error in getting snapshot %s, %v", snapshotName, err.Error())
 			} else if snapshot != nil {
 				if snapshot.Status != "CREATING" {
-					klog.V(6).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
+					klog.V(5).Infof("Snapshot %s status is %s", snapshotName, snapshot.Status)
 					return snapshot, nil
 				} else {
 					klog.V(6).Infof("Snapshot %s is still creating ...", snapshotName)
