@@ -19,5 +19,6 @@ package metrics
 // Test-only method used for resetting metric counts.
 func (mm *MetricsManager) ResetMetrics() {
 	// Re-initialize metrics
-	initMetrics()
+	gkeComponentVersion.Reset()
+	pdcsiOperationErrorsMetric.Reset()
 }

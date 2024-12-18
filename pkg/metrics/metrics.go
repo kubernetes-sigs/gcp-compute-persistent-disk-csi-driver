@@ -39,11 +39,6 @@ const (
 )
 
 var (
-	gkeComponentVersion        *metrics.GaugeVec
-	pdcsiOperationErrorsMetric *metrics.CounterVec
-)
-
-func initMetrics() {
 	// This metric is exposed only from the controller driver component when GKE_PDCSI_VERSION env variable is set.
 	gkeComponentVersion = metrics.NewGaugeVec(&metrics.GaugeOpts{
 		Name: "component_version",
@@ -58,7 +53,7 @@ func initMetrics() {
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type", "enable_confidential_storage", "enable_storage_pools"})
-}
+)
 
 type MetricsManager struct {
 	registry metrics.KubeRegistry
