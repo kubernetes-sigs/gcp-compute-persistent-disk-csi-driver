@@ -345,6 +345,13 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			expectErr:          true,
 		},
 		{
+			name:               "invalid storage pool parameters, duplicate storagePools",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2", ParameterKeyProvisionedThroughputOnCreate: "-50Mi"},
+			labels:             map[string]string{},
+			expectErr:          true,
+		},
+		{
 			name:               "storage pool parameters, enableStoragePools is false",
 			enableStoragePools: false,
 			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
