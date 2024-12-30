@@ -345,7 +345,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			expectErr:          true,
 		},
 		{
-			name:               "invalid storage pool parameters, duplicate storagePools",
+			name:               "invalid storage pool parameters, negative ProvisionedThroughputOnCreate",
 			enableStoragePools: true,
 			parameters:         map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2", ParameterKeyProvisionedThroughputOnCreate: "-50Mi"},
 			labels:             map[string]string{},
