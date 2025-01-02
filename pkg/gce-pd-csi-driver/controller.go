@@ -1882,16 +1882,32 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	}
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey, gce.GCEAPIVersionV1)
+
 	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
-	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
+
+	updatedVolumeParams := common.ModifyVolumeParameters{}
+	updatedSizeGb := int64(reqBytes / 1024 / 1024 / 1024)
+	updatedVolumeParams.SizeGb = &updatedSizeGb
+
+	if gceCS.diskSupportsIopsChange(sourceDisk.GetPDType()) {
+		// Resize hyperdisk-balanced to 5 Gi requires minimum of 2500 iops
+		if updatedSizeGb == 5 {
+			updatedVolumeParams.IOPS = &common.Hyperdisk5GbIops
+		} else if sourceDisk.GetSizeGb() < 6 && updatedSizeGb >= 6 {
+			// if old sizeGb is less than 6Gi and the updated value is more or equal than 6Gi, still set iops to 3000
+			updatedVolumeParams.IOPS = &common.MinHyperdiskIops
+		}
+	}
+
+	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, sourceDisk, updatedVolumeParams)
 
 	if err != nil {
 		return nil, common.LoggedError("ControllerExpandVolume failed to resize disk: ", err)
 	}
 
-	klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, resizedGb)
+	klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, updatedSizeGb)
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         common.GbToBytes(resizedGb),
+		CapacityBytes:         common.GbToBytes(updatedSizeGb),
 		NodeExpansionRequired: true,
 	}, nil
 }

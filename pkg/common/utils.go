@@ -107,6 +107,10 @@ var (
 	regexValue  = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.@%=+:,*#&()\[\]{}\-\s]{0,61}[a-zA-Z0-9])?$`)
 
 	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
+
+	// Minimum Iops for Hyperdisk >= 6 Gi
+	MinHyperdiskIops int64 = 3000
+	Hyperdisk5GbIops int64 = 2500
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {

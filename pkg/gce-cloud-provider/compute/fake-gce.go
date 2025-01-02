@@ -292,7 +292,8 @@ func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, 
 	}
 	specifiedIops := params.IOPS != nil && *params.IOPS != 0
 	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
-	if !specifiedIops && !specifiedThroughput {
+	specifiedSizeGb := params.SizeGb != nil && *params.SizeGb != 0
+	if !specifiedIops && !specifiedThroughput && !specifiedSizeGb {
 		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
 	}
 
