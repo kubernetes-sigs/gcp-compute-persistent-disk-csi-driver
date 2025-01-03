@@ -36,14 +36,17 @@ import (
 )
 
 var (
-	project                   = flag.String("project", "", "Project to run tests in")
-	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
-	vmNamePrefix              = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
-	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Milan", "Minimum CPU architecture")
-	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
-	machineType               = flag.String("machine-type", "n2d-standard-2", "Type of machine to provision instance on")
-	imageURL                  = flag.String("image-url", "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-2404-lts-amd64", "OS image url to get image from")
+	project        = flag.String("project", "", "Project to run tests in")
+	serviceAccount = flag.String("service-account", "", "Service account to bring up instance with")
+	vmNamePrefix   = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
+	architecture   = flag.String("arch", "amd64", "Architecture pd csi driver build on")
+	minCpuPlatform = flag.String("min-cpu-platform", "AMD Milan", "Minimum CPU architecture")
+	zones          = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	machineType    = flag.String("machine-type", "n2d-standard-2", "Type of machine to provision instance on")
+	// TODO: Remove presubmit is no longer setting --image-url
+	imageURL                  = flag.String("image-url", "", "[DEPRECATED] OS image url to get image from. Not actively used")
+	imageProject              = flag.String("image-project", "ubuntu-os-cloud", "OS image url to get image from")
+	imagePrefix               = flag.String("image-family-prefix", "ubuntu-minimal-2404-lts", "Image family prefix, to which \"-<arch>\" is appended")
 	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
@@ -137,6 +140,7 @@ func NewTestContext(zone string) *remote.TestContext {
 	nodeID := fmt.Sprintf("%s-%s", *vmNamePrefix, zone)
 	klog.Infof("Setting up node %s", nodeID)
 
+	imageURL := fmt.Sprintf("projects/%s/global/images/family/%s-%s", *imageProject, *imagePrefix, *architecture)
 	instanceConfig := remote.InstanceConfig{
 		Project:                   *project,
 		Architecture:              *architecture,
@@ -145,7 +149,7 @@ func NewTestContext(zone string) *remote.TestContext {
 		Name:                      nodeID,
 		MachineType:               *machineType,
 		ServiceAccount:            *serviceAccount,
-		ImageURL:                  *imageURL,
+		ImageURL:                  imageURL,
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
