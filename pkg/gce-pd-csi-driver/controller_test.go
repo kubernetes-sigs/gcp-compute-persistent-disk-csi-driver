@@ -1919,7 +1919,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			expErrMessage: "no IOPS or Throughput or SizeGb specified for disk",
 		},
 		{
-			name: "Update volume with invalid sizeGb",
+			name: "Modify volume with unsupported sizeGb",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId:          testVolumeID,
 				MutableParameters: map[string]string{"sizeGb": "800"},
