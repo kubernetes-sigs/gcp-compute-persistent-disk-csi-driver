@@ -18,11 +18,14 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -721,5 +724,55 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				t.Errorf("%s: -want, +got \n%s", input, diff)
 			}
 		}
+	}
+}
+
+func TestClearSecrets(t *testing.T) {
+	vc := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	}
+
+	req := &csi.NodeExpandVolumeRequest{
+		VolumePath:       "/path",
+		VolumeCapability: vc,
+		Secrets: map[string]string{
+			"key": "value",
+		},
+	}
+
+	clearedReq := &csi.NodeExpandVolumeRequest{
+		VolumePath:       "/path",
+		VolumeCapability: vc,
+		Secrets:          map[string]string{},
+	}
+
+	if !reflect.DeepEqual(clearSecrets(req), clearedReq) {
+		t.Fatalf("Unexpected change: %v vs. %v", clearSecrets(req), clearedReq)
+	}
+}
+
+func TestLogGRPC(t *testing.T) {
+	info := &grpc.UnaryServerInfo{
+		FullMethod: "foo",
+	}
+
+	req := struct {
+		Secrets map[string]string
+	}{map[string]string{
+		"password": "pass",
+	}}
+
+	handler := func(ctx context.Context, req any) (any, error) {
+		return nil, nil
+	}
+
+	_, err := logGRPC(nil, req, info, handler)
+	if err != nil {
+		t.Fatalf("logGRPC returns error %v", err)
 	}
 }
