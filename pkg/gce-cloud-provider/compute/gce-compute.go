@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -473,8 +474,17 @@ func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volK
 func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
 	specifiedIops := params.IOPS != nil && *params.IOPS != 0
 	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
-	if !specifiedIops && !specifiedThroughput {
-		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
+	specifiedSizeGb := params.SizeGb != nil && *params.SizeGb != 0
+
+	v := reflect.ValueOf(params)
+	typeOfS := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		klog.V(5).Infof("===== params key is %v, value is %v =====", typeOfS.Field(i).Name, v.Field(i).Interface())
+	}
+
+	if !specifiedIops && !specifiedThroughput && !specifiedSizeGb {
+		return fmt.Errorf("no IOPS or Throughput or SizeGb specified for disk %v", existingDisk.GetSelfLink())
 	}
 	updatedDisk := &computev1.Disk{
 		Name: existingDisk.GetName(),
@@ -487,6 +497,10 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 	if params.Throughput != nil && *params.Throughput != 0 {
 		updatedDisk.ProvisionedThroughput = *params.Throughput
 		paths = append(paths, "provisionedThroughput")
+	}
+	if specifiedSizeGb {
+		updatedDisk.SizeGb = *params.SizeGb
+		paths = append(paths, "sizeGb")
 	}
 
 	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
