@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/rand"
 	neturl "net/url"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -779,6 +780,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
+	// ExtractModifyVolumeParameters throws err if sizeGb is specified
 	volumeModifyParams, err := common.ExtractModifyVolumeParameters(req.GetMutableParameters())
 	if err != nil {
 		klog.Errorf("Failed to extract parameters for volume %s: %v", volumeID, err)
@@ -1888,6 +1890,13 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	updatedVolumeParams := common.ModifyVolumeParameters{}
 	updatedSizeGb := int64(reqBytes / 1024 / 1024 / 1024)
 	updatedVolumeParams.SizeGb = &updatedSizeGb
+
+	v := reflect.ValueOf(updatedVolumeParams)
+	typeOfS := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		klog.V(5).Infof("===== updatedVolumeParams key is %v, value is %v =====", typeOfS.Field(i).Name, v.Field(i).Interface())
+	}
 
 	if gceCS.diskSupportsIopsChange(sourceDisk.GetPDType()) {
 		// Resize hyperdisk-balanced to 5 Gi requires minimum of 2500 iops

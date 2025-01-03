@@ -243,7 +243,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	})
 
-	It("Should resize controller and node for an block volume", func() {
+	It("Should resize controller and node for a block volume", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()

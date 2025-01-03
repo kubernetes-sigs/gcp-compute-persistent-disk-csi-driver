@@ -256,7 +256,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 
 		if !reflect.DeepEqual(snapshot, tc.expSnapshot) {
 			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshot, tc.expSnapshot)
-			t.Errorf(errStr)
+			t.Errorf("Err: %v", errStr)
 		}
 	}
 }
@@ -547,7 +547,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 		}
 		if len(snapshots) != tc.expectedCount {
 			errStr := fmt.Sprintf("Expected snapshot number to equal: %v", tc.numSnapshots)
-			t.Errorf(errStr)
+			t.Errorf("Err: %v", errStr)
 		}
 	}
 }
@@ -1132,7 +1132,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			for i := 0; i < len(vol.GetAccessibleTopology()); i++ {
 				errStr = errStr + fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
 			}
-			t.Errorf(errStr)
+			t.Errorf("Err: %v", errStr)
 		}
 	}
 }
@@ -1916,7 +1916,23 @@ func TestVolumeModifyOperation(t *testing.T) {
 			},
 			expIops:       10000,
 			expThroughput: 500,
-			expErrMessage: "no IOPS or Throughput specified for disk",
+			expErrMessage: "no IOPS or Throughput or SizeGb specified for disk",
+		},
+		{
+			name: "Update volume with invalid sizeGb",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"sizeGb": "800"},
+			},
+			diskType: "hyperdisk-balanced",
+			params: &common.DiskParameters{
+				DiskType:                      "hyperdisk-balanced",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       10000,
+			expThroughput: 500,
+			expErrMessage: "parameters contain unknown parameter: sizeGb",
 		},
 		{
 			name: "Update volume with valid parameters but invalid disk type",

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -474,8 +475,16 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 	specifiedIops := params.IOPS != nil && *params.IOPS != 0
 	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
 	specifiedSizeGb := params.SizeGb != nil && *params.SizeGb != 0
+
+	v := reflect.ValueOf(params)
+	typeOfS := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		klog.V(5).Infof("===== params key is %v, value is %v =====", typeOfS.Field(i).Name, v.Field(i).Interface())
+	}
+
 	if !specifiedIops && !specifiedThroughput && !specifiedSizeGb {
-		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
+		return fmt.Errorf("no IOPS or Throughput or SizeGb specified for disk %v", existingDisk.GetSelfLink())
 	}
 	updatedDisk := &computev1.Disk{
 		Name: existingDisk.GetName(),
