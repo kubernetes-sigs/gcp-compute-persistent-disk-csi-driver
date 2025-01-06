@@ -1920,6 +1920,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 			klog.V(5).Infof("===== updatedVolumeParams key is %v, value is %v =====", typeOfS.Field(i).Name, v.Field(i).Interface())
 		}
 
+		// For hyperdisk-throughput, there is no need to update the iops
 		if gceCS.diskSupportsIopsChange(sourceDisk.GetPDType()) {
 			// Resize hyperdisk-balanced to 5 Gi requires minimum of 2500 iops
 			if updatedSizeGb == 5 {
@@ -1936,7 +1937,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 			return nil, common.LoggedError("ControllerExpandVolume failed to resize disk: ", err)
 		}
 
-		klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, updatedSizeGb)
+		klog.V(4).Infof("ControllerExpandVolume succeeded for hyperdisk %v to size %v", volKey, updatedSizeGb)
 		return &csi.ControllerExpandVolumeResponse{
 			CapacityBytes:         common.GbToBytes(updatedSizeGb),
 			NodeExpansionRequired: true,

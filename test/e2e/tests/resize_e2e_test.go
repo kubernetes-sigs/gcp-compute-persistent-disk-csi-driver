@@ -38,7 +38,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
-		volume, err := client.CreateVolume(volName, nil, defaultSizeGb,
+
+		hdbParams := map[string]string{
+			common.ParameterKeyType:                          "hyperdisk-balanced",
+			common.ParameterKeyProvisionedIOPSOnCreate:       "2500",
+			common.ParameterKeyProvisionedThroughputOnCreate: "250Mi",
+		}
+		volume, err := client.CreateVolume(volName, hdbParams, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
@@ -51,10 +57,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Validate Disk Created
 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring("hyperdisk-balanced"))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(2500))
 
 		defer func() {
 			// Delete Disk
@@ -115,7 +122,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(sizeGb).To(Equal(defaultSizeGb))
 
 		// Resize controller
-		var newSizeGb int64 = 10
+		var newSizeGb int64 = 6
 		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
 
 		Expect(err).To(BeNil(), "Controller expand volume failed")
@@ -124,6 +131,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		cloudDisk, err = computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Get cloud disk failed")
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(3000))
 
 		// Resize node
 		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
@@ -243,7 +251,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	})
 
-	It("Should resize controller and node for a block volume", func() {
+	It("Should resize controller and node for an block volume", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
