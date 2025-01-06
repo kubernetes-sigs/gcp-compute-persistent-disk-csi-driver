@@ -62,6 +62,7 @@ var (
 	storageClassFiles  = flag.String("storageclass-files", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
 	snapshotClassFiles = flag.String("snapshotclass-files", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
 	vacFiles           = flag.String("volumeattributesclass-files", "", "name of volumeattributesclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple volumeattributesclasses.")
+	scVacFile          = flag.String("storageclass-for-vac-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integraion/config against the volumeattributesclass-files.")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
@@ -158,6 +159,10 @@ func main() {
 		ensureVariable(storageClassFiles, false, "storage-class-file and migration-test cannot both be set")
 	} else {
 		ensureVariable(storageClassFiles, true, "One of storageclass-file and migration-test must be set")
+	}
+
+	if len(*vacFiles) != 0 {
+		ensureVariable(scVacFile, true, "storageclass-for-vac-file must be set when volumeattributesclass-files is set")
 	}
 
 	if !*bringupCluster && *platform != "windows" {
@@ -563,6 +568,13 @@ func handle() error {
 				applicableVacFiles = append(applicableVacFiles, vacFile)
 			}
 		}
+		scForVac := ""
+		if len(*scVacFile) > 0 {
+			storageClassFile := strings.TrimSpace(*scVacFile)
+			if len(storageClassFile) != 0 {
+				scForVac = storageClassFile
+			}
+		}
 		var ginkgoErrors []string
 		var testOutputDirs []string
 
@@ -577,8 +589,8 @@ func handle() error {
 			}
 		}
 		// Run volume modify tests
-		if len(applicableStorageClassFiles) > 0 {
-			testParams.storageClassFile = applicableStorageClassFiles[0]
+		if len(scForVac) > 0 {
+			testParams.storageClassFile = scForVac
 			for _, vacFile := range applicableVacFiles {
 				outputDir := strings.TrimSuffix(vacFile, ".yaml")
 				testOutputDirs = append(testOutputDirs, outputDir)
@@ -587,6 +599,8 @@ func handle() error {
 					ginkgoErrors = append(ginkgoErrors, err.Error())
 				}
 			}
+			// Unset the VAC file for future tests
+			testParams.volumeAttributesClassFile = ""
 		}
 		// Run snapshot tests, if there are applicable files, using the first storage class.
 		if len(applicableStorageClassFiles) > 0 {
