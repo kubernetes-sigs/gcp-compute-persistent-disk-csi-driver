@@ -61,7 +61,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
-		Expect(cloudDisk.ProvisionedIops).To(Equal(2500))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(int64(2500)))
 
 		defer func() {
 			// Delete Disk
@@ -131,7 +131,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		cloudDisk, err = computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Get cloud disk failed")
 		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb))
-		Expect(cloudDisk.ProvisionedIops).To(Equal(3000))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(int64(3000)))
 
 		// Resize node
 		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
