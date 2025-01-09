@@ -638,6 +638,11 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
+	// Use beta API for non-hyperdisk types in multi-writer mode.
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
+		gceAPIVersion = GCEAPIVersionBeta
+	}
+
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGbRoundUp(capBytes),
@@ -761,6 +766,11 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
+
+	// Use beta API for non-hyperdisk types in multi-writer mode.
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
+		gceAPIVersion = GCEAPIVersionBeta
+	}
 
 	diskToCreate := &computev1.Disk{
 		Name:        volKey.Name,
