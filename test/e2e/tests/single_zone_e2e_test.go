@@ -904,8 +904,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
-	// Pending while multi-writer feature is in Alpha
-	PIt("Should create and delete multi-writer disk", func() {
+	It("Should create and delete multi-writer disk", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
@@ -916,7 +915,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		zone := "us-east1-a"
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -929,8 +928,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	// Pending while multi-writer feature is in Alpha
-	PIt("Should complete entire disk lifecycle with multi-writer disk", func() {
+	It("Should complete entire disk lifecycle with multi-writer disk", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -938,7 +936,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -1710,6 +1708,7 @@ func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
 	disk := typeToDisk[diskType]
+	disk.params.AccessMode = "READ_WRITE_MANY"
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volume, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
 		&csi.TopologyRequirement{

@@ -106,6 +106,9 @@ type DiskParameters struct {
 	// Values: {bool}
 	// Default: false
 	MultiZoneProvisioning bool
+	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
+	// Default: READ_WRITE_SINGLE
+	AccessMode string
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -148,6 +151,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
 		ResourceTags:         make(map[string]string), // Default
+		AccessMode:           "READ_WRITE_SINGLE",     // Default
 	}
 
 	for k, v := range extraVolumeLabels {
