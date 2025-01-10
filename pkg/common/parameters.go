@@ -22,6 +22,9 @@ import (
 )
 
 const (
+	// Disk Params
+	ParameterAccessMode						  = "access-mode"
+
 	// Parameters for StorageClass
 	ParameterKeyType                          = "type"
 	ParameterKeyReplicationType               = "replication-type"
@@ -151,7 +154,6 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
 		ResourceTags:         make(map[string]string), // Default
-		AccessMode:           "READ_WRITE_SINGLE",     // Default
 	}
 
 	for k, v := range extraVolumeLabels {
@@ -253,6 +255,10 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			p.MultiZoneProvisioning = paramEnableMultiZoneProvisioning
 			if paramEnableMultiZoneProvisioning {
 				p.Labels[MultiZoneLabel] = "true"
+			}
+		case ParameterAccessMode:
+			if v != "" {
+				p.AccessMode = v
 			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)

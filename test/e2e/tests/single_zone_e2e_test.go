@@ -1708,7 +1708,8 @@ func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
 	disk := typeToDisk[diskType]
-		disk.params.AccessMode = "READ_WRITE_MANY"
+
+	disk.params[common.ParameterAccessMode] = "READ_WRITE_MANY"
 
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volume, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
