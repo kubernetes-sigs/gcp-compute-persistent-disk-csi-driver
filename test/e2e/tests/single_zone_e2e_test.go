@@ -923,7 +923,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = computeAlphaService.Disks.Get(p, zone, volName).Do()
+			_, err = computeService.Disks.Get(p, zone, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
@@ -1738,11 +1738,8 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultMwSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
+	Expect(cloudDisk.MultiWriter).To(Equal(true))
 	disk.validate(cloudDisk)
-
-	alphaDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
-	Expect(err).To(BeNil(), "Failed to get cloud disk using alpha API")
-	Expect(alphaDisk.MultiWriter).To(Equal(true))
 
 	return volName, volume.VolumeId
 }
