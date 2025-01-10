@@ -19,9 +19,7 @@ package remote
 import (
 	"fmt"
 	"os"
-
-	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/klog/v2"
+	"path"
 )
 
 // TestContext holds the CSI Client handle to a remotely connected Driver
@@ -45,6 +43,8 @@ type ClientConfig struct {
 	RunDriverCmd string
 	// Port to use as SSH tunnel on both remote and local side.
 	Port string
+	// Absolute path of the archive of the built image
+	ArchivePath string
 }
 
 type processes struct {
@@ -70,20 +70,9 @@ func SetupInstance(cfg InstanceConfig) (*InstanceInfo, error) {
 // a CSI client to it through SHH tunnelling. It returns a TestContext with both a handle to the instance
 // that the driver is on and the CSI Client object to make CSI calls to the remote driver.
 func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*TestContext, error) {
-	archiveName := fmt.Sprintf("e2e_driver_binaries_%s.tar.gz", uuid.NewUUID())
-	archivePath, err := CreateDriverArchive(archiveName, instance.cfg.Architecture, config.PkgPath, config.BinPath)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err = os.Remove(archivePath)
-		if err != nil {
-			klog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
-		}
-	}()
-
 	// Upload archive to instance and run binaries
-	driverPID, err := instance.UploadAndRun(archivePath, config.WorkspaceDir, config.RunDriverCmd)
+	archiveName := path.Base(config.ArchivePath)
+	driverPID, err := instance.UploadAndRun(archiveName, config.ArchivePath, config.WorkspaceDir, config.RunDriverCmd, config.PkgPath)
 	if err != nil {
 		return nil, err
 	}

@@ -47,6 +47,13 @@ else
 	$(warning gcp-pd-driver-windows only supports amd64.)
 endif
 
+build-container-local: init-buildx
+	$(DOCKER) buildx build --platform=linux --progress=plain \
+		-t local:local \
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=local \
+		--load .
+
 build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VERSION init-buildx
 	$(DOCKER) buildx build --platform=linux --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION) \

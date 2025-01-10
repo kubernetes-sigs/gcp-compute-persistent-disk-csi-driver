@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,6 +29,7 @@ import (
 
 	"golang.org/x/oauth2/google"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	boskosclient "sigs.k8s.io/boskos/client"
 	"sigs.k8s.io/boskos/common"
@@ -41,22 +44,31 @@ const (
 
 var (
 	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
+
+	pkgPath string
+	binPath string
+
+	archiveName = fmt.Sprintf("e2e_driver_binaries_%s.tar.gz", uuid.NewUUID())
 )
 
 type DriverConfig struct {
 	ComputeEndpoint string
 	ExtraFlags      []string
 	Zones           []string
+	ArchivePath     string
+}
+
+func init() {
+	goPath, ok := os.LookupEnv("GOPATH")
+	if !ok {
+		panic(fmt.Errorf("Could not find environment variable GOPATH"))
+	}
+	pkgPath = path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
+	binPath = path.Join(pkgPath, "bin/gce-pd-csi-driver")
 }
 
 func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverConfig) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
-	goPath, ok := os.LookupEnv("GOPATH")
-	if !ok {
-		return nil, fmt.Errorf("Could not find environment variable GOPATH")
-	}
-	pkgPath := path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
-	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
 
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
 	extra_flags := []string{
@@ -76,14 +88,15 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
 	// useful to see what's happening when debugging tests.
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
-		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
+	driverRunCmd := fmt.Sprintf("docker run --privileged -v /dev/:/dev/:shared -v /tmp/:/tmp/:shared -d --network=host local:local -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null",
+		endpoint, strings.Join(extra_flags, " "), workspace)
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
 		BinPath:      binPath,
 		WorkspaceDir: workspace,
 		RunDriverCmd: driverRunCmd,
 		Port:         port,
+		ArchivePath:  driverConfig.ArchivePath,
 	}
 
 	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", "latest")
@@ -332,4 +345,27 @@ func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName str
 		return true, nil
 	}
 	return false, fmt.Errorf("symlinked disk %s for diskName %s does not match a supported /dev/sd* or /dev/nvme* path", devFsPath, diskName)
+}
+
+func BuildLocalImage() (string, error) {
+	klog.V(2).Infof("Building local image...")
+
+	archivePath := filepath.Join(pkgPath, archiveName)
+	makeCmd := exec.Command("make", "build-container-local", "-C", pkgPath)
+	if out, err := makeCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to build local image: %v, output: %s", err, out)
+	}
+	if out, err := exec.Command("docker", "save", "local:local", "-o", archivePath).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to save local image: %v, output: %s", err, out)
+	}
+
+	return archivePath, nil
+}
+
+func RemoveLocalImage() error {
+	klog.V(2).Infof("Removing local image archive...")
+	if err := os.Remove(filepath.Join(pkgPath, archiveName)); err != nil {
+		return fmt.Errorf("failed to remove local image archive: %v", err)
+	}
+	return nil
 }

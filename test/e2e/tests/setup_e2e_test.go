@@ -55,6 +55,7 @@ var (
 	computeAlphaService *computealpha.Service
 	computeBetaService  *computebeta.Service
 	kmsClient           *cloudkms.KeyManagementClient
+	archivePath         string
 )
 
 func init() {
@@ -98,6 +99,9 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
+	archivePath, err = testutils.BuildLocalImage()
+	Expect(err).To(BeNil())
+
 	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
@@ -120,6 +124,9 @@ var _ = AfterSuite(func() {
 			tc.Instance.DeleteInstance()
 		}
 	}
+
+	err := testutils.RemoveLocalImage()
+	Expect(err).To(BeNil())
 })
 
 func notEmpty(v string) bool {
@@ -128,8 +135,9 @@ func notEmpty(v string) bool {
 
 func getDriverConfig() testutils.DriverConfig {
 	return testutils.DriverConfig{
-		ExtraFlags: slices.Filter(nil, strings.Split(*extraDriverFlags, ","), notEmpty),
-		Zones:      strings.Split(*zones, ","),
+		ExtraFlags:  slices.Filter(nil, strings.Split(*extraDriverFlags, ","), notEmpty),
+		Zones:       strings.Split(*zones, ","),
+		ArchivePath: archivePath,
 	}
 }
 
