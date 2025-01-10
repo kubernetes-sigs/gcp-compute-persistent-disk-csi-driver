@@ -40,7 +40,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/iterator"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
-	// fieldmask "google.golang.org/genproto/protobuf/field_mask"
+    fieldmask "google.golang.org/genproto/protobuf/field_mask"
 )
 
 const (
@@ -608,124 +608,124 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	// DescribeTable("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
-	// 	func(diskType string) {
-	// 		ctx := context.Background()
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
+	DescribeTable("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
+		func(diskType string) {
+			ctx := context.Background()
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
 
-	// 		controllerInstance := testContext.Instance
-	// 		controllerClient := testContext.Client
+			controllerInstance := testContext.Instance
+			controllerClient := testContext.Client
 
-	// 		p, z, _ := controllerInstance.GetIdentity()
-	// 		locationID := "global"
+			p, z, _ := controllerInstance.GetIdentity()
+			locationID := "global"
 
-	// 		// The resource name of the key rings.
-	// 		parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
-	// 		keyRingId := "gce-pd-csi-test-ring"
+			// The resource name of the key rings.
+			parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
+			keyRingId := "gce-pd-csi-test-ring"
 
-	// 		key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
+			key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
 
-	// 		// Defer deletion of all key versions
-	// 		// https://cloud.google.com/kms/docs/destroy-restore
-	// 		defer func() {
-	// 			for _, keyVersion := range keyVersions {
-	// 				destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
-	// 					Name: keyVersion,
-	// 				}
-	// 				_, err := kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
-	// 				Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
-	// 			}
-	// 		}()
+			// Defer deletion of all key versions
+			// https://cloud.google.com/kms/docs/destroy-restore
+			defer func() {
+				for _, keyVersion := range keyVersions {
+					destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
+						Name: keyVersion,
+					}
+					_, err := kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
+					Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
+				}
+			}()
 
-	// 		// Go through volume lifecycle using CMEK-ed PD Create Disk
-	// 		disk := typeToDisk[diskType]
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		params := merge(disk.params, map[string]string{
-	// 			common.ParameterKeyDiskEncryptionKmsKey: key.Name,
-	// 		})
-	// 		topology := &csi.TopologyRequirement{
-	// 			Requisite: []*csi.Topology{
-	// 				{
-	// 					Segments: map[string]string{common.TopologyKeyZone: z},
-	// 				},
-	// 			},
-	// 		}
+			// Go through volume lifecycle using CMEK-ed PD Create Disk
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+			params := merge(disk.params, map[string]string{
+				common.ParameterKeyDiskEncryptionKmsKey: key.Name,
+			})
+			topology := &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			}
 
-	// 		diskSize := defaultSizeGb
-	// 		if diskType == extremeDiskType {
-	// 			diskSize = defaultExtremeSizeGb
-	// 		}
-	// 		volume, err := controllerClient.CreateVolume(volName, params, diskSize, topology, nil)
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+			volume, err := controllerClient.CreateVolume(volName, params, diskSize, topology, nil)
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(diskSize))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-	// 		disk.validate(cloudDisk)
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
+			Expect(cloudDisk.Name).To(Equal(volName))
+			disk.validate(cloudDisk)
 
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			err = controllerClient.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
+			defer func() {
+				// Delete Disk
+				err = controllerClient.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
 
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
 
-	// 		// Test disk works
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
+			// Test disk works
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
 
-	// 		// Revoke CMEK key
-	// 		// https://cloud.google.com/kms/docs/enable-disable
+			// Revoke CMEK key
+			// https://cloud.google.com/kms/docs/enable-disable
 
-	// 		for _, keyVersion := range keyVersions {
-	// 			disableReq := &kmspb.UpdateCryptoKeyVersionRequest{
-	// 				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
-	// 					Name:  keyVersion,
-	// 					State: kmspb.CryptoKeyVersion_DISABLED,
-	// 				},
-	// 				UpdateMask: &fieldmask.FieldMask{
-	// 					Paths: []string{"state"},
-	// 				},
-	// 			}
-	// 			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, disableReq)
-	// 			Expect(err).To(BeNil(), "Failed to disable crypto key")
-	// 		}
+			for _, keyVersion := range keyVersions {
+				disableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+					CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+						Name:  keyVersion,
+						State: kmspb.CryptoKeyVersion_DISABLED,
+					},
+					UpdateMask: &fieldmask.FieldMask{
+						Paths: []string{"state"},
+					},
+				}
+				_, err = kmsClient.UpdateCryptoKeyVersion(ctx, disableReq)
+				Expect(err).To(BeNil(), "Failed to disable crypto key")
+			}
 
-	// 		// Make sure attach of PD fails
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
+			// Make sure attach of PD fails
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
 
-	// 		// Restore CMEK key
-	// 		for _, keyVersion := range keyVersions {
-	// 			enableReq := &kmspb.UpdateCryptoKeyVersionRequest{
-	// 				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
-	// 					Name:  keyVersion,
-	// 					State: kmspb.CryptoKeyVersion_ENABLED,
-	// 				},
-	// 				UpdateMask: &fieldmask.FieldMask{
-	// 					Paths: []string{"state"},
-	// 				},
-	// 			}
-	// 			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, enableReq)
-	// 			Expect(err).To(BeNil(), "Failed to enable crypto key")
-	// 		}
+			// Restore CMEK key
+			for _, keyVersion := range keyVersions {
+				enableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+					CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+						Name:  keyVersion,
+						State: kmspb.CryptoKeyVersion_ENABLED,
+					},
+					UpdateMask: &fieldmask.FieldMask{
+						Paths: []string{"state"},
+					},
+				}
+				_, err = kmsClient.UpdateCryptoKeyVersion(ctx, enableReq)
+				Expect(err).To(BeNil(), "Failed to enable crypto key")
+			}
 
-	// 		// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
-	// 		time.Sleep(time.Second)
-	// 		// Make sure attach of PD succeeds
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
+			// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
+			time.Sleep(time.Second)
+			// Make sure attach of PD succeeds
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
 
 	It("Should create disks, attach them places, and verify List returns correct results", func() {
 		Expect(testContexts).ToNot(BeEmpty())
@@ -914,7 +914,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		zone := "us-east1-b"
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, hdxDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -935,7 +935,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdxDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -1709,7 +1709,7 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	disk := typeToDisk[diskType]
 
 	disk.params[common.ParameterAccessMode] = "READ_WRITE_MANY"
-
+// .AccessMode
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volume, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
 		&csi.TopologyRequirement{
