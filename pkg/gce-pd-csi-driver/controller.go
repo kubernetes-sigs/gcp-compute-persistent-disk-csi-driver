@@ -598,7 +598,7 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	capBytes, _ := getRequestCapacity(capacityRange)
 	multiWriter, _ := getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
-	accessMode := ""
+	accessMode := params.AccessMode
 	if readonly && slices.Contains(disksWithModifiableAccessMode, params.DiskType) {
 		accessMode = gceReadOnlyManyAccessMode
 	}

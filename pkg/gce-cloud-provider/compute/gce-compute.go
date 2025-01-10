@@ -324,8 +324,6 @@ func (cloud *CloudProvider) ListSnapshots(ctx context.Context, filter string) ([
 func (cloud *CloudProvider) GetDisk(ctx context.Context, project string, key *meta.Key, gceAPIVersion GCEAPIVersion) (*CloudDisk, error) {
 	klog.V(5).Infof("Getting disk %v", key)
 
-	// Override GCEAPIVersion as hyperdisk is only available in beta and we cannot get the disk-type with get disk call.
-	gceAPIVersion = GCEAPIVersionBeta
 	switch key.Type() {
 	case meta.Zonal:
 		if gceAPIVersion == GCEAPIVersionBeta {
@@ -405,11 +403,6 @@ func (cloud *CloudProvider) ValidateExistingDisk(ctx context.Context, resp *Clou
 		return fmt.Errorf(
 			"disk already exists with incompatible capacity. Need %v (Required) < %v (Existing) < %v (Limit)",
 			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
-	}
-
-	// We are assuming here that a multiWriter disk could be used as non-multiWriter
-	if multiWriter && !resp.GetMultiWriter() {
-		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
 	}
 
 	return ValidateDiskParameters(resp, params)
@@ -553,9 +546,6 @@ func convertV1DiskToBetaDisk(v1Disk *computev1.Disk) *computebeta.Disk {
 		AccessMode:        v1Disk.AccessMode,
 	}
 
-	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
-	// but if multiWriter + hyperdisk is supported in the future, we want the PDCSI driver to support this feature without
-	// any additional code change.
 	if v1Disk.ProvisionedIops > 0 {
 		betaDisk.ProvisionedIops = v1Disk.ProvisionedIops
 	}
@@ -619,9 +609,6 @@ func convertBetaDiskToV1Disk(betaDisk *computebeta.Disk) *computev1.Disk {
 		AccessMode:        betaDisk.AccessMode,
 	}
 
-	// Hyperdisk doesn't currently support multiWriter (https://cloud.google.com/compute/docs/disks/hyperdisks#limitations),
-	// but if multiWriter + hyperdisk is supported in the future, we want the PDCSI driver to support this feature without
-	// any additional code change.
 	if betaDisk.ProvisionedIops > 0 {
 		v1Disk.ProvisionedIops = betaDisk.ProvisionedIops
 	}
@@ -651,7 +638,8 @@ func (cloud *CloudProvider) insertRegionalDisk(
 		gceAPIVersion = GCEAPIVersionV1
 	)
 
-	if multiWriter {
+	// Use beta API for non-hyperdisk types in multi-writer mode.
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
@@ -778,7 +766,9 @@ func (cloud *CloudProvider) insertZonalDisk(
 		opName        string
 		gceAPIVersion = GCEAPIVersionV1
 	)
-	if multiWriter {
+
+	// Use beta API for non-hyperdisk types in multi-writer mode.
+	if multiWriter && !strings.Contains(params.DiskType, "hyperdisk") {
 		gceAPIVersion = GCEAPIVersionBeta
 	}
 
