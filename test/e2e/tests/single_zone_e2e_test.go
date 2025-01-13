@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,7 +26,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
@@ -84,196 +87,196 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
 	})
 
-	// It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
-	// 	testContext := getRandomTestContext()
+	It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
+		testContext := getRandomTestContext()
 
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
 
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
 
-	// 	// Attach Disk
-	// 	err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
-	// 	Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
-	// })
+		// Attach Disk
+		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
 
-	// It("Should automatically fix the symlink between /dev/* and /dev/by-id if the disk does not match", func() {
-	// 	testContext := getRandomTestContext()
+	It("Should automatically fix the symlink between /dev/* and /dev/by-id if the disk does not match", func() {
+		testContext := getRandomTestContext()
 
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
 
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
 
-	// 	// Attach Disk
-	// 	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
-	// 	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
 
-	// 	defer func() {
-	// 		// Detach Disk
-	// 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to detach disk: %v", err)
-	// 		}
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
 
-	// 	}()
+		}()
 
-	// 	// MESS UP THE symlink
-	// 	devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
-	// 	for _, devicePath := range devicePaths {
-	// 		err = testutils.RmAll(instance, devicePath)
-	// 		Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
-	// 		err = testutils.Symlink(instance, "/dev/null", devicePath)
-	// 		Expect(err).To(BeNil(), "failed to add invalid symlink /dev/by-id folder")
-	// 	}
+		// MESS UP THE symlink
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			err = testutils.RmAll(instance, devicePath)
+			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
+			err = testutils.Symlink(instance, "/dev/null", devicePath)
+			Expect(err).To(BeNil(), "failed to add invalid symlink /dev/by-id folder")
+		}
 
-	// 	// Stage Disk
-	// 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	// 	err = client.NodeStageExt4Volume(volID, stageDir)
-	// 	Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
 
-	// 	// Validate that the link is correct
-	// 	var validated bool
-	// 	for _, devicePath := range devicePaths {
-	// 		validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
-	// 		Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
-	// 		if validated {
-	// 			break
-	// 		}
-	// 	}
-	// 	Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+		// Validate that the link is correct
+		var validated bool
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				break
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
 
-	// 	defer func() {
-	// 		// Unstage Disk
-	// 		err = client.NodeUnstageVolume(volID, stageDir)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to unstage volume: %v", err)
-	// 		}
-	// 		fp := filepath.Join("/tmp/", volName)
-	// 		err = testutils.RmAll(instance, fp)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
-	// 		}
-	// 	}()
-	// })
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+	})
 
-	// It("[NVMe] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
-	// 	testContext := getRandomTestContext()
+	It("[NVMe] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
+		testContext := getRandomTestContext()
 
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
 
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
 
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
 
-	// 	// Attach Disk
-	// 	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
-	// 	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID())
 
-	// 	defer func() {
-	// 		// Detach Disk
-	// 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to detach disk: %v", err)
-	// 		}
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
 
-	// 	}()
+		}()
 
-	// 	// DELETE THE symlink
-	// 	devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
-	// 	for _, devicePath := range devicePaths {
-	// 		err = testutils.RmAll(instance, devicePath)
-	// 		Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
-	// 	}
+		// DELETE THE symlink
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			err = testutils.RmAll(instance, devicePath)
+			Expect(err).To(BeNil(), "failed to remove /dev/by-id folder")
+		}
 
-	// 	// Stage Disk
-	// 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	// 	err = client.NodeStageExt4Volume(volID, stageDir)
-	// 	Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
 
-	// 	// Validate that the link is correct
-	// 	var validated bool
-	// 	for _, devicePath := range devicePaths {
-	// 		validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
-	// 		Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
-	// 		if validated {
-	// 			break
-	// 		}
-	// 	}
-	// 	Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+		// Validate that the link is correct
+		var validated bool
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				break
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
 
-	// 	defer func() {
-	// 		// Unstage Disk
-	// 		err = client.NodeUnstageVolume(volID, stageDir)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to unstage volume: %v", err)
-	// 		}
-	// 		fp := filepath.Join("/tmp/", volName)
-	// 		err = testutils.RmAll(instance, fp)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
-	// 		}
-	// 	}()
-	// })
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+	})
 
-	// It("Should create disks in correct zones when topology is specified", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
+	It("Should create disks in correct zones when topology is specified", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
-	// 	p, _, _ := testContext.Instance.GetIdentity()
+		p, _, _ := testContext.Instance.GetIdentity()
 
-	// 	zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}
+		zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}
 
-	// 	for _, zone := range zones {
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		topReq := &csi.TopologyRequirement{
-	// 			Requisite: []*csi.Topology{
-	// 				{
-	// 					Segments: map[string]string{common.TopologyKeyZone: zone},
-	// 				},
-	// 			},
-	// 		}
-	// 		volume, err := testContext.Client.CreateVolume(volName, nil, defaultSizeGb, topReq, nil)
-	// 		Expect(err).To(BeNil(), "Failed to create volume")
-	// 		defer func() {
-	// 			err = testContext.Client.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "Failed to delete volume")
-	// 		}()
+		for _, zone := range zones {
+			volName := testNamePrefix + string(uuid.NewUUID())
+			topReq := &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zone},
+					},
+				},
+			}
+			volume, err := testContext.Client.CreateVolume(volName, nil, defaultSizeGb, topReq, nil)
+			Expect(err).To(BeNil(), "Failed to create volume")
+			defer func() {
+				err = testContext.Client.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "Failed to delete volume")
+			}()
 
 			_, err = computeService.Disks.Get(p, zone, volName).Do()
 			Expect(err).To(BeNil(), "Could not find disk in correct zone")
@@ -308,599 +311,598 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	// 	}
 	// })
 
-	/******************/
-	// DescribeTable("Should complete entire disk lifecycle with underspecified volume ID",
-	// 	func(diskType string) {
-	// 		testContext := getRandomTestContext()
-
-	// 		p, z, _ := testContext.Instance.GetIdentity()
-	// 		client := testContext.Client
-	// 		instance := testContext.Instance
-
-	// 		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
-
-	// 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			err := client.DeleteVolume(underSpecifiedID)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-
-	// 		// Attach Disk
-	// 		err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
-	// 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// 	Entry("on hyperdisk-throughput", hdtDiskType),
-	// 	Entry("on pd-ssd", ssdDiskType),
-	// )
-
-	// DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
-	// 	func(diskType string) {
-	// 		testContext := getRandomTestContext()
-
-	// 		p, z, _ := testContext.Instance.GetIdentity()
-	// 		client := testContext.Client
-	// 		instance := testContext.Instance
-
-	// 		// Create Disk
-	// 		volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
-	// 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
-
-	// 		defer func() {
-	// 			// Detach Disk
-	// 			err := instance.DetachDisk(volName)
-	// 			Expect(err).To(BeNil(), "DetachDisk failed")
-
-	// 			// Delete Disk
-	// 			err = client.DeleteVolume(underSpecifiedID)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-
-	// 			// Unpublish Disk
-	// 			err = client.ControllerUnpublishVolume(underSpecifiedID, instance.GetNodeID())
-	// 			Expect(err).To(BeNil(), "ControllerUnpublishVolume failed")
-	// 		}()
-
-	// 		// Attach Disk
-	// 		err := client.ControllerPublishVolumeReadWrite(underSpecifiedID, instance.GetNodeID(), false /* forceAttach */)
-	// 		Expect(err).To(BeNil(), "ControllerPublishVolume failed")
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	controllerInstance := testContext.Instance
-	// 	controllerClient := testContext.Client
-
-	// 	p, z, _ := controllerInstance.GetIdentity()
-
-	// 	region, err := common.GetRegionFromZones([]string{z})
-	// 	Expect(err).To(BeNil(), "Failed to get region from zones")
-
-	// 	// Create Disk
-	// 	volName := testNamePrefix + string(uuid.NewUUID())
-	// 	volume, err := controllerClient.CreateVolume(volName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "regional-pd",
-	// 	}, defaultRepdSizeGb, nil, nil)
-	// 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 	// Validate Disk Created
-	// 	cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
-	// 	Expect(cloudDisk.Status).To(Equal(readyState))
-	// 	Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
-	// 	Expect(cloudDisk.Name).To(Equal(volName))
-	// 	Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
-	// 	for _, replicaZone := range cloudDisk.ReplicaZones {
-	// 		actualZone := zoneFromURL(replicaZone)
-	// 		gotRegion, err := common.GetRegionFromZones([]string{actualZone})
-	// 		Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
-	// 		Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
-	// 	}
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		controllerClient.DeleteVolume(volume.VolumeId)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.RegionDisks.Get(p, region, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-	// })
-
-	// DescribeTable("Should create and delete disk with default zone",
-	// 	func(diskType string) {
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
-
-	// 		p, z, _ := testContext.Instance.GetIdentity()
-	// 		client := testContext.Client
-
-	// 		// Create Disk
-	// 		disk := typeToDisk[diskType]
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-
-	// 		diskSize := defaultSizeGb
-	// 		if diskType == extremeDiskType {
-	// 			diskSize = defaultExtremeSizeGb
-	// 		}
-
-	// 		volume, err := client.CreateVolume(volName, disk.params, diskSize, nil, nil)
-
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(diskSize))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-	// 		disk.validate(cloudDisk)
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			client.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// DescribeTable("Should create and delete pd-extreme disk with default iops",
-	// 	func(diskType string) {
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
-
-	// 		p, z, _ := testContext.Instance.GetIdentity()
-	// 		client := testContext.Client
-
-	// 		// Create Disk
-	// 		diskParams := map[string]string{
-	// 			common.ParameterKeyType: diskType,
-	// 		}
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-
-	// 		diskSize := defaultExtremeSizeGb
-
-	// 		volume, err := client.CreateVolume(volName, diskParams, diskSize, nil, nil)
-
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
-	// 		Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
-	// 		Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateDefaultInt))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			client.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-	// 	},
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// DescribeTable("Should create and delete disk with labels",
-	// 	func(diskType string) {
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
-
-	// 		p, z, _ := testContext.Instance.GetIdentity()
-	// 		client := testContext.Client
-
-	// 		// Create Disk
-	// 		disk := typeToDisk[diskType]
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		params := merge(disk.params, map[string]string{
-	// 			common.ParameterKeyLabels: "key1=value1,key2=value2",
-	// 		})
-
-	// 		diskSize := defaultSizeGb
-	// 		if diskType == extremeDiskType {
-	// 			diskSize = defaultExtremeSizeGb
-	// 		}
-	// 		volume, err := client.CreateVolume(volName, params, diskSize, nil, nil)
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(diskSize))
-	// 		Expect(cloudDisk.Labels).To(Equal(map[string]string{
-	// 			"key1": "value1",
-	// 			"key2": "value2",
-	// 			// The label below is added as an --extra-label driver command line argument.
-	// 			testutils.DiskLabelKey: testutils.DiskLabelValue,
-	// 		}))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-	// 		disk.validate(cloudDisk)
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			err := client.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// It("Should create and delete snapshot for the volume with default zone", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	// Create Snapshot
-	// 	snapshotName := testNamePrefix + string(uuid.NewUUID())
-	// 	snapshotID, err := client.CreateSnapshot(snapshotName, volID, nil)
-	// 	Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
-
-	// 	// Validate Snapshot Created
-	// 	snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 	Expect(snapshot.Name).To(Equal(snapshotName))
-
-	// 	err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
-	// 		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 		if snapshot.Status == "READY" {
-	// 			return true, nil
-	// 		}
-	// 		return false, nil
-	// 	})
-	// 	Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-
-	// 		// Delete Snapshot
-	// 		err = client.DeleteSnapshot(snapshotID)
-	// 		Expect(err).To(BeNil(), "DeleteSnapshot failed")
-
-	// 		// Validate Snapshot Deleted
-	// 		_, err = computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
-	// 	}()
-	// })
-
-	// DescribeTable("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
-	// 	func(diskType string) {
-	// 		ctx := context.Background()
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
-
-	// 		controllerInstance := testContext.Instance
-	// 		controllerClient := testContext.Client
-
-	// 		p, z, _ := controllerInstance.GetIdentity()
-	// 		locationID := "global"
-
-	// 		// The resource name of the key rings.
-	// 		parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
-	// 		keyRingId := "gce-pd-csi-test-ring"
-
-	// 		key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
-
-	// 		// Defer deletion of all key versions
-	// 		// https://cloud.google.com/kms/docs/destroy-restore
-	// 		defer func() {
-	// 			for _, keyVersion := range keyVersions {
-	// 				destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
-	// 					Name: keyVersion,
-	// 				}
-	// 				_, err := kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
-	// 				Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
-	// 			}
-	// 		}()
-
-	// 		// Go through volume lifecycle using CMEK-ed PD Create Disk
-	// 		disk := typeToDisk[diskType]
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		params := merge(disk.params, map[string]string{
-	// 			common.ParameterKeyDiskEncryptionKmsKey: key.Name,
-	// 		})
-	// 		topology := &csi.TopologyRequirement{
-	// 			Requisite: []*csi.Topology{
-	// 				{
-	// 					Segments: map[string]string{common.TopologyKeyZone: z},
-	// 				},
-	// 			},
-	// 		}
-
-	// 		diskSize := defaultSizeGb
-	// 		if diskType == extremeDiskType {
-	// 			diskSize = defaultExtremeSizeGb
-	// 		}
-	// 		volume, err := controllerClient.CreateVolume(volName, params, diskSize, topology, nil)
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(diskSize))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-	// 		disk.validate(cloudDisk)
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			err = controllerClient.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-
-	// 		// Test disk works
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
-
-	// 		// Revoke CMEK key
-	// 		// https://cloud.google.com/kms/docs/enable-disable
-
-	// 		for _, keyVersion := range keyVersions {
-	// 			disableReq := &kmspb.UpdateCryptoKeyVersionRequest{
-	// 				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
-	// 					Name:  keyVersion,
-	// 					State: kmspb.CryptoKeyVersion_DISABLED,
-	// 				},
-	// 				UpdateMask: &fieldmask.FieldMask{
-	// 					Paths: []string{"state"},
-	// 				},
-	// 			}
-	// 			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, disableReq)
-	// 			Expect(err).To(BeNil(), "Failed to disable crypto key")
-	// 		}
-
-	// 		// Make sure attach of PD fails
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
-
-	// 		// Restore CMEK key
-	// 		for _, keyVersion := range keyVersions {
-	// 			enableReq := &kmspb.UpdateCryptoKeyVersionRequest{
-	// 				CryptoKeyVersion: &kmspb.CryptoKeyVersion{
-	// 					Name:  keyVersion,
-	// 					State: kmspb.CryptoKeyVersion_ENABLED,
-	// 				},
-	// 				UpdateMask: &fieldmask.FieldMask{
-	// 					Paths: []string{"state"},
-	// 				},
-	// 			}
-	// 			_, err = kmsClient.UpdateCryptoKeyVersion(ctx, enableReq)
-	// 			Expect(err).To(BeNil(), "Failed to enable crypto key")
-	// 		}
-
-	// 		// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
-	// 		time.Sleep(time.Second)
-	// 		// Make sure attach of PD succeeds
-	// 		err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
-	// 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// It("Should create disks, attach them places, and verify List returns correct results", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-
-	// 	nodeID := testContext.Instance.GetNodeID()
-
-	// 	_, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-	// 	defer deleteVolumeOrError(client, volID)
-
-	// 	_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-	// 	defer deleteVolumeOrError(client, secondVolID)
-
-	// 	// Attach volID to current instance
-	// 	err := client.ControllerPublishVolumeReadWrite(volID, nodeID, false /* forceAttach */)
-	// 	Expect(err).To(BeNil(), "Failed ControllerPublishVolume")
-	// 	defer client.ControllerUnpublishVolume(volID, nodeID)
-
-	// 	// List Volumes
-	// 	volsToNodes, err := client.ListVolumes()
-	// 	Expect(err).To(BeNil(), "Failed ListVolumes")
-
-	// 	// Verify
-	// 	Expect(volsToNodes[volID]).ToNot(BeNil(), "Couldn't find attached nodes for vol")
-	// 	Expect(volsToNodes[volID]).To(ContainElement(nodeID), "Couldn't find node in attached nodes for vol")
-	// 	Expect(volsToNodes[secondVolID]).To(BeNil(), "Second vol ID attached nodes not nil")
-	// })
-
-	// It("Should create and delete snapshot for RePD in two zones ", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	controllerInstance := testContext.Instance
-	// 	controllerClient := testContext.Client
-
-	// 	p, z, _ := controllerInstance.GetIdentity()
-
-	// 	region, err := common.GetRegionFromZones([]string{z})
-	// 	Expect(err).To(BeNil(), "Failed to get region from zones")
-
-	// 	// Create Disk
-	// 	volName := testNamePrefix + string(uuid.NewUUID())
-	// 	volume, err := controllerClient.CreateVolume(volName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "regional-pd",
-	// 	}, defaultRepdSizeGb, nil, nil)
-	// 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 	// Validate Disk Created
-	// 	cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
-	// 	Expect(cloudDisk.Status).To(Equal(readyState))
-	// 	Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
-	// 	Expect(cloudDisk.Name).To(Equal(volName))
-	// 	Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
-	// 	for _, replicaZone := range cloudDisk.ReplicaZones {
-	// 		actualZone := zoneFromURL(replicaZone)
-	// 		gotRegion, err := common.GetRegionFromZones([]string{actualZone})
-	// 		Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
-	// 		Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
-	// 	}
-
-	// 	// Create Snapshot
-	// 	snapshotName := testNamePrefix + string(uuid.NewUUID())
-	// 	snapshotID, err := controllerClient.CreateSnapshot(snapshotName, volume.VolumeId, nil)
-	// 	Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
-
-	// 	// Validate Snapshot Created
-	// 	snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 	Expect(snapshot.Name).To(Equal(snapshotName))
-
-	// 	err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
-	// 		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 		if snapshot.Status == "READY" {
-	// 			return true, nil
-	// 		}
-	// 		return false, nil
-	// 	})
-	// 	Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := controllerClient.DeleteVolume(volume.VolumeId)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.RegionDisks.Get(p, region, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-
-	// 		// Delete Snapshot
-	// 		err = controllerClient.DeleteSnapshot(snapshotID)
-	// 		Expect(err).To(BeNil(), "DeleteSnapshot failed")
-
-	// 		// Validate Snapshot Deleted
-	// 		_, err = computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
-	// 	}()
-	// })
-
-	// It("Should get correct VolumeStats for Block", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
-
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-
-	// 	verifyVolumeStats := func(a *verifyArgs) error {
-	// 		available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to get node volume stats: %v", err.Error())
-	// 		}
-	// 		if available != 0 || capacity != common.GbToBytes(defaultSizeGb) || used != 0 ||
-	// 			inodesFree != 0 || inodes != 0 || inodesUsed != 0 {
-	// 			return fmt.Errorf("got: available %v, capacity %v, used %v, inodesFree %v, inodes %v, inodesUsed %v -- expected: capacity = %v, available = 0, used = 0, inodesFree = 0, inodes = 0 , inodesUsed = 0",
-	// 				available, capacity, used, inodesFree, inodes, inodesUsed, common.GbToBytes(defaultSizeGb))
-	// 		}
-	// 		return nil
-	// 	}
-
-	// 	// Attach Disk
-	// 	err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, verifyVolumeStats, nil)
-	// 	Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
-	// })
-
-	// It("Should get correct VolumeStats", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
-
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-
-	// 	verifyVolumeStats := func(a *verifyArgs) error {
-	// 		available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to get node volume stats: %v", err.Error())
-	// 		}
-	// 		if !equalWithinEpsilon(available, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(capacity, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(used, 0, defaultEpsilon) ||
-	// 			inodesFree == 0 || inodes == 0 || inodesUsed == 0 {
-	// 			return fmt.Errorf("got: available %v, capacity %v, used %v, inodesFree %v, inodes %v, inodesUsed %v -- expected: available ~= %v, capacity ~= %v, used = 0, inodesFree != 0, inodes != 0 , inodesUsed != 0",
-	// 				available, capacity, used, inodesFree, inodes, inodesUsed, common.GbToBytes(defaultSizeGb), common.GbToBytes(defaultSizeGb))
-	// 		}
-	// 		return nil
-	// 	}
-
-	// 	// Attach Disk
-	// 	err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil)
-	// 	Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
-	// })
+	DescribeTable("Should complete entire disk lifecycle with underspecified volume ID",
+		func(diskType string) {
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+			instance := testContext.Instance
+
+			volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
+
+			underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+			defer func() {
+				// Delete Disk
+				err := client.DeleteVolume(underSpecifiedID)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+
+			// Attach Disk
+			err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+			Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+		Entry("on hyperdisk-throughput", hdtDiskType),
+		Entry("on pd-ssd", ssdDiskType),
+	)
+
+	DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
+		func(diskType string) {
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+			instance := testContext.Instance
+
+			// Create Disk
+			volName, _ := createAndValidateUniqueZonalDisk(client, p, z, diskType)
+			underSpecifiedID := common.GenerateUnderspecifiedVolumeID(volName, true /* isZonal */)
+
+			defer func() {
+				// Detach Disk
+				err := instance.DetachDisk(volName)
+				Expect(err).To(BeNil(), "DetachDisk failed")
+
+				// Delete Disk
+				err = client.DeleteVolume(underSpecifiedID)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+				// Unpublish Disk
+				err = client.ControllerUnpublishVolume(underSpecifiedID, instance.GetNodeID())
+				Expect(err).To(BeNil(), "ControllerUnpublishVolume failed")
+			}()
+
+			// Attach Disk
+			err := client.ControllerPublishVolumeReadWrite(underSpecifiedID, instance.GetNodeID(), false /* forceAttach */)
+			Expect(err).To(BeNil(), "ControllerPublishVolume failed")
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	DescribeTable("Should create and delete disk with default zone",
+		func(diskType string) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+
+			// Create Disk
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+
+			volume, err := client.CreateVolume(volName, disk.params, diskSize, nil, nil)
+
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
+			Expect(cloudDisk.Name).To(Equal(volName))
+			disk.validate(cloudDisk)
+
+			defer func() {
+				// Delete Disk
+				client.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	DescribeTable("Should create and delete pd-extreme disk with default iops",
+		func(diskType string) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+
+			// Create Disk
+			diskParams := map[string]string{
+				common.ParameterKeyType: diskType,
+			}
+			volName := testNamePrefix + string(uuid.NewUUID())
+
+			diskSize := defaultExtremeSizeGb
+
+			volume, err := client.CreateVolume(volName, diskParams, diskSize, nil, nil)
+
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
+			Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
+			Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateDefaultInt))
+			Expect(cloudDisk.Name).To(Equal(volName))
+
+			defer func() {
+				// Delete Disk
+				client.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+		},
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	DescribeTable("Should create and delete disk with labels",
+		func(diskType string) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+
+			// Create Disk
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+			params := merge(disk.params, map[string]string{
+				common.ParameterKeyLabels: "key1=value1,key2=value2",
+			})
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+			volume, err := client.CreateVolume(volName, params, diskSize, nil, nil)
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
+			Expect(cloudDisk.Labels).To(Equal(map[string]string{
+				"key1": "value1",
+				"key2": "value2",
+				// The label below is added as an --extra-label driver command line argument.
+				testutils.DiskLabelKey: testutils.DiskLabelValue,
+			}))
+			Expect(cloudDisk.Name).To(Equal(volName))
+			disk.validate(cloudDisk)
+
+			defer func() {
+				// Delete Disk
+				err := client.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	It("Should create and delete snapshot for the volume with default zone", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		snapshotID, err := client.CreateSnapshot(snapshotName, volID, nil)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
+
+	DescribeTable("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
+		func(diskType string) {
+			ctx := context.Background()
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			controllerInstance := testContext.Instance
+			controllerClient := testContext.Client
+
+			p, z, _ := controllerInstance.GetIdentity()
+			locationID := "global"
+
+			// The resource name of the key rings.
+			parentName := fmt.Sprintf("projects/%s/locations/%s", p, locationID)
+			keyRingId := "gce-pd-csi-test-ring"
+
+			key, keyVersions := setupKeyRing(ctx, parentName, keyRingId)
+
+			// Defer deletion of all key versions
+			// https://cloud.google.com/kms/docs/destroy-restore
+			defer func() {
+				for _, keyVersion := range keyVersions {
+					destroyKeyReq := &kmspb.DestroyCryptoKeyVersionRequest{
+						Name: keyVersion,
+					}
+					_, err := kmsClient.DestroyCryptoKeyVersion(ctx, destroyKeyReq)
+					Expect(err).To(BeNil(), "Failed to destroy crypto key version: %v", keyVersion)
+				}
+			}()
+
+			// Go through volume lifecycle using CMEK-ed PD Create Disk
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+			params := merge(disk.params, map[string]string{
+				common.ParameterKeyDiskEncryptionKmsKey: key.Name,
+			})
+			topology := &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			}
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+			volume, err := controllerClient.CreateVolume(volName, params, diskSize, topology, nil)
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
+			Expect(cloudDisk.Name).To(Equal(volName))
+			disk.validate(cloudDisk)
+
+			defer func() {
+				// Delete Disk
+				err = controllerClient.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+
+			// Test disk works
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
+
+			// Revoke CMEK key
+			// https://cloud.google.com/kms/docs/enable-disable
+
+			for _, keyVersion := range keyVersions {
+				disableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+					CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+						Name:  keyVersion,
+						State: kmspb.CryptoKeyVersion_DISABLED,
+					},
+					UpdateMask: &fieldmask.FieldMask{
+						Paths: []string{"state"},
+					},
+				}
+				_, err = kmsClient.UpdateCryptoKeyVersion(ctx, disableReq)
+				Expect(err).To(BeNil(), "Failed to disable crypto key")
+			}
+
+			// Make sure attach of PD fails
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
+
+			// Restore CMEK key
+			for _, keyVersion := range keyVersions {
+				enableReq := &kmspb.UpdateCryptoKeyVersionRequest{
+					CryptoKeyVersion: &kmspb.CryptoKeyVersion{
+						Name:  keyVersion,
+						State: kmspb.CryptoKeyVersion_ENABLED,
+					},
+					UpdateMask: &fieldmask.FieldMask{
+						Paths: []string{"state"},
+					},
+				}
+				_, err = kmsClient.UpdateCryptoKeyVersion(ctx, enableReq)
+				Expect(err).To(BeNil(), "Failed to enable crypto key")
+			}
+
+			// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
+			time.Sleep(time.Second)
+			// Make sure attach of PD succeeds
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	It("Should create disks, attach them places, and verify List returns correct results", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		nodeID := testContext.Instance.GetNodeID()
+
+		_, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		defer deleteVolumeOrError(client, volID)
+
+		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		defer deleteVolumeOrError(client, secondVolID)
+
+		// Attach volID to current instance
+		err := client.ControllerPublishVolumeReadWrite(volID, nodeID, false /* forceAttach */)
+		Expect(err).To(BeNil(), "Failed ControllerPublishVolume")
+		defer client.ControllerUnpublishVolume(volID, nodeID)
+
+		// List Volumes
+		volsToNodes, err := client.ListVolumes()
+		Expect(err).To(BeNil(), "Failed ListVolumes")
+
+		// Verify
+		Expect(volsToNodes[volID]).ToNot(BeNil(), "Couldn't find attached nodes for vol")
+		Expect(volsToNodes[volID]).To(ContainElement(nodeID), "Couldn't find node in attached nodes for vol")
+		Expect(volsToNodes[secondVolID]).To(BeNil(), "Second vol ID attached nodes not nil")
+	})
+
+	It("Should create and delete snapshot for RePD in two zones ", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		snapshotID, err := controllerClient.CreateSnapshot(snapshotName, volume.VolumeId, nil)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = controllerClient.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
+
+	It("Should get correct VolumeStats for Block", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		verifyVolumeStats := func(a *verifyArgs) error {
+			available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
+			if err != nil {
+				return fmt.Errorf("failed to get node volume stats: %v", err.Error())
+			}
+			if available != 0 || capacity != common.GbToBytes(defaultSizeGb) || used != 0 ||
+				inodesFree != 0 || inodes != 0 || inodesUsed != 0 {
+				return fmt.Errorf("got: available %v, capacity %v, used %v, inodesFree %v, inodes %v, inodesUsed %v -- expected: capacity = %v, available = 0, used = 0, inodesFree = 0, inodes = 0 , inodesUsed = 0",
+					available, capacity, used, inodesFree, inodes, inodesUsed, common.GbToBytes(defaultSizeGb))
+			}
+			return nil
+		}
+
+		// Attach Disk
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, verifyVolumeStats, nil)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
+
+	It("Should get correct VolumeStats", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		verifyVolumeStats := func(a *verifyArgs) error {
+			available, capacity, used, inodesFree, inodes, inodesUsed, err := client.NodeGetVolumeStats(volID, a.publishDir)
+			if err != nil {
+				return fmt.Errorf("failed to get node volume stats: %v", err.Error())
+			}
+			if !equalWithinEpsilon(available, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(capacity, common.GbToBytes(defaultSizeGb), defaultEpsilon) || !equalWithinEpsilon(used, 0, defaultEpsilon) ||
+				inodesFree == 0 || inodes == 0 || inodesUsed == 0 {
+				return fmt.Errorf("got: available %v, capacity %v, used %v, inodesFree %v, inodes %v, inodesUsed %v -- expected: available ~= %v, capacity ~= %v, used = 0, inodesFree != 0, inodes != 0 , inodesUsed != 0",
+					available, capacity, used, inodesFree, inodes, inodesUsed, common.GbToBytes(defaultSizeGb), common.GbToBytes(defaultSizeGb))
+			}
+			return nil
+		}
+
+		// Attach Disk
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+	})
 
 	It("Should create and delete multi-writer disk", func() {
 		Expect(testContexts).ToNot(BeEmpty())
@@ -965,545 +967,545 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
-	// DescribeTable("Should successfully create disk with PVC/PV tags",
-	// 	func(diskType string) {
-	// 		Expect(testContexts).ToNot(BeEmpty())
-	// 		testContext := getRandomTestContext()
-
-	// 		controllerInstance := testContext.Instance
-	// 		controllerClient := testContext.Client
-
-	// 		diskSize := defaultSizeGb
-	// 		if diskType == extremeDiskType {
-	// 			diskSize = defaultExtremeSizeGb
-	// 		}
-
-	// 		p, z, _ := controllerInstance.GetIdentity()
-
-	// 		// Create Disk
-	// 		disk := typeToDisk[diskType]
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		params := merge(disk.params, map[string]string{
-	// 			common.ParameterKeyPVCName:      "test-pvc",
-	// 			common.ParameterKeyPVCNamespace: "test-pvc-namespace",
-	// 			common.ParameterKeyPVName:       "test-pv-name",
-	// 		})
-	// 		volume, err := controllerClient.CreateVolume(volName, params, diskSize, nil /* topReq */, nil)
-	// 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 		// Validate Disk Created
-	// 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 		Expect(cloudDisk.Status).To(Equal(readyState))
-	// 		Expect(cloudDisk.SizeGb).To(Equal(diskSize))
-	// 		Expect(cloudDisk.Name).To(Equal(volName))
-	// 		Expect(cloudDisk.Description).To(Equal("{\"kubernetes.io/created-for/pv/name\":\"test-pv-name\",\"kubernetes.io/created-for/pvc/name\":\"test-pvc\",\"kubernetes.io/created-for/pvc/namespace\":\"test-pvc-namespace\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
-	// 		disk.validate(cloudDisk)
-
-	// 		defer func() {
-	// 			// Delete Disk
-	// 			controllerClient.DeleteVolume(volume.VolumeId)
-	// 			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 			// Validate Disk Deleted
-	// 			_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 		}()
-	// 	},
-	// 	Entry("on pd-standard", standardDiskType),
-	// 	Entry("on pd-extreme", extremeDiskType),
-	// )
-
-	// // Use the region of the test location.
-	// It("Should successfully create snapshot with storage locations", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	// Create Snapshot
-	// 	snapshotName := testNamePrefix + string(uuid.NewUUID())
-
-	// 	// Convert GCP zone to region, e.g. us-central1-a => us-central1
-	// 	// This is safe because we hardcode the zones.
-	// 	snapshotLocation := z[:len(z)-2]
-
-	// 	snapshotParams := map[string]string{
-	// 		common.ParameterKeyStorageLocations:          snapshotLocation,
-	// 		common.ParameterKeyVolumeSnapshotName:        "test-volumesnapshot-name",
-	// 		common.ParameterKeyVolumeSnapshotNamespace:   "test-volumesnapshot-namespace",
-	// 		common.ParameterKeyVolumeSnapshotContentName: "test-volumesnapshotcontent-name",
-	// 	}
-	// 	snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
-	// 	Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
-
-	// 	// Validate Snapshot Created
-	// 	snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 	Expect(snapshot.Name).To(Equal(snapshotName))
-	// 	Expect(snapshot.Description).To(Equal("{\"kubernetes.io/created-for/volumesnapshot/name\":\"test-volumesnapshot-name\",\"kubernetes.io/created-for/volumesnapshot/namespace\":\"test-volumesnapshot-namespace\",\"kubernetes.io/created-for/volumesnapshotcontent/name\":\"test-volumesnapshotcontent-name\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
-
-	// 	err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
-	// 		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 		if snapshot.Status == "READY" {
-	// 			return true, nil
-	// 		}
-	// 		return false, nil
-	// 	})
-	// 	Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-
-	// 		// Delete Snapshot
-	// 		err = client.DeleteSnapshot(snapshotID)
-	// 		Expect(err).To(BeNil(), "DeleteSnapshot failed")
-
-	// 		// Validate Snapshot Deleted
-	// 		_, err = computeService.Snapshots.Get(p, snapshotName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
-	// 	}()
-	// })
-
-	// // Use the region of the test location.
-	// It("Should successfully create snapshot backed by disk image", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	// Create Snapshot
-	// 	snapshotName := testNamePrefix + string(uuid.NewUUID())
-	// 	testImageFamily := "test-family"
-
-	// 	snapshotParams := map[string]string{common.ParameterKeySnapshotType: common.DiskImageType, common.ParameterKeyImageFamily: testImageFamily}
-	// 	snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
-	// 	Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
-
-	// 	// Validate Snapshot Created
-	// 	snapshot, err := computeService.Images.Get(p, snapshotName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 	Expect(snapshot.Name).To(Equal(snapshotName))
-
-	// 	err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
-	// 		snapshot, err := computeService.Images.Get(p, snapshotName).Do()
-	// 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 		if snapshot.Status == "READY" {
-	// 			return true, nil
-	// 		}
-	// 		return false, nil
-	// 	})
-	// 	Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
-
-	// 	// Check Snapshot Type
-	// 	snapshot, err = computeService.Images.Get(p, snapshotName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
-	// 	_, snapshotType, _, err := common.SnapshotIDToProjectKey(cleanSelfLink(snapshot.SelfLink))
-	// 	Expect(err).To(BeNil(), "Failed to parse snapshot ID")
-	// 	Expect(snapshotType).To(Equal(common.DiskImageType), "Expected images type in snapshot ID")
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-
-	// 		// Delete Snapshot
-	// 		err = client.DeleteSnapshot(snapshotID)
-	// 		Expect(err).To(BeNil(), "DeleteSnapshot failed")
-
-	// 		// Validate Snapshot Deleted
-	// 		_, err = computeService.Images.Get(p, snapshotName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
-	// 	}()
-	// })
-
-	// It("Should successfully create zonal PD from a zonal PD VolumeContentSource", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	controllerInstance := testContext.Instance
-	// 	controllerClient := testContext.Client
-
-	// 	p, z, _ := controllerInstance.GetIdentity()
-
-	// 	// Create Source Disk
-	// 	_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z, standardDiskType)
-
-	// 	// Create Disk
-	// 	volName := testNamePrefix + string(uuid.NewUUID())
-	// 	volume, err := controllerClient.CreateVolume(volName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "none",
-	// 	}, defaultSizeGb,
-	// 		&csi.TopologyRequirement{
-	// 			Requisite: []*csi.Topology{
-	// 				{
-	// 					Segments: map[string]string{common.TopologyKeyZone: z},
-	// 				},
-	// 			},
-	// 		},
-	// 		&csi.VolumeContentSource{
-	// 			Type: &csi.VolumeContentSource_Volume{
-	// 				Volume: &csi.VolumeContentSource_VolumeSource{
-	// 					VolumeId: srcVolID,
-	// 				},
-	// 			},
-	// 		})
-
-	// 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 	// Validate Disk Created
-	// 	cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
-	// 	Expect(cloudDisk.Status).To(Equal(readyState))
-	// 	Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
-	// 	Expect(cloudDisk.Name).To(Equal(volName))
-	// 	// Validate the the clone disk zone matches the source disk zone.
-	// 	_, srcKey, err := common.VolumeIDToKey(srcVolID)
-	// 	Expect(err).To(BeNil(), "Could not get source volume key from id")
-	// 	Expect(zoneFromURL(cloudDisk.Zone)).To(Equal(srcKey.Zone))
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		controllerClient.DeleteVolume(volume.VolumeId)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-	// })
-
-	// It("Should successfully create RePD from a zonal PD VolumeContentSource", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	controllerInstance := testContext.Instance
-	// 	controllerClient := testContext.Client
-
-	// 	p, z, _ := controllerInstance.GetIdentity()
-
-	// 	region, err := common.GetRegionFromZones([]string{z})
-	// 	Expect(err).To(BeNil(), "Failed to get region from zones")
-
-	// 	// Create Source Disk
-	// 	srcVolName := testNamePrefix + string(uuid.NewUUID())
-	// 	srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "none",
-	// 	}, defaultRepdSizeGb, nil, nil)
-	// 	// Create Disk
-	// 	volName := testNamePrefix + string(uuid.NewUUID())
-	// 	volume, err := controllerClient.CreateVolume(volName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "regional-pd",
-	// 	}, defaultRepdSizeGb, nil,
-	// 		&csi.VolumeContentSource{
-	// 			Type: &csi.VolumeContentSource_Volume{
-	// 				Volume: &csi.VolumeContentSource_VolumeSource{
-	// 					VolumeId: srcVolume.VolumeId,
-	// 				},
-	// 			},
-	// 		})
-
-	// 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 	// Validate Disk Created
-	// 	cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
-	// 	Expect(cloudDisk.Status).To(Equal(readyState))
-	// 	Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
-	// 	Expect(cloudDisk.Name).To(Equal(volName))
-	// 	Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
-	// 	replicaZonesCompatible := false
-	// 	_, srcKey, err := common.VolumeIDToKey(srcVolume.VolumeId)
-	// 	Expect(err).To(BeNil(), "Could not get source volume key from id")
-	// 	for _, replicaZone := range cloudDisk.ReplicaZones {
-	// 		actualZone := zoneFromURL(replicaZone)
-	// 		if actualZone == srcKey.Zone {
-	// 			replicaZonesCompatible = true
-	// 		}
-	// 		gotRegion, err := common.GetRegionFromZones([]string{actualZone})
-	// 		Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
-	// 		Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
-	// 	}
-	// 	// Validate that one of the replicaZones of the clone matches the zone of the source disk.
-	// 	Expect(replicaZonesCompatible).To(Equal(true))
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		controllerClient.DeleteVolume(volume.VolumeId)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.RegionDisks.Get(p, region, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-	// })
-
-	// It("Should successfully create RePD from a RePD VolumeContentSource", func() {
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
-
-	// 	controllerInstance := testContext.Instance
-	// 	controllerClient := testContext.Client
-
-	// 	p, z, _ := controllerInstance.GetIdentity()
-
-	// 	region, err := common.GetRegionFromZones([]string{z})
-	// 	Expect(err).To(BeNil(), "Failed to get region from zones")
-
-	// 	// Create Source Disk
-	// 	srcVolName := testNamePrefix + string(uuid.NewUUID())
-	// 	srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "regional-pd",
-	// 	}, defaultRepdSizeGb, nil, nil)
-	// 	// Create Disk
-	// 	volName := testNamePrefix + string(uuid.NewUUID())
-	// 	volume, err := controllerClient.CreateVolume(volName, map[string]string{
-	// 		common.ParameterKeyReplicationType: "regional-pd",
-	// 	}, defaultRepdSizeGb, nil,
-	// 		&csi.VolumeContentSource{
-	// 			Type: &csi.VolumeContentSource_Volume{
-	// 				Volume: &csi.VolumeContentSource_VolumeSource{
-	// 					VolumeId: srcVolume.VolumeId,
-	// 				},
-	// 			},
-	// 		})
-
-	// 	Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
-
-	// 	// Validate Disk Created
-	// 	cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-	// 	Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
-	// 	Expect(cloudDisk.Status).To(Equal(readyState))
-	// 	Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
-	// 	Expect(cloudDisk.Name).To(Equal(volName))
-	// 	Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
-	// 	// Validate that the replicaZones of the clone match the replicaZones of the source disk.
-	// 	srcCloudDisk, err := computeService.RegionDisks.Get(p, region, srcVolName).Do()
-	// 	Expect(err).To(BeNil(), "Could not get source disk from cloud directly")
-	// 	Expect(srcCloudDisk.ReplicaZones).To(Equal(cloudDisk.ReplicaZones))
-	// 	for _, replicaZone := range cloudDisk.ReplicaZones {
-	// 		actualZone := zoneFromURL(replicaZone)
-	// 		gotRegion, err := common.GetRegionFromZones([]string{actualZone})
-	// 		Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
-	// 		Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
-	// 	}
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		controllerClient.DeleteVolume(volume.VolumeId)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.RegionDisks.Get(p, region, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-	// })
-
-	// It("Should pass if valid compute endpoint is passed in", func() {
-	// 	// gets instance set up w/o compute-endpoint set from test setup
-	// 	_, err := getRandomTestContext().Client.ListVolumes()
-	// 	Expect(err).To(BeNil(), "no error expected when passed valid compute url")
-
-	// 	i := getRandomTestContext().Instance
-
-	// 	// Create new driver and client with valid, empty endpoint
-	// 	klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
-	// 	tcEmpty, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
-	// 	if err != nil {
-	// 		klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
-	// 	}
-	// 	_, err = tcEmpty.Client.ListVolumes()
-
-	// 	Expect(err).To(BeNil(), "no error expected when passed empty compute url")
-
-	// 	// Create new driver and client w/ valid, passed-in endpoint
-	// 	driverConfig := getDriverConfig()
-	// 	driverConfig.ComputeEndpoint = "https://compute.googleapis.com"
-	// 	tcValid, err := testutils.GCEClientAndDriverSetup(i, driverConfig)
-	// 	if err != nil {
-	// 		klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
-	// 	}
-	// 	_, err = tcValid.Client.ListVolumes()
-
-	// 	Expect(err).To(BeNil(), "no error expected when passed valid compute url")
-	// })
-
-	// It("[NVMe] Should update readahead if read_ahead_kb passed on mount", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
-
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-
-	// 	// Attach Disk
-	// 	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
-	// 	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
-
-	// 	defer func() {
-	// 		// Detach Disk
-	// 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to detach disk: %v", err)
-	// 		}
-
-	// 	}()
-
-	// 	// Stage Disk
-	// 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	// 	expectedReadAheadKB := "4096"
-	// 	volCap := &csi.VolumeCapability{
-	// 		AccessType: &csi.VolumeCapability_Mount{
-	// 			Mount: &csi.VolumeCapability_MountVolume{
-	// 				MountFlags: []string{fmt.Sprintf("read_ahead_kb=%s", expectedReadAheadKB)},
-	// 			},
-	// 		},
-	// 		AccessMode: &csi.VolumeCapability_AccessMode{
-	// 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-	// 		},
-	// 	}
-	// 	err = client.NodeStageVolume(volID, stageDir, volCap)
-	// 	Expect(err).To(BeNil(), "failed to stage volume: %v", err)
-
-	// 	// Validate that the link is correct
-	// 	var validated bool
-	// 	var devName string
-	// 	devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
-	// 	for _, devicePath := range devicePaths {
-	// 		validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
-	// 		Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
-	// 		if validated {
-	// 			devFsPath, err := instance.SSH("find", devicePath, "-printf", "'%l'")
-	// 			Expect(err).To(BeNil(), "Failed to symlink devicePath")
-	// 			devFsPathPieces := strings.Split(devFsPath, "/")
-	// 			devName = devFsPathPieces[len(devFsPathPieces)-1]
-	// 			break
-	// 		}
-	// 	}
-	// 	Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
-	// 	actualReadAheadKBStr, err := instance.SSH("cat", fmt.Sprintf("/sys/block/%s/queue/read_ahead_kb", devName))
-	// 	actualReadAheadKB := strings.TrimSpace(actualReadAheadKBStr)
-	// 	Expect(err).To(BeNil(), "Failed to read read_ahead_kb: %v", err)
-	// 	Expect(actualReadAheadKB).To(Equal(expectedReadAheadKB), "unexpected read_ahead_kb")
-
-	// 	defer func() {
-	// 		// Unstage Disk
-	// 		err = client.NodeUnstageVolume(volID, stageDir)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to unstage volume: %v", err)
-	// 		}
-	// 		fp := filepath.Join("/tmp/", volName)
-	// 		err = testutils.RmAll(instance, fp)
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
-	// 		}
-	// 	}()
-	// })
-
-	// It("Should block unstage if filesystem mounted", func() {
-	// 	testContext := getRandomTestContext()
-
-	// 	p, z, _ := testContext.Instance.GetIdentity()
-	// 	client := testContext.Client
-	// 	instance := testContext.Instance
-
-	// 	// Create Disk
-	// 	volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-	// 	defer func() {
-	// 		// Delete Disk
-	// 		err := client.DeleteVolume(volID)
-	// 		Expect(err).To(BeNil(), "DeleteVolume failed")
-
-	// 		// Validate Disk Deleted
-	// 		_, err = computeService.Disks.Get(p, z, volName).Do()
-	// 		Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-	// 	}()
-
-	// 	// Attach Disk
-	// 	err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
-	// 	Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
-
-	// 	defer func() {
-	// 		// Detach Disk
-	// 		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-	// 		if err != nil {
-	// 			klog.Errorf("Failed to detach disk: %v", err)
-	// 		}
-	// 	}()
-
-	// 	// Stage Disk
-	// 	stageDir := filepath.Join("/tmp/", volName, "stage")
-	// 	err = client.NodeStageExt4Volume(volID, stageDir)
-	// 	Expect(err).To(BeNil(), "failed to stage volume: %v", err)
-
-	// 	// Create private bind mount
-	// 	boundMountStageDir := filepath.Join("/tmp/bindmount", volName, "bindmount")
-	// 	boundMountStageMkdirOutput, err := instance.SSH("mkdir", "-p", boundMountStageDir)
-	// 	Expect(err).To(BeNil(), "mkdir failed on instance %v: output: %v: %v", instance.GetNodeID(), boundMountStageMkdirOutput, err)
-	// 	bindMountOutput, err := instance.SSH("mount", "--rbind", "--make-private", stageDir, boundMountStageDir)
-	// 	Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindMountOutput, err)
-
-	// 	privateBindMountRemoved := false
-	// 	unmountAndRmPrivateBindMount := func() {
-	// 		if !privateBindMountRemoved {
-	// 			// Umount and delete private mount staging directory
-	// 			bindUmountOutput, err := instance.SSH("umount", boundMountStageDir)
-	// 			Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindUmountOutput, err)
-	// 			err = testutils.RmAll(instance, boundMountStageDir)
-	// 			Expect(err).To(BeNil(), "Failed to rm mount stage dir %s: %v", boundMountStageDir, err)
-	// 		}
-	// 		privateBindMountRemoved = true
-	// 	}
-
-	// 	defer func() {
-	// 		unmountAndRmPrivateBindMount()
-	// 	}()
-
-	// 	// Unstage Disk
-	// 	err = client.NodeUnstageVolume(volID, stageDir)
-	// 	Expect(err).ToNot(BeNil(), "Expected failure during unstage")
-	// 	Expect(err).To(MatchError(ContainSubstring(("is still in use"))))
-
-	// 	// Unmount private bind mount and try again
-	// 	unmountAndRmPrivateBindMount()
-
-	// 	// Unstage Disk
-	// 	err = client.NodeUnstageVolume(volID, stageDir)
-	// 	Expect(err).To(BeNil(), "Failed to unstage volume: %v", err)
-	// 	fp := filepath.Join("/tmp/", volName)
-	// 	err = testutils.RmAll(instance, fp)
-	// 	Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
-	// })
+	DescribeTable("Should successfully create disk with PVC/PV tags",
+		func(diskType string) {
+			Expect(testContexts).ToNot(BeEmpty())
+			testContext := getRandomTestContext()
+
+			controllerInstance := testContext.Instance
+			controllerClient := testContext.Client
+
+			diskSize := defaultSizeGb
+			if diskType == extremeDiskType {
+				diskSize = defaultExtremeSizeGb
+			}
+
+			p, z, _ := controllerInstance.GetIdentity()
+
+			// Create Disk
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+			params := merge(disk.params, map[string]string{
+				common.ParameterKeyPVCName:      "test-pvc",
+				common.ParameterKeyPVCNamespace: "test-pvc-namespace",
+				common.ParameterKeyPVName:       "test-pv-name",
+			})
+			volume, err := controllerClient.CreateVolume(volName, params, diskSize, nil /* topReq */, nil)
+			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+			// Validate Disk Created
+			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+			Expect(cloudDisk.Status).To(Equal(readyState))
+			Expect(cloudDisk.SizeGb).To(Equal(diskSize))
+			Expect(cloudDisk.Name).To(Equal(volName))
+			Expect(cloudDisk.Description).To(Equal("{\"kubernetes.io/created-for/pv/name\":\"test-pv-name\",\"kubernetes.io/created-for/pvc/name\":\"test-pvc\",\"kubernetes.io/created-for/pvc/namespace\":\"test-pvc-namespace\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
+			disk.validate(cloudDisk)
+
+			defer func() {
+				// Delete Disk
+				controllerClient.DeleteVolume(volume.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+		},
+		Entry("on pd-standard", standardDiskType),
+		Entry("on pd-extreme", extremeDiskType),
+	)
+
+	// Use the region of the test location.
+	It("Should successfully create snapshot with storage locations", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+
+		// Convert GCP zone to region, e.g. us-central1-a => us-central1
+		// This is safe because we hardcode the zones.
+		snapshotLocation := z[:len(z)-2]
+
+		snapshotParams := map[string]string{
+			common.ParameterKeyStorageLocations:          snapshotLocation,
+			common.ParameterKeyVolumeSnapshotName:        "test-volumesnapshot-name",
+			common.ParameterKeyVolumeSnapshotNamespace:   "test-volumesnapshot-namespace",
+			common.ParameterKeyVolumeSnapshotContentName: "test-volumesnapshotcontent-name",
+		}
+		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+		Expect(snapshot.Description).To(Equal("{\"kubernetes.io/created-for/volumesnapshot/name\":\"test-volumesnapshot-name\",\"kubernetes.io/created-for/volumesnapshot/namespace\":\"test-volumesnapshot-namespace\",\"kubernetes.io/created-for/volumesnapshotcontent/name\":\"test-volumesnapshotcontent-name\",\"storage.gke.io/created-by\":\"pd.csi.storage.gke.io\"}"))
+
+		err = wait.Poll(10*time.Second, 3*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Snapshots.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
+
+	// Use the region of the test location.
+	It("Should successfully create snapshot backed by disk image", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		// Create Snapshot
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		testImageFamily := "test-family"
+
+		snapshotParams := map[string]string{common.ParameterKeySnapshotType: common.DiskImageType, common.ParameterKeyImageFamily: testImageFamily}
+		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
+		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
+
+		// Validate Snapshot Created
+		snapshot, err := computeService.Images.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		Expect(snapshot.Name).To(Equal(snapshotName))
+
+		err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+			snapshot, err := computeService.Images.Get(p, snapshotName).Do()
+			Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+			if snapshot.Status == "READY" {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
+
+		// Check Snapshot Type
+		snapshot, err = computeService.Images.Get(p, snapshotName).Do()
+		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
+		_, snapshotType, _, err := common.SnapshotIDToProjectKey(cleanSelfLink(snapshot.SelfLink))
+		Expect(err).To(BeNil(), "Failed to parse snapshot ID")
+		Expect(snapshotType).To(Equal(common.DiskImageType), "Expected images type in snapshot ID")
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+
+			// Delete Snapshot
+			err = client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+
+			// Validate Snapshot Deleted
+			_, err = computeService.Images.Get(p, snapshotName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected snapshot to not be found")
+		}()
+	})
+
+	It("Should successfully create zonal PD from a zonal PD VolumeContentSource", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		// Create Source Disk
+		_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z, standardDiskType)
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "none",
+		}, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: z},
+					},
+				},
+			},
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: srcVolID,
+					},
+				},
+			})
+
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		// Validate the the clone disk zone matches the source disk zone.
+		_, srcKey, err := common.VolumeIDToKey(srcVolID)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
+		Expect(zoneFromURL(cloudDisk.Zone)).To(Equal(srcKey.Zone))
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should successfully create RePD from a zonal PD VolumeContentSource", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Source Disk
+		srcVolName := testNamePrefix + string(uuid.NewUUID())
+		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
+			common.ParameterKeyReplicationType: "none",
+		}, defaultRepdSizeGb, nil, nil)
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil,
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: srcVolume.VolumeId,
+					},
+				},
+			})
+
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		replicaZonesCompatible := false
+		_, srcKey, err := common.VolumeIDToKey(srcVolume.VolumeId)
+		Expect(err).To(BeNil(), "Could not get source volume key from id")
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
+			if actualZone == srcKey.Zone {
+				replicaZonesCompatible = true
+			}
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		// Validate that one of the replicaZones of the clone matches the zone of the source disk.
+		Expect(replicaZonesCompatible).To(Equal(true))
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should successfully create RePD from a RePD VolumeContentSource", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		controllerInstance := testContext.Instance
+		controllerClient := testContext.Client
+
+		p, z, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones([]string{z})
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Source Disk
+		srcVolName := testNamePrefix + string(uuid.NewUUID())
+		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil, nil)
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyReplicationType: "regional-pd",
+		}, defaultRepdSizeGb, nil,
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Volume{
+					Volume: &csi.VolumeContentSource_VolumeSource{
+						VolumeId: srcVolume.VolumeId,
+					},
+				},
+			})
+
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		// Validate that the replicaZones of the clone match the replicaZones of the source disk.
+		srcCloudDisk, err := computeService.RegionDisks.Get(p, region, srcVolName).Do()
+		Expect(err).To(BeNil(), "Could not get source disk from cloud directly")
+		Expect(srcCloudDisk.ReplicaZones).To(Equal(cloudDisk.ReplicaZones))
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			actualZone := zoneFromURL(replicaZone)
+			gotRegion, err := common.GetRegionFromZones([]string{actualZone})
+			Expect(err).To(BeNil(), "failed to get region from actual zone %v", actualZone)
+			Expect(gotRegion).To(Equal(region), "Got region from replica zone that did not match supplied region")
+		}
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+	})
+
+	It("Should pass if valid compute endpoint is passed in", func() {
+		// gets instance set up w/o compute-endpoint set from test setup
+		_, err := getRandomTestContext().Client.ListVolumes()
+		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
+
+		i := getRandomTestContext().Instance
+
+		// Create new driver and client with valid, empty endpoint
+		klog.Infof("Setup driver with empty compute endpoint %s\n", i.GetName())
+		tcEmpty, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
+		if err != nil {
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		}
+		_, err = tcEmpty.Client.ListVolumes()
+
+		Expect(err).To(BeNil(), "no error expected when passed empty compute url")
+
+		// Create new driver and client w/ valid, passed-in endpoint
+		driverConfig := getDriverConfig()
+		driverConfig.ComputeEndpoint = "https://compute.googleapis.com"
+		tcValid, err := testutils.GCEClientAndDriverSetup(i, driverConfig)
+		if err != nil {
+			klog.Fatalf("Failed to set up Test Context for instance %v: %v", i.GetName(), err)
+		}
+		_, err = tcValid.Client.ListVolumes()
+
+		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
+	})
+
+	It("[NVMe] Should update readahead if read_ahead_kb passed on mount", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+
+		}()
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		expectedReadAheadKB := "4096"
+		volCap := &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{
+					MountFlags: []string{fmt.Sprintf("read_ahead_kb=%s", expectedReadAheadKB)},
+				},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		}
+		err = client.NodeStageVolume(volID, stageDir, volCap)
+		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
+
+		// Validate that the link is correct
+		var validated bool
+		var devName string
+		devicePaths := deviceutils.NewDeviceUtils().GetDiskByIdPaths(volName, "")
+		for _, devicePath := range devicePaths {
+			validated, err = testutils.ValidateLogicalLinkIsDisk(instance, devicePath, volName)
+			Expect(err).To(BeNil(), "failed to validate link %s is disk %s: %v", stageDir, volName, err)
+			if validated {
+				devFsPath, err := instance.SSH("find", devicePath, "-printf", "'%l'")
+				Expect(err).To(BeNil(), "Failed to symlink devicePath")
+				devFsPathPieces := strings.Split(devFsPath, "/")
+				devName = devFsPathPieces[len(devFsPathPieces)-1]
+				break
+			}
+		}
+		Expect(validated).To(BeTrue(), "could not find device in %v that links to volume %s", devicePaths, volName)
+		actualReadAheadKBStr, err := instance.SSH("cat", fmt.Sprintf("/sys/block/%s/queue/read_ahead_kb", devName))
+		actualReadAheadKB := strings.TrimSpace(actualReadAheadKBStr)
+		Expect(err).To(BeNil(), "Failed to read read_ahead_kb: %v", err)
+		Expect(actualReadAheadKB).To(Equal(expectedReadAheadKB), "unexpected read_ahead_kb")
+
+		defer func() {
+			// Unstage Disk
+			err = client.NodeUnstageVolume(volID, stageDir)
+			if err != nil {
+				klog.Errorf("Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("Failed to rm file path %s: %v", fp, err)
+			}
+		}()
+	})
+
+	It("Should block unstage if filesystem mounted", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+		}()
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
+
+		// Create private bind mount
+		boundMountStageDir := filepath.Join("/tmp/bindmount", volName, "bindmount")
+		boundMountStageMkdirOutput, err := instance.SSH("mkdir", "-p", boundMountStageDir)
+		Expect(err).To(BeNil(), "mkdir failed on instance %v: output: %v: %v", instance.GetNodeID(), boundMountStageMkdirOutput, err)
+		bindMountOutput, err := instance.SSH("mount", "--rbind", "--make-private", stageDir, boundMountStageDir)
+		Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindMountOutput, err)
+
+		privateBindMountRemoved := false
+		unmountAndRmPrivateBindMount := func() {
+			if !privateBindMountRemoved {
+				// Umount and delete private mount staging directory
+				bindUmountOutput, err := instance.SSH("umount", boundMountStageDir)
+				Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindUmountOutput, err)
+				err = testutils.RmAll(instance, boundMountStageDir)
+				Expect(err).To(BeNil(), "Failed to rm mount stage dir %s: %v", boundMountStageDir, err)
+			}
+			privateBindMountRemoved = true
+		}
+
+		defer func() {
+			unmountAndRmPrivateBindMount()
+		}()
+
+		// Unstage Disk
+		err = client.NodeUnstageVolume(volID, stageDir)
+		Expect(err).ToNot(BeNil(), "Expected failure during unstage")
+		Expect(err).To(MatchError(ContainSubstring(("is still in use"))))
+
+		// Unmount private bind mount and try again
+		unmountAndRmPrivateBindMount()
+
+		// Unstage Disk
+		err = client.NodeUnstageVolume(volID, stageDir)
+		Expect(err).To(BeNil(), "Failed to unstage volume: %v", err)
+		fp := filepath.Join("/tmp/", volName)
+		err = testutils.RmAll(instance, fp)
+		Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
+	})
 
 	type multiZoneTestConfig struct {
 		diskType          string
