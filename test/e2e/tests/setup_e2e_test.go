@@ -36,13 +36,17 @@ import (
 )
 
 var (
-	project                   = flag.String("project", "", "Project to run tests in")
-	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
-	vmNamePrefix              = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
-	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Milan", "Minimum CPU architecture")
-	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
-	machineType               = flag.String("machine-type", "n2d-standard-2", "Type of machine to provision instance on")
+	project          = flag.String("project", "", "Project to run tests in")
+	serviceAccount   = flag.String("service-account", "", "Service account to bring up instance with")
+	vmNamePrefix     = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
+	architecture     = flag.String("arch", "amd64", "Architecture pd csi driver build on")
+	minCpuPlatform   = flag.String("min-cpu-platform", "rome", "Minimum CPU architecture")
+	mwMinCpuPlatform = flag.String("min-cpu-platform-mw", "sapphirerapids", "Minimum CPU architecture for multiwriter tests")
+	zones            = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	machineType      = flag.String("machine-type", "n2d-standard-4", "Type of machine to provision instance on")
+	// Multi-writer is only supported on M3, C3, and N4
+	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
+	mwMachineType             = flag.String("mw-machine-type", "c3-standard-4", "Type of machine to provision instance for multiwriter tests")
 	imageURL                  = flag.String("image-url", "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-2404-lts-amd64", "OS image url to get image from")
 	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
@@ -50,11 +54,12 @@ var (
 	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
 
-	testContexts        = []*remote.TestContext{}
-	computeService      *compute.Service
-	computeAlphaService *computealpha.Service
-	computeBetaService  *computebeta.Service
-	kmsClient           *cloudkms.KeyManagementClient
+	testContexts            = []*remote.TestContext{}
+	multiWriterTestContexts = []*remote.TestContext{}
+	computeService          *compute.Service
+	computeAlphaService     *computealpha.Service
+	computeBetaService      *computebeta.Service
+	kmsClient               *cloudkms.KeyManagementClient
 )
 
 func init() {
@@ -70,7 +75,9 @@ func TestE2E(t *testing.T) {
 var _ = BeforeSuite(func() {
 	var err error
 	tcc := make(chan *remote.TestContext)
+	mwTcc := make(chan *remote.TestContext)
 	defer close(tcc)
+	defer close(mwTcc)
 
 	zones := strings.Split(*zones, ",")
 
@@ -101,13 +108,16 @@ var _ = BeforeSuite(func() {
 	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
-			tcc <- NewTestContext(curZone)
+			tcc <- NewTestContext(curZone, *machineType, *minCpuPlatform)
+			mwTcc <- NewTestContext(curZone, *mwMachineType, *mwMinCpuPlatform)
 		}(zone)
 	}
 
 	for i := 0; i < len(zones); i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
+		mwTc := <-mwTcc
+		multiWriterTestContexts = append(multiWriterTestContexts, mwTc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
 })
@@ -118,6 +128,13 @@ var _ = AfterSuite(func() {
 		Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
 		if *deleteInstances {
 			tc.Instance.DeleteInstance()
+		}
+	}
+	for _, mwTc := range multiWriterTestContexts {
+		err := remote.TeardownDriverAndClient(mwTc)
+		Expect(err).To(BeNil(), "Multiwriter Teardown Driver and Client failed with error")
+		if *deleteInstances {
+			mwTc.Instance.DeleteInstance()
 		}
 	}
 })
@@ -133,17 +150,17 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewTestContext(zone string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s", *vmNamePrefix, zone)
+func NewTestContext(zone string, machineType string, minCpuPlatform string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
 		Project:                   *project,
 		Architecture:              *architecture,
-		MinCpuPlatform:            *minCpuPlatform,
+		MinCpuPlatform:            minCpuPlatform,
 		Zone:                      zone,
 		Name:                      nodeID,
-		MachineType:               *machineType,
+		MachineType:               machineType,
 		ServiceAccount:            *serviceAccount,
 		ImageURL:                  *imageURL,
 		CloudtopHost:              *cloudtopHost,
@@ -184,4 +201,9 @@ func getRandomTestContext() *remote.TestContext {
 	Expect(testContexts).ToNot(BeEmpty())
 	rn := rand.Intn(len(testContexts))
 	return testContexts[rn]
+}
+func getRandomMwTestContext() *remote.TestContext {
+	Expect(multiWriterTestContexts).ToNot(BeEmpty())
+	rn := rand.Intn(len(multiWriterTestContexts))
+	return multiWriterTestContexts[rn]
 }
