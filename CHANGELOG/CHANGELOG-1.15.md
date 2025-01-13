@@ -1,3 +1,11 @@
+# v1.15.4 - Changelog since v1.15.3
+- [release-1.15] [metrics] Fix panic during metrics manager startup by @k8s-infra-cherrypick-robot in https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1898
+
+# v1.15.3 - Changelog since v1.15.2
+* [release-1.15] Don't overwrite libc in distroless debian base image by @k8s-infra-cherrypick-robot in https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1884
+* [release-1.15] Refactor metric defer() statements to gRPC metric interceptor by @k8s-infra-cherrypick-robot in https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1886
+* Automated cherry pick of #1875: Require VACs to use SI units by @travisyx in https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1892
+
 # v1.15.2 - Changelog since v1.15.1
 
 - [release-1.15] Map RESOURCE_OPERATION_RATE_EXCEEDED to ResourceExhausted by @k8s-infra-cherrypick-robot in #1848
