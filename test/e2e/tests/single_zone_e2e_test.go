@@ -37,6 +37,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/iterator"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
+	fieldmask "google.golang.org/genproto/protobuf/field_mask"
 )
 
 const (
@@ -75,18 +76,13 @@ const (
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
-
-	// ReportAfterEach(func(report SpecReport) {
-	// 	customFormat := fmt.Sprintf("%s | %s", report.State, report.FullText())
-	// 	client.SendReport(customFormat)
-	// })
-	// It("Should get reasonable volume limits from nodes with NodeGetInfo", func() {
-	// 	testContext := getRandomTestContext()
-	// 	resp, err := testContext.Client.NodeGetInfo()
-	// 	Expect(err).To(BeNil())
-	// 	volumeLimit := resp.GetMaxVolumesPerNode()
-	// 	Expect(volumeLimit).To(Equal(defaultVolumeLimit))
-	// })
+	It("Should get reasonable volume limits from nodes with NodeGetInfo", func() {
+		testContext := getRandomTestContext()
+		resp, err := testContext.Client.NodeGetInfo()
+		Expect(err).To(BeNil())
+		volumeLimit := resp.GetMaxVolumesPerNode()
+		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
+	})
 
 	// It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 	// 	testContext := getRandomTestContext()
@@ -279,12 +275,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	// 			Expect(err).To(BeNil(), "Failed to delete volume")
 	// 		}()
 
-	// 		_, err = computeService.Disks.Get(p, zone, volName).Do()
-	// 		Expect(err).To(BeNil(), "Could not find disk in correct zone")
-	// 	}
-	// })
+			_, err = computeService.Disks.Get(p, zone, volName).Do()
+			Expect(err).To(BeNil(), "Could not find disk in correct zone")
+		}
+	})
 
-	/******************/
 	// TODO(hime): Enable this test once all release branches contain the fix from PR#1708.
 	// It("Should return InvalidArgument when disk size exceeds limit", func() {
 	// 	// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
@@ -911,13 +906,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomMwTestContext()
 
-		p, _, _ := testContext.Instance.GetIdentity()
+		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
-
-		zone := "us-east1-b"
-
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, hdbDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -925,7 +917,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = computeService.Disks.Get(p, zone, volName).Do()
+			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
