@@ -23,7 +23,7 @@ import (
 
 const (
 	// Disk Params
-	ParameterAccessMode						  = "access-mode"
+	ParameterAccessMode = "access-mode"
 
 	// Parameters for StorageClass
 	ParameterKeyType                          = "type"
