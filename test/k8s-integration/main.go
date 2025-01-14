@@ -688,8 +688,8 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
 	}
 
-	// VolumeAttributesClasses were promoted to beta in 1.31
-	if curVer.lessThan(mustParseVersion("1.31.0")) {
+	// VolumeAttributesClasses were promoted to beta in 1.31, but is not supported on managed driver.
+	if curVer.lessThan(mustParseVersion("1.31.0")) || testParams.useGKEManagedDriver {
 		skipString = skipString + "|VolumeAttributesClass"
 	}
 
