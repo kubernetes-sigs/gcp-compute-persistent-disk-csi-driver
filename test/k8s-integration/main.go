@@ -688,8 +688,8 @@ func generateGKETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
 	}
 
-	// VolumeAttributesClasses were promoted to beta in 1.31
-	if curVer.lessThan(mustParseVersion("1.31.0")) {
+	// VolumeAttributesClasses were promoted to beta in 1.31, but is not supported on managed driver.
+	if curVer.lessThan(mustParseVersion("1.31.0")) || testParams.useGKEManagedDriver {
 		skipString = skipString + "|VolumeAttributesClass"
 	}
 
@@ -814,13 +814,9 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 		focuses = append(focuses, "VolumeSnapshotDataSource")
 	}
 
-	// If testParams.volumeAttributesClassFile is empty, then VAC tests will be automatically skipped. Otherwise confirm
-	// the right tests are run.
-	if testParams.volumeAttributesClassFile != "" && strings.Contains(skip, "VolumeAttributesClass") {
-		return fmt.Errorf("VolumeAttributesClass file %s specified, but VolumeAttributesClass tests are skipped: %s", testParams.volumeAttributesClassFile, skip)
-	}
-	if testParams.volumeAttributesClassFile != "" {
-		// If there is a VolumeAttributesClass file, run VAC tests
+	// testParams.volumeAttributesClassFile is always set, so rely on test skip to determine if VAC tests should
+	// be run.
+	if testParams.volumeAttributesClassFile != "" && !strings.Contains(skip, "VolumeAttributesClass") {
 		focuses = append(focuses, "VolumeAttributesClass")
 	}
 
