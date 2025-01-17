@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -468,21 +467,24 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 type ignoreableError struct{ error }
 
 func (ns *GCENodeServer) confirmDeviceUnused(volumeID string) error {
-	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
-	if err != nil {
-		return &ignoreableError{fmt.Errorf("failed to find device path for volume %s: %v", volumeID, err.Error())}
-	}
+	// 1.14-exp release. DO NOT INCLUDE in regular release.
+	//
 
-	devFsPath, err := filepath.EvalSymlinks(devicePath)
-	if err != nil {
-		return &ignoreableError{fmt.Errorf("filepath.EvalSymlinks(%q) failed: %v", devicePath, err)}
-	}
+	// devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
+	// if err != nil {
+	// 	return &ignoreableError{fmt.Errorf("failed to find device path for volume %s: %v", volumeID, err.Error())}
+	// }
 
-	if inUse, err := ns.DeviceUtils.IsDeviceFilesystemInUse(ns.Mounter, devicePath, devFsPath); err != nil {
-		return &ignoreableError{fmt.Errorf("failed to check if device %s (aka %s) is in use: %v", devicePath, devFsPath, err)}
-	} else if inUse {
-		return fmt.Errorf("device %s (aka %s) is still in use", devicePath, devFsPath)
-	}
+	// devFsPath, err := filepath.EvalSymlinks(devicePath)
+	// if err != nil {
+	// 	return &ignoreableError{fmt.Errorf("filepath.EvalSymlinks(%q) failed: %v", devicePath, err)}
+	// }
+
+	// if inUse, err := ns.DeviceUtils.IsDeviceFilesystemInUse(ns.Mounter, devicePath, devFsPath); err != nil {
+	// 	return &ignoreableError{fmt.Errorf("failed to check if device %s (aka %s) is in use: %v", devicePath, devFsPath, err)}
+	// } else if inUse {
+	// 	return fmt.Errorf("device %s (aka %s) is still in use", devicePath, devFsPath)
+	// }
 
 	return nil
 }
