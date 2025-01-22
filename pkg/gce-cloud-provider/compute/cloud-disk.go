@@ -213,19 +213,6 @@ func (d *CloudDisk) GetKMSKeyName() string {
 	return ""
 }
 
-func (d *CloudDisk) GetMultiWriter() bool {
-	switch {
-	case d.disk != nil:
-		return false
-	case d.disk != nil && d.disk.AccessMode == "READ_WRITE_MANY":
-		return true
-	case d.betaDisk != nil:
-		return d.betaDisk.MultiWriter
-	default:
-		return false
-	}
-}
-
 func (d *CloudDisk) GetEnableConfidentialCompute() bool {
 	switch {
 	case d.disk != nil:
