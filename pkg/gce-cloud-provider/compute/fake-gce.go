@@ -216,11 +216,6 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 			params.DiskType, respType[len(respType)-1])
 	}
 
-	// We are assuming here that a multiWriter disk could be used as non-multiWriter
-	if multiWriter {
-		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
-	}
-
 	klog.V(4).Infof("Compatible disk already exists")
 	return ValidateDiskParameters(resp, params)
 }
