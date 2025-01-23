@@ -207,6 +207,9 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}
+			if paramProvisionedThroughputOnCreate < 0 {
+				return p, fmt.Errorf("parameter provisionedThroughputOnCreate cannot be negative")
+			}
 			p.ProvisionedThroughputOnCreate = paramProvisionedThroughputOnCreate
 		case ParameterAvailabilityClass:
 			paramAvailabilityClass, err := ConvertStringToAvailabilityClass(v)
