@@ -32,8 +32,12 @@ import (
  * represent all fields that we want to be passed through. It's therefore
  * not a complete solution, but good enough for Ginkgo + Spyglass.
  */
+
+type TestSuites struct {
+	XMLName   string      `xml:"testsuites"`
+	TestSuite []TestSuite `xml:"testsuite"`
+}
 type TestSuite struct {
-	XMLName   string     `xml:"testsuite"`
 	TestCases []TestCase `xml:"testcase"`
 }
 
