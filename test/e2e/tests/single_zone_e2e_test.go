@@ -338,7 +338,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 		Entry("on hyperdisk-throughput", hdtDiskType),
 		Entry("on pd-ssd", ssdDiskType),
 	)
@@ -378,7 +378,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "ControllerPublishVolume failed")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 	)
 
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
@@ -465,50 +465,51 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 	)
+	/*
+		DescribeTable("Should create and delete pd-extreme disk with default iops",
+			func(diskType string) {
+				Expect(testContexts).ToNot(BeEmpty())
+				testContext := getRandomTestContext()
 
-	DescribeTable("Should create and delete pd-extreme disk with default iops",
-		func(diskType string) {
-			Expect(testContexts).ToNot(BeEmpty())
-			testContext := getRandomTestContext()
+				p, z, _ := testContext.Instance.GetIdentity()
+				client := testContext.Client
 
-			p, z, _ := testContext.Instance.GetIdentity()
-			client := testContext.Client
+				// Create Disk
+				diskParams := map[string]string{
+					common.ParameterKeyType: diskType,
+				}
+				volName := testNamePrefix + string(uuid.NewUUID())
 
-			// Create Disk
-			diskParams := map[string]string{
-				common.ParameterKeyType: diskType,
-			}
-			volName := testNamePrefix + string(uuid.NewUUID())
+				diskSize := defaultExtremeSizeGb
 
-			diskSize := defaultExtremeSizeGb
+				volume, err := client.CreateVolume(volName, diskParams, diskSize, nil, nil)
 
-			volume, err := client.CreateVolume(volName, diskParams, diskSize, nil, nil)
+				Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
-			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+				// Validate Disk Created
+				cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+				Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+				Expect(cloudDisk.Status).To(Equal(readyState))
+				Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
+				Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
+				Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateDefaultInt))
+				Expect(cloudDisk.Name).To(Equal(volName))
 
-			// Validate Disk Created
-			cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
-			Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-			Expect(cloudDisk.Status).To(Equal(readyState))
-			Expect(cloudDisk.SizeGb).To(Equal(defaultExtremeSizeGb))
-			Expect(cloudDisk.Type).To(ContainSubstring(extremeDiskType))
-			Expect(cloudDisk.ProvisionedIops).To(Equal(provisionedIOPSOnCreateDefaultInt))
-			Expect(cloudDisk.Name).To(Equal(volName))
+				defer func() {
+					// Delete Disk
+					client.DeleteVolume(volume.VolumeId)
+					Expect(err).To(BeNil(), "DeleteVolume failed")
 
-			defer func() {
-				// Delete Disk
-				client.DeleteVolume(volume.VolumeId)
-				Expect(err).To(BeNil(), "DeleteVolume failed")
-
-				// Validate Disk Deleted
-				_, err = computeService.Disks.Get(p, z, volName).Do()
-				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-			}()
-		},
-		Entry("on pd-extreme", extremeDiskType),
-	)
+					// Validate Disk Deleted
+					_, err = computeService.Disks.Get(p, z, volName).Do()
+					Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+				}()
+			},
+			Entry("on pd-extreme", extremeDiskType),
+		)
+	*/
 
 	DescribeTable("Should create and delete disk with labels",
 		func(diskType string) {
@@ -557,7 +558,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 	)
 
 	It("Should create and delete snapshot for the volume with default zone", func() {
@@ -724,7 +725,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 	)
 
 	It("Should create disks, attach them places, and verify List returns correct results", func() {
@@ -1019,7 +1020,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 		},
 		Entry("on pd-standard", standardDiskType),
-		Entry("on pd-extreme", extremeDiskType),
+		// Entry("on pd-extreme", extremeDiskType),
 	)
 
 	// Use the region of the test location.

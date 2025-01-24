@@ -32,4 +32,7 @@ const (
 
 	// Label that is set on a disk when it is used by a 'multi-zone' VolumeHandle
 	MultiZoneLabel = "goog-gke-multi-zone"
+
+	// Hyperdisk disk type prefix
+	HyperdiskTypesPrefix = "hyperdisk"
 )
