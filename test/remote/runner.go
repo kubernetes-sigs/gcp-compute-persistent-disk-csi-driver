@@ -18,7 +18,6 @@ package remote
 
 import (
 	"fmt"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,7 +25,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd string) (int, error) {
+func (i *InstanceInfo) UploadAndRun(archiveName, archivePath, remoteWorkspace, driverRunCmd, pkgPath string) (int, error) {
 
 	// Create the temp staging directory
 	klog.V(4).Infof("Staging test binaries on %q", i.cfg.Name)
@@ -37,53 +36,54 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 		return -1, fmt.Errorf("failed to create remoteWorkspace directory %q on instance %q: %v output: %q", remoteWorkspace, i.cfg.Name, err.Error(), output)
 	}
 
-	// Copy the archive to the staging directory
-	if output, err := runSSHCommand("scp", archivePath, fmt.Sprintf("%s:%s/", i.GetSSHTarget(), remoteWorkspace)); err != nil {
+	// Copy the setup script to the staging directory
+	if output, err := runSSHCommand("scp", fmt.Sprintf("%s/test/e2e/utils/setup-remote.sh", pkgPath), fmt.Sprintf("%s:%s/", i.GetSSHTarget(), remoteWorkspace)); err != nil {
 		// Exit failure with the error
 		return -1, fmt.Errorf("failed to copy test archive: %v, output: %q", err.Error(), output)
 	}
 
-	// Extract the archive
-	archiveName := path.Base(archivePath)
-	cmd := getSSHCommand(" && ",
-		fmt.Sprintf("cd %s", remoteWorkspace),
-		fmt.Sprintf("tar -xzvf ./%s", archiveName),
-	)
-	klog.V(4).Infof("Extracting tar on %q", i.cfg.Name)
-	// Do not use sudo here, because `sudo tar -x` will recover the file ownership inside the tar ball, but
-	// we want the extracted files to be owned by the current user.
-	if output, err := i.SSHNoSudo("sh", "-c", cmd); err != nil {
-		// Exit failure with the error
-		return -1, fmt.Errorf("failed to extract test archive: %v, output: %q", err.Error(), output)
+	// Set up the VM env with docker and make
+	if output, err := i.SSH("sh", "-c", fmt.Sprintf("%s/setup-remote.sh", remoteWorkspace)); err != nil {
+		return -1, fmt.Errorf("failed to setup VM environment: %v, output: %q", err.Error(), output)
 	}
 
+	// Upload local image to remote
+	if output, err := runSSHCommand("scp", archivePath, fmt.Sprintf("%s:%s/", i.GetSSHTarget(), remoteWorkspace)); err != nil {
+		return -1, fmt.Errorf("failed to copy image archive: %v, output: %q", err, output)
+	}
+
+	// Run PD CSI driver as a container
 	klog.V(4).Infof("Starting driver on %q", i.cfg.Name)
-	// When the process is killed the driver should close the TCP endpoint, then we want to download the logs
-	output, err := i.SSH(driverRunCmd)
-	if err != nil {
-		// Exit failure with the error
-		return -1, fmt.Errorf("failed start driver, got output: %v, error: %v", output, err.Error())
-	}
-
-	// Get the driver PID
-	// ps -aux | grep  /tmp/gce-pd-e2e-0180801T114407/gce-pd-csi-driver | awk '{print $2}'
-	driverPIDCmd := getSSHCommand(" | ",
-		"ps -aux",
-		fmt.Sprintf("grep %s", remoteWorkspace),
-		"grep -v grep",
-		// All ye who try to deal with escaped/non-escaped quotes with exec beware.
-		//`awk "{print \$2}"`,
+	cmd := getSSHCommand(" && ",
+		fmt.Sprintf("docker load -i %v/%v", remoteWorkspace, archiveName),
+		driverRunCmd,
 	)
-	driverPIDString, err := i.SSHNoSudo("sh", "-c", driverPIDCmd)
+	output, err := i.SSH("sh", "-c", cmd)
 	if err != nil {
-		// Exit failure with the error
-		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", output, err.Error())
+		return -1, fmt.Errorf("failed to load or run docker image: %v, output: %q", err, output)
 	}
 
-	driverPID, err := strconv.Atoi(strings.Fields(driverPIDString)[1])
-	if err != nil {
-		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDString, err.Error())
+	// Grab the container ID from `docker run` output
+	driverRunOutputs := strings.Split(output, "\n")
+	numSplits := len(driverRunOutputs)
+	if numSplits < 2 {
+		return -1, fmt.Errorf("failed to get driver container ID from driver run outputs, outputs are: %v", output)
 	}
+	// Grabbing the second last split because it contains an empty string
+	driverContainerID := driverRunOutputs[len(driverRunOutputs)-2]
+
+	// Grab driver PID from container ID
+	driverPIDStr, err := i.SSH(fmt.Sprintf("docker inspect -f {{.State.Pid}} %v", driverContainerID))
+	if err != nil {
+		// Exit failure with the error
+		return -1, fmt.Errorf("failed to get PID of driver, got output: %v, error: %v", driverPIDStr, err.Error())
+	}
+	driverPIDStr = strings.TrimSpace(driverPIDStr)
+	driverPID, err := strconv.Atoi(driverPIDStr)
+	if err != nil {
+		return -1, fmt.Errorf("failed to convert driver PID from string %s to int: %v", driverPIDStr, err.Error())
+	}
+	klog.V(4).Infof("Driver PID is: %v", driverPID)
 
 	return driverPID, nil
 }

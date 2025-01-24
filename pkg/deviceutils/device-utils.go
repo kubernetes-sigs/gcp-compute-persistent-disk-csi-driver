@@ -324,7 +324,8 @@ func filterAvailableNvmeDevFsPaths(devNvmePaths []string) []string {
 	return diskNvmePaths
 }
 
-func findAvailableDevFsPaths() ([]string, error) {
+// FindAvailableDevFsPaths returns a list of the paths of accessible devices.
+func FindAvailableDevFsPaths() ([]string, error) {
 	diskSDPaths, err := filepath.Glob(diskSDGlob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to filepath.Glob(\"%s\"): %w", diskSDGlob, err)
@@ -340,7 +341,7 @@ func findAvailableDevFsPaths() ([]string, error) {
 
 func udevadmTriggerForDiskIfExists(deviceName string) error {
 	devFsPathToSerial := map[string]string{}
-	devFsPaths, err := findAvailableDevFsPaths()
+	devFsPaths, err := FindAvailableDevFsPaths()
 	if err != nil {
 		return err
 	}

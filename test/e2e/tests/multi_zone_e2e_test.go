@@ -1089,8 +1089,7 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 
 	detach := func() {
 		// Detach Disk
-		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-		if err != nil {
+		if err := client.ControllerUnpublishVolume(volID, instance.GetNodeID()); err != nil {
 			klog.Errorf("Failed to detach disk: %v", err)
 		}
 	}
@@ -1110,13 +1109,11 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 
 	unstageAndDetach := func() {
 		// Unstage Disk
-		err = client.NodeUnstageVolume(volID, stageDir)
-		if err != nil {
+		if err := client.NodeUnstageVolume(volID, stageDir); err != nil {
 			klog.Errorf("Failed to unstage volume: %v", err)
 		}
 		fp := filepath.Join("/tmp/", volName)
-		err = testutils.RmAll(instance, fp)
-		if err != nil {
+		if err := testutils.RmAll(instance, fp); err != nil {
 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
 		}
 
@@ -1139,8 +1136,7 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 
 	unpublish := func() {
 		// Unpublish Disk
-		err = client.NodeUnpublishVolume(volID, publishDir)
-		if err != nil {
+		if err := client.NodeUnpublishVolume(volID, publishDir); err != nil {
 			klog.Errorf("Failed to unpublish volume: %v", err)
 		}
 	}
