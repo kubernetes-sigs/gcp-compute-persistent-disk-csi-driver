@@ -38,6 +38,7 @@ type TestSuites struct {
 	TestSuite []TestSuite `xml:"testsuite"`
 }
 type TestSuite struct {
+	XMLName   string     `xml:"testsuite"`
 	TestCases []TestCase `xml:"testcase"`
 }
 
