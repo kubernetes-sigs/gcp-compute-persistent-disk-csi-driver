@@ -34,6 +34,7 @@ const (
 	ParameterKeyStoragePools                  = "storage-pools"
 	ParameterKeyResourceTags                  = "resource-tags"
 	ParameterKeyEnableMultiZoneProvisioning   = "enable-multi-zone-provisioning"
+	ParameterHdHADiskType                     = "hyperdisk-balanced-high-availability"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -108,6 +109,10 @@ type DiskParameters struct {
 	MultiZoneProvisioning bool
 }
 
+func (dp *DiskParameters) IsRegional() bool {
+	return dp.ReplicationType == "regional-pd" || dp.DiskType == ParameterHdHADiskType
+}
+
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
 type SnapshotParameters struct {
 	StorageLocations []string
@@ -129,6 +134,7 @@ type ParameterProcessor struct {
 	DriverName         string
 	EnableStoragePools bool
 	EnableMultiZone    bool
+	EnableHdHA         bool
 }
 
 type ModifyVolumeParameters struct {
@@ -167,6 +173,9 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		case ParameterKeyType:
 			if v != "" {
 				p.DiskType = strings.ToLower(v)
+				if !pp.EnableHdHA && p.DiskType == ParameterHdHADiskType {
+					return p, fmt.Errorf("parameters contain invalid disk type %s", ParameterHdHADiskType)
+				}
 			}
 		case ParameterKeyReplicationType:
 			if v != "" {

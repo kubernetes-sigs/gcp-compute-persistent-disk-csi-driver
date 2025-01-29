@@ -30,6 +30,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		labels             map[string]string
 		enableStoragePools bool
 		enableMultiZone    bool
+		enableHdHA         bool
 		extraTags          map[string]string
 		expectParams       DiskParameters
 		expectErr          bool
@@ -395,6 +396,23 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			parameters: map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
 			expectErr:  true,
 		},
+		{
+			name:       "disk parameters, hdha disabled",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced-high-availability"},
+			expectErr:  true,
+		},
+		{
+			name:       "disk parameters, hdha enabled",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-balanced-high-availability"},
+			enableHdHA: true,
+			expectParams: DiskParameters{
+				DiskType:        "hyperdisk-balanced-high-availability",
+				ReplicationType: "none",
+				Tags:            map[string]string{},
+				ResourceTags:    map[string]string{},
+				Labels:          map[string]string{},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -403,6 +421,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				DriverName:         "testDriver",
 				EnableStoragePools: tc.enableStoragePools,
 				EnableMultiZone:    tc.enableMultiZone,
+				EnableHdHA:         tc.enableHdHA,
 			}
 			p, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
