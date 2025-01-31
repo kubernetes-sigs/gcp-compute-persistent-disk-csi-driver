@@ -204,6 +204,21 @@ func validateStoragePoolProjects(project string, storagePools []common.StoragePo
 	return nil
 }
 
+func validateDataCacheConfig(req *csi.CreateVolumeRequest, params common.DataCacheParameters, nodeName string) error {
+	if params.DataCacheMode != "" || params.DataCacheSize != "" {
+		isAlreadyRaided, err := isRaided()
+		if !isAlreadyRaided || err != nil {
+			return fmt.Errorf("Local SSDs not setup fro caching")
+		}
+		lssdCount := fetchRaidedLocalSSDs()
+		if lssdCount <= 0 {
+			return fmt.Errorf("Local SSDs not setup for cahcing, no local ssds reserved for caching so cannot use data cache feature")
+		}
+		return nil
+	}
+	klog.V(2).Infof("No using data cache for the volume so skipping config check")
+	return nil
+}
 func getMultiWriterFromCapability(vc *csi.VolumeCapability) (bool, error) {
 	if vc.GetAccessMode() == nil {
 		return false, errors.New("access mode is nil")

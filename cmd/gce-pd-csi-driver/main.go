@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -95,9 +96,11 @@ var (
 )
 
 const (
-	driverName          = "pd.csi.storage.gke.io"
-	dataCacheLabel      = "datacache-storage-gke-io"
-	dataCacheLabelValue = "enabled"
+	driverName              = "pd.csi.storage.gke.io"
+	dataCacheLabel          = "datacache-storage-gke-io"
+	dataCacheLabelValue     = "enabled"
+	dataCacheLssdCountLabel = "data-cache-disk"
+	nodeLabelPrefix         = "cloud.google.com/%s"
 )
 
 func init() {
@@ -237,10 +240,11 @@ func handle() {
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, *enableNodeDataCacheFlag)
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
+			nodeServer.Meta
 		}
 	}
 
-	if *enableNodeDataCacheFlag {
+	if *enableDataCacheFlag && *runNodeService{
 		if nodeName == nil || *nodeName == "" {
 			klog.Errorf("Data cache enabled, but --node-name not passed")
 		}
@@ -300,6 +304,8 @@ func urlFlag(target **url.URL, name string, usage string) {
 
 func setupDataCache(ctx context.Context, nodeName string) error {
 	klog.V(2).Infof("Seting up data cache for node %s", nodeName)
+	//Default LSSDs to be set for test node
+	lssdCount := 2
 	if nodeName != common.TestNode {
 		cfg, err := rest.InClusterConfig()
 		if err != nil {
@@ -318,12 +324,51 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 			klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
 			return nil
 		}
+		if enableNodeDataCacheFlag {
+			klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
+			return nil
+		}
+		lssdCount = fetchLssdCount(node)
 	}
+	lssdNames := driver.FetchLssdsForRaiding(lssdCount)
 	klog.V(2).Info("Raiding local ssds to setup data cache")
+	// Verify Local SSDs are RAIDed successfully
 	if err := driver.RaidLocalSsds(); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
 	}
 
 	klog.V(2).Infof("Datacache enabled for node %s", nodeName)
 	return nil
+}
+
+
+func fetchLssdCount(node kubernetes.Clientset.nodeV1) int {
+	if val, found := node.GetLabels()[fmt.Sprintf(nodeLabelPrefix, dataCacheLssdCountLabel)]; found && val > 0 {
+		return val
+	}
+	return nil
+}
+
+func startWatcher() {
+	dirToWatch := "/dev/"
+	var stopChan chan error
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		klog.V(2).ErrorS(err, "Errored while creating watcher")
+	}
+	defer watcher.Close()
+
+	// out of the box fsnotify can watch a single file, or a single directory
+	if err := watcher.Add(dirToWatch); err != nil {
+		klog.V(2).ErrorS(err, "Errored while adding watcher directory")
+	}
+
+	errorCh := make(chan error, 1)
+	// Handle the error received from the watcher goroutine
+	go driver.WatchDiskDetaches(watcher, *nodeName, errorCh)
+
+	select {
+	case err := <-errorCh:
+		fmt.Errorf("Watcher encountered an error: %v", err)
+	}
 }

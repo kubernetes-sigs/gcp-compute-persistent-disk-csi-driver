@@ -10,7 +10,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-*/
+*/CF
 
 package gceGCEDriver
 
@@ -334,6 +334,9 @@ func (gceCS *GCEControllerServer) CreateVolume(ctx context.Context, req *csi.Cre
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate storage pools: %v", err)
 	}
+
+	// Validate data cache setup here (TODO)
+	validate
 
 	// Verify that the regional availability class is only used on regional disks.
 	if params.ForceAttach && params.ReplicationType != replicationTypeRegionalPD {
@@ -691,6 +694,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 			pubVolResp.PublishContext = map[string]string{}
 			pubVolResp.PublishContext[common.ContexLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
 			pubVolResp.PublishContext[common.ContextDataCacheMode] = req.GetVolumeContext()[common.ContextDataCacheMode]
+			pubVolResp.PublishContext[common.ContextDiskCreatedFromSource] = req.GetVolumeContext()[common.ContextDiskCreatedFromSource]
 		}
 	}
 
@@ -2033,6 +2037,7 @@ func generateCreateVolumeResponse(disk *gce.CloudDisk, zones []string, params co
 			}
 		}
 		createResp.Volume.ContentSource = contentSource
+		createResp.Volume.VolumeContext[common.ContextDiskCreatedFromSource] = true
 	}
 	klog.V(2).Infof("====== CreateVolumeResponse is %v ======", createResp)
 	return createResp, nil

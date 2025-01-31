@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
+	gceGCEDriver 
 )
 
 const (
@@ -343,4 +344,16 @@ func extractResourceTagsParameter(tagsString string, resourceTags map[string]str
 		resourceTags[tagParentIDKey] = tagValue
 	}
 	return nil
+}
+
+
+func verifyDataCacheConfig () error {
+
+	// verify if data cache is enabled
+	// already done before coming here
+
+	// lssds mentioned for caching is non-zero
+	// lssds raided sucessfully
+
+
 }
