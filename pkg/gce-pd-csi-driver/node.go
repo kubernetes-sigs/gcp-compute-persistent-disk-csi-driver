@@ -317,9 +317,13 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
+	// Validate data cache
+	// check if raided successfully
+	isRaided()
+
 	// LVM PoC Steps
 	klog.V(2).Infof("====== NodeStageVolume PublishContext is %v ======", req.GetPublishContext())
-	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContextLocalSsdCacheSize] != "" {
 		devFsPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
@@ -695,3 +699,4 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 	}
 	return volumeLimitBig, nil
 }
+

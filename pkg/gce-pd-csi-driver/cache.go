@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/fsnotify/fsnotify"
 
 	"k8s.io/klog/v2"
 
@@ -358,6 +359,7 @@ func RaidLocalSsds() error {
 		return fmt.Errorf("failed raiding, raided device not found on scanning")
 	}
 	return nil
+	//TODO validate LSSD count for Raided LSSDs
 }
 
 func isRaided() (bool, error) {
@@ -393,4 +395,46 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+func WatchDiskDetaches(watcher *fsnotify.Watcher, nodeId string, errorCh chan error) error {
+	for {
+		select {
+		// watch for errors
+		case err := <-watcher.Errors:
+			errorCh <- fmt.Errorf("Disk update event errored: %v", err)
+		// watch for events
+		case event := <-watcher.Events:
+			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata, this might include some non-LVM changes, no harm in updating metadata multiple times.
+			reduceVolumeGroup(getVolumeGroupName(nodeId), true)
+			klog.V(2).Infof("Disk attach/detach event %#v\n", event)
+		}
+	}
+}
+
+func FetchLssdsForRaiding(lssdCount int) ([]string, error) {
+	allLssds := fetchAllLssds()
+	availableLssds := []string{}
+	args := []string{
+		"--detail",
+		"--scan",
+		"--export",
+	}
+	raidedLssds, err := common.RunCommand("grep", "/dev", "mdadm", args...)
+	if err != nil {
+		return nil, fmt.Errorf("lvs error %w", err)
+	}
+	for l := range allLssds {
+		if !strings.Contains(raidedLssds, l) {
+			availableLssds = append(availableLssds, l)
+		}
+		if len(availableLssds) == lssdCount {
+			return availableLssds, nil
+		}
+	}
+	if len(availableLssds) == 0 {
+		return nil, fmt.Errorf("No LSSDs availble to set up caching")
+	}
+	return availableLssds, nil
+
 }
