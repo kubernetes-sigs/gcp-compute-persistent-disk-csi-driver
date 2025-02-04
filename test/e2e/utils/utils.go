@@ -69,6 +69,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
 		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
 		"--allow-hdha-provisioning",
+		"--device-in-use-timeout=10s", // Set lower than the usual value to expidite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))

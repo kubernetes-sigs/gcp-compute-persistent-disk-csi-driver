@@ -63,6 +63,7 @@ var (
 	waitForOpBackoffJitter    = flag.Float64("wait-op-backoff-jitter", 0.0, "Jitter for wait for operation backoff")
 	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 100, "Steps for wait for operation backoff")
 	waitForOpBackoffCap       = flag.Duration("wait-op-backoff-cap", 0, "Cap for wait for operation backoff")
+	deviceInUseTimeout        = flag.Duration("device-in-use-timeout", 30*time.Second, "Max time to wait for a device to be unsed when attempting to unstage")
 
 	maxProcs                = flag.Int("maxprocs", 1, "GOMAXPROCS override")
 	maxConcurrentFormat     = flag.Int("max-concurrent-format", 1, "The maximum number of concurrent format exec calls")
@@ -176,6 +177,7 @@ func handle() {
 	defer cancel()
 
 	// Initialize driver
+	driver.DeviceInUseTimeout = *deviceInUseTimeout
 	gceDriver := driver.GetGCEDriver()
 
 	// Initialize identity server

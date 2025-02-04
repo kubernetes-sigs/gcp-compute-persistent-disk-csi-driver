@@ -1503,10 +1503,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).ToNot(BeNil(), "Expected failure during unstage")
 		Expect(err).To(MatchError(ContainSubstring(("is still in use"))))
 
-		// Wait 35s (30s timeout + 5s buffer) and try again
-		time.Sleep(35 * time.Second)
+		// Wait 12s (10s timeout specified in CLI + 2s buffer) and try again
+		time.Sleep(12 * time.Second)
 		err = client.NodeUnstageVolume(volID, stageDir)
-		Expect(err).To(BeNil(), "Failed to unpublish after 30s in-use timeout for volume: %s, stageDir: %s", volID, stageDir)
+		Expect(err).To(BeNil(), "Failed to unpublish after 10s in-use timeout for volume: %s, stageDir: %s, unexpected err: %s", volID, stageDir, err)
 
 		// Unstage Disk
 		fp := filepath.Join("/tmp/", volName)
