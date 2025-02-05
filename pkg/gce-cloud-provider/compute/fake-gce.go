@@ -188,7 +188,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 }
 
 // Disk Methods
-func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
+func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key) (*CloudDisk, error) {
 	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return nil, notFoundError()
