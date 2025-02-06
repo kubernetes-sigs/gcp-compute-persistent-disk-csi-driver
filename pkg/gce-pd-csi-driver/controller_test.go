@@ -1565,7 +1565,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 
 		for _, zone := range tc.expZones {
 			volumeKey := meta.ZonalKey(name, zone)
-			disk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+			disk, err := fcp.GetDisk(context.Background(), project, volumeKey)
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
@@ -1859,7 +1859,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 			t.Fatalf("Failed to convert volume id to key: %v", err)
 		}
 
-		disk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+		disk, err := fcp.GetDisk(context.Background(), project, volumeKey)
 
 		if err != nil {
 			t.Fatalf("Failed to get disk: %v", err)
@@ -1964,7 +1964,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			}
 		}
 
-		modifiedVol, err := fcp.GetDisk(context.Background(), project, volKey, gce.GCEAPIVersionBeta)
+		modifiedVol, err := fcp.GetDisk(context.Background(), project, volKey)
 
 		if err != nil {
 			t.Errorf("Failed to get volume: %v", err)
@@ -5241,7 +5241,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 
 			volumeId := resp.GetVolume().VolumeId
 			project, volumeKey, err := common.VolumeIDToKey(volumeId)
-			createdDisk, err := fcp.GetDisk(context.Background(), project, volumeKey, gce.GCEAPIVersionBeta)
+			createdDisk, err := fcp.GetDisk(context.Background(), project, volumeKey)
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
