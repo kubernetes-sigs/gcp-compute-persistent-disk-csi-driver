@@ -53,7 +53,7 @@ type GCENodeServer struct {
 
 	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
 	// encounted for that device
-	deviceInUseErrors deviceErrMap
+	deviceInUseErrors *deviceErrMap
 
 	// If set, this semaphore will be used to serialize formatAndMount. It will be raised
 	// when the operation starts, and lowered either when finished, or when
@@ -67,6 +67,15 @@ type GCENodeServer struct {
 	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedNodeServer
+}
+
+type NodeServerArgs struct {
+	// EnableDeviceInUseTimeout enables functionality which will cause unstage requests
+	// that are stucking waiting for a device to be unused to return succesfully
+	// after `DeviceInUseTimeout` has elapsed
+	EnableDeviceInUseTimeout bool
+
+	DeviceInUseTimeout time.Duration
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -465,7 +474,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		if errors.As(err, &ignoreableErr) {
 			klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
 		} else if ns.deviceInUseErrors.checkDeviceErrorTimeout(volumeID) {
-			klog.Warningf("Device %s could not be released after timeout of %d seconds. NodeUnstageVolume will return success.", volumeID, DeviceInUseTimeout)
+			klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
 		} else {
 			ns.deviceInUseErrors.markDeviceError(volumeID)
 			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)

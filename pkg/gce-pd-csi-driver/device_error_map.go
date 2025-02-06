@@ -24,36 +24,44 @@ import (
 // deviceErrMap is an atomic data datastructure for recording deviceInUseError times
 // for specified devices
 type deviceErrMap struct {
+	enabled           bool
+	timeout           time.Duration
 	mux               sync.Mutex
 	deviceInUseErrors map[string]time.Time
 }
 
-var DeviceInUseTimeout = time.Second * 30
+func newDeviceErrMap(shouldEnable bool, timeout time.Duration) *deviceErrMap {
+	return &deviceErrMap{
+		deviceInUseErrors: make(map[string]time.Time),
+		enabled:           shouldEnable,
+		timeout:           timeout,
+	}
+}
 
 // checkDeviceErrorTimeout returns true an error was encountered for the specified deviceName,
 // where the error happened at least `deviceInUseTimeout` seconds ago.
 func (devErrMap *deviceErrMap) checkDeviceErrorTimeout(deviceName string) bool {
+	if !devErrMap.enabled {
+		return false
+	}
+
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 
-	if devErrMap.deviceInUseErrors == nil {
-		devErrMap.deviceInUseErrors = make(map[string]time.Time)
-	}
-
 	lastErrTime, exists := devErrMap.deviceInUseErrors[deviceName]
-	return exists && time.Now().Sub(lastErrTime).Seconds() >= DeviceInUseTimeout.Seconds()
+	return exists && time.Now().Sub(lastErrTime).Seconds() >= devErrMap.timeout.Seconds()
 }
 
 // markDeviceError updates the internal `deviceInUseErrors` map to denote an error was encounted
 // for the specified deviceName at the current time. If an error had previously been recorded, the
 // time will not be updated.
 func (devErrMap *deviceErrMap) markDeviceError(deviceName string) {
+	if !devErrMap.enabled {
+		return
+	}
+
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
-
-	if devErrMap.deviceInUseErrors == nil {
-		devErrMap.deviceInUseErrors = make(map[string]time.Time)
-	}
 
 	// If an earlier error has already been recorded, do not overwrite it
 	if _, exists := devErrMap.deviceInUseErrors[deviceName]; !exists {
@@ -65,6 +73,10 @@ func (devErrMap *deviceErrMap) markDeviceError(deviceName string) {
 
 // deleteDevice removes a specified device name from the map
 func (devErrMap *deviceErrMap) deleteDevice(deviceName string) {
+	if !devErrMap.enabled {
+		return
+	}
+
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 	delete(devErrMap.deviceInUseErrors, deviceName)
