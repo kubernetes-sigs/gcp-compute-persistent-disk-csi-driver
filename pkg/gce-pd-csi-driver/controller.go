@@ -2440,10 +2440,6 @@ func createRegionalDisk(ctx context.Context, cloudProvider gce.GCECompute, name 
 		return nil, fmt.Errorf("failed to insert regional disk: %w", err)
 	}
 
-	gceAPIVersion := gce.GCEAPIVersionV1
-	if multiWriter {
-		gceAPIVersion = gce.GCEAPIVersionBeta
-	}
 	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.RegionalKey(name, region))
 	if err != nil {
@@ -2463,10 +2459,6 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 		return nil, fmt.Errorf("failed to insert zonal disk: %w", err)
 	}
 
-	gceAPIVersion := gce.GCEAPIVersionV1
-	if multiWriter {
-		gceAPIVersion = gce.GCEAPIVersionBeta
-	}
 	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.ZonalKey(name, diskZone))
 	if err != nil {
