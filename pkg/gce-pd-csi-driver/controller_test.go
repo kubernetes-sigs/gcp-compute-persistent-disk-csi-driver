@@ -1878,7 +1878,7 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 		}
 
 		for _, volKey := range tc.wantDisks {
-			disk, err := fcp.GetDisk(context.Background(), project, volKey, gce.GCEAPIVersionV1)
+			disk, err := fcp.GetDisk(context.Background(), project, volKey)
 			if err != nil {
 				t.Errorf("Unexpected err fetching disk %v: %v", volKey, err)
 			}
