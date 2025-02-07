@@ -1496,8 +1496,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				klog.Errorf("NodeUnpublishVolume failed with error: %v", err)
 			}
 		}
+		attachMountArgs := attachAndMountArgs{
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    false,
+			setupDataCache: true,
+		}
 		// Controller Publish (Attach) - Node Stage - Node Publish(Mount) Volume
-		err, _, args := testAttachAndMount(volID, volName, firstInstance, client, false /* useBlock */, false /* forceAttach */, true)
+		err, _, args := testAttachAndMount(volID, volName, firstInstance, client, attachMountArgs)
 		if err != nil {
 			klog.Errorf("Failed to attach and mount: %v", err.Error())
 		}
@@ -1519,7 +1525,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		detach(volID, firstInstance, client)
 
 		// Attach Disk to secondInstance
-		err, detacher, stageDir := testAttach(volID, volName, secondInstance, secondClient, false /* useBlock */, false /* forceAttach */, true /* setupDataCache */)
+		err, detacher, stageDir := testAttach(volID, volName, secondInstance, secondClient, attachMountArgs)
 		if err != nil {
 			klog.Errorf("Failed to attach disk %v", err)
 		}
@@ -1529,7 +1535,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Mount disk
-		err, args = testMount(volID, volName, secondInstance, secondClient, false /* useBlock */, stageDir)
+		err, _,  args = testMount(volID, volName, secondInstance, secondClient, attachMountArgs, stageDir)
 		if err != nil {
 			klog.Fatalf("Failed to mount disk %v", err)
 		}

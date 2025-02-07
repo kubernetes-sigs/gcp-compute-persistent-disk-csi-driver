@@ -256,7 +256,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 
 		if !reflect.DeepEqual(snapshot, tc.expSnapshot) {
 			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshot, tc.expSnapshot)
-			t.Errorf(errStr)
+			t.Errorf("%s", errStr)
 		}
 	}
 }
@@ -547,7 +547,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 		}
 		if len(snapshots) != tc.expectedCount {
 			errStr := fmt.Sprintf("Expected snapshot number to equal: %v", tc.numSnapshots)
-			t.Errorf(errStr)
+			t.Errorf("error %v:", errStr)
 		}
 	}
 }
@@ -1132,7 +1132,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			for i := 0; i < len(vol.GetAccessibleTopology()); i++ {
 				errStr = errStr + fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
 			}
-			t.Errorf(errStr)
+			t.Errorf("error %v:", errStr)
 		}
 	}
 }

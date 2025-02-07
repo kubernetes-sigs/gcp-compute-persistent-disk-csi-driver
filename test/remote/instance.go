@@ -59,6 +59,7 @@ type InstanceConfig struct {
 	ComputeService            *compute.Service
 	EnableConfidentialCompute bool
 	LocalSSDCount             int64
+	EnableDataCache           bool
 }
 
 type InstanceInfo struct {
