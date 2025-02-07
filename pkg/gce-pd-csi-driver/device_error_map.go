@@ -15,69 +15,68 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	"k8s.io/klog/v2"
 )
+
+// maxDeviceCacheSize specifies the maximum number if in-use devices to cache.
+const maxDeviceCacheSize = 256
+
+// currentTime is used to stub time.Now in unit tests
+var currentTime = time.Now
 
 // deviceErrMap is an atomic data datastructure for recording deviceInUseError times
 // for specified devices
 type deviceErrMap struct {
-	enabled           bool
-	timeout           time.Duration
-	mux               sync.Mutex
-	deviceInUseErrors map[string]time.Time
+	timeout time.Duration
+	mux     sync.Mutex
+	cache   *lru.Cache[string, time.Time]
 }
 
-func newDeviceErrMap(shouldEnable bool, timeout time.Duration) *deviceErrMap {
+func newDeviceErrMap(timeout time.Duration) *deviceErrMap {
+	c, err := lru.New[string, time.Time](maxDeviceCacheSize)
+	if err != nil {
+		panic(fmt.Sprintf("Could not initialize deviceInUse LRU cache: %s", err))
+	}
+
 	return &deviceErrMap{
-		deviceInUseErrors: make(map[string]time.Time),
-		enabled:           shouldEnable,
-		timeout:           timeout,
+		cache:   c,
+		timeout: timeout,
 	}
 }
 
 // checkDeviceErrorTimeout returns true an error was encountered for the specified deviceName,
 // where the error happened at least `deviceInUseTimeout` seconds ago.
 func (devErrMap *deviceErrMap) checkDeviceErrorTimeout(deviceName string) bool {
-	if !devErrMap.enabled {
-		return false
-	}
-
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 
-	lastErrTime, exists := devErrMap.deviceInUseErrors[deviceName]
-	return exists && time.Now().Sub(lastErrTime).Seconds() >= devErrMap.timeout.Seconds()
+	lastErrTime, exists := devErrMap.cache.Get(deviceName)
+	return exists && currentTime().Sub(lastErrTime).Seconds() >= devErrMap.timeout.Seconds()
 }
 
-// markDeviceError updates the internal `deviceInUseErrors` map to denote an error was encounted
+// markDeviceError updates the internal `cache` map to denote an error was encounted
 // for the specified deviceName at the current time. If an error had previously been recorded, the
 // time will not be updated.
 func (devErrMap *deviceErrMap) markDeviceError(deviceName string) {
-	if !devErrMap.enabled {
-		return
-	}
-
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 
 	// If an earlier error has already been recorded, do not overwrite it
-	if _, exists := devErrMap.deviceInUseErrors[deviceName]; !exists {
-		now := time.Now()
+	if _, exists := devErrMap.cache.Get(deviceName); !exists {
+		now := currentTime()
 		klog.V(4).Infof("Recording in-use error for device %s at time %s", deviceName, now)
-		devErrMap.deviceInUseErrors[deviceName] = now
+		devErrMap.cache.Add(deviceName, now)
 	}
 }
 
 // deleteDevice removes a specified device name from the map
 func (devErrMap *deviceErrMap) deleteDevice(deviceName string) {
-	if !devErrMap.enabled {
-		return
-	}
-
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
-	delete(devErrMap.deviceInUseErrors, deviceName)
+	devErrMap.cache.Remove(deviceName)
 }

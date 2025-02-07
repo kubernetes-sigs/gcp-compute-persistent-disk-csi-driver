@@ -51,6 +51,9 @@ type GCENodeServer struct {
 	// for that same volume (as defined by VolumeID) return an Aborted error
 	volumeLocks *common.VolumeLocks
 
+	// enableDeviceInUseCheck, if true, will block NodeUnstageVolume requests if the specified
+	// device is still in use (or until --device-in-use-timeout is reached, if specified)
+	enableDeviceInUseCheck bool
 	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
 	// encounted for that device
 	deviceInUseErrors *deviceErrMap
@@ -70,10 +73,9 @@ type GCENodeServer struct {
 }
 
 type NodeServerArgs struct {
-	// EnableDeviceInUseTimeout enables functionality which will cause unstage requests
-	// that are stucking waiting for a device to be unused to return succesfully
-	// after `DeviceInUseTimeout` has elapsed
-	EnableDeviceInUseTimeout bool
+	// EnableDeviceInUseCheck enables functionality which will block NodeUnstageVolume request
+	// until the device is not in use
+	EnableDeviceInUseCheck bool
 
 	DeviceInUseTimeout time.Duration
 }
@@ -490,6 +492,10 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 type ignoreableError struct{ error }
 
 func (ns *GCENodeServer) confirmDeviceUnused(volumeID string) error {
+	if !ns.enableDeviceInUseCheck {
+		return nil
+	}
+
 	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
 	if err != nil {
 		return &ignoreableError{fmt.Errorf("failed to find device path for volume %s: %v", volumeID, err.Error())}

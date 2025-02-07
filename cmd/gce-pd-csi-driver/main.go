@@ -64,8 +64,8 @@ var (
 	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 100, "Steps for wait for operation backoff")
 	waitForOpBackoffCap       = flag.Duration("wait-op-backoff-cap", 0, "Cap for wait for operation backoff")
 
-	enableDeviceInUseTimeout = flag.Bool("enable-device-in-use-timeout", true, "If set to true, ignores device in use errors when attempting to unstage a device if it has been stuck for longer than 'device-in-use-timeout'")
-	deviceInUseTimeout       = flag.Duration("device-in-use-timeout", 30*time.Second, "Max time to wait for a device to be unused when attempting to unstage")
+	enableDeviceInUseCheck = flag.Bool("enable-device-in-use-check-on-node-unstage", true, "If set to true, block NodeUnstageVolume requests until the specified device is not in use")
+	deviceInUseTimeout     = flag.Duration("device-in-use-timeout", 30*time.Second, "Max time to wait for a device to be unused when attempting to unstage. Exceeding the timeout will cause an unstage request to return success and ignore the device in use check.")
 
 	maxProcs                = flag.Int("maxprocs", 1, "GOMAXPROCS override")
 	maxConcurrentFormat     = flag.Int("max-concurrent-format", 1, "The maximum number of concurrent format exec calls")
@@ -245,8 +245,8 @@ func handle() {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
 		nsArgs := driver.NodeServerArgs{
-			EnableDeviceInUseTimeout: *enableDeviceInUseTimeout,
-			DeviceInUseTimeout:       *deviceInUseTimeout,
+			EnableDeviceInUseCheck: *enableDeviceInUseCheck,
+			DeviceInUseTimeout:     *deviceInUseTimeout,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
