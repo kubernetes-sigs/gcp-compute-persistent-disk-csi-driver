@@ -21,6 +21,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	common "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -145,7 +146,7 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, kubeClient *kubernetes.Clientset) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:          gceDriver,
 		Mounter:         mounter,
@@ -153,6 +154,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		MetadataService: meta,
 		volumeLocks:     common.NewVolumeLocks(),
 		VolumeStatter:   statter,
+		kubeClient:      kubeClient,
 	}
 }
 
