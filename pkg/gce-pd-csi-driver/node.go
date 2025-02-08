@@ -471,19 +471,21 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err.Error(), stagingTargetPath))
 	}
 
-	if err := ns.confirmDeviceUnused(volumeID); err != nil {
-		var ignoreableErr *ignoreableError
-		if errors.As(err, &ignoreableErr) {
-			klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
-		} else if ns.deviceInUseErrors.checkDeviceErrorTimeout(volumeID) {
-			klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
-		} else {
-			ns.deviceInUseErrors.markDeviceError(volumeID)
-			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
+	if ns.enableDeviceInUseCheck {
+		if err := ns.confirmDeviceUnused(volumeID); err != nil {
+			var ignoreableErr *ignoreableError
+			if errors.As(err, &ignoreableErr) {
+				klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
+			} else if ns.deviceInUseErrors.checkDeviceErrorTimeout(volumeID) {
+				klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
+			} else {
+				ns.deviceInUseErrors.markDeviceError(volumeID)
+				return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
+			}
 		}
+		ns.deviceInUseErrors.deleteDevice(volumeID)
 	}
 
-	ns.deviceInUseErrors.deleteDevice(volumeID)
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -492,10 +494,6 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 type ignoreableError struct{ error }
 
 func (ns *GCENodeServer) confirmDeviceUnused(volumeID string) error {
-	if !ns.enableDeviceInUseCheck {
-		return nil
-	}
-
 	devicePath, err := getDevicePath(ns, volumeID, "" /* partition, which is unused */)
 	if err != nil {
 		return &ignoreableError{fmt.Errorf("failed to find device path for volume %s: %v", volumeID, err.Error())}

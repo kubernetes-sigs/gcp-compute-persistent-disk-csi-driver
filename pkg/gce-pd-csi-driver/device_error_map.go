@@ -15,15 +15,15 @@ limitations under the License.
 package gceGCEDriver
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"k8s.io/klog/v2"
 )
 
 // maxDeviceCacheSize specifies the maximum number if in-use devices to cache.
+// 256 was selected since it is twice the number of max PDs per VM (128)
 const maxDeviceCacheSize = 256
 
 // currentTime is used to stub time.Now in unit tests
@@ -34,14 +34,11 @@ var currentTime = time.Now
 type deviceErrMap struct {
 	timeout time.Duration
 	mux     sync.Mutex
-	cache   *lru.Cache[string, time.Time]
+	cache   *expirable.LRU[string, time.Time]
 }
 
 func newDeviceErrMap(timeout time.Duration) *deviceErrMap {
-	c, err := lru.New[string, time.Time](maxDeviceCacheSize)
-	if err != nil {
-		panic(fmt.Sprintf("Could not initialize deviceInUse LRU cache: %s", err))
-	}
+	c := expirable.NewLRU[string, time.Time](maxDeviceCacheSize, nil, timeout*2)
 
 	return &deviceErrMap{
 		cache:   c,
@@ -55,8 +52,12 @@ func (devErrMap *deviceErrMap) checkDeviceErrorTimeout(deviceName string) bool {
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 
-	lastErrTime, exists := devErrMap.cache.Get(deviceName)
-	return exists && currentTime().Sub(lastErrTime).Seconds() >= devErrMap.timeout.Seconds()
+	firstEncounteredErrTime, exists := devErrMap.cache.Get(deviceName)
+	if !exists {
+		return false
+	}
+	expirationTime := firstEncounteredErrTime.Add(devErrMap.timeout)
+	return currentTime().After(expirationTime)
 }
 
 // markDeviceError updates the internal `cache` map to denote an error was encounted
