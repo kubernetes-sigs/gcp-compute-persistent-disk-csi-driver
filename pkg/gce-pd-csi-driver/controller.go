@@ -689,7 +689,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if gceCS.enableDataCache && req.GetVolumeContext() != nil {
 		if req.GetVolumeContext()[common.ContextDataCacheSize] != "" {
 			pubVolResp.PublishContext = map[string]string{}
-			pubVolResp.PublishContext[common.ContexLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
+			pubVolResp.PublishContext[common.ContextDataCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
 			pubVolResp.PublishContext[common.ContextDataCacheMode] = req.GetVolumeContext()[common.ContextDataCacheMode]
 		}
 	}

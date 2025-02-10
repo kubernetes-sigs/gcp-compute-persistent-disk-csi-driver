@@ -63,8 +63,12 @@ func execPipeCommand(pipeCmd string, pipeCmdArg string, execCmd1 *exec.Cmd) ([]b
 	execPipeCmd.Stdin = stdoutPipe
 	output, err := execPipeCmd.CombinedOutput()
 	if err != nil {
+		// Some commands (such as grep) will return an error with exit status of 1
+		if len(output) == 0 && err.(*exec.ExitError).ExitCode() == 1 {
+			return output, nil
+		}
 		err = checkError(err, *execPipeCmd)
-		return nil, fmt.Errorf("%s failed: %w; output: %s", pipeCmd, err, string(output))
+		return nil, fmt.Errorf("%s failed: %w; output: %s", execPipeCmd, err, string(output))
 	}
 
 	return output, nil

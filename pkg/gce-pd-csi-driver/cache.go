@@ -1,15 +1,17 @@
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -162,7 +164,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(2).Infof("==============================Assuming valid data cache size and mode, resizing is not supported==============================")
 	} else {
-		fastCacheSize := req.GetPublishContext()[common.ContexLocalSsdCacheSize]
+		fastCacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
 		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
 		klog.V(2).Infof("============================== fastCacheSize is %v GiB ==============================", fastCacheSize)
 		klog.V(2).Infof("============================== lvcreate fast cache layer again with the VolumeGroup %v==============================", volumeGroupName)
@@ -216,6 +218,128 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	return mainDevicePath, nil
 }
 
+func ValidateDataCacheConfig(dataCacheMode string, datacacheSize string, ctx context.Context, nodeName string) error {
+	if dataCacheMode != "" && datacacheSize != "" {
+		isAlreadyRaided, err := isRaided()
+		if err != nil {
+			return fmt.Errorf("Local SSDs are not setup for caching; got error: %v", err)
+		}
+		if !isAlreadyRaided {
+			return fmt.Errorf("Local SSDs are not setup for caching")
+		}
+		return nil
+	}
+	klog.Infof("Data cache is not enabled for PVC")
+	return nil
+}
+
+func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
+	if nodeName == common.TestNode {
+		return common.LocalSSDCountForDataCache, nil
+	}
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return 0, err
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return 0, err
+	}
+	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
+		return 0, err
+	}
+	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
+		dataCacheCount, err := strconv.Atoi(val)
+		if err != nil {
+			return 0, fmt.Errorf("Error getting Datacache's LSSD count from node label: %v", err)
+		}
+		return dataCacheCount, nil
+	}
+	return 0, fmt.Errorf("Cannot get Datacache's LSSD count from node label")
+}
+
+func FetchRaidedLssdCountForDatacache() (int, error) {
+	args := []string{
+		"--detail",
+		raidedLssdPrefix + raidedLocalSsdName,
+	}
+	info, err := common.RunCommand("grep", "Raid Devices", "mdadm", args...)
+	if err != nil {
+		return 0, fmt.Errorf("Error getting RAIDed devices for Datacache")
+	}
+	if len(info) != 0 {
+		raidedDeviceInfo := strings.Split(strings.TrimSpace(string(info)), ":")
+		// raidedDeviceInfo should be in "Raid Devices : X" format
+		raidedDeviceCount, _ := strconv.Atoi(strings.TrimSpace(raidedDeviceInfo[1]))
+		return raidedDeviceCount, nil
+	}
+	return 0, nil
+}
+
+func FetchRaidedLssds() ([]string, error) {
+	raidedLssdList := []string{}
+
+	args := []string{
+		"--detail",
+		"--scan",
+		"--export",
+	}
+
+	info, err := common.RunCommand("grep", "/dev", "mdadm", args...)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching RAIDed LSSDs: %v; err:%v", info, err)
+	}
+
+	if len(info) != 0 {
+		infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
+		for _, ssd := range infoList {
+			ssdInfo := strings.TrimSpace(ssd)
+			klog.V(2).Infof("=========================== Got RAIDed SSD info %v ====================", ssdInfo)
+			// SSD name comes after "=" on each output line (e.g. MD_DEVICE_dev_nvme3n1_DEV=/dev/nvme3n1)
+			ssdName := strings.Split(ssdInfo, "=")[1]
+			raidedLssdList = append(raidedLssdList, ssdName)
+		}
+	}
+
+	klog.V(2).Infof("============================== Raided NVME list %v ==============================", raidedLssdList)
+
+	return raidedLssdList, nil
+}
+
+func FetchAllLssds() ([]string, error) {
+	diskList := []string{}
+
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
+	if err != nil {
+		return nil, fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
+	}
+	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
+	klog.Infof("============================== Got NVME disks %v ==============================", infoList)
+	re, err := regexp.Compile("nvme_card([0-9]+)?$")
+	if err != nil {
+		klog.V(2).ErrorS(err, "Errored while compiling to check PD or LSSD")
+	}
+	for _, ssd := range infoList {
+		klog.V(2).Infof("=========================== Checking for SSD %v ====================", ssd)
+		ssd = strings.TrimSpace(ssd)
+		if strings.HasPrefix(ssd, "/dev/nvme") {
+			ssdDetails := strings.Split(ssd, " ")
+			klog.V(2).Infof("=========================== Got SSD details %v ====================", ssdDetails)
+			lssd := re.MatchString(ssdDetails[1])
+			klog.Infof("=================== ssdDetails1 %v and compile string result %v", ssdDetails[1], lssd)
+			if lssd {
+				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
+			}
+		}
+	}
+
+	klog.V(2).Infof("============================== NVME list %v ==============================", diskList)
+
+	return diskList, nil
+}
+
 func cleanupCache(volumeId string, nodeId string) error {
 
 	volumeGroupName := getVolumeGroupName(nodeId)
@@ -232,6 +356,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 	args = []string{
 		"--uncache",
 		volumeGroupName + "/" + mainLvName,
+		"-y",
 	}
 	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
 	if err != nil {
@@ -295,7 +420,7 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 	}
 }
 
-func RaidLocalSsds() error {
+func RaidLocalSsds(availableLssds []string) error {
 	isAlreadyRaided, err := isRaided()
 	if err != nil {
 		klog.V(2).Infof("============================== Errored while scanning for available LocalSSDs err:%v; continuing Raiding ==============================", err)
@@ -303,38 +428,7 @@ func RaidLocalSsds() error {
 		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
 		return nil
 	}
-	diskList := []string{}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
-	if err != nil {
-		return fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
-	}
-	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
-	klog.Infof("============================== Got NVME disks %v ==============================", infoList)
-	re, err := regexp.Compile("nvme_card([0-9]+)?$")
-	if err != nil {
-		klog.V(2).ErrorS(err, "Errored while compiling to check PD or LSSD")
-	}
-	for _, ssd := range infoList {
-		klog.V(2).Infof("=========================== Checking for SSD %v ====================", ssd)
-		ssd = strings.TrimSpace(ssd)
-		if strings.HasPrefix(ssd, "/dev/nvme") {
-			ssdDetails := strings.Split(ssd, " ")
-			klog.V(2).Infof("=========================== Got SSD details %v ====================", ssdDetails)
-			lssd := re.MatchString(ssdDetails[1])
-			klog.Infof("=================== ssdDetails1 %v and compile string result %v", ssdDetails[1], lssd)
-			if lssd {
-				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
-			}
-		}
-	}
-	klog.V(2).Infof("============================== NVME list %v ==============================", diskList)
-	nvmeDiskCount := len(diskList)
-	nvmeDiskList := strings.Join(diskList, " ")
-	if nvmeDiskCount == 0 {
-		klog.Infof("No NVME disks found for RAIDing")
-		return nil
-	}
-	klog.V(2).Infof("============================== nvmeDiskCount %v; nvmeDiskList: %v; diskList %v ==============================", nvmeDiskCount, nvmeDiskList, diskList)
+
 	args := []string{
 		"--create",
 		raidedLssdPrefix + raidedLocalSsdName,
@@ -342,10 +436,10 @@ func RaidLocalSsds() error {
 		// Force RAIDing as sometime it might fail for caution if there is just 1 LSSD present as 1 LSSD need not be RAIDed
 		"--force",
 		"-n",
-		strconv.Itoa(nvmeDiskCount),
+		strconv.Itoa(len(availableLssds)),
 	}
-	args = append(args, diskList...)
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "mdadm", args...)
+	args = append(args, availableLssds...)
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "mdadm", args...)
 	if err != nil {
 		return fmt.Errorf("errored while RAIDing LSSDs info: %v; err:%v", info, err)
 	}
@@ -356,6 +450,14 @@ func RaidLocalSsds() error {
 	}
 	if !isAlreadyRaided {
 		return fmt.Errorf("failed raiding, raided device not found on scanning")
+	}
+
+	raidedDataCacheCount, err := FetchRaidedLssdCountForDatacache()
+	if err != nil {
+		return err
+	}
+	if raidedDataCacheCount != len(availableLssds) {
+		return fmt.Errorf("Local SSDs reserved do not match the requested count")
 	}
 	return nil
 }
