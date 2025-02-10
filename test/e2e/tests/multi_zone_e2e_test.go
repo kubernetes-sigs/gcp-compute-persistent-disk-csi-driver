@@ -1028,6 +1028,200 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "failed read in zone 1")
 		Expect(strings.TrimSpace(string(readContents))).To(BeIdenticalTo(testFileContents), "content mismatch in zone 1")
 	})
+
+	It("Should successfully run through entire lifecycle of a HdHA volume on instances in 2 zones", func() {
+		// Create new driver and client
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones(zones)
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyType: common.ParameterHdHADiskType,
+		}, defaultRepdSizeGb, &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+				},
+			},
+		}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(hdhaDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		zonesSet := sets.NewString(zones...)
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			Expect(zonesSet.Has(actualZone)).To(BeTrue(), "Expected zone %v to exist in zone set %v", actualZone, zones)
+		}
+
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// For each of the two instances
+		i := 0
+		for _, testContext := range zoneToContext {
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, false)
+			Expect(err).To(BeNil(), "failed volume lifecycle checks")
+			i = i + 1
+		}
+	})
+
+	It("Should create a HdHA instance, write to it, force-attach it to another instance, and read the same data", func() {
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones(zones)
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyType:           common.ParameterHdHADiskType,
+			common.ParameterAvailabilityClass: common.ParameterRegionalHardFailoverClass,
+		}, defaultRepdSizeGb, &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+				},
+			},
+		}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(hdhaDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		zonesSet := sets.NewString(zones...)
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			Expect(zonesSet.Has(actualZone)).To(BeTrue(), "Expected zone %v to exist in zone set %v", actualZone, zones)
+		}
+		Expect(volume.VolumeContext).To(HaveKeyWithValue("force-attach", "true"))
+
+		detachers := []detacherFunc{}
+
+		defer func() {
+			// Perform any detaches
+			for _, fn := range detachers {
+				fn()
+			}
+
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach disk to instance in the first zone.
+		tc0 := zoneToContext[zones[0]]
+		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, attachAndMountArgs{
+			readOnly:    false,
+			useBlock:    false,
+			forceAttach: false,
+		})
+		detachers = append(detachers, detacher)
+		Expect(err).To(BeNil(), "failed attach in zone 0")
+		testFileName := filepath.Join(args.publishDir, "force-attach-test")
+		testFileContents := "force attach test"
+		err = testutils.WriteFile(tc0.Instance, testFileName, testFileContents)
+		Expect(err).To(BeNil(), "failed write in zone 0")
+		_, err = tc0.Instance.SSH("sync") // Sync so force detach doesn't lose data.
+		Expect(err).To(BeNil(), "failed sync")
+
+		readContents, err := testutils.ReadFile(tc0.Instance, testFileName)
+		Expect(err).To(BeNil(), "failed read in zone 0")
+		Expect(strings.TrimSpace(string(readContents))).To(BeIdenticalTo(testFileContents), "content mismatch in zone 0")
+
+		// Now force attach to the second instance without detaching.
+		tc1 := zoneToContext[zones[1]]
+		err, detacher, _ = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, attachAndMountArgs{
+			readOnly:    false,
+			useBlock:    false,
+			forceAttach: true,
+		})
+		detachers = append(detachers, detacher)
+		Expect(err).To(BeNil(), "failed force attach in zone 1")
+		readContents, err = testutils.ReadFile(tc1.Instance, testFileName)
+		Expect(err).To(BeNil(), "failed read in zone 1")
+		Expect(strings.TrimSpace(string(readContents))).To(BeIdenticalTo(testFileContents), "content mismatch in zone 1")
+	})
 })
 
 func deleteDisk(controllerClient *remote.CsiClient, p, zone, volID, volName string) {

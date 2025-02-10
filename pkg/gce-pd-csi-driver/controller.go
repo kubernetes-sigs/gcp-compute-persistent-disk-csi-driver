@@ -104,6 +104,10 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools.
 	enableStoragePools bool
 
+	// If set to true, the CSI Driver will allow Hyperdisk-balanced High Availability disks
+	// to be provisioned.
+	enableHdHA bool
+
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
@@ -167,10 +171,10 @@ type workItem struct {
 
 // locationRequirements are additional location topology requirements that must be respected when creating a volume.
 type locationRequirements struct {
-	srcVolRegion         string
-	srcVolZone           string
-	srcReplicationType   string
-	cloneReplicationType string
+	srcVolRegion    string
+	srcVolZone      string
+	srcIsRegional   bool
+	cloneIsRegional bool
 }
 
 // PDCSIContext is the extracted VolumeContext from controller requests.
@@ -206,7 +210,8 @@ const (
 
 	listDisksUsersField = googleapi.Field("items/users")
 
-	readOnlyManyAccessMode = "READ_ONLY_MANY"
+	gceReadOnlyManyAccessMode  = "READ_ONLY_MANY"
+	gceReadWriteManyAccessMode = "READ_WRITE_MANY"
 )
 
 var (
@@ -256,7 +261,7 @@ func isDiskReady(disk *gce.CloudDisk) (bool, error) {
 // cloningLocationRequirements returns additional location requirements to be applied to the given create volume requests topology.
 // If the CreateVolumeRequest will use volume cloning, location requirements in compliance with the volume cloning limitations
 // will be returned: https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/volume-cloning#limitations.
-func cloningLocationRequirements(req *csi.CreateVolumeRequest, cloneReplicationType string) (*locationRequirements, error) {
+func cloningLocationRequirements(req *csi.CreateVolumeRequest, cloneIsRegional bool) (*locationRequirements, error) {
 	if !useVolumeCloning(req) {
 		return nil, nil
 	}
@@ -278,12 +283,7 @@ func cloningLocationRequirements(req *csi.CreateVolumeRequest, cloneReplicationT
 		sourceVolKey.Region = region
 	}
 
-	srcReplicationType := replicationTypeNone
-	if !isZonalSrcVol {
-		srcReplicationType = replicationTypeRegionalPD
-	}
-
-	return &locationRequirements{srcVolZone: sourceVolKey.Zone, srcVolRegion: sourceVolKey.Region, srcReplicationType: srcReplicationType, cloneReplicationType: cloneReplicationType}, nil
+	return &locationRequirements{srcVolZone: sourceVolKey.Zone, srcVolRegion: sourceVolKey.Region, srcIsRegional: !isZonalSrcVol, cloneIsRegional: cloneIsRegional}, nil
 }
 
 // useVolumeCloning returns true if the create volume request should be created with volume cloning.
@@ -374,6 +374,10 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource must be provided when AccessMode is set to read only")
 	}
 
+	if readonly && params.DiskType == common.ParameterHdHADiskType {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid access mode for disk type %s", common.ParameterHdHADiskType)
+	}
+
 	// Validate multi-zone provisioning configuration
 	err = gceCS.validateMultiZoneProvisioning(req, params)
 	if err != nil {
@@ -381,7 +385,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	}
 
 	// Verify that the regional availability class is only used on regional disks.
-	if params.ForceAttach && params.ReplicationType != replicationTypeRegionalPD {
+	if params.ForceAttach && !params.IsRegional() {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid availabilty class for zonal disk")
 	}
 
@@ -528,19 +532,19 @@ func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Contex
 		return nil
 	}
 	project := gceCS.CloudProvider.GetDefaultProject()
-	if disk.GetAccessMode() == readOnlyManyAccessMode {
+	if disk.GetAccessMode() == gceReadOnlyManyAccessMode {
 		// If the access mode is already readonly, return
 		return nil
 	}
 
-	return gceCS.CloudProvider.SetDiskAccessMode(ctx, project, volKey, readOnlyManyAccessMode)
+	return gceCS.CloudProvider.SetDiskAccessMode(ctx, project, volKey, gceReadOnlyManyAccessMode)
 }
 
 func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters) (*csi.CreateVolumeResponse, error) {
 	var err error
 	var locationTopReq *locationRequirements
 	if useVolumeCloning(req) {
-		locationTopReq, err = cloningLocationRequirements(req, params.ReplicationType)
+		locationTopReq, err = cloningLocationRequirements(req, params.IsRegional())
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "failed to get location requirements: %v", err.Error())
 		}
@@ -549,18 +553,7 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 	// Determine the zone or zones+region of the disk
 	var zones []string
 	var volKey *meta.Key
-	switch params.ReplicationType {
-	case replicationTypeNone:
-		zones, err = gceCS.pickZones(ctx, req.GetAccessibilityRequirements(), 1, locationTopReq)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to pick zones for disk: %v", err.Error())
-		}
-		if len(zones) != 1 {
-			return nil, status.Errorf(codes.Internal, "Failed to pick exactly 1 zone for zonal disk, got %v instead", len(zones))
-		}
-		volKey = meta.ZonalKey(req.GetName(), zones[0])
-
-	case replicationTypeRegionalPD:
+	if params.IsRegional() {
 		zones, err = gceCS.pickZones(ctx, req.GetAccessibilityRequirements(), 2, locationTopReq)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to pick zones for disk: %v", err.Error())
@@ -570,7 +563,16 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to get region from zones: %v", err.Error())
 		}
 		volKey = meta.RegionalKey(req.GetName(), region)
-	default:
+	} else if params.ReplicationType == replicationTypeNone {
+		zones, err = gceCS.pickZones(ctx, req.GetAccessibilityRequirements(), 1, locationTopReq)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to pick zones for disk: %v", err.Error())
+		}
+		if len(zones) != 1 {
+			return nil, status.Errorf(codes.Internal, "Failed to pick exactly 1 zone for zonal disk, got %v instead", len(zones))
+		}
+		volKey = meta.ZonalKey(req.GetName(), zones[0])
+	} else {
 		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume replication type '%s' is not supported", params.ReplicationType)
 	}
 
@@ -598,7 +600,7 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
 	accessMode := ""
 	if readonly && slices.Contains(disksWithModifiableAccessMode, params.DiskType) {
-		accessMode = readOnlyManyAccessMode
+		accessMode = gceReadOnlyManyAccessMode
 	}
 
 	// Validate if disk already exists
@@ -711,16 +713,7 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	var disk *gce.CloudDisk
 	name := req.GetName()
 
-	switch params.ReplicationType {
-	case replicationTypeNone:
-		if len(zones) != 1 {
-			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones)
-		}
-		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
-		if err != nil {
-			return nil, common.LoggedError("CreateVolume failed to create single zonal disk "+name+": ", err)
-		}
-	case replicationTypeRegionalPD:
+	if params.IsRegional() {
 		if len(zones) != 2 {
 			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a 2 zones for creating regional disk, instead got: %v", zones)
 		}
@@ -728,7 +721,15 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 		if err != nil {
 			return nil, common.LoggedError("CreateVolume failed to create regional disk "+name+": ", err)
 		}
-	default:
+	} else if params.ReplicationType == replicationTypeNone {
+		if len(zones) != 1 {
+			return nil, status.Errorf(codes.Internal, "CreateVolume failed to get a single zone for creating zonal disk, instead got: %v", zones)
+		}
+		disk, err = createSingleZoneDisk(ctx, gceCS.CloudProvider, name, zones, params, capacityRange, capBytes, snapshotID, volumeContentSourceVolumeID, multiWriter, accessMode)
+		if err != nil {
+			return nil, common.LoggedError("CreateVolume failed to create single zonal disk "+name+": ", err)
+		}
+	} else {
 		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume replication type '%s' is not supported", params.ReplicationType)
 	}
 
@@ -1268,6 +1269,7 @@ func (gceCS *GCEControllerServer) parameterProcessor() *common.ParameterProcesso
 		DriverName:         gceCS.Driver.name,
 		EnableStoragePools: gceCS.enableStoragePools,
 		EnableMultiZone:    gceCS.multiZoneVolumeHandleConfig.Enable,
+		EnableHdHA:         gceCS.enableHdHA,
 	}
 }
 
@@ -1547,6 +1549,10 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		}
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
 	}
+	isHyperdisk := strings.HasPrefix(disk.GetPDType(), "hyperdisk-")
+	if isHyperdisk && disk.GetAccessMode() == gceReadWriteManyAccessMode {
+		return nil, status.Errorf(codes.InvalidArgument, "Cannot create snapshot for disk type %s with access mode %s", common.ParameterHdHADiskType, gceReadWriteManyAccessMode)
+	}
 
 	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)
 	if err != nil {
@@ -1561,6 +1567,9 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			return nil, err
 		}
 	case common.DiskImageType:
+		if disk.LocationType() == meta.Regional {
+			return nil, status.Errorf(codes.InvalidArgument, "Cannot create backup type %s for regional disk %s", common.DiskImageType, disk.GetName())
+		}
 		snapshot, err = gceCS.createImage(ctx, project, volKey, req.Name, snapshotParams)
 		if err != nil {
 			return nil, err
@@ -2144,17 +2153,8 @@ func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int, locationT
 
 	if locationTopReq != nil {
 		srcVolZone := locationTopReq.srcVolZone
-		switch locationTopReq.cloneReplicationType {
-		// For zonal -> zonal cloning, the source disk zone must match the destination disk zone.
-		case replicationTypeNone:
-			// If the source volume zone is not in the topology requirement, we return an error.
-			if !slices.Contains(prefZones, srcVolZone) && !slices.Contains(reqZones, srcVolZone) {
-				volumeCloningReq := fmt.Sprintf("clone zone must match source disk zone: %s", srcVolZone)
-				return nil, fmt.Errorf("failed to find zone from topology %v: %s", top, volumeCloningReq)
-			}
-			return []string{srcVolZone}, nil
-		// For zonal or regional -> regional disk cloning, the source disk region must match the destination disk region.
-		case replicationTypeRegionalPD:
+		if locationTopReq.cloneIsRegional {
+			// For zonal or regional -> regional disk cloning, the source disk region must match the destination disk region.
 			srcVolRegion := locationTopReq.srcVolRegion
 			prefZones = pickZonesInRegion(srcVolRegion, prefZones)
 			reqZones = pickZonesInRegion(srcVolRegion, reqZones)
@@ -2165,13 +2165,21 @@ func pickZonesFromTopology(top *csi.TopologyRequirement, numZones int, locationT
 			}
 
 			// For zonal -> regional disk cloning, one of the replicated zones must match the source zone.
-			if locationTopReq.srcReplicationType == replicationTypeNone {
+			if !locationTopReq.srcIsRegional {
 				if !slices.Contains(prefZones, srcVolZone) && !slices.Contains(reqZones, srcVolZone) {
 					volumeCloningReq := fmt.Sprintf("one of the replica zones of the clone must match the source disk zone: %s", srcVolZone)
 					return nil, fmt.Errorf("failed to find zone from topology %v: %s", top, volumeCloningReq)
 				}
 				prefZones = prependZone(srcVolZone, prefZones)
 			}
+		} else {
+			// For zonal -> zonal cloning, the source disk zone must match the destination disk zone.
+			if !slices.Contains(prefZones, srcVolZone) && !slices.Contains(reqZones, srcVolZone) {
+				// If the source volume zone is not in the topology requirement, we return an error.
+				volumeCloningReq := fmt.Sprintf("clone zone must match source disk zone: %s", srcVolZone)
+				return nil, fmt.Errorf("failed to find zone from topology %v: %s", top, volumeCloningReq)
+			}
+			return []string{srcVolZone}, nil
 		}
 	}
 
@@ -2259,7 +2267,7 @@ func (gceCS *GCEControllerServer) pickZones(ctx context.Context, top *csi.Topolo
 		// in the same zone as the source volume, and for zonal -> regional, one of the replicated zones will always
 		// be the zone of the source volume. For regional -> regional cloning, the srcVolZone will not be set, so we
 		// just use the default zone.
-		if locationTopReq != nil && locationTopReq.srcReplicationType == replicationTypeNone {
+		if locationTopReq != nil && !locationTopReq.srcIsRegional {
 			existingZones = []string{locationTopReq.srcVolZone}
 		}
 		// If topology is nil, then the Immediate binding mode was used without setting allowedTopologies in the storageclass.

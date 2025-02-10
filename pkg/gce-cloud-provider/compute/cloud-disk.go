@@ -166,6 +166,17 @@ func (d *CloudDisk) GetZone() string {
 	}
 }
 
+func (d *CloudDisk) GetRegion() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.Region
+	case d.betaDisk != nil:
+		return d.betaDisk.Region
+	default:
+		return ""
+	}
+}
+
 func (d *CloudDisk) GetSnapshotId() string {
 	switch {
 	case d.disk != nil:
