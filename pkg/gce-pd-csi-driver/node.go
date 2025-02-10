@@ -475,8 +475,8 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		if err := ns.confirmDeviceUnused(volumeID); err != nil {
 			var ignoreableErr *ignoreableError
 			if errors.As(err, &ignoreableErr) {
-				klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
-			} else if ns.deviceInUseErrors.checkDeviceErrorTimeout(volumeID) {
+				klog.Warningf("Unable to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
+			} else if ns.deviceInUseErrors.deviceErrorExpired(volumeID) {
 				klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
 			} else {
 				ns.deviceInUseErrors.markDeviceError(volumeID)

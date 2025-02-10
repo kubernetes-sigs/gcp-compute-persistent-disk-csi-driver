@@ -46,14 +46,17 @@ func newDeviceErrMap(timeout time.Duration) *deviceErrMap {
 	}
 }
 
-// checkDeviceErrorTimeout returns true an error was encountered for the specified deviceName,
-// where the error happened at least `deviceInUseTimeout` seconds ago.
-func (devErrMap *deviceErrMap) checkDeviceErrorTimeout(deviceName string) bool {
+// deviceErrorExpired returns true if an error for the specified device is expired,
+// where the expiration is specified by `--device-in-use-timeout`
+func (devErrMap *deviceErrMap) deviceErrorExpired(deviceName string) bool {
 	devErrMap.mux.Lock()
 	defer devErrMap.mux.Unlock()
 
 	firstEncounteredErrTime, exists := devErrMap.cache.Get(deviceName)
 	if !exists {
+		// If the deviceName does not exist in the map, then this is the first time
+		// an error was encountered for that device. We return false since it cannot be
+		// expired yet.
 		return false
 	}
 	expirationTime := firstEncounteredErrTime.Add(devErrMap.timeout)

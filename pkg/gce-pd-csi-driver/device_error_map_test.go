@@ -28,16 +28,23 @@ func TestDeviceErrorMap(t *testing.T) {
 	// Register an error. Checking the timeout right after should return false
 	stubCurrentTime(0)
 	eMap.markDeviceError(dName)
-	isTimedOut := eMap.checkDeviceErrorTimeout(dName)
+	isTimedOut := eMap.deviceErrorExpired(dName)
 	if isTimedOut {
 		t.Errorf("checkDeviceErrorTimeout expected to be false if called immediately after marking an error")
 	}
 
 	// Advance time. Checking the timeout should now return true
 	stubCurrentTime(int64(timeout.Seconds()) + 1)
-	isTimedOut = eMap.checkDeviceErrorTimeout(dName)
+	isTimedOut = eMap.deviceErrorExpired(dName)
 	if !isTimedOut {
 		t.Errorf("checkDeviceErrorTimeout expected to be true after waiting for timeout")
+	}
+
+	// Deleting the device and checking the timout should return false
+	eMap.deleteDevice(dName)
+	isTimedOut = eMap.deviceErrorExpired(dName)
+	if isTimedOut {
+		t.Errorf("checkDeviceErrorTimeout expected to be false after deleting device from map")
 	}
 }
 
