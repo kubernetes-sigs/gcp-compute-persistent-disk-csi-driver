@@ -72,6 +72,7 @@ then
 	if [ "${CREATE_SA_KEY}" = true ]; then
 		if [ -f "${GCE_PD_SA_DIR}/cloud-sa.json" ];
 		then
+		  echo "REMOVING cloud-sa.json"
 		  rm "${GCE_PD_SA_DIR}/cloud-sa.json"
 		fi
 	fi
@@ -121,7 +122,10 @@ then
 fi
 
 # Export key if needed
+echo "EXPORT KEY?"
 if [ "${CREATE_SA}" = true ] && [ "${CREATE_SA_KEY}" = true ];
 then
+  echo "WRITING KEY FILE"
+  echo "USER: $USER"
   gcloud iam service-accounts keys create "${GCE_PD_SA_DIR}/cloud-sa.json" --iam-account "${IAM_NAME}" --project "${PROJECT}"
 fi

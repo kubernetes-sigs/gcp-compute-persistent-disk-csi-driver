@@ -2342,11 +2342,21 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 
 func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, volumeId string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
+
+	// Parsing the disk's type field will allow this to continue to work after
+	// generic volumes makes PDCSI select a disk type dynamically.  Does this
+	// also work for hyperdisk?
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			// Each segment is AND'd into a single matchable block in the
+			// matchExpressions field of a PV's NodeAffinity.
+			Segments: map[string]string{
+				common.TopologyKeyZone:                            zone,
+				common.TopologyKeyPrefix + diskTypeFromDisk(disk): "true",
+			},
 		})
 	}
+
 	realDiskSizeBytes := common.GbToBytes(disk.GetSizeGb())
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2356,6 +2366,7 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 			AccessibleTopology: tops,
 		},
 	}
+
 	snapshotID := disk.GetSnapshotId()
 	imageID := disk.GetImageId()
 	diskID := disk.GetSourceDiskId()
@@ -2390,7 +2401,16 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 		}
 		createResp.Volume.ContentSource = contentSource
 	}
+
 	return createResp
+}
+
+// diskTypeFromDisk parses the DiskType field on the disk, which returns a
+// path like `projects/dummy-project/zones/us-central1-a/diskTypes/pd-ssd`, and
+// returns the last token (`pd-ssd` in the example).
+func diskTypeFromDisk(disk *gce.CloudDisk) string {
+	tokens := strings.Split(disk.GetPDType(), "/")
+	return tokens[len(tokens)-1]
 }
 
 func getResourceId(resourceLink string) (string, error) {
