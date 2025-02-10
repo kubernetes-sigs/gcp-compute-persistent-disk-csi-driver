@@ -78,7 +78,9 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 
 	var mergeErrors []string
 	var filesToDelete []string
+	klog.Warning("Calling MERGE JUNit")
 	for _, dir := range sourceDirectories {
+		klog.Warningf("Looking through source directory: %v", dir)
 		files, err := os.ReadDir(dir)
 		if err != nil {
 			klog.Errorf("Failed to read juint directory %s: %v", dir, err)
@@ -95,6 +97,8 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			if err != nil {
 				return err
 			}
+			klog.Warningf("Attempting to unmarshal file: %v", fullFilename)
+			klog.Warningf("Attempting to unmarshal file: %v. Contents: %s", fullFilename, data)
 			if err = xml.Unmarshal(data, &junit); err != nil {
 				return err
 			}
