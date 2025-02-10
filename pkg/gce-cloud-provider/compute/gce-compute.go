@@ -395,6 +395,11 @@ func (cloud *CloudProvider) ValidateExistingDisk(ctx context.Context, resp *Clou
 			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
 	}
 
+	// We are assuming here that a multiWriter disk could be used as non-multiWriter
+	if multiWriter && !resp.GetMultiWriter() {
+		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
+	}
+
 	return ValidateDiskParameters(resp, params)
 }
 
