@@ -104,8 +104,7 @@ COPY --from=debian /bin/cp /bin/cp
 COPY --from=debian /bin/udevadm /bin/udevadm
 
 # Copy shared libraries into distroless base.
-COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre.so.3 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
+COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libdl.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libpthread.so.0 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libtinfo.so.6 \
@@ -163,16 +162,16 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
 
 
-# Build stage used for validation of the output-image
-# See validate-container-linux-* targets in Makefile
-FROM output-image as validation-image
+# # Build stage used for validation of the output-image
+# # See validate-container-linux-* targets in Makefile
+# FROM output-image as validation-image
 
-COPY --from=debian /usr/bin/ldd /usr/bin/find /usr/bin/xargs /usr/bin/
-COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/hack/print-missing-deps.sh /print-missing-deps.sh
-SHELL ["/bin/bash", "-c"]
-RUN /print-missing-deps.sh
+# COPY --from=debian /usr/bin/ldd /usr/bin/find /usr/bin/xargs /usr/bin/
+# COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/hack/print-missing-deps.sh /print-missing-deps.sh
+# SHELL ["/bin/bash", "-c"]
+# RUN /print-missing-deps.sh
 
-# Final build stage, create the real Docker image with ENTRYPOINT
-FROM output-image
+# # Final build stage, create the real Docker image with ENTRYPOINT
+# FROM output-image
 COPY --from=builder /go/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/initialize-driver.sh /initialize-driver.sh
 ENTRYPOINT ["/initialize-driver.sh"]

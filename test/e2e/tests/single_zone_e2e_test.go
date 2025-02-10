@@ -1535,7 +1535,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Mount disk
-		err, _,  args = testMount(volID, volName, secondInstance, secondClient, attachMountArgs, stageDir)
+		err, _, args = testMount(volID, volName, secondInstance, secondClient, attachMountArgs, stageDir)
 		if err != nil {
 			klog.Fatalf("Failed to mount disk %v", err)
 		}
