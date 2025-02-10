@@ -808,7 +808,6 @@ func (cloud *CloudProvider) insertZonalDisk(
 
 	diskToCreate.AccessMode = accessMode
 	var insertOp *computebeta.Operation
-	diskToCreate.MultiWriter = multiWriter
 	insertOp, err = cloud.betaService.Disks.Insert(project, volKey.Zone, diskToCreate).Context(ctx).Do()
 	if insertOp != nil {
 		opName = insertOp.Name
