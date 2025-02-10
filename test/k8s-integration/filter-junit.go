@@ -34,10 +34,11 @@ import (
  */
 
 type TestSuites struct {
-	XMLName   string      `xml:"testsuites"`
-	TestSuite []TestSuite `xml:"testsuite"`
+	XMLName    string      `xml:"testsuites"`
+	TestSuites []TestSuite `xml:"testsuite"`
 }
 type TestSuite struct {
+	XMLName   string     `xml:"testsuite"`
 	TestCases []TestCase `xml:"testcase"`
 }
 
@@ -71,13 +72,16 @@ func (s SkipReason) MarshalText() ([]byte, error) {
 // MergeJUnit merges all junit xml files found in sourceDirectories into a single xml file at destination, using the filter.
 // The merging removes duplicate skipped tests. The original files are deleted.
 func MergeJUnit(testFilter string, sourceDirectories []string, destination string) error {
-	var junit TestSuite
+	var outputTestSuite TestSuite
 	var data []byte
 
 	re := regexp.MustCompile(testFilter)
 
 	var mergeErrors []string
 	var filesToDelete []string
+	var junit TestSuites
+	// Keep only matching testcases. Testcases skipped in all test runs are only stored once.
+	filtered := map[string]TestCase{}
 	for _, dir := range sourceDirectories {
 		files, err := os.ReadDir(dir)
 		if err != nil {
@@ -98,24 +102,24 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			if err = xml.Unmarshal(data, &junit); err != nil {
 				return err
 			}
-		}
-	}
 
-	// Keep only matching testcases. Testcases skipped in all test runs are only stored once.
-	filtered := map[string]TestCase{}
-	for _, testcase := range junit.TestCases {
-		if !re.MatchString(testcase.Name) {
-			continue
-		}
-		entry, ok := filtered[testcase.Name]
-		if !ok || // not present yet
-			entry.Skipped != "" && testcase.Skipped == "" { // replaced skipped test with real test run
-			filtered[testcase.Name] = testcase
+			for _, testsuite := range junit.TestSuites {
+				for _, testcase := range testsuite.TestCases {
+					if !re.MatchString(testcase.Name) {
+						continue
+					}
+					entry, ok := filtered[testcase.Name]
+					if !ok || // not present yet
+						entry.Skipped != "" && testcase.Skipped == "" { // replaced skipped test with real test run
+						filtered[testcase.Name] = testcase
+					}
+				}
+			}
 		}
 	}
-	junit.TestCases = nil
+	outputTestSuite.TestCases = make([]TestCase, 0, len(filtered))
 	for _, testcase := range filtered {
-		junit.TestCases = append(junit.TestCases, testcase)
+		outputTestSuite.TestCases = append(outputTestSuite.TestCases, testcase)
 	}
 
 	// Re-encode.
