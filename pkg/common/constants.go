@@ -17,8 +17,9 @@ limitations under the License.
 package common
 
 const (
+	TopologyKeyPrefix = "topology.gke.io/"
 	// Keys for Topology. This key will be shared amongst drivers from GCP
-	TopologyKeyZone = "topology.gke.io/zone"
+	TopologyKeyZone = TopologyKeyPrefix + "zone"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"

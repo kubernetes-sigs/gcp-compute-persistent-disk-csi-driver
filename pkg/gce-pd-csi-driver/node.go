@@ -514,6 +514,11 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	}
 
 	labels[common.TopologyKeyZone] = ns.MetadataService.GetZone()
+
+	// Each "Topology" struct will later be translated into an individual
+	// 'matchExpressions' block in the PV's NodeAffinity.  Because we always
+	// need to match on both the zone AND the disk type, both the zone and the
+	// supported disks belong as segments on a single Topology.
 	top := &csi.Topology{
 		Segments: labels,
 	}
