@@ -27,19 +27,17 @@ func installDriver(testParams *testParameters, stagingImage, deployOverlayName s
 
 		// Edit ci kustomization to use given image tag
 		overlayDir := getOverlayDir(testParams.pkgDir, deployOverlayName)
-		err = os.Chdir(overlayDir)
-		if err != nil {
-			return fmt.Errorf("failed to change to overlay directory: %s, err: %v", out, err.Error())
-		}
 
 		// TODO (#138): in a local environment this is going to modify the actual kustomize files.
 		// maybe a copy should be made instead
-		out, err = exec.Command(
+		kustomizeCommand := exec.Command(
 			filepath.Join(testParams.pkgDir, "bin", "kustomize"),
 			"edit",
 			"set",
 			"image",
-			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, testParams.stagingVersion)).CombinedOutput()
+			fmt.Sprintf("%s=%s:%s", pdImagePlaceholder, stagingImage, testParams.stagingVersion))
+		kustomizeCommand.Dir = overlayDir
+		out, err = kustomizeCommand.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to edit kustomize: %s, err: %v", out, err.Error())
 		}
