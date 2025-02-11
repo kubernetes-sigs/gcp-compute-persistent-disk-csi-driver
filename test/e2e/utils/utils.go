@@ -68,8 +68,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--use-instance-api-to-list-volumes-published-nodes",
 		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
 		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
+		"--allow-hdha-provisioning",
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
-
 		"--enable-controller-data-cache",
 		"--enable-node-data-cache",
 		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),

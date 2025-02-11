@@ -75,6 +75,7 @@ var (
 	formatAndMountTimeout         = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag    = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag        = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	enableHdHAFlag                = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 	enableControllerDataCacheFlag = flag.Bool("enable-controller-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
 	enableNodeDataCacheFlag       = flag.Bool("enable-node-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
 	nodeName                      = flag.String("node-name", "", "The node this driver is running on")
@@ -230,7 +231,7 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableControllerDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableControllerDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
