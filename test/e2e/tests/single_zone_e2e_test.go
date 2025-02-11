@@ -283,7 +283,6 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Could not find disk in correct zone")
 		}
 	})
-
 	// TODO(hime): Enable this test once all release branches contain the fix from PR#1708.
 	// It("Should return InvalidArgument when disk size exceeds limit", func() {
 	// 	// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
