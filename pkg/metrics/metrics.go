@@ -21,13 +21,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
-	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
 const (
@@ -93,13 +91,13 @@ func (mm *MetricsManager) recordComponentVersionMetric() error {
 }
 
 func (mm *MetricsManager) RecordOperationErrorMetrics(
-	operationName string,
+	fullMethodName string,
 	operationErr error,
 	diskType string,
 	enableConfidentialStorage string,
 	enableStoragePools string) {
 	errCode := errorCodeLabelValue(operationErr)
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, "/csi.v1.Controller/"+operationName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
+	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, fullMethodName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
 	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
 }
 
@@ -155,18 +153,6 @@ func IsGKEComponentVersionAvailable() bool {
 	}
 
 	return true
-}
-
-func GetMetricParameters(disk *gce.CloudDisk) (string, string, string) {
-	diskType := DefaultDiskTypeForMetric
-	enableConfidentialStorage := DefaultEnableConfidentialCompute
-	enableStoragePools := DefaultEnableStoragePools
-	if disk != nil {
-		diskType = disk.GetPDType()
-		enableConfidentialStorage = strconv.FormatBool(disk.GetEnableConfidentialCompute())
-		enableStoragePools = strconv.FormatBool(disk.GetEnableStoragePools())
-	}
-	return diskType, enableConfidentialStorage, enableStoragePools
 }
 
 // errorCodeLabelValue returns the label value for the given operation error.

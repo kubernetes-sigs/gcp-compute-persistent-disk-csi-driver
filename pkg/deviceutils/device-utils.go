@@ -170,7 +170,7 @@ func getNvmeSerial(devicePath string) (string, error) {
 		nvmeIdPath,
 		fmt.Sprintf("-d%s", devicePath)).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("google_nvme_id failed for device %q with output %v: %w", devicePath, out, err)
+		return "", fmt.Errorf("google_nvme_id failed for device %q with output %s: %w", devicePath, out, err)
 	}
 
 	return parseNvmeSerial(string(out))
@@ -194,7 +194,7 @@ func ensureUdevToolExists(toolPath string) error {
 	if !exists {
 		// The driver should be containerized with the tool so maybe something is
 		// wrong with the build process
-		return fmt.Errorf("could not find tool at %q, unable to verify device paths", nvmeIdPath)
+		return fmt.Errorf("could not find tool at %q, unable to verify device paths", toolPath)
 	}
 	return nil
 }
@@ -231,7 +231,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devicePath, innerErr = existingDevicePath(devicePaths)
 		if innerErr != nil {
 			e := fmt.Errorf("for disk %s failed to check for existing device path: %w", deviceName, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Errored: %s", e.Error())
 			return false, e
 		}
 
@@ -243,7 +243,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 			innerErr := udevadmTriggerForDiskIfExists(deviceName)
 			if innerErr != nil {
 				e := fmt.Errorf("for disk %s failed to trigger udevadm fix of non existent device path: %w", deviceName, innerErr)
-				klog.Errorf(e.Error())
+				klog.Errorf("Errored: %s", e.Error())
 				return false, e
 			}
 			// Go to next retry loop to get the deviceName again after
@@ -256,7 +256,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devFsPath, innerErr := filepath.EvalSymlinks(devicePath)
 		if innerErr != nil {
 			e := fmt.Errorf("filepath.EvalSymlinks(%q) failed: %w", devicePath, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Errored: %s", e.Error())
 			return false, e
 		}
 		klog.V(4).Infof("For disk %s the /dev/* path is %s for disk/by-id path %s", deviceName, devFsPath, devicePath)
@@ -264,7 +264,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devFsSerial, innerErr := getDevFsSerial(devFsPath)
 		if innerErr != nil {
 			e := fmt.Errorf("couldn't get serial number for disk %s at device path %s: %w", deviceName, devFsPath, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Errored: %s", e.Error())
 			return false, e
 		}
 		klog.V(4).Infof("For disk %s, device path %s, found serial number %s", deviceName, devFsPath, devFsSerial)
@@ -281,7 +281,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		innerErr = udevadmTriggerForDiskIfExists(deviceName)
 		if innerErr != nil {
 			e := fmt.Errorf("failed to trigger udevadm fix of misconfigured disk for %q: %w", deviceName, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Errored: %s", e.Error())
 			return false, e
 		}
 		// Go to next retry loop to get the deviceName again after

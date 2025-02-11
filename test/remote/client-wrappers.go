@@ -333,3 +333,12 @@ func (c *CsiClient) DeleteSnapshot(snapshotID string) error {
 	_, err := c.ctrlClient.DeleteSnapshot(context.Background(), dsr)
 	return err
 }
+
+func (c *CsiClient) ControllerModifyVolume(volId string, mutableParameters map[string]string) error {
+	cmvr := &csipb.ControllerModifyVolumeRequest{
+		VolumeId:          volId,
+		MutableParameters: mutableParameters,
+	}
+	_, err := c.ctrlClient.ControllerModifyVolume(context.Background(), cmvr)
+	return err
+}

@@ -47,61 +47,68 @@ const (
 
 // InstanceConfig is the common bundle of options used for instance creation.
 type InstanceConfig struct {
-	Project        string
-	Architecture   string
-	MachineType    string
-	ServiceAccount string
-	ImageURL       string
-	CloudtopHost   bool
+	Project                   string
+	Architecture              string
+	Zone                      string
+	Name                      string
+	MachineType               string
+	ServiceAccount            string
+	ImageURL                  string
+	CloudtopHost              bool
+	MinCpuPlatform            string
+	ComputeService            *compute.Service
+	EnableConfidentialCompute bool
+	LocalSSDCount             int64
+	EnableDataCache           bool
 }
 
 type InstanceInfo struct {
-	project        string
-	architecture   string
-	zone           string
-	name           string
-	machineType    string
-	serviceAccount string
-	imageURL       string
-	cloudtopHost   bool
-
+	cfg InstanceConfig
 	// External IP is filled in after instance creation
 	externalIP string
-
-	computeService *compute.Service
 }
 
 func (i *InstanceInfo) GetIdentity() (string, string, string) {
-	return i.project, i.zone, i.name
+	return i.cfg.Project, i.cfg.Zone, i.cfg.Name
 }
 
 func (i *InstanceInfo) GetName() string {
-	return i.name
+	return i.cfg.Name
 }
 
 func (i *InstanceInfo) GetNodeID() string {
-	return common.CreateNodeID(i.project, i.zone, i.name)
+	return common.CreateNodeID(i.cfg.Project, i.cfg.Zone, i.cfg.Name)
 }
 
-func CreateInstanceInfo(config *InstanceConfig, zone, name string, cs *compute.Service) (*InstanceInfo, error) {
-	return &InstanceInfo{
-		project:        config.Project,
-		architecture:   config.Architecture,
-		zone:           zone,
-		name:           name,
-		machineType:    config.MachineType,
-		cloudtopHost:   config.CloudtopHost,
-		serviceAccount: config.ServiceAccount,
-		imageURL:       config.ImageURL,
-		computeService: cs,
-	}, nil
+func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) bool {
+	if !strings.Contains(curInst.MachineType, newInst.MachineType) {
+		klog.Infof("Machine type mismatch")
+		return true
+	}
+	// Ideally we could compare to see if the new instance has a greater minCpuPlatfor
+	// For now we just check it was set and it's different.
+	if curInst.MinCpuPlatform != "" && curInst.MinCpuPlatform != newInst.MinCpuPlatform {
+		klog.Infof("CPU Platform mismatch")
+		return true
+	}
+	if (curInst.ConfidentialInstanceConfig != nil && newInst.ConfidentialInstanceConfig == nil) ||
+		(curInst.ConfidentialInstanceConfig == nil && newInst.ConfidentialInstanceConfig != nil) ||
+		(curInst.ConfidentialInstanceConfig != nil && newInst.ConfidentialInstanceConfig != nil && curInst.ConfidentialInstanceConfig.EnableConfidentialCompute != newInst.ConfidentialInstanceConfig.EnableConfidentialCompute) {
+		klog.Infof("Confidential compute mismatch")
+		return true
+	}
+	if curInst.SourceMachineImage != newInst.SourceMachineImage {
+		klog.Infof("Source Machine Mismatch")
+		return true
+	}
+	return false
 }
 
 // Provision a gce instance using image
 func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	var err error
 	var instance *compute.Instance
-	klog.V(4).Infof("Creating instance: %v", i.name)
+	klog.V(4).Infof("Creating instance: %v", i.cfg.Name)
 
 	myuuid := string(uuid.NewUUID())
 
@@ -111,8 +118,8 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	}
 
 	newInst := &compute.Instance{
-		Name:        i.name,
-		MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", i.zone, i.machineType),
+		Name:        i.cfg.Name,
+		MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", i.cfg.Zone, i.cfg.MachineType),
 		NetworkInterfaces: []*compute.NetworkInterface{
 			{
 				AccessConfigs: []*compute.AccessConfig{
@@ -129,17 +136,24 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 				Type:       "PERSISTENT",
 				InitializeParams: &compute.AttachedDiskInitializeParams{
 					DiskName:    "my-root-pd-" + myuuid,
-					SourceImage: i.imageURL,
+					SourceImage: i.cfg.ImageURL,
 				},
 			},
 		},
+		MinCpuPlatform: i.cfg.MinCpuPlatform,
+	}
+
+	if i.cfg.EnableConfidentialCompute {
+		newInst.ConfidentialInstanceConfig = &compute.ConfidentialInstanceConfig{
+			EnableConfidentialCompute: true,
+		}
 	}
 	klog.Infof("=======Adding LocalSSD %v=============", localSSDCount)
 
 	localSSDConfig := &compute.AttachedDisk{
 		Type: "SCRATCH",
 		InitializeParams: &compute.AttachedDiskInitializeParams{
-			DiskType: fmt.Sprintf("zones/%s/diskTypes/local-ssd", i.zone),
+			DiskType: fmt.Sprintf("zones/%s/diskTypes/local-ssd", i.cfg.Zone),
 		},
 		AutoDelete: true,
 		Interface:  "NVME",
@@ -149,7 +163,7 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		newInst.Disks = append(newInst.Disks, localSSDConfig)
 	}
 	saObj := &compute.ServiceAccount{
-		Email:  i.serviceAccount,
+		Email:  i.cfg.ServiceAccount,
 		Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
 	}
 	newInst.ServiceAccounts = []*compute.ServiceAccount{saObj}
@@ -163,19 +177,19 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		newInst.Metadata = meta
 	}
 
-	// If instance exists but machine-type doesn't match, delete instance
-	curInst, _ := i.computeService.Instances.Get(i.project, i.zone, newInst.Name).Do()
+	// If instance exists but settings differ, delete instance
+	curInst, _ := i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, newInst.Name).Do()
 	if curInst != nil {
-		if !strings.Contains(curInst.MachineType, newInst.MachineType) {
+		if machineTypeMismatch(curInst, newInst) {
 			klog.V(4).Infof("Instance machine type doesn't match the required one. Delete instance.")
-			if _, err := i.computeService.Instances.Delete(i.project, i.zone, i.name).Do(); err != nil {
+			if _, err := i.cfg.ComputeService.Instances.Delete(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do(); err != nil {
 				return err
 			}
 
 			start := time.Now()
 			err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
 				klog.V(2).Infof("Waiting for instance to be deleted. %v elapsed", time.Since(start))
-				if curInst, _ = i.computeService.Instances.Get(i.project, i.zone, i.name).Do(); curInst != nil {
+				if curInst, _ = i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do(); curInst != nil {
 					return false, nil
 				}
 				return true, nil
@@ -187,16 +201,16 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	}
 
 	if curInst == nil {
-		op, err := i.computeService.Instances.Insert(i.project, i.zone, newInst).Do()
-		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.project, i.zone)
+		op, err := i.cfg.ComputeService.Instances.Insert(i.cfg.Project, i.cfg.Zone, newInst).Do()
+		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.cfg.Project, i.cfg.Zone)
 		if err != nil {
-			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.name, err.Error())
+			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.cfg.Name, err.Error())
 			if op != nil {
 				ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
 			}
 			return errors.New(ret)
 		} else if op.Error != nil {
-			return fmt.Errorf("could not create instance %s: %+v", i.name, op.Error)
+			return fmt.Errorf("could not create instance %s: %+v", i.cfg.Name, op.Error)
 		}
 	} else {
 		klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", newInst.Name)
@@ -204,26 +218,26 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 
 	start := time.Now()
 	err = wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
-		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.name, time.Since(start))
+		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.cfg.Name, time.Since(start))
 
-		instance, err = i.computeService.Instances.Get(i.project, i.zone, i.name).Do()
+		instance, err = i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do()
 		if err != nil {
-			klog.Errorf("Failed to get instance %q: %v", i.name, err)
+			klog.Errorf("Failed to get instance %q: %v", i.cfg.Name, err)
 			return false, nil
 		}
 
 		if strings.ToUpper(instance.Status) != "RUNNING" {
-			klog.Warningf("instance %s not in state RUNNING, was %s", i.name, instance.Status)
+			klog.Warningf("instance %s not in state RUNNING, was %s", i.cfg.Name, instance.Status)
 			return false, nil
 		}
 
-		if i.cloudtopHost {
-			output, err := exec.Command("gcloud", "compute", "ssh", i.name, "--zone", i.zone, "--project", i.project, "--", "-o", "ProxyCommand=corp-ssh-helper %h %p", "--", "echo").CombinedOutput()
+		if i.cfg.CloudtopHost {
+			output, err := exec.Command("gcloud", "compute", "ssh", i.cfg.Name, "--zone", i.cfg.Zone, "--project", i.cfg.Project, "--", "-o", "ProxyCommand=corp-ssh-helper %h %p", "--", "echo").CombinedOutput()
 			if err != nil {
 				klog.Errorf("Failed to bootstrap ssh (%v): %s", err, string(output))
 				return false, nil
 			}
-			klog.V(4).Infof("Bootstrapped cloudtop ssh for instance %v", i.name)
+			klog.V(4).Infof("Bootstrapped cloudtop ssh for instance %v", i.cfg.Name)
 		}
 
 		externalIP := getexternalIP(instance)
@@ -232,11 +246,11 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		}
 
 		if sshOut, err := i.SSHCheckAlive(); err != nil {
-			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.name, err.Error())
+			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.cfg.Name, err.Error())
 			klog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
 			return false, nil
 		}
-		klog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.name)
+		klog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.cfg.Name)
 		return true, nil
 	})
 
@@ -246,24 +260,24 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	}
 
 	// Instance reached running state in time, make sure that cloud-init is complete
-	klog.V(2).Infof("Instance %v has been created successfully", i.name)
+	klog.V(2).Infof("Instance %v has been created successfully", i.cfg.Name)
 	return nil
 }
 
 func (i *InstanceInfo) DeleteInstance() {
-	klog.V(4).Infof("Deleting instance %q", i.name)
-	_, err := i.computeService.Instances.Delete(i.project, i.zone, i.name).Do()
+	klog.V(4).Infof("Deleting instance %q", i.cfg.Name)
+	_, err := i.cfg.ComputeService.Instances.Delete(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do()
 	if err != nil {
 		if isGCEError(err, "notFound") {
 			return
 		}
-		klog.Errorf("Error deleting instance %q: %v", i.name, err)
+		klog.Errorf("Error deleting instance %q: %v", i.cfg.Name, err)
 	}
 }
 
 func (i *InstanceInfo) DetachDisk(diskName string) error {
 	klog.V(4).Infof("Detaching disk %q", diskName)
-	op, err := i.computeService.Instances.DetachDisk(i.project, i.zone, i.name, diskName).Do()
+	op, err := i.cfg.ComputeService.Instances.DetachDisk(i.cfg.Project, i.cfg.Zone, i.cfg.Name, diskName).Do()
 	if err != nil {
 		if isGCEError(err, "notFound") {
 			return nil
@@ -273,9 +287,9 @@ func (i *InstanceInfo) DetachDisk(diskName string) error {
 
 	start := time.Now()
 	if err := wait.Poll(5*time.Second, 1*time.Minute, func() (bool, error) {
-		klog.V(2).Infof("Waiting for disk %q to be detached from instance %q. %v elapsed", diskName, i.name, time.Since(start))
+		klog.V(2).Infof("Waiting for disk %q to be detached from instance %q. %v elapsed", diskName, i.cfg.Name, time.Since(start))
 
-		op, err = i.computeService.ZoneOperations.Get(i.project, i.zone, op.Name).Do()
+		op, err = i.cfg.ComputeService.ZoneOperations.Get(i.cfg.Project, i.cfg.Zone, op.Name).Do()
 		if err != nil {
 			return true, fmt.Errorf("Failed to get operation %q, err: %v", op.Name, err)
 		}
@@ -284,7 +298,7 @@ func (i *InstanceInfo) DetachDisk(diskName string) error {
 		return err
 	}
 
-	klog.V(4).Infof("Disk %q has been successfully detached from instance %q\n%v", diskName, i.name, op.Error)
+	klog.V(4).Infof("Disk %q has been successfully detached from instance %q\n%v", diskName, i.cfg.Name, op.Error)
 	return nil
 }
 
@@ -302,7 +316,7 @@ func getexternalIP(instance *compute.Instance) string {
 }
 
 func getTimestamp() string {
-	return fmt.Sprintf(time.Now().Format(timestampFormat))
+	return fmt.Sprintf("%s", time.Now().Format(timestampFormat))
 }
 
 // Create default SSH filewall rule if it does not exist
@@ -310,7 +324,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 	var err error
 	klog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
 
-	if _, err = i.computeService.Firewalls.Get(i.project, defaultFirewallRule).Do(); err != nil {
+	if _, err = i.cfg.ComputeService.Firewalls.Get(i.cfg.Project, defaultFirewallRule).Do(); err != nil {
 		klog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
 		f := &compute.Firewall{
 			Name: defaultFirewallRule,
@@ -321,7 +335,7 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 				},
 			},
 		}
-		_, err = i.computeService.Firewalls.Insert(i.project, f).Do()
+		_, err = i.cfg.ComputeService.Firewalls.Insert(i.cfg.Project, f).Do()
 		if err != nil {
 			if gce.IsGCEError(err, "alreadyExists") {
 				klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)

@@ -30,15 +30,25 @@ readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly test_pd_labels=${TEST_PD_LABELS:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
 readonly test_disk_image_snapshot=${TEST_DISK_IMAGE_SNAPSHOT:-true}
+readonly test_volumeattributesclass=${TEST_VOLUMEATTRIBUTESCLASS:-true}
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
-storage_classes=sc-balanced.yaml,sc-ssd.yaml,sc-xfs.yaml
+# Install golang.
+version=1.22.3
+wget -O go_tar.tar.gz https://go.dev/dl/go${version}.linux-amd64.tar.gz -q
+# Remove the existing GoLang installation directory
+rm -rf /usr/local/go && tar -xzf go_tar.tar.gz -C /usr/local
+# Add the GoLang binary directory to systems PATH env, allowing prow tests
+# to run go commands with this go version.
+export PATH=$PATH:/usr/local/go/bin && go version && rm go_tar.tar.gz
+
+storage_classes=sc-ssd.yaml,sc-xfs.yaml
 
 if [[ $test_pd_labels = true ]] ; then
-  storage_classes=${storage_classes},sc-standard.yaml
+  storage_classes=${storage_classes},sc-balanced.yaml
 else
-  storage_classes=${storage_classes},sc-standard-no-labels.yaml
+  storage_classes=${storage_classes},sc-balanced-no-labels.yaml
 fi
 
 if [[ -n $gce_region ]] ; then
@@ -54,7 +64,7 @@ export GCE_PD_VERBOSITY=9
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    kt2_version=22d5b1410bef09ae679fa5813a5f0d196b6079de
     go install sigs.k8s.io/kubetest2@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
@@ -106,6 +116,13 @@ if [ "$test_disk_image_snapshot" = true ]; then
   base_cmd="${base_cmd} --snapshotclass-files=image-volumesnapshotclass.yaml,pd-volumesnapshotclass.yaml"
 else
   base_cmd="${base_cmd} --snapshotclass-files=pd-volumesnapshotclass.yaml"
+fi
+
+if [ "$test_volumeattributesclass" = true ]; then
+  base_cmd="${base_cmd} --volumeattributesclass-files=hdb-volumeattributesclass.yaml --storageclass-for-vac-file=sc-hdb.yaml --kube-runtime-config=api/all=true"
+  if [ "$deployment_strategy" = "gce" ]; then
+    base_cmd="${base_cmd} --kube-feature-gates=VolumeAttributesClass=true"
+  fi
 fi
 
 eval "$base_cmd"

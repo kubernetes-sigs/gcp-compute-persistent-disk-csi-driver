@@ -28,6 +28,7 @@ readonly teardown_driver=${GCE_PD_TEARDOWN_DRIVER:-true}
 readonly gke_node_version=${GKE_NODE_VERSION:-}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly migration_test=${MIGRATION_TEST:-false}
+readonly volumeattributesclass_files=${VOLUME_ATTRIBUTES_CLASS_FILES:-hdb-volumeattributesclass.yaml}
 
 export GCE_PD_VERBOSITY=9
 
@@ -36,7 +37,7 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    kt2_version=22d5b1410bef09ae679fa5813a5f0d196b6079de
     go install sigs.k8s.io/kubetest2@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
@@ -47,9 +48,15 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --run-in-prow=true --service-account-file=${E2E_GOOGLE_APPLICATION_CREDENTIALS} \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} \
             --do-k8s-build=${do_k8s_build} --boskos-resource-type=${boskos_resource_type} \
-            --storageclass-files=sc-standard.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
+            --storageclass-files=sc-balanced.yaml --snapshotclass-files=pd-volumesnapshotclass.yaml \
+            --storageclass-for-vac-file=sc-hdb.yaml \
+            --kube-runtime-config=api/all=true \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
             --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
+
+if [[ -n "${volumeattributesclass_files}" ]]; then
+  base_cmd+=" --volumeattributesclass-files=${volumeattributesclass_files}"
+fi
 
 if [ "$use_gke_managed_driver" = false ]; then
   base_cmd="${base_cmd} --deploy-overlay-name=${overlay_name}"
@@ -64,7 +71,7 @@ if [ "$deployment_strategy" = "gke" ]; then
     base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
   fi
 else
-  base_cmd="${base_cmd} --kube-version=${kube_version}"
+  base_cmd="${base_cmd} --kube-version=${kube_version} --kube-feature-gates=VolumeAttributesClass=true"
 fi
 
 if [ -z "$gce_region" ]; then

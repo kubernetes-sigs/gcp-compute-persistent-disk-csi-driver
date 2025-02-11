@@ -44,6 +44,7 @@ var (
 	kubeVersion          = flag.String("kube-version", "", "version of Kubernetes to download and use for the cluster")
 	testVersion          = flag.String("test-version", "", "version of Kubernetes to download and use for tests")
 	kubeFeatureGates     = flag.String("kube-feature-gates", "", "feature gates to set on new kubernetes cluster")
+	kubeRuntimeConfig    = flag.String("kube-runtime-config", "", "runtime config to set on new kubernetes cluster")
 	localK8sDir          = flag.String("local-k8s-dir", "", "local prebuilt kubernetes/kubernetes directory to use for cluster and test binaries")
 	deploymentStrat      = flag.String("deployment-strategy", "gce", "choose between deploying on gce or gke")
 	gkeClusterVer        = flag.String("gke-cluster-version", "", "version of Kubernetes master and node for gke")
@@ -60,6 +61,8 @@ var (
 	boskosResourceType = flag.String("boskos-resource-type", "gce-project", "name of the boskos resource type to reserve")
 	storageClassFiles  = flag.String("storageclass-files", "", "name of storageclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
 	snapshotClassFiles = flag.String("snapshotclass-files", "", "name of snapshotclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple storage classes")
+	vacFiles           = flag.String("volumeattributesclass-files", "", "name of volumeattributesclass yaml file to use for test relative to test/k8s-integration/config. This may be a comma-separated list to test multiple volumeattributesclasses.")
+	scVacFile          = flag.String("storageclass-for-vac-file", "", "name of storageclass yaml file to use for test relative to test/k8s-integraion/config against the volumeattributesclass-files.")
 	inProw             = flag.Bool("run-in-prow", false, "is the test running in PROW")
 
 	// Driver flags
@@ -90,25 +93,26 @@ const (
 )
 
 type testParameters struct {
-	platform             string
-	stagingVersion       string
-	goPath               string
-	pkgDir               string
-	testParentDir        string
-	k8sSourceDir         string
-	testFocus            string
-	testSkip             string
-	storageClassFile     string
-	snapshotClassFile    string
-	cloudProviderArgs    []string
-	deploymentStrategy   string
-	outputDir            string
-	allowedNotReadyNodes int
-	useGKEManagedDriver  bool
-	clusterVersion       string
-	nodeVersion          string
-	imageType            string
-	parallel             int
+	platform                  string
+	stagingVersion            string
+	goPath                    string
+	pkgDir                    string
+	testParentDir             string
+	k8sSourceDir              string
+	testFocus                 string
+	testSkip                  string
+	storageClassFile          string
+	snapshotClassFile         string
+	volumeAttributesClassFile string
+	cloudProviderArgs         []string
+	deploymentStrategy        string
+	outputDir                 string
+	allowedNotReadyNodes      int
+	useGKEManagedDriver       bool
+	clusterVersion            string
+	nodeVersion               string
+	imageType                 string
+	parallel                  int
 }
 
 func init() {
@@ -155,6 +159,10 @@ func main() {
 		ensureVariable(storageClassFiles, false, "storage-class-file and migration-test cannot both be set")
 	} else {
 		ensureVariable(storageClassFiles, true, "One of storageclass-file and migration-test must be set")
+	}
+
+	if len(*vacFiles) != 0 {
+		ensureVariable(scVacFile, true, "storageclass-for-vac-file must be set when volumeattributesclass-files is set")
 	}
 
 	if !*bringupCluster && *platform != "windows" {
@@ -530,6 +538,7 @@ func handle() error {
 	if len(*storageClassFiles) != 0 {
 		applicableStorageClassFiles := []string{}
 		applicableSnapshotClassFiles := []string{}
+		applicableVacFiles := []string{}
 		for _, rawScFile := range strings.Split(*storageClassFiles, ",") {
 			scFile := strings.TrimSpace(rawScFile)
 			if len(scFile) == 0 {
@@ -553,6 +562,19 @@ func handle() error {
 				applicableSnapshotClassFiles = append(applicableSnapshotClassFiles, snapshotClassFile)
 			}
 		}
+		for _, rawVacFile := range strings.Split(*vacFiles, ",") {
+			vacFile := strings.TrimSpace(rawVacFile)
+			if len(vacFile) != 0 {
+				applicableVacFiles = append(applicableVacFiles, vacFile)
+			}
+		}
+		scForVac := ""
+		if len(*scVacFile) > 0 {
+			storageClassFile := strings.TrimSpace(*scVacFile)
+			if len(storageClassFile) != 0 {
+				scForVac = storageClassFile
+			}
+		}
 		var ginkgoErrors []string
 		var testOutputDirs []string
 
@@ -565,6 +587,20 @@ func handle() error {
 			if err = runCSITests(testParams, outputDir); err != nil {
 				ginkgoErrors = append(ginkgoErrors, err.Error())
 			}
+		}
+		// Run volume modify tests
+		if len(scForVac) > 0 {
+			testParams.storageClassFile = scForVac
+			for _, vacFile := range applicableVacFiles {
+				outputDir := strings.TrimSuffix(vacFile, ".yaml")
+				testOutputDirs = append(testOutputDirs, outputDir)
+				testParams.volumeAttributesClassFile = vacFile
+				if err = runCSITests(testParams, outputDir); err != nil {
+					ginkgoErrors = append(ginkgoErrors, err.Error())
+				}
+			}
+			// Unset the VAC file for future tests
+			testParams.volumeAttributesClassFile = ""
 		}
 		// Run snapshot tests, if there are applicable files, using the first storage class.
 		if len(applicableStorageClassFiles) > 0 {
@@ -599,6 +635,9 @@ func handle() error {
 
 func generateGCETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
+	// Skip mount options test until we fix the invalid mount options for xfs.
+	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
+
 	v := apimachineryversion.MustParseSemantic(testParams.clusterVersion)
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
@@ -619,6 +658,10 @@ func generateGCETestSkip(testParams *testParameters) string {
 	if v.LessThan(apimachineryversion.MustParseSemantic("1.20.0")) {
 		skipString = skipString + "|fsgroupchangepolicy"
 	}
+	if v.LessThan(apimachineryversion.MustParseSemantic("1.31.0")) {
+		skipString = skipString + "|VolumeAttributesClass"
+	}
+
 	if testParams.platform == "windows" {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
@@ -643,6 +686,11 @@ func generateGKETestSkip(testParams *testParameters) string {
 	// Snapshot and restore test fixes were introduced after 1.26 in PR#972.
 	if curVer.lessThan(mustParseVersion("1.26.0")) {
 		skipString = skipString + "|should.provision.correct.filesystem.size.when.restoring.snapshot.to.larger.size.pvc"
+	}
+
+	// VolumeAttributesClasses were promoted to beta in 1.31, but is not supported on managed driver.
+	if curVer.lessThan(mustParseVersion("1.31.0")) || testParams.useGKEManagedDriver {
+		skipString = skipString + "|VolumeAttributesClass"
 	}
 
 	// "volumeMode should not mount / map unused volumes in a pod" tests a
@@ -754,14 +802,26 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 
 	focus := testParams.testFocus
 	skip := testParams.testSkip
+	focuses := []string{}
+	driver := "Driver:\\s*csi-gcepd.*"
 	// If testParams.snapshotClassFile is empty, then snapshot tests will be automatically skipped. Otherwise confirm
 	// the right tests are run.
 	if testParams.snapshotClassFile != "" && strings.Contains(skip, "VolumeSnapshotDataSource") {
 		return fmt.Errorf("Snapshot class file %s specified, but snapshot tests are skipped: %s", testParams.snapshotClassFile, skip)
 	}
 	if testParams.snapshotClassFile != "" {
-		// Run exactly the snapshot tests, if there is a snapshot class file.
-		focus = "Driver:\\s*csi-gcepd.*Feature:VolumeSnapshotDataSource"
+		// If there is a snapshot class file, run snapshot tests
+		focuses = append(focuses, "VolumeSnapshotDataSource")
+	}
+
+	// testParams.volumeAttributesClassFile is always set, so rely on test skip to determine if VAC tests should
+	// be run.
+	if testParams.volumeAttributesClassFile != "" && !strings.Contains(skip, "VolumeAttributesClass") {
+		focuses = append(focuses, "VolumeAttributesClass")
+	}
+
+	if len(focuses) > 0 {
+		focus = fmt.Sprintf("%sFeature:(%s)", driver, strings.Join(focuses, "|"))
 	}
 
 	ginkgoArgs := fmt.Sprintf("--ginkgo.focus=%s --ginkgo.skip=%s", focus, skip)

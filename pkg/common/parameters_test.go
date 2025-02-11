@@ -30,6 +30,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		labels                map[string]string
 		enableStoragePools    bool
 		enableDataCache       bool
+		enableMultiZone       bool
 		extraTags             map[string]string
 		expectParams          DiskParameters
 		expectDataCacheParams DataCacheParameters
@@ -346,6 +347,13 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			expectErr:          true,
 		},
 		{
+			name:               "invalid storage pool parameters, negative ProvisionedThroughputOnCreate",
+			enableStoragePools: true,
+			parameters:         map[string]string{ParameterKeyType: "hyperdisk-throughput", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyResourceTags: "parent1/key1/value1,parent2/key2/value2", ParameterKeyProvisionedThroughputOnCreate: "-50Mi"},
+			labels:             map[string]string{},
+			expectErr:          true,
+		},
+		{
 			name:               "storage pool parameters, enableStoragePools is false",
 			enableStoragePools: false,
 			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
@@ -401,11 +409,53 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			labels:          map[string]string{},
 			expectErr:       true,
 		},
+		{
+			name:            "multi-zone-enable parameters, multi-zone label is set, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
+			labels:          map[string]string{MultiZoneLabel: "true"},
+			enableMultiZone: true,
+			expectParams: DiskParameters{
+				DiskType:              "hyperdisk-ml",
+				ReplicationType:       "none",
+				Tags:                  map[string]string{},
+				Labels:                map[string]string{MultiZoneLabel: "true"},
+				ResourceTags:          map[string]string{},
+				MultiZoneProvisioning: true,
+			},
+		},
+		{
+			name:            "multi-zone-enable parameters, multi-zone label is false, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "false"},
+			enableMultiZone: true,
+			expectParams: DiskParameters{
+				DiskType:        "hyperdisk-ml",
+				ReplicationType: "none",
+				Tags:            map[string]string{},
+				ResourceTags:    map[string]string{},
+				Labels:          map[string]string{},
+			},
+		},
+		{
+			name:            "multi-zone-enable parameters, invalid value, multi-zone feature enabled",
+			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "unknown"},
+			enableMultiZone: true,
+			expectErr:       true,
+		},
+		{
+			name:       "multi-zone-enable parameters, multi-zone label is set, multi-zone feature disabled",
+			parameters: map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
+			expectErr:  true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, d, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, tc.enableDataCache, tc.extraTags)
+			pp := ParameterProcessor{
+				DriverName:         "testDriver",
+				EnableStoragePools: tc.enableStoragePools,
+				EnableMultiZone:    tc.enableMultiZone,
+			}
+			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.enableDataCache, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
@@ -413,7 +463,11 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(p, tc.expectParams); diff != "" {
+			if diff := cmp.Diff(tc.expectParams, p); diff != "" {
+				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
+			}
+
+			if diff := cmp.Diff(tc.expectDataCacheParams, d); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 
@@ -492,5 +546,27 @@ func TestSnapshotParameters(t *testing.T) {
 				t.Errorf("Got ExtractAndDefaultSnapshotParameters(%+v) = %+v; expect %+v", tc.parameters, p, tc.expectedSnapshotParames)
 			}
 		})
+	}
+}
+func TestExtractModifyVolumeParameters(t *testing.T) {
+	parameters := map[string]string{
+		"iops":       "1000",
+		"throughput": "500Mi",
+	}
+
+	iops := int64(1000)
+	throughput := int64(500)
+	expected := ModifyVolumeParameters{
+		IOPS:       &iops,
+		Throughput: &throughput,
+	}
+
+	result, err := ExtractModifyVolumeParameters(parameters)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Got ExtractModifyVolumeParameters(%+v) = %+v; want: %v", parameters, result, expected)
 	}
 }

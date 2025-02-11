@@ -8,4 +8,3 @@ spec:
       containers:
         - name: gce-pd-driver
           imagePullPolicy: Always
-

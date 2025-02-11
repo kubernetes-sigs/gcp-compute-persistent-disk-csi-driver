@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
@@ -73,6 +74,7 @@ func (gceDriver *GCEDriver) SetupGCEDriver(name, vendorVersion string, extraVolu
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 	}
 	gceDriver.AddControllerServiceCapabilities(csc)
 	ns := []csi.NodeServiceCapability_RPC_Type{
@@ -155,7 +157,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, enableDataCache bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, enableDataCache bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig, provisionableDisksConfig ProvisionableDisksConfig) *GCEControllerServer {
 	return &GCEControllerServer{
 		Driver:                      gceDriver,
 		CloudProvider:               cloudProvider,
@@ -167,15 +169,16 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		enableDataCache:             enableDataCache,
 		multiZoneVolumeHandleConfig: multiZoneVolumeHandleConfig,
 		listVolumesConfig:           listVolumesConfig,
+		provisionableDisksConfig:    provisionableDisksConfig,
 	}
 }
 
-func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelTracing bool) {
+func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelTracing bool, metricsManager *metrics.MetricsManager) {
 	maxLogChar = grpcLogCharCap
 
 	klog.V(4).Infof("Driver: %v", gceDriver.name)
 	//Start the nonblocking GRPC
-	s := NewNonBlockingGRPCServer(enableOtelTracing)
+	s := NewNonBlockingGRPCServer(enableOtelTracing, metricsManager)
 	// TODO(#34): Only start specific servers based on a flag.
 	// In the future have this only run specific combinations of servers depending on which version this is.
 	// The schema for that was in util. basically it was just s.start but with some nil servers.
