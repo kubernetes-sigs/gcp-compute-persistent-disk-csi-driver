@@ -1214,9 +1214,10 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Now force attach to the second instance without detaching.
 		tc1 := zoneToContext[zones[1]]
 		err, detacher, _ = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, attachAndMountArgs{
-			readOnly:    false,
-			useBlock:    false,
-			forceAttach: true,
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    true,
+			setupDataCache: false,
 		})
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed force attach in zone 1")

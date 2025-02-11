@@ -117,7 +117,7 @@ var _ = BeforeSuite(func() {
 			}(zone)
 			go func(curZone string) {
 				defer GinkgoRecover()
-				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType)
+				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType,strconv.Itoa(randInt))
 			}(zone)
 		}
 	}

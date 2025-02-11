@@ -102,42 +102,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
 			}
 
-		reduceVolumeGroup(vgNameForPv, false)
-		_, isCached := isCachingSetup(mainLvName)
-		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
-
-		if isCached {
-			klog.Infof("============================== Uncaching the LV %v==============================", mainLvName)
-			// Uncache LV
-			args = []string{
-				"--uncache",
-				vgNameForPv + "/" + mainLvName,
-				"--force",
-				"-y", // force remove cache without flushing data
-			}
-			info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
-			if err != nil {
-				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
-			}
-
-		reduceVolumeGroup(vgNameForPv, false)
-		_, isCached := isCachingSetup(mainLvName)
-		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
-
-		if isCached {
-			klog.Infof("============================== Uncaching the LV %v==============================", mainLvName)
-			// Uncache LV
-			args = []string{
-				"--uncache",
-				vgNameForPv + "/" + mainLvName,
-				"--force",
-				"-y", // force remove cache without flushing data
-			}
-			info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
-			if err != nil {
-				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
-			}
-
 			reduceVolumeGroup(vgNameForPv, false)
 		}
 		klog.V(2).Infof("============================== Merge VG %v to Node VG %v ==============================", vgNameForPv, volumeGroupName)

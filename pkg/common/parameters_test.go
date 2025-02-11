@@ -489,7 +489,6 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			if diff := cmp.Diff(tc.expectDataCacheParams, d); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
-
 		})
 	}
 }
