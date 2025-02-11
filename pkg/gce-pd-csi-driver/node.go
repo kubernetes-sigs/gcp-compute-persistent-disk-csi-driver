@@ -51,6 +51,13 @@ type GCENodeServer struct {
 	// for that same volume (as defined by VolumeID) return an Aborted error
 	volumeLocks *common.VolumeLocks
 
+	// enableDeviceInUseCheck, if true, will block NodeUnstageVolume requests if the specified
+	// device is still in use (or until --device-in-use-timeout is reached, if specified)
+	enableDeviceInUseCheck bool
+	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
+	// encounted for that device
+	deviceInUseErrors *deviceErrMap
+
 	// If set, this semaphore will be used to serialize formatAndMount. It will be raised
 	// when the operation starts, and lowered either when finished, or when
 	// formatAndMountTimeout has expired.
@@ -63,6 +70,14 @@ type GCENodeServer struct {
 	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedNodeServer
+}
+
+type NodeServerArgs struct {
+	// EnableDeviceInUseCheck enables functionality which will block NodeUnstageVolume request
+	// until the device is not in use
+	EnableDeviceInUseCheck bool
+
+	DeviceInUseTimeout time.Duration
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -94,6 +109,7 @@ func getDefaultFsType() string {
 		return defaultLinuxFsType
 	}
 }
+
 func (ns *GCENodeServer) isVolumePathMounted(path string) bool {
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(path)
 	klog.V(4).Infof("Checking volume path %s is mounted %t: error %v", path, !notMnt, err)
@@ -455,13 +471,19 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err.Error(), stagingTargetPath))
 	}
 
-	if err := ns.confirmDeviceUnused(volumeID); err != nil {
-		var targetErr *ignoreableError
-		if errors.As(err, &targetErr) {
-			klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
-		} else {
-			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
+	if ns.enableDeviceInUseCheck {
+		if err := ns.confirmDeviceUnused(volumeID); err != nil {
+			var ignoreableErr *ignoreableError
+			if errors.As(err, &ignoreableErr) {
+				klog.Warningf("Unable to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
+			} else if ns.deviceInUseErrors.deviceErrorExpired(volumeID) {
+				klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
+			} else {
+				ns.deviceInUseErrors.markDeviceError(volumeID)
+				return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
+			}
 		}
+		ns.deviceInUseErrors.deleteDevice(volumeID)
 	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)

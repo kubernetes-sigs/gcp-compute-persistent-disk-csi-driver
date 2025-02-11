@@ -64,6 +64,9 @@ var (
 	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 100, "Steps for wait for operation backoff")
 	waitForOpBackoffCap       = flag.Duration("wait-op-backoff-cap", 0, "Cap for wait for operation backoff")
 
+	enableDeviceInUseCheck = flag.Bool("enable-device-in-use-check-on-node-unstage", true, "If set to true, block NodeUnstageVolume requests until the specified device is not in use")
+	deviceInUseTimeout     = flag.Duration("device-in-use-timeout", 30*time.Second, "Max time to wait for a device to be unused when attempting to unstage. Exceeding the timeout will cause an unstage request to return success and ignore the device in use check.")
+
 	maxProcs                = flag.Int("maxprocs", 1, "GOMAXPROCS override")
 	maxConcurrentFormat     = flag.Int("max-concurrent-format", 1, "The maximum number of concurrent format exec calls")
 	concurrentFormatTimeout = flag.Duration("concurrent-format-timeout", 1*time.Minute, "The maximum duration of a format operation before its concurrency token is released")
@@ -241,7 +244,11 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
-		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
+		nsArgs := driver.NodeServerArgs{
+			EnableDeviceInUseCheck: *enableDeviceInUseCheck,
+			DeviceInUseTimeout:     *deviceInUseTimeout,
+		}
+		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}

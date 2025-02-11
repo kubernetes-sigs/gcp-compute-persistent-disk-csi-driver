@@ -1438,6 +1438,82 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
+	It("Should unpublish if there is an error unpublishing and device has been in use longer than timeout", func() {
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disk
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach Disk
+		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+
+		defer func() {
+			// Detach Disk
+			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("Failed to detach disk: %v", err)
+			}
+		}()
+
+		// Stage Disk
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volID, stageDir)
+		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
+
+		// Create private bind mount to keep the device's state as "in use"
+		boundMountStageDir := filepath.Join("/tmp/bindmount", volName, "bindmount")
+		boundMountStageMkdirOutput, err := instance.SSH("mkdir", "-p", boundMountStageDir)
+		Expect(err).To(BeNil(), "mkdir failed on instance %v: output: %v: %v", instance.GetNodeID(), boundMountStageMkdirOutput, err)
+		bindMountOutput, err := instance.SSH("mount", "--rbind", "--make-private", stageDir, boundMountStageDir)
+		Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindMountOutput, err)
+
+		privateBindMountRemoved := false
+		unmountAndRmPrivateBindMount := func() {
+			if !privateBindMountRemoved {
+				// Umount and delete private mount staging directory
+				bindUmountOutput, err := instance.SSH("umount", boundMountStageDir)
+				Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindUmountOutput, err)
+				err = testutils.RmAll(instance, boundMountStageDir)
+				Expect(err).To(BeNil(), "Failed to rm mount stage dir %s: %v", boundMountStageDir, err)
+			}
+			privateBindMountRemoved = true
+		}
+
+		defer func() {
+			unmountAndRmPrivateBindMount()
+		}()
+
+		// Unstage Disk. This should record a "deviceInUse" error
+		err = client.NodeUnstageVolume(volID, stageDir)
+		Expect(err).ToNot(BeNil(), "Expected failure during unstage")
+		Expect(err).To(MatchError(ContainSubstring(("is still in use"))))
+
+		// Wait 12s (10s timeout specified in CLI + 2s buffer) and try again
+		time.Sleep(12 * time.Second)
+		err = client.NodeUnstageVolume(volID, stageDir)
+		Expect(err).To(BeNil(), "Failed to unpublish after 10s in-use timeout for volume: %s, stageDir: %s, unexpected err: %s", volID, stageDir, err)
+
+		// Unstage Disk
+		fp := filepath.Join("/tmp/", volName)
+		err = testutils.RmAll(instance, fp)
+		Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
+	})
+
 	It("Should block unstage if filesystem mounted", func() {
 		testContext := getRandomTestContext()
 
