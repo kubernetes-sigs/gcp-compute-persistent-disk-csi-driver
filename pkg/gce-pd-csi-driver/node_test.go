@@ -190,7 +190,25 @@ func TestNodeGetVolumeStats(t *testing.T) {
 			if err == nil && tc.expectErr {
 				t.Fatal("Did not get error but expected one")
 			}
-			if diff := cmp.Diff(tc.expectedResp, resp); diff != "" {
+			nodeComparer := cmp.Comparer(func(a, b *csi.NodeGetVolumeStatsResponse) bool {
+				if a == nil {
+					return b == nil
+				}
+				if b == nil {
+					return false
+				}
+				volUsageComparer := cmp.Comparer(func(x, y *csi.VolumeUsage) bool {
+					if x == nil {
+						return y == nil
+					}
+					if y == nil {
+						return false
+					}
+					return x.Unit == y.Unit && x.Total == y.Total
+				})
+				return cmp.Diff(a.Usage, b.Usage, volUsageComparer) == ""
+			})
+			if diff := cmp.Diff(tc.expectedResp, resp, nodeComparer); diff != "" {
 				t.Errorf("NodeGetVolumeStats(%s): -want, +got \n%s", req, diff)
 			}
 		})

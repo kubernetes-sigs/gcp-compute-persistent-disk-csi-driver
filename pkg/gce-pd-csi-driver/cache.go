@@ -40,16 +40,10 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	raidedLocalSsdPath = raidedLssdPrefix + infoString
 
 	klog.V(2).Infof("============================== vgscan before vgcreate ==============================")
-	args := []string{}
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
-	if err != nil {
-		klog.Errorf("vgscan error %v: %s", err, info)
-	}
-	klog.V(2).Infof("============================== vgscan info contains volumeGroupName or not %v ==============================", strings.Contains(string(info), volumeGroupName))
-	// Check if the required volume group already exists
-	if strings.Contains(string(info), volumeGroupName) {
-		klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
+	vgExists := checkVgExists(volumeGroupName)
+	klog.V(2).Infof("============================== vgscan info contains volumeGroupName or not %v ==============================", vgExists)
 
+	if vgExists {
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
 	} else {
@@ -59,8 +53,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 	}
 
+	klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
 	// Check if the Physical Volume(PV) is part of some other volume group
-	args = []string{
+	args := []string{
 		"--select",
 		"pv_name=" + devicePath,
 		"-o",
@@ -216,9 +211,24 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	return mainDevicePath, nil
 }
 
+func checkVgExists(volumeGroupName string) bool {
+	args := []string{}
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
+	if err != nil {
+		klog.Errorf("vgscan error %v: %s", err, info)
+		return false
+	}
+	// Check if the required volume group already exists
+	return strings.Contains(string(info), volumeGroupName)
+}
+
 func cleanupCache(volumeId string, nodeId string) error {
 
 	volumeGroupName := getVolumeGroupName(nodeId)
+	if !checkVgExists(volumeGroupName) {
+		// If volume group doesn't exist then there's nothing to uncache
+		return nil
+	}
 	mainLvName := getLvName(mainLvSuffix, volumeId)
 	klog.V(2).Infof("============================== Deactivating volume %s/%s ==============================", volumeGroupName, mainLvName)
 	args := []string{
@@ -232,6 +242,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 	args = []string{
 		"--uncache",
 		volumeGroupName + "/" + mainLvName,
+		"-y",
 	}
 	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
 	if err != nil {

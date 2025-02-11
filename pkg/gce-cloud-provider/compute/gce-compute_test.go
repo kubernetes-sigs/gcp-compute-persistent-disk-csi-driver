@@ -122,7 +122,7 @@ func TestCodeForGCEOpError(t *testing.T) {
 		{
 			name:     "OPERATION_CANCELED_BY_USER error",
 			inputErr: computev1.OperationErrorErrors{Code: "OPERATION_CANCELED_BY_USER"},
-			expCode:  codes.Aborted,
+			expCode:  codes.Canceled,
 		},
 		{
 			name:     "QUOTA_EXCEEDED error",
@@ -163,6 +163,11 @@ func TestCodeForGCEOpError(t *testing.T) {
 			name:     "UNSUPPORTED_OPERATION error",
 			inputErr: computev1.OperationErrorErrors{Code: "UNSUPPORTED_OPERATION"},
 			expCode:  codes.InvalidArgument,
+		},
+		{
+			name:     "RESOURCE_OPERATION_RATE_EXCEEDED error",
+			inputErr: computev1.OperationErrorErrors{Code: "RESOURCE_OPERATION_RATE_EXCEEDED"},
+			expCode:  codes.ResourceExhausted,
 		},
 	}
 

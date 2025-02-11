@@ -106,7 +106,7 @@ func TestGetComputeVersion(t *testing.T) {
 		name               string
 		computeEndpoint    *url.URL
 		computeEnvironment Environment
-		computeVersion     Version
+		computeVersion     GCEAPIVersion
 		expectedEndpoint   string
 		expectError        bool
 	}{
@@ -115,7 +115,7 @@ func TestGetComputeVersion(t *testing.T) {
 			name:               "check for production environment",
 			computeEndpoint:    convertStringToURL("https://compute.googleapis.com"),
 			computeEnvironment: EnvironmentProduction,
-			computeVersion:     versionBeta,
+			computeVersion:     GCEAPIVersionBeta,
 			expectedEndpoint:   "https://compute.googleapis.com/compute/beta/",
 			expectError:        false,
 		},
@@ -123,7 +123,7 @@ func TestGetComputeVersion(t *testing.T) {
 			name:               "check for staging environment",
 			computeEndpoint:    convertStringToURL("https://compute.googleapis.com"),
 			computeEnvironment: EnvironmentStaging,
-			computeVersion:     versionV1,
+			computeVersion:     GCEAPIVersionV1,
 			expectedEndpoint:   "https://compute.googleapis.com/compute/staging_v1/",
 			expectError:        false,
 		},

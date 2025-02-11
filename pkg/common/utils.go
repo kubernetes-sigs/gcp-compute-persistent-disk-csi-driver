@@ -23,10 +23,12 @@ import (
 	"hash/fnv"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"github.com/googleapis/gax-go/v2/apierror"
 	"golang.org/x/time/rate"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
@@ -73,7 +75,11 @@ const (
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type
 	machineTypePattern = "zones/[^/]+/machineTypes/([^/]+)$"
-	alphanums          = "bcdfghjklmnpqrstvwxz2456789"
+
+	// Full or partial URL of the zone resource, in the format:
+	//   projects/{project}/zones/{zone}
+	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
+	alphanums      = "bcdfghjklmnpqrstvwxz2456789"
 )
 
 var (
@@ -86,12 +92,15 @@ var (
 
 	storagePoolFieldsRegex = regexp.MustCompile(`^projects/([^/]+)/zones/([^/]+)/storagePools/([^/]+)$`)
 
+	zoneURIRegex = regexp.MustCompile(zoneURIPattern)
+
 	// userErrorCodeMap tells how API error types are translated to error codes.
 	userErrorCodeMap = map[int]codes.Code{
 		http.StatusForbidden:       codes.PermissionDenied,
 		http.StatusBadRequest:      codes.InvalidArgument,
 		http.StatusTooManyRequests: codes.ResourceExhausted,
 		http.StatusNotFound:        codes.NotFound,
+		http.StatusConflict:        codes.FailedPrecondition,
 	}
 
 	validDataCacheMode = []string{DataCacheModeWriteBack, DataCacheModeWriteThrough}
@@ -100,6 +109,8 @@ var (
 	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
 	regexKey    = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
 	regexValue  = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.@%=+:,*#&()\[\]{}\-\s]{0,61}[a-zA-Z0-9])?$`)
+
+	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -436,7 +447,6 @@ func CodeForError(sourceError error) codes.Code {
 	if sourceError == nil {
 		return codes.Internal
 	}
-
 	if code, err := isUserMultiAttachError(sourceError); err == nil {
 		return code
 	}
@@ -446,12 +456,10 @@ func CodeForError(sourceError error) codes.Code {
 	if code, err := isContextError(sourceError); err == nil {
 		return code
 	}
-
-	var apiErr *googleapi.Error
-	if !errors.As(sourceError, &apiErr) {
-		return codes.Internal
+	if code, err := isConnectionResetError(sourceError); err == nil {
+		return code
 	}
-	if code, ok := userErrorCodeMap[apiErr.Code]; ok {
+	if code, err := isGoogleAPIError(sourceError); err == nil {
 		return code
 	}
 
@@ -477,6 +485,20 @@ func isContextError(err error) (codes.Code, error) {
 	return codes.Unknown, fmt.Errorf("Not a context error: %w", err)
 }
 
+// isConnectionResetError returns the grpc error code Unavailable if the
+// passed in error contains the "connection reset by peer" string.
+func isConnectionResetError(err error) (codes.Code, error) {
+	if err == nil {
+		return codes.Unknown, fmt.Errorf("null error")
+	}
+
+	errStr := err.Error()
+	if strings.Contains(errStr, "connection reset by peer") {
+		return codes.Unavailable, nil
+	}
+	return codes.Unknown, fmt.Errorf("Not a connection reset error: %w", err)
+}
+
 // isUserMultiAttachError returns an InvalidArgument if the error is
 // multi-attach detected from the API server. If we get this error from the API
 // server, it means that the kubelet doesn't know about the multiattch so it is
@@ -488,25 +510,109 @@ func isUserMultiAttachError(err error) (codes.Code, error) {
 	return codes.Unknown, fmt.Errorf("Not a user multiattach error: %w", err)
 }
 
+// existingErrorCode returns the existing gRPC Status error code for the given error, if one exists,
+// or an error if one doesn't exist. Since github.com/googleapis/gax-go/v2/apierror now wraps googleapi
+// errors (returned from GCE API calls), and sets their status error code to Unknown, we now have to
+// make sure we only return existing error codes from errors that are either TemporaryErrors, or errors
+// that do not wrap googleAPI errors. Otherwise, we will return Unknown for all GCE API calls that
+// return googleapi errors.
 func existingErrorCode(err error) (codes.Code, error) {
 	if err == nil {
 		return codes.Unknown, fmt.Errorf("null error")
 	}
-	if status, ok := status.FromError(err); ok {
-		return status.Code(), nil
+	var tmpError *TemporaryError
+	// This explicitly checks our error is a temporary error before extracting its
+	// status, as there can be other errors that can qualify as statusable
+	// while not necessarily being temporary.
+	if errors.As(err, &tmpError) {
+		if status, ok := status.FromError(err); ok {
+			return status.Code(), nil
+		}
 	}
+	// We want to make sure we catch other error types that are statusable.
+	// (eg. grpc-go/internal/status/status.go Error struct that wraps a status)
+	var googleErr *googleapi.Error
+	if !errors.As(err, &googleErr) {
+		if status, ok := status.FromError(err); ok {
+			return status.Code(), nil
+		}
+	}
+
 	return codes.Unknown, fmt.Errorf("no existing error code for %w", err)
 }
 
-func LoggedError(msg string, err error) error {
+// isGoogleAPIError returns the gRPC status code for the given googleapi error by mapping
+// the googleapi error's HTTP code to the corresponding gRPC error code. If the error is
+// wrapped in an APIError (github.com/googleapis/gax-go/v2/apierror), it maps the wrapped
+// googleAPI error's HTTP code to the corresponding gRPC error code. Returns an error if
+// the given error is not a googleapi error.
+func isGoogleAPIError(err error) (codes.Code, error) {
+	var googleErr *googleapi.Error
+	if !errors.As(err, &googleErr) {
+		return codes.Unknown, fmt.Errorf("error %w is not a googleapi.Error", err)
+	}
+	var sourceCode int
+	var apiErr *apierror.APIError
+	if errors.As(err, &apiErr) {
+		// When googleapi.Err is used as a wrapper, we return the error code of the wrapped contents.
+		sourceCode = apiErr.HTTPCode()
+	} else {
+		// Rely on error code in googleapi.Err when it is our primary error.
+		sourceCode = googleErr.Code
+	}
+	// Map API error code to user error code.
+	if code, ok := userErrorCodeMap[sourceCode]; ok {
+		return code, nil
+	}
+
+	return codes.Unknown, fmt.Errorf("googleapi.Error %w does not map to any known errors", err)
+}
+
+func loggedErrorForCode(msg string, code codes.Code, err error) error {
 	klog.Errorf(msg+"%v", err.Error())
-	return status.Errorf(CodeForError(err), msg+"%v", err.Error())
+	return status.Errorf(code, msg+"%v", err.Error())
+}
+
+func LoggedError(msg string, err error) error {
+	return loggedErrorForCode(msg, CodeForError(err), err)
+}
+
+// NewCombinedError tries to return an appropriate wrapped error that captures
+// useful information as an error code
+// If there are multiple errors, it extracts the first "retryable" error
+// as interpreted by the CSI sidecar.
+func NewCombinedError(msg string, errs []error) error {
+	// If there is only one error, return it as the single error code
+	if len(errs) == 1 {
+		LoggedError(msg, errs[0])
+	}
+
+	for _, err := range errs {
+		code := CodeForError(err)
+		if slices.Contains(csiRetryableErrorCodes, code) {
+			// Return this as a TemporaryError to lock-in the retryable code
+			// This will invoke the "existing" error code check in CodeForError
+			return NewTemporaryError(code, fmt.Errorf("%s: %w", msg, err))
+		}
+	}
+
+	// None of these error codes were retryable. Just return a combined error
+	// The first matching error (based on our CodeForError) logic will be returned.
+	return LoggedError(msg, errors.Join(errs...))
 }
 
 func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
 	// Validate key against default kmskey pattern
 	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
 	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
+}
+
+func ParseZoneFromURI(zoneURI string) (string, error) {
+	zoneMatch := zoneURIRegex.FindStringSubmatch(zoneURI)
+	if zoneMatch == nil {
+		return "", fmt.Errorf("failed to parse zone URI. Expected projects/{project}/zones/{zone}. Got: %s", zoneURI)
+	}
+	return zoneMatch[1], nil
 }
 
 // ParseStoragePools returns an error if none of the given storagePools

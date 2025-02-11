@@ -43,7 +43,13 @@ var (
 	boskos, _ = boskosclient.NewClient(os.Getenv("JOB_NAME"), "http://boskos", "", "")
 )
 
-func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint string) (*remote.TestContext, error) {
+type DriverConfig struct {
+	ComputeEndpoint string
+	ExtraFlags      []string
+	Zones           []string
+}
+
+func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverConfig) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
 	goPath, ok := os.LookupEnv("GOPATH")
 	if !ok {
@@ -57,14 +63,19 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, computeEndpoint stri
 		fmt.Sprintf("--extra-labels=%s=%s", DiskLabelKey, DiskLabelValue),
 		"--max-concurrent-format-and-mount=20", // otherwise the serialization times out the e2e test.
 		"--multi-zone-volume-handle-enable",
-		"--multi-zone-volume-handle-disk-types=pd-standard",
+		"--multi-zone-volume-handle-disk-types=pd-standard,hyperdisk-ml",
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
+		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
+		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
+		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
+
 		"--enable-controller-data-cache",
 		"--enable-node-data-cache",
 		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
 	}
-	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", computeEndpoint))
+	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
+	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
 
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
@@ -153,7 +164,7 @@ func SetupProwConfig(resourceType string) (project, serviceAccount string) {
 	return project, serviceAccount
 }
 
-func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string) error {
+func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string, recursive bool) error {
 	originalumask, err := instance.SSHNoSudo("umask")
 	if err != nil {
 		return fmt.Errorf("failed to umask. Output: %v, errror: %v", originalumask, err.Error())
@@ -162,7 +173,13 @@ func ForceChmod(instance *remote.InstanceInfo, filePath string, perms string) er
 	if err != nil {
 		return fmt.Errorf("failed to umask. Output: %v, errror: %v", output, err.Error())
 	}
-	output, err = instance.SSH("chmod", "-R", perms, filePath)
+	chmodOptions := []string{}
+	if recursive {
+		chmodOptions = []string{"-R"}
+	}
+	chmodOptions = append(chmodOptions, perms, filePath)
+	chmodCmd := append([]string{"chmod"}, chmodOptions...)
+	output, err = instance.SSH(chmodCmd...)
 	if err != nil {
 		return fmt.Errorf("failed to chmod file %s. Output: %v, errror: %v", filePath, output, err.Error())
 	}
@@ -264,6 +281,7 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 }
 
 func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	_, _ = instance.SSH("apt-get", "update")
 	for _, pkg := range pkgs {
 		output, err := instance.SSH("apt-get", "install", "-y", pkg)
 		if err != nil {
@@ -292,7 +310,7 @@ func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
 // ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
 // link location - it then finds the backing PD using either scsi_id or
 // google_nvme_id (depending on the /dev path) and validates that it is the
-// same as diskName
+// same as diskName“
 func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName string) (bool, error) {
 	const (
 		scsiPattern       = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`
@@ -308,11 +326,13 @@ func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName str
 
 	devFsPath, err := instance.SSH("find", link, "-printf", "'%l'")
 	if err != nil {
-		return false, fmt.Errorf("failed to find symbolic link for %s. Output: %v, errror: %v", link, devFsPath, err.Error())
+		// Skip over if there is no matching symlink.
+		return false, nil
 	}
 	if len(devFsPath) == 0 {
 		return false, nil
 	}
+
 	if sdx := sdRegex.FindString(devFsPath); len(sdx) != 0 {
 		fullDevPath := path.Join("/dev/", string(sdx))
 		scsiIDOut, err := instance.SSH("/lib/udev_containerized/scsi_id", "--page=0x83", "--whitelisted", fmt.Sprintf("--device=%v", fullDevPath))
