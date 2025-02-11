@@ -235,7 +235,6 @@ func handle() {
 		}
 	}
 
-	klog.Infof("NODE NAME for DATACACHE TEST %v", *nodeName)
 	if *enableNodeDataCacheFlag {
 		if nodeName == nil || *nodeName == "" {
 			klog.Errorf("Data cache enabled, but --node-name not passed")
@@ -327,6 +326,14 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 }
 
 func setupDataCache(ctx context.Context, nodeName string) error {
+	isAlreadyRaided, err := driver.IsRaided()
+	if err != nil {
+		klog.V(2).Infof("============================== Errored while scanning for available LocalSSDs err:%v; continuing Raiding ==============================", err)
+	} else if isAlreadyRaided {
+		klog.V(2).Infof("============================== Local SSDs are already RAIDed. Skipping Datacache setup ==============================")
+		return nil
+	}
+
 	lssdCount := common.LocalSSDCountForDataCache
 	if nodeName != common.TestNode {
 		var err error
@@ -339,7 +346,7 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 	if err != nil {
 		klog.Fatalf("Failed to get sufficient SSDs for Datacache's caching setup: %v", err)
 	}
-	klog.V(2).Info("Raiding local ssds to setup data cache")
+	klog.V(2).Infof("Raiding local ssds to setup data cache: %v", lssdNames)
 	if err := driver.RaidLocalSsds(lssdNames); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
 	}

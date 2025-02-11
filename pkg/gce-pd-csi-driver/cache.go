@@ -220,7 +220,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 
 func ValidateDataCacheConfig(dataCacheMode string, datacacheSize string, ctx context.Context, nodeName string) error {
 	if dataCacheMode != "" && datacacheSize != "" {
-		isAlreadyRaided, err := isRaided()
+		isAlreadyRaided, err := IsRaided()
 		if err != nil {
 			return fmt.Errorf("Local SSDs are not setup for caching; got error: %v", err)
 		}
@@ -421,14 +421,6 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 }
 
 func RaidLocalSsds(availableLssds []string) error {
-	isAlreadyRaided, err := isRaided()
-	if err != nil {
-		klog.V(2).Infof("============================== Errored while scanning for available LocalSSDs err:%v; continuing Raiding ==============================", err)
-	} else if isAlreadyRaided {
-		klog.V(2).Infof("============================== Local SSDs are already RAIDed ==============================")
-		return nil
-	}
-
 	args := []string{
 		"--create",
 		raidedLssdPrefix + raidedLocalSsdName,
@@ -444,7 +436,7 @@ func RaidLocalSsds(availableLssds []string) error {
 		return fmt.Errorf("errored while RAIDing LSSDs info: %v; err:%v", info, err)
 	}
 	// Validate if Raided successfully
-	isAlreadyRaided, err = isRaided()
+	isAlreadyRaided, err := IsRaided()
 	if err != nil {
 		klog.V(2).Infof("============================== Errored while scanning for available raided LocalSSDs err:%v ==============================", err)
 	}
@@ -462,7 +454,7 @@ func RaidLocalSsds(availableLssds []string) error {
 	return nil
 }
 
-func isRaided() (bool, error) {
+func IsRaided() (bool, error) {
 	args := []string{
 		"--detail",
 		"--scan",

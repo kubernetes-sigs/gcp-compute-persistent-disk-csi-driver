@@ -31,7 +31,6 @@ import (
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -140,7 +139,7 @@ func getRemoteInstanceConfig() *remote.InstanceConfig {
 func NewTestContext(zone string, instanceNumber string) *remote.TestContext {
 	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s-%v", zone, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
-	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService, common.LocalSSDCountForDataCache)
+	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService, 4)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
