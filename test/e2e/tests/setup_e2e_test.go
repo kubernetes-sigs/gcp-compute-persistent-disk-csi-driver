@@ -53,13 +53,15 @@ var (
 	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
 	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
+	hdMachineType             = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on")
+	hdMinCpuPlatform          = flag.String("hyperdisk-min-cpu-platform", "sapphirerapids", "Minimum CPU architecture")
 
-	testContexts            = []*remote.TestContext{}
-	multiWriterTestContexts = []*remote.TestContext{}
-	computeService          *compute.Service
-	computeAlphaService     *computealpha.Service
-	computeBetaService      *computebeta.Service
-	kmsClient               *cloudkms.KeyManagementClient
+	testContexts          = []*remote.TestContext{}
+	hyperdiskTestContexts = []*remote.TestContext{}
+	computeService        *compute.Service
+	computeAlphaService   *computealpha.Service
+	computeBetaService    *computebeta.Service
+	kmsClient             *cloudkms.KeyManagementClient
 )
 
 func init() {
@@ -119,6 +121,9 @@ var _ = BeforeSuite(func() {
 		mwTc := <-mwTcc
 		multiWriterTestContexts = append(multiWriterTestContexts, mwTc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
+		tc = <-hdtcc
+		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
+		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
 })
 
@@ -150,7 +155,11 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewTestContext(zone string, machineType string, minCpuPlatform string) *remote.TestContext {
+func NewDefaultTestContext(zone string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType)
+}
+
+func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContext {
 	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
 	klog.Infof("Setting up node %s", nodeID)
 

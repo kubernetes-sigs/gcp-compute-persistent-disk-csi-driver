@@ -1409,7 +1409,7 @@ func TestIsUserMultiAttachError(t *testing.T) {
 		},
 	}
 	for _, test := range cases {
-		code, err := isUserMultiAttachError(fmt.Errorf("%s", test.errorString))
+		code, err := isUserMultiAttachError(fmt.Errorf("%v", test.errorString))
 		if test.expectCode {
 			if err != nil || code != test.expectedCode {
 				t.Errorf("Failed with non-nil error %v or bad code %v: %s", err, code, test.errorString)

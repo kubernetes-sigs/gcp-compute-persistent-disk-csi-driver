@@ -411,8 +411,8 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 	}
 
 	locationType := disk.LocationType()
-	if (params.ReplicationType == "none" && locationType != meta.Zonal) || (params.ReplicationType == "regional-pd" && locationType != meta.Regional) {
-		return fmt.Errorf("actual disk replication type %v did not match expected param %s", locationType, params.ReplicationType)
+	if (params.ReplicationType == "none" && locationType != meta.Zonal) || (params.IsRegional() && locationType != meta.Regional) {
+		return fmt.Errorf("actual replication type %v did not match expected param %s and %s", locationType, params.ReplicationType, params.DiskType)
 	}
 
 	if !KmsKeyEqual(

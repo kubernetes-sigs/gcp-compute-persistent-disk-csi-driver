@@ -64,6 +64,7 @@ const (
 	hdxDiskType                               = "hyperdisk-extreme"
 	hdtDiskType                               = "hyperdisk-throughput"
 	hdmlDiskType                              = "hyperdisk-ml"
+	hdhaDiskType                              = "hyperdisk-balanced-high-availability"
 	provisionedIOPSOnCreate                   = "12345"
 	provisionedIOPSOnCreateInt                = int64(12345)
 	provisionedIOPSOnCreateDefaultInt         = int64(100000)

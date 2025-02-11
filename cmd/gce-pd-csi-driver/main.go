@@ -72,6 +72,7 @@ var (
 	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -222,7 +223,7 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
