@@ -23,7 +23,6 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -42,8 +41,6 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
-
-const gkeTopologyLabelPrefix = "topology.gke.io/"
 
 type GCENodeServer struct {
 	Driver          *GCEDriver
@@ -531,6 +528,9 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		MaxVolumesPerNode:  volumeLimits,
 		AccessibleTopology: top,
 	}
+
+	klog.V(2).Infof("Returning NodeGetInfoResponse: %+v", resp)
+
 	return resp, err
 }
 
@@ -547,16 +547,13 @@ func (ns *GCENodeServer) gkeTopologyLabels(ctx context.Context, nodeName string)
 
 	topology := make(map[string]string)
 	for k, v := range node.GetLabels() {
-		if isGKETopologyLabel(k) {
+		if common.IsGKETopologyLabel(k) {
+			klog.V(2).Infof("Including node topology label %q=%q", k, v)
 			topology[k] = v
 		}
 	}
 
 	return topology, nil
-}
-
-func isGKETopologyLabel(key string) bool {
-	return strings.HasPrefix(key, gkeTopologyLabelPrefix)
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
