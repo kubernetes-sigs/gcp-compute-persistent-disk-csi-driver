@@ -1066,9 +1066,8 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if gceCS.enableDataCache && req.GetVolumeContext() != nil {
 		if req.GetVolumeContext()[common.ContextDataCacheSize] != "" {
 			pubVolResp.PublishContext = map[string]string{}
-			pubVolResp.PublishContext[common.ContextLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
+			pubVolResp.PublishContext[common.ContexLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
 			pubVolResp.PublishContext[common.ContextDataCacheMode] = req.GetVolumeContext()[common.ContextDataCacheMode]
-			pubVolResp.PublishContext[common.ContextDiskSource] = req.GetVolumeContext()[common.ContextDiskSource]
 		}
 	}
 
@@ -2409,7 +2408,6 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 			}
 		}
 		createResp.Volume.ContentSource = contentSource
-		createResp.Volume.VolumeContext[common.ContextDiskSource] = "true"
 	}
 	klog.V(2).Infof("====== CreateVolumeResponse is %v ======", createResp)
 	return createResp

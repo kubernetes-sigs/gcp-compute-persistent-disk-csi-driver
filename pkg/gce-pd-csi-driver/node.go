@@ -323,33 +323,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// LVM PoC Steps
 	klog.V(2).Infof("====== NodeStageVolume PublishContext is %v ======", req.GetPublishContext())
-	if ns.EnableDataCache && req.GetPublishContext()[common.ContextLocalSsdCacheSize] != "" {
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
 		devFsPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
-		}
-		// Data Cache Existing Disk Logic
-		if req.GetPublishContext()[common.ContextDiskSource] == "true" {
-			klog.V(2).Infof("Setting up data cache for existing disk for dev %v", devFsPath)
-			infodeviceblock, err := FetchBlockDevice(devFsPath)
-			if err != nil {
-				klog.Errorf("FetchBlockDevice() got error: %v", err)
-			}
-			klog.V(2).Infof("Got Block Device Info for %v: %v", devFsPath, infodeviceblock)
-
-			// Check if LVM Configured
-			isLVMConfigured, err := isLVMConfigured(devFsPath)
-			klog.V(2).Infof("isLVMConfigured for device %v: %v", devFsPath, isLVMConfigured)
-			if err != nil {
-				klog.Errorf("isLVMConfigured() got error: %v", err)
-			}
-
-			// Check if device is a valid filesystem and have only 1 superblock layer
-			isValidFs, err := isFilesystemSupported(devFsPath)
-			klog.V(2).Infof("isValidFs for device %v: %v", devFsPath, isValidFs)
-			if err != nil {
-				klog.Errorf("FetchBlockDevice() got error: %v", err)
-			}
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {

@@ -43,7 +43,6 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
 	// Check if the Physical Volume(PV) is part of some other volume group
 	args := []string{
-	args := []string{
 		"--select",
 		"pv_name=" + devicePath,
 		"-o",
@@ -145,7 +144,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(2).Infof("==============================Assuming valid data cache size and mode, resizing is not supported==============================")
 	} else {
-		fastCacheSize := req.GetPublishContext()[common.ContextLocalSsdCacheSize]
+		fastCacheSize := req.GetPublishContext()[common.ContexLocalSsdCacheSize]
 		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
 		klog.V(2).Infof("============================== fastCacheSize is %v GiB ==============================", fastCacheSize)
 		klog.V(2).Infof("============================== lvcreate fast cache layer again with the VolumeGroup %v==============================", volumeGroupName)
@@ -392,88 +391,6 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		return nil, true
 	}
 	return nil, false
-}
-
-type BlockDevice struct {
-	UUID        string
-	Disk_format string
-}
-
-func FetchBlockDevice(device string) (*BlockDevice, error) {
-	klog.V(2).Infof("============================== Fetching block device info for devpath %v ==============================", device)
-	info := &BlockDevice{}
-	// UUID
-	args := []string{
-		"-p",
-		"-o",
-		"value",
-		"-s",
-		"UUID",
-		"--",
-		device,
-	}
-	uuid, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "blkid", args...)
-	if err != nil {
-		return nil, fmt.Errorf("blkid error %v", err)
-	}
-	info.UUID = string(uuid)
-	klog.V(2).Infof("============== UUID is %v for device %v ==============", string(uuid), device)
-
-	//Disk Format
-	args[4] = "TYPE"
-	disk_format, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "blkid", args...)
-	if err != nil {
-		return nil, fmt.Errorf("blkid error %v", err)
-	}
-	klog.V(2).Infof("============== Disk format is %v for device %v ==============", string(disk_format), device)
-	info.Disk_format = string(disk_format)
-	return info, nil
-}
-
-// Function to check if device path is LVM configured.
-// This is meant to keep track of state of device at different stages.
-func isLVMConfigured(device string) (bool, error) {
-	args := []string{
-		"-p",
-		"-o",
-		"value",
-		"-s",
-		"TYPE",
-		"--",
-		device,
-	}
-	format, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "blkid", args...)
-	if err != nil {
-		return false, fmt.Errorf("blkid error %v", err)
-	}
-	if string(format) == "LVM2_member" {
-		return true, nil
-	}
-	return false, nil
-}
-
-func isFilesystemSupported(device string) (bool, error) {
-	args := []string{
-		"-p",
-		"-o",
-		"value",
-		"-s",
-		"TYPE",
-		"--",
-		device,
-	}
-	format, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "blkid", args...)
-	if err != nil {
-		return false, fmt.Errorf("blkid error %v", err)
-	}
-	klog.V(2).Infof("Filesystem for  %v is %v", device, string(format))
-
-	switch strings.ToLower(string(format)) {
-	case "ext4", "xfs", "ntfs", "ext3":
-		return true, nil
-	default:
-		return false, nil
-	}
 }
 
 func StartWatcher(nodeName string) {
