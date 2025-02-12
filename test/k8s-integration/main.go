@@ -867,16 +867,11 @@ func runTestsWithConfig(testParams *testParameters, testConfigArg, reportPrefix 
 			// path sent to kubetest2 through its --artifacts path
 
 			// pkg/_artifacts is the default value that kubetests uses for --artifacts
-			kubernetesTestBinariesPath := filepath.Join(testParams.pkgDir, "_artifacts")
-			if kubetestDumpDir != "" {
-				// a custom artifacts dir was set
-				kubernetesTestBinariesPath = kubetestDumpDir
-			}
+			kubernetesTestBinariesPath := filepath.Join(testParams.pkgDir, "_rundir")
 			kubernetesTestBinariesPath = filepath.Join(kubernetesTestBinariesPath, runID)
 
 			klog.Infof("Copying kubernetes binaries to path=%s to run the tests", kubernetesTestBinariesPath)
-			err := copyKubernetesTestBinaries(testParams.k8sSourceDir, kubernetesTestBinariesPath)
-			if err != nil {
+			if err := copyKubernetesTestBinaries(testParams.k8sSourceDir, kubernetesTestBinariesPath); err != nil {
 				return fmt.Errorf("failed to copy the kubernetes test binaries, err=%v", err.Error())
 			}
 			kubeTest2Args = append(kubeTest2Args, "--use-built-binaries")
