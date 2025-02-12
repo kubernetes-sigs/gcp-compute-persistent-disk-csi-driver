@@ -90,6 +90,24 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 		klog.V(4).Infof("Set Kubernetes feature gates: %v", *kubeFeatureGates)
 	}
 
+	if len(*kubeRuntimeConfig) != 0 {
+		err = os.Setenv("KUBE_RUNTIME_CONFIG", *kubeRuntimeConfig)
+		if err != nil {
+			return fmt.Errorf("failed to set kubernetes runtime config: %w", err)
+		}
+		klog.V(4).Infof("Set Kubernetes runtime config: %v", *kubeRuntimeConfig)
+		// If runtime config is set, we will update the machine type to support hyperdisks
+		err = os.Setenv("NODE_SIZE", "c3-standard-4")
+		if err != nil {
+			return fmt.Errorf("failed to set NODE_SIZE: %w", err)
+		}
+		// The node disk type also needs to be updated
+		err = os.Setenv("NODE_DISK_TYPE", "pd-ssd")
+		if err != nil {
+			return fmt.Errorf("failed to set NODE_DISK_TYPE: %w", err)
+		}
+	}
+
 	err = setImageTypeEnvs(imageType)
 	if err != nil {
 		return fmt.Errorf("failed to set image type environment variables: %w", err)

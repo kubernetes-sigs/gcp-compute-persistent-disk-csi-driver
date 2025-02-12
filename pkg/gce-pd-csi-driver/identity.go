@@ -24,6 +24,10 @@ import (
 
 type GCEIdentityServer struct {
 	Driver *GCEDriver
+
+	// Embed UnimplementedIdentityServer to ensure the driver returns Unimplemented for any
+	// new RPC methods that might be introduced in future versions of the spec.
+	csi.UnimplementedIdentityServer
 }
 
 // GetPluginInfo(context.Context, *GetPluginInfoRequest) (*GetPluginInfoResponse, error)

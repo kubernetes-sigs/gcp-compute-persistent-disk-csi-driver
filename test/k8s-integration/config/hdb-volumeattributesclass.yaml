@@ -1,0 +1,8 @@
+apiVersion: storage.k8s.io/v1beta1
+kind: VolumeAttributesClass
+metadata:
+  name: csi-gcepd-hdb-vac
+driverName: pd.csi.storage.gke.io
+parameters:
+  iops: "3600"
+  throughput: "290Mi"

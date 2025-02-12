@@ -97,7 +97,6 @@ const apiVersion = "alpha"
 const basePath = "https://compute.googleapis.com/compute/alpha/"
 const basePathTemplate = "https://compute.UNIVERSE_DOMAIN/compute/alpha/"
 const mtlsBasePath = "https://compute.mtls.googleapis.com/compute/alpha/"
-const defaultUniverseDomain = "googleapis.com"
 
 // OAuth2 scopes used by this API.
 const (
@@ -138,7 +137,6 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	opts = append(opts, internaloption.WithDefaultEndpoint(basePath))
 	opts = append(opts, internaloption.WithDefaultEndpointTemplate(basePathTemplate))
 	opts = append(opts, internaloption.WithDefaultMTLSEndpoint(mtlsBasePath))
-	opts = append(opts, internaloption.WithDefaultUniverseDomain(defaultUniverseDomain))
 	client, endpoint, err := htransport.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
@@ -2098,7 +2096,7 @@ type AccessConfig struct {
 	// PublicPtrDomainName: The DNS domain name for the public PTR record. You can
 	// set this field only if the `setPublicPtr` field is enabled in accessConfig.
 	// If this field is unspecified in ipv6AccessConfig, a default PTR record will
-	// be createc for first IP in associated external IPv6 range.
+	// be created for first IP in associated external IPv6 range.
 	PublicPtrDomainName string `json:"publicPtrDomainName,omitempty"`
 	// SecurityPolicy: [Output Only] The resource URL for the security policy
 	// associated with this access config.
@@ -3142,9 +3140,10 @@ type AttachedDisk struct {
 	// when you create a snapshot or an image from the disk or when you attach the
 	// disk to a virtual machine instance. If you do not provide an encryption key,
 	// then the disk will be encrypted using an automatically generated key and you
-	// do not need to provide a key to use the disk later. Instance templates do
-	// not store customer-supplied encryption keys, so you cannot use your own keys
-	// to encrypt disks in a managed instance group.
+	// do not need to provide a key to use the disk later. Note: Instance templates
+	// do not store customer-supplied encryption keys, so you cannot use your own
+	// keys to encrypt disks in a managed instance group. You cannot create VMs
+	// that have disks with customer-supplied keys using the bulk insert method.
 	DiskEncryptionKey *CustomerEncryptionKey `json:"diskEncryptionKey,omitempty"`
 	// DiskSizeGb: The size of the disk in GB.
 	DiskSizeGb int64 `json:"diskSizeGb,omitempty,string"`
@@ -3212,12 +3211,12 @@ type AttachedDisk struct {
 	// on disk
 	ShieldedInstanceInitialState *InitialStateConfig `json:"shieldedInstanceInitialState,omitempty"`
 	// Source: Specifies a valid partial or full URL to an existing Persistent Disk
-	// resource. When creating a new instance, one of initializeParams.sourceImage
-	// or initializeParams.sourceSnapshot or disks.source is required except for
-	// local SSD. If desired, you can also attach existing non-root persistent
-	// disks using this property. This field is only applicable for persistent
-	// disks. Note that for InstanceTemplate, specify the disk name for zonal disk,
-	// and the URL for regional disk.
+	// resource. When creating a new instance boot disk, one of
+	// initializeParams.sourceImage or initializeParams.sourceSnapshot or
+	// disks.source is required. If desired, you can also attach existing non-root
+	// persistent disks using this property. This field is only applicable for
+	// persistent disks. Note that for InstanceTemplate, specify the disk name for
+	// zonal disk, and the URL for regional disk.
 	Source string `json:"source,omitempty"`
 	// Type: Specifies the type of the disk, either SCRATCH or PERSISTENT. If not
 	// specified, the default is PERSISTENT.
@@ -3350,13 +3349,12 @@ type AttachedDiskInitializeParams struct {
 	// template, specify only the resource policy name.
 	ResourcePolicies []string `json:"resourcePolicies,omitempty"`
 	// SourceImage: The source image to create this disk. When creating a new
-	// instance, one of initializeParams.sourceImage or
-	// initializeParams.sourceSnapshot or disks.source is required except for local
-	// SSD. To create a disk with one of the public operating system images,
-	// specify the image by its family name. For example, specify family/debian-9
-	// to use the latest Debian 9 image:
-	// projects/debian-cloud/global/images/family/debian-9 Alternatively, use a
-	// specific version of a public operating system image:
+	// instance boot disk, one of initializeParams.sourceImage or
+	// initializeParams.sourceSnapshot or disks.source is required. To create a
+	// disk with one of the public operating system images, specify the image by
+	// its family name. For example, specify family/debian-9 to use the latest
+	// Debian 9 image: projects/debian-cloud/global/images/family/debian-9
+	// Alternatively, use a specific version of a public operating system image:
 	// projects/debian-cloud/global/images/debian-9-stretch-vYYYYMMDD To create a
 	// disk with a custom image that you created, specify the image name in the
 	// following format: global/images/my-custom-image You can also specify a
@@ -3373,19 +3371,19 @@ type AttachedDiskInitializeParams struct {
 	// keys.
 	SourceImageEncryptionKey *CustomerEncryptionKey `json:"sourceImageEncryptionKey,omitempty"`
 	// SourceInstantSnapshot: The source instant-snapshot to create this disk. When
-	// creating a new instance, one of initializeParams.sourceSnapshot or
+	// creating a new instance boot disk, one of initializeParams.sourceSnapshot or
 	// initializeParams.sourceInstantSnapshot initializeParams.sourceImage or
-	// disks.source is required except for local SSD. To create a disk with a
-	// snapshot that you created, specify the snapshot name in the following
-	// format: us-central1-a/instantSnapshots/my-backup If the source
-	// instant-snapshot is deleted later, this field will not be set.
+	// disks.source is required. To create a disk with a snapshot that you created,
+	// specify the snapshot name in the following format:
+	// us-central1-a/instantSnapshots/my-backup If the source instant-snapshot is
+	// deleted later, this field will not be set.
 	SourceInstantSnapshot string `json:"sourceInstantSnapshot,omitempty"`
 	// SourceSnapshot: The source snapshot to create this disk. When creating a new
-	// instance, one of initializeParams.sourceSnapshot or
-	// initializeParams.sourceImage or disks.source is required except for local
-	// SSD. To create a disk with a snapshot that you created, specify the snapshot
-	// name in the following format: global/snapshots/my-backup If the source
-	// snapshot is deleted later, this field will not be set.
+	// instance boot disk, one of initializeParams.sourceSnapshot or
+	// initializeParams.sourceImage or disks.source is required. To create a disk
+	// with a snapshot that you created, specify the snapshot name in the following
+	// format: global/snapshots/my-backup If the source snapshot is deleted later,
+	// this field will not be set.
 	SourceSnapshot string `json:"sourceSnapshot,omitempty"`
 	// SourceSnapshotEncryptionKey: The customer-supplied encryption key of the
 	// source snapshot.
@@ -3569,37 +3567,6 @@ type AuthorizationConfig struct {
 
 func (s *AuthorizationConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod AuthorizationConfig
-	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
-}
-
-// AuthorizationLoggingOptions: This is deprecated and has no effect. Do not
-// use.
-type AuthorizationLoggingOptions struct {
-	// PermissionType: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "ADMIN_READ" - This is deprecated and has no effect. Do not use.
-	//   "ADMIN_WRITE" - This is deprecated and has no effect. Do not use.
-	//   "DATA_READ" - This is deprecated and has no effect. Do not use.
-	//   "DATA_WRITE" - This is deprecated and has no effect. Do not use.
-	//   "PERMISSION_TYPE_UNSPECIFIED" - This is deprecated and has no effect. Do
-	// not use.
-	PermissionType string `json:"permissionType,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "PermissionType") to
-	// unconditionally include in API requests. By default, fields with empty or
-	// default values are omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "PermissionType") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s *AuthorizationLoggingOptions) MarshalJSON() ([]byte, error) {
-	type NoMethod AuthorizationLoggingOptions
 	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
 }
 
@@ -5592,8 +5559,15 @@ type BackendService struct {
 	//   "HTTP_COOKIE" - The hash is based on a user provided cookie.
 	//   "NONE" - No session affinity. Connections from the same client IP may go
 	// to any instance in the pool.
-	SessionAffinity string      `json:"sessionAffinity,omitempty"`
-	Subsetting      *Subsetting `json:"subsetting,omitempty"`
+	//   "STRONG_COOKIE_AFFINITY" - Strong cookie-based affinity. Connections
+	// bearing the same cookie will be served by the same backend VM while that VM
+	// remains healthy, as long as the cookie has not expired.
+	SessionAffinity string `json:"sessionAffinity,omitempty"`
+	// StrongSessionAffinityCookie: Describes the HTTP cookie used for stateful
+	// session affinity. This field is applicable and required if the
+	// sessionAffinity is set to STRONG_COOKIE_AFFINITY.
+	StrongSessionAffinityCookie *BackendServiceHttpCookie `json:"strongSessionAffinityCookie,omitempty"`
+	Subsetting                  *Subsetting               `json:"subsetting,omitempty"`
 	// TimeoutSec: The backend service timeout has a different meaning depending on
 	// the type of load balancer. For more information see, Backend service
 	// settings. The default is 30 seconds. The full range of timeout values
@@ -6238,6 +6212,33 @@ type BackendServiceHAPolicyLeaderNetworkEndpoint struct {
 
 func (s *BackendServiceHAPolicyLeaderNetworkEndpoint) MarshalJSON() ([]byte, error) {
 	type NoMethod BackendServiceHAPolicyLeaderNetworkEndpoint
+	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
+}
+
+// BackendServiceHttpCookie: The HTTP cookie used for stateful session
+// affinity.
+type BackendServiceHttpCookie struct {
+	// Name: Name of the cookie.
+	Name string `json:"name,omitempty"`
+	// Path: Path to set for the cookie.
+	Path string `json:"path,omitempty"`
+	// Ttl: Lifetime of the cookie.
+	Ttl *Duration `json:"ttl,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Name") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s *BackendServiceHttpCookie) MarshalJSON() ([]byte, error) {
+	type NoMethod BackendServiceHttpCookie
 	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
 }
 
@@ -12283,6 +12284,14 @@ type FirewallPolicyRuleMatcher struct {
 	// DestIpRanges: CIDR IP address range. Maximum number of destination CIDR IP
 	// ranges allowed is 5000.
 	DestIpRanges []string `json:"destIpRanges,omitempty"`
+	// DestNetworkScope: Network scope of the traffic destination.
+	//
+	// Possible values:
+	//   "INTERNET"
+	//   "NON_INTERNET"
+	//   "UNSPECIFIED"
+	//   "VPC_NETWORKS"
+	DestNetworkScope string `json:"destNetworkScope,omitempty"`
 	// DestRegionCodes: Region codes whose IP addresses will be used to match for
 	// destination of traffic. Should be specified as 2 letter country code defined
 	// as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region
@@ -12302,6 +12311,17 @@ type FirewallPolicyRuleMatcher struct {
 	// SrcIpRanges: CIDR IP address range. Maximum number of source CIDR IP ranges
 	// allowed is 5000.
 	SrcIpRanges []string `json:"srcIpRanges,omitempty"`
+	// SrcNetworkScope: Network scope of the traffic source.
+	//
+	// Possible values:
+	//   "INTERNET"
+	//   "NON_INTERNET"
+	//   "UNSPECIFIED"
+	//   "VPC_NETWORKS"
+	SrcNetworkScope string `json:"srcNetworkScope,omitempty"`
+	// SrcNetworks: Networks of the traffic source. It can be either a full or
+	// partial url.
+	SrcNetworks []string `json:"srcNetworks,omitempty"`
 	// SrcRegionCodes: Region codes whose IP addresses will be used to match for
 	// source of traffic. Should be specified as 2 letter country code defined as
 	// per ISO 3166 alpha-2 country codes. ex."US" Maximum number of source region
@@ -14607,7 +14627,7 @@ type HTTP2HealthCheck struct {
 	//   "PROXY_V1"
 	ProxyHeader string `json:"proxyHeader,omitempty"`
 	// RequestPath: The request path of the HTTP/2 health check request. The
-	// default value is /.
+	// default value is /. Must comply with RFC3986.
 	RequestPath string `json:"requestPath,omitempty"`
 	// Response: Creates a content-based HTTP/2 health check. In addition to the
 	// required HTTP 200 (OK) status code, you can configure the health check to
@@ -14697,7 +14717,7 @@ type HTTPHealthCheck struct {
 	//   "PROXY_V1"
 	ProxyHeader string `json:"proxyHeader,omitempty"`
 	// RequestPath: The request path of the HTTP health check request. The default
-	// value is /.
+	// value is /. Must comply with RFC3986.
 	RequestPath string `json:"requestPath,omitempty"`
 	// Response: Creates a content-based HTTP health check. In addition to the
 	// required HTTP 200 (OK) status code, you can configure the health check to
@@ -14786,7 +14806,7 @@ type HTTPSHealthCheck struct {
 	//   "PROXY_V1"
 	ProxyHeader string `json:"proxyHeader,omitempty"`
 	// RequestPath: The request path of the HTTPS health check request. The default
-	// value is /.
+	// value is /. Must comply with RFC3986.
 	RequestPath string `json:"requestPath,omitempty"`
 	// Response: Creates a content-based HTTPS health check. In addition to the
 	// required HTTP 200 (OK) status code, you can configure the health check to
@@ -14880,11 +14900,11 @@ type HealthCheck struct {
 	SelfLinkWithId string `json:"selfLinkWithId,omitempty"`
 	// SourceRegions: The list of cloud regions from which health checks are
 	// performed. If any regions are specified, then exactly 3 regions should be
-	// specified. The region names must be valid names of GCP regions. This can
-	// only be set for global health check. If this list is non-empty, then there
-	// are restrictions on what other health check fields are supported and what
-	// other resources can use this health check: - SSL, HTTP2, and GRPC protocols
-	// are not supported. - The TCP request field is not supported. - The
+	// specified. The region names must be valid names of Google Cloud regions.
+	// This can only be set for global health check. If this list is non-empty,
+	// then there are restrictions on what other health check fields are supported
+	// and what other resources can use this health check: - SSL, HTTP2, and GRPC
+	// protocols are not supported. - The TCP request field is not supported. - The
 	// proxyHeader field for HTTP, HTTPS, and TCP is not supported. - The
 	// checkIntervalSec field must be at least 30. - The health check cannot be
 	// used with BackendService nor with managed instance group auto-healing.
@@ -18799,6 +18819,10 @@ type InstanceGroupManager struct {
 	// Region: [Output Only] The URL of the region where the managed instance group
 	// resides (for regional resources).
 	Region string `json:"region,omitempty"`
+	// SatisfiesPzi: [Output Only] Reserved for future use.
+	SatisfiesPzi bool `json:"satisfiesPzi,omitempty"`
+	// SatisfiesPzs: [Output Only] Reserved for future use.
+	SatisfiesPzs bool `json:"satisfiesPzs,omitempty"`
 	// SelfLink: [Output Only] The URL for this managed instance group. The server
 	// defines this URL.
 	SelfLink string `json:"selfLink,omitempty"`
@@ -22066,7 +22090,10 @@ type InstanceProperties struct {
 	// Labels: Labels to apply to instances that are created from these properties.
 	Labels map[string]string `json:"labels,omitempty"`
 	// MachineType: The machine type to use for instances that are created from
-	// these properties.
+	// these properties. This field only accept machine types name. e.g.
+	// n2-standard-4 and does not accept machine type full or partial url. e.g.
+	// projects/my-l7ilb-project/zones/us-central1-a/machineTypes/n2-standard-4
+	// will throw INTERNAL_ERROR.
 	MachineType string `json:"machineType,omitempty"`
 	// Metadata: The metadata key/value pairs to assign to instances that are
 	// created from these properties. These pairs can consist of custom metadata or
@@ -27482,9 +27509,6 @@ func (s *LogConfig) MarshalJSON() ([]byte, error) {
 // LogConfigCloudAuditOptions: This is deprecated and has no effect. Do not
 // use.
 type LogConfigCloudAuditOptions struct {
-	// AuthorizationLoggingOptions: This is deprecated and has no effect. Do not
-	// use.
-	AuthorizationLoggingOptions *AuthorizationLoggingOptions `json:"authorizationLoggingOptions,omitempty"`
 	// LogName: This is deprecated and has no effect. Do not use.
 	//
 	// Possible values:
@@ -27492,15 +27516,15 @@ type LogConfigCloudAuditOptions struct {
 	//   "DATA_ACCESS" - This is deprecated and has no effect. Do not use.
 	//   "UNSPECIFIED_LOG_NAME" - This is deprecated and has no effect. Do not use.
 	LogName string `json:"logName,omitempty"`
-	// ForceSendFields is a list of field names (e.g.
-	// "AuthorizationLoggingOptions") to unconditionally include in API requests.
-	// By default, fields with empty or default values are omitted from API
-	// requests. See https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields
-	// for more details.
+	// ForceSendFields is a list of field names (e.g. "LogName") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "AuthorizationLoggingOptions") to
-	// include in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "LogName") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -29240,6 +29264,12 @@ type Network struct {
 	// https://www.googleapis.com/compute/alpha/projects/{project_id}/global/networkPlacements/{network_placement_name}
 	// - projects/{project_id}/global/networkPlacements/{network_placement_name}
 	NetworkPlacement string `json:"networkPlacement,omitempty"`
+	// NetworkProfile: A full or partial URL of the network profile to apply to
+	// this network. This field can be set only at resource creation time. For
+	// example, the following are valid URLs: -
+	// https://www.googleapis.com/compute/alpha/projects/{project_id}/global/networkProfiles/{network_profile_name}
+	// - projects/{project_id}/global/networkProfiles/{network_profile_name}
+	NetworkProfile string `json:"networkProfile,omitempty"`
 	// Peerings: [Output Only] A list of network peerings for the resource.
 	Peerings []*NetworkPeering `json:"peerings,omitempty"`
 	// Region: [Output Only] URL of the region where the regional network resides.
@@ -38715,19 +38745,10 @@ func (s *QueuedResourceListWarningData) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
 }
 
-// QueuedResourceStatus: [Output only] Result of queuing and provisioning based
-// on deferred capacity.
 type QueuedResourceStatus struct {
-	// FailedData: Additional status detail for the FAILED state.
-	FailedData *QueuedResourceStatusFailedData `json:"failedData,omitempty"`
-	// ProvisioningOperations: [Output only] Fully qualified URL of the
-	// provisioning GCE operation to track the provisioning along with provisioning
-	// errors. The referenced operation may not exist after having been deleted or
-	// expired.
-	ProvisioningOperations []string `json:"provisioningOperations,omitempty"`
-	// QueuingPolicy: Constraints for the time when the resource(s) start
-	// provisioning. Always exposed as absolute times.
-	QueuingPolicy *QueuingPolicy `json:"queuingPolicy,omitempty"`
+	FailedData             *QueuedResourceStatusFailedData `json:"failedData,omitempty"`
+	ProvisioningOperations []string                        `json:"provisioningOperations,omitempty"`
+	QueuingPolicy          *QueuingPolicy                  `json:"queuingPolicy,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "FailedData") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -38746,11 +38767,7 @@ func (s *QueuedResourceStatus) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
 }
 
-// QueuedResourceStatusFailedData: Additional status detail for the FAILED
-// state.
 type QueuedResourceStatusFailedData struct {
-	// Error: The error(s) that caused the QueuedResource to enter the FAILED
-	// state.
 	Error *QueuedResourceStatusFailedDataError `json:"error,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Error") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -38770,8 +38787,6 @@ func (s *QueuedResourceStatusFailedData) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(*s), s.ForceSendFields, s.NullFields)
 }
 
-// QueuedResourceStatusFailedDataError: The error(s) that caused the
-// QueuedResource to enter the FAILED state.
 type QueuedResourceStatusFailedDataError struct {
 	// Errors: [Output Only] The array of errors encountered while processing this
 	// operation.
@@ -39341,6 +39356,7 @@ type Quota struct {
 	//   "TPU_LITE_PODSLICE_V5"
 	//   "TPU_PODSLICE_V4"
 	//   "URL_MAPS"
+	//   "VARIABLE_IPV6_PUBLIC_DELEGATED_PREFIXES"
 	//   "VPN_GATEWAYS"
 	//   "VPN_TUNNELS"
 	//   "XPN_SERVICE_PROJECTS"
@@ -43549,7 +43565,9 @@ type ResourceStatusShutdownDetails struct {
 	// StopState: Current stopping state of the instance.
 	//
 	// Possible values:
-	//   "SHUTTING_DOWN" - The instance is gracefully shutting down.
+	//   "PENDING_STOP" - The instance is gracefully shutting down.
+	//   "SHUTTING_DOWN" - Deprecating, please use PENDING_STOP. The instance is
+	// gracefully shutting down.
 	//   "STOPPING" - The instance is stopping.
 	StopState string `json:"stopState,omitempty"`
 	// TargetState: Target instance state.
@@ -46564,6 +46582,21 @@ type Scheduling struct {
 	// terminated, in RFC3339 text format. If specified, the instance termination
 	// action will be performed at the termination time.
 	TerminationTime string `json:"terminationTime,omitempty"`
+	// WindowsLicenseOptimizationMode: Represents the Windows Server License
+	// Optimization Mode of the VM. If unspecified, the default mode is `OFF`.
+	//
+	// Possible values:
+	//   "AUTO" - "Automatically maximize savings and minimize performance impact
+	// by matching license optimization mode to current CPU utilization.
+	//   "BALANCED" - Significant license cost savings via moderate throttles (40%
+	// baseline, 10 minute maximum burst at full utilization).
+	//   "COST_OPTIMIZED" - Maximum license cost savings via restrictive throttles
+	// (20% baseline, 3.75 minute maximum burst at full utilization).
+	//   "OFF" - No license cost savings with maximum CPU performance.
+	//   "PERFORMANCE" - Moderate license cost savings via least restrictive
+	// throttles (60% baseline, 22.5 minute maximum burst at full utilization).
+	//   "UNSPECIFIED" - Unspecified license optimization mode defaults to `OFF`.
+	WindowsLicenseOptimizationMode string `json:"windowsLicenseOptimizationMode,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "AutomaticRestart") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -47137,6 +47170,16 @@ type SecurityPolicy struct {
 	// SelfLinkWithId: [Output Only] Server-defined URL for this resource with the
 	// resource id.
 	SelfLinkWithId string `json:"selfLinkWithId,omitempty"`
+	// ShortName: User-provided name of the organization security policy. The name
+	// should be unique in the organization in which the security policy is
+	// created. This should only be used when SecurityPolicyType is CLOUD_ARMOR.
+	// The name must be 1-63 characters long, and comply with
+	// https://www.ietf.org/rfc/rfc1035.txt. Specifically, the name must be 1-63
+	// characters long and match the regular expression
+	// `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a
+	// lowercase letter, and all following characters must be a dash, lowercase
+	// letter, or digit, except the last character, which cannot be a dash.
+	ShortName string `json:"shortName,omitempty"`
 	// Type: The type indicates the intended use of the security policy. -
 	// CLOUD_ARMOR: Cloud Armor backend security policies can be configured to
 	// filter incoming HTTP requests targeting backend services. They filter
@@ -47449,10 +47492,17 @@ type SecurityPolicyAssociation struct {
 	// DisplayName: [Output Only] The display name of the security policy of the
 	// association.
 	DisplayName string `json:"displayName,omitempty"`
+	// ExcludedFolders: A list of folders to exclude from the security policy.
+	ExcludedFolders []string `json:"excludedFolders,omitempty"`
+	// ExcludedProjects: A list of projects to exclude from the security policy.
+	ExcludedProjects []string `json:"excludedProjects,omitempty"`
 	// Name: The name for an association.
 	Name string `json:"name,omitempty"`
 	// SecurityPolicyId: [Output Only] The security policy ID of the association.
 	SecurityPolicyId string `json:"securityPolicyId,omitempty"`
+	// ShortName: [Output Only] The short name of the security policy of the
+	// association.
+	ShortName string `json:"shortName,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -50477,16 +50527,17 @@ func (s *SnapshotSettingsAccessLocationAccessLocationPreference) MarshalJSON() (
 
 type SnapshotSettingsStorageLocationSettings struct {
 	// Locations: When the policy is SPECIFIC_LOCATIONS, snapshots will be stored
-	// in the locations listed in this field. Keys are GCS bucket locations.
+	// in the locations listed in this field. Keys are Cloud Storage bucket
+	// locations. Only one location can be specified.
 	Locations map[string]SnapshotSettingsStorageLocationSettingsStorageLocationPreference `json:"locations,omitempty"`
 	// Policy: The chosen location policy.
 	//
 	// Possible values:
 	//   "LOCAL_REGION" - Store snapshot in the same region as with the originating
 	// disk. No additional parameters are needed.
-	//   "NEAREST_MULTI_REGION" - Store snapshot to the nearest multi region GCS
-	// bucket, relative to the originating disk. No additional parameters are
-	// needed.
+	//   "NEAREST_MULTI_REGION" - Store snapshot in the nearest multi region Cloud
+	// Storage bucket, relative to the originating disk. No additional parameters
+	// are needed.
 	//   "SPECIFIC_LOCATIONS" - Store snapshot in the specific locations, as
 	// specified by the user. The list of regions to store must be defined under
 	// the `locations` field.
@@ -50513,7 +50564,8 @@ func (s *SnapshotSettingsStorageLocationSettings) MarshalJSON() ([]byte, error) 
 // SnapshotSettingsStorageLocationSettingsStorageLocationPreference: A
 // structure for specifying storage locations.
 type SnapshotSettingsStorageLocationSettingsStorageLocationPreference struct {
-	// Name: Name of the location. It should be one of the GCS buckets.
+	// Name: Name of the location. It should be one of the Cloud Storage buckets.
+	// Only one location can be specified.
 	Name string `json:"name,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -56917,6 +56969,9 @@ type TargetPool struct {
 	//   "HTTP_COOKIE" - The hash is based on a user provided cookie.
 	//   "NONE" - No session affinity. Connections from the same client IP may go
 	// to any instance in the pool.
+	//   "STRONG_COOKIE_AFFINITY" - Strong cookie-based affinity. Connections
+	// bearing the same cookie will be served by the same backend VM while that VM
+	// remains healthy, as long as the cookie has not expired.
 	SessionAffinity string `json:"sessionAffinity,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
@@ -62339,7 +62394,7 @@ func (s *XpnResourceId) MarshalJSON() ([]byte, error) {
 }
 
 // Zone: Represents a Zone resource. A zone is a deployment area. These
-// deployment areas are subsets of a region. For example the zone us-east1-a is
+// deployment areas are subsets of a region. For example the zone us-east1-b is
 // located in the us-east1 region. For more information, read Regions and
 // Zones.
 type Zone struct {

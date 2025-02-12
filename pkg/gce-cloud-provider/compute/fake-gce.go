@@ -79,7 +79,11 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		mockDiskStatus: "READY",
 	}
 	for _, d := range cloudDisks {
-		fcp.disks[d.GetName()] = d
+		diskZone := d.GetZone()
+		if diskZone == "" {
+			diskZone = zone
+		}
+		fcp.disks[meta.ZonalKey(d.GetName(), diskZone).String()] = d
 	}
 	return fcp, nil
 }
@@ -101,8 +105,8 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 		if volumeKey.Zone != common.UnspecifiedValue {
 			return project, volumeKey, nil
 		}
-		for name, d := range cloud.disks {
-			if name == volumeKey.Name {
+		for diskVolKey, d := range cloud.disks {
+			if diskVolKey == volumeKey.String() {
 				volumeKey.Zone = d.GetZone()
 				return project, volumeKey, nil
 			}
@@ -127,10 +131,24 @@ func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([
 	return []string{cloud.zone, "country-region-fakesecondzone"}, nil
 }
 
+func (cloud *FakeCloudProvider) ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error) {
+	// Assume all zones are compatible
+	return zones, nil
+}
+
+func (cloud *FakeCloudProvider) ListDisksWithFilter(ctx context.Context, fields []googleapi.Field, filter string) ([]*computev1.Disk, string, error) {
+	return cloud.ListDisks(ctx, fields)
+}
+
 func (cloud *FakeCloudProvider) ListDisks(ctx context.Context, fields []googleapi.Field) ([]*computev1.Disk, string, error) {
 	d := []*computev1.Disk{}
 	for _, cd := range cloud.disks {
-		d = append(d, cd.disk)
+		if cd.disk != nil {
+			d = append(d, cd.disk)
+		} else if cd.betaDisk != nil {
+			betaDisk := convertBetaDiskToV1Disk(cd.betaDisk)
+			d = append(d, betaDisk)
+		}
 	}
 	return d, "", nil
 }
@@ -167,7 +185,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 
 // Disk Methods
 func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
-	disk, ok := cloud.disks[volKey.Name]
+	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return nil, notFoundError()
 	}
@@ -203,8 +221,8 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	return ValidateDiskParameters(resp, params)
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool) error {
-	if disk, ok := cloud.disks[volKey.Name]; ok {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+	if disk, ok := cloud.disks[volKey.String()]; ok {
 		err := cloud.ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
 			int64(capacityRange.GetLimitBytes()),
@@ -215,14 +233,15 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	computeDisk := &computev1.Disk{
-		Name:            volKey.Name,
-		SizeGb:          common.BytesToGbRoundUp(capBytes),
-		Description:     "Disk created by GCE-PD CSI Driver",
-		Type:            cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		SourceDiskId:    volumeContentSourceVolumeID,
-		Status:          cloud.mockDiskStatus,
-		Labels:          params.Labels,
-		ProvisionedIops: params.ProvisionedIOPSOnCreate,
+		Name:                  volKey.Name,
+		SizeGb:                common.BytesToGbRoundUp(capBytes),
+		Description:           "Disk created by GCE-PD CSI Driver",
+		Type:                  cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		SourceDiskId:          volumeContentSourceVolumeID,
+		Status:                cloud.mockDiskStatus,
+		Labels:                params.Labels,
+		ProvisionedIops:       params.ProvisionedIOPSOnCreate,
+		ProvisionedThroughput: params.ProvisionedThroughputOnCreate,
 	}
 
 	if snapshotID != "" {
@@ -259,15 +278,44 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	if containsBetaDiskType(hyperdiskTypes, params.DiskType) {
 		betaDisk := convertV1DiskToBetaDisk(computeDisk)
 		betaDisk.EnableConfidentialCompute = params.EnableConfidentialCompute
-		cloud.disks[volKey.Name] = CloudDiskFromBeta(betaDisk)
+		cloud.disks[volKey.String()] = CloudDiskFromBeta(betaDisk)
 	} else {
-		cloud.disks[volKey.Name] = CloudDiskFromV1(computeDisk)
+		cloud.disks[volKey.String()] = CloudDiskFromV1(computeDisk)
 	}
 	return nil
 }
 
+func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+	_, ok := cloud.disks[volKey.String()]
+	if !ok {
+		return notFoundError()
+	}
+	specifiedIops := params.IOPS != nil && *params.IOPS != 0
+	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
+	if !specifiedIops && !specifiedThroughput {
+		return fmt.Errorf("no IOPS or Throughput specified for disk %v", existingDisk.GetSelfLink())
+	}
+
+	if params.IOPS != nil {
+		if existingDisk.betaDisk != nil {
+			existingDisk.betaDisk.ProvisionedIops = *params.IOPS
+		} else if existingDisk.disk != nil {
+			existingDisk.disk.ProvisionedIops = *params.IOPS
+		}
+	}
+	if params.Throughput != nil {
+		if existingDisk.betaDisk != nil {
+			existingDisk.betaDisk.ProvisionedThroughput = *params.Throughput
+		} else if existingDisk.disk != nil {
+			existingDisk.disk.ProvisionedThroughput = *params.Throughput
+		}
+	}
+	cloud.disks[volKey.String()] = existingDisk
+	return nil
+}
+
 func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, volKey *meta.Key) error {
-	delete(cloud.disks, volKey.Name)
+	delete(cloud.disks, volKey.String())
 	return nil
 }
 
@@ -304,6 +352,22 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceN
 	}
 	instance.Disks[found] = instance.Disks[len(instance.Disks)-1]
 	instance.Disks = instance.Disks[:len(instance.Disks)-1]
+	return nil
+}
+
+func (cloud *FakeCloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {
+	disk, ok := cloud.disks[volKey.String()]
+	if !ok {
+		return fmt.Errorf("disk %v not found", volKey)
+	}
+
+	if disk.disk != nil {
+		disk.disk.AccessMode = accessMode
+	}
+	if disk.betaDisk != nil {
+		disk.betaDisk.AccessMode = accessMode
+	}
+
 	return nil
 }
 
@@ -390,7 +454,7 @@ func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project stri
 }
 
 func (cloud *FakeCloudProvider) ResizeDisk(ctx context.Context, project string, volKey *meta.Key, requestBytes int64) (int64, error) {
-	disk, ok := cloud.disks[volKey.Name]
+	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return -1, notFoundError()
 	}
