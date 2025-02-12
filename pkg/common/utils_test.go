@@ -22,10 +22,12 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"syscall"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
+	"github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1307,6 +1309,17 @@ func TestParseMachineType(t *testing.T) {
 }
 
 func TestCodeForError(t *testing.T) {
+	getGoogleAPIWrappedError := func(err error) *googleapi.Error {
+		apierr, _ := apierror.ParseError(err, false)
+		wrappedError := &googleapi.Error{}
+		wrappedError.Wrap(apierr)
+
+		return wrappedError
+	}
+	getAPIError := func(err error) *apierror.APIError {
+		apierror, _ := apierror.ParseError(err, true)
+		return apierror
+	}
 	testCases := []struct {
 		name     string
 		inputErr error
@@ -1323,6 +1336,44 @@ func TestCodeForError(t *testing.T) {
 			expCode:  codes.InvalidArgument,
 		},
 		{
+			name: "googleapi.Error that wraps apierror.APIError of http kind",
+			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
+				Code:    404,
+				Message: "data requested not found error",
+			}),
+			expCode: codes.NotFound,
+		},
+		{
+			name: "googleapi.Error that wraps apierror.APIError of http kind status conflict",
+			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
+				Code:    409,
+				Message: "status conflict error",
+			}),
+			expCode: codes.FailedPrecondition,
+		},
+		{
+			name: "googleapi.Error that wraps apierror.APIError of status kind",
+			inputErr: getGoogleAPIWrappedError(status.New(
+				codes.Internal, "Internal status error",
+			).Err()),
+			expCode: codes.Internal,
+		},
+		{
+			name: "apierror.APIError of http kind",
+			inputErr: getAPIError(&googleapi.Error{
+				Code:    404,
+				Message: "data requested not found error",
+			}),
+			expCode: codes.NotFound,
+		},
+		{
+			name: "apierror.APIError of status kind",
+			inputErr: getAPIError(status.New(
+				codes.Canceled, "Internal status error",
+			).Err()),
+			expCode: codes.Canceled,
+		},
+		{
 			name:     "googleapi.Error but not a user error",
 			inputErr: &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
 			expCode:  codes.Internal,
@@ -1336,6 +1387,16 @@ func TestCodeForError(t *testing.T) {
 			name:     "context deadline exceeded error",
 			inputErr: context.DeadlineExceeded,
 			expCode:  codes.DeadlineExceeded,
+		},
+		{
+			name:     "connection reset error",
+			inputErr: fmt.Errorf("failed to getDisk: connection reset by peer"),
+			expCode:  codes.Unavailable,
+		},
+		{
+			name:     "wrapped connection reset error",
+			inputErr: fmt.Errorf("received error: %v", syscall.ECONNRESET),
+			expCode:  codes.Unavailable,
 		},
 		{
 			name:     "status error with Aborted error code",
@@ -1450,7 +1511,7 @@ func TestIsUserMultiAttachError(t *testing.T) {
 		},
 	}
 	for _, test := range cases {
-		code, err := isUserMultiAttachError(fmt.Errorf(test.errorString))
+		code, err := isUserMultiAttachError(fmt.Errorf("%s", test.errorString))
 		if test.expectCode {
 			if err != nil || code != test.expectedCode {
 				t.Errorf("Failed with non-nil error %v or bad code %v: %s", err, code, test.errorString)
@@ -1760,4 +1821,90 @@ func TestValidateDataCacheMode(t *testing.T) {
 		}
 	}
 
+}
+
+func TestParseZoneFromURI(t *testing.T) {
+	testcases := []struct {
+		name      string
+		zoneURI   string
+		wantZone  string
+		expectErr bool
+	}{
+		{
+			name:     "ParseZoneFromURI_FullURI",
+			zoneURI:  "https://www.googleapis.com/compute/v1/projects/psch-gke-dev/zones/us-east4-a",
+			wantZone: "us-east4-a",
+		},
+		{
+			name:     "ParseZoneFromURI_ProjectZoneString",
+			zoneURI:  "projects/psch-gke-dev/zones/us-east4-a",
+			wantZone: "us-east4-a",
+		},
+		{
+			name:      "ParseZoneFromURI_Malformed",
+			zoneURI:   "projects/psch-gke-dev/regions/us-east4",
+			expectErr: true,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotZone, err := ParseZoneFromURI(tc.zoneURI)
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatalf("Expected err, but none was returned. Zone result: %v", gotZone)
+			}
+			if gotZone != tc.wantZone {
+				t.Errorf("ParseZoneFromURI(%v): got %v, want %v", tc.zoneURI, gotZone, tc.wantZone)
+			}
+		})
+	}
+}
+
+func TestNewCombinedError(t *testing.T) {
+	testcases := []struct {
+		name     string
+		errors   []error
+		wantCode codes.Code
+	}{
+		{
+			name:     "single generic error",
+			errors:   []error{fmt.Errorf("my internal error")},
+			wantCode: codes.Internal,
+		},
+		{
+			name:     "single retryable error",
+			errors:   []error{&googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"}},
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name:     "multi generic error",
+			errors:   []error{fmt.Errorf("my internal error"), fmt.Errorf("my other internal error")},
+			wantCode: codes.Internal,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("my internal error"), &googleapi.Error{Code: http.StatusTooManyRequests, Message: "Resource Exhausted"}},
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("my internal error"), &googleapi.Error{Code: http.StatusGatewayTimeout, Message: "connection reset by peer"}, fmt.Errorf("my other internal error")},
+			wantCode: codes.Unavailable,
+		},
+		{
+			name:     "multi retryable error",
+			errors:   []error{fmt.Errorf("The disk resource is already being used"), &googleapi.Error{Code: http.StatusGatewayTimeout, Message: "connection reset by peer"}},
+			wantCode: codes.Unavailable,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotCode := CodeForError(NewCombinedError("message", tc.errors))
+			if gotCode != tc.wantCode {
+				t.Errorf("NewCombinedError(%v): got %v, want %v", tc.errors, gotCode, tc.wantCode)
+			}
+		})
+	}
 }

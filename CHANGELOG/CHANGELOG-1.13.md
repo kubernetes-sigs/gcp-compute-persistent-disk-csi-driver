@@ -1,3 +1,46 @@
+# v1.13.8 - Changelog since v1.13.7
+
+## Changes by Kind
+
+### Uncategorized
+
+- [release-1.13] Properly unwrap gce-compute error code. by @hime in #1839
+
+
+# v1.13.7 - Changelog since v1.13.6
+
+## Changes by Kind
+
+### Uncategorized
+
+- [release-1.13] Reassign error returned from validateStoragePools so InvalidArgument is recorded by @k8s-infra-cherrypick-robot in #1721
+- [release-1.13] Return Unavailable for 'connection reset by peer' errors by @k8s-infra-cherrypick-robot in #1724
+- [release-1.13] Update debian image from bullseye to bookworm to fix CVEs by @k8s-infra-cherrypick-robot in #1734
+- Reverting the Dockerfile debian image from bookworm to bullseye due to regression by @Sneha-at in #1775
+- Automated cherry pick of #1658: Add support for checking if a device is being used by a by @pwschuurman in #1805
+
+
+# v1.13.6 - Changelog since v1.13.5
+
+## Changes by Kind
+
+### Uncategorized
+
+- Automated cherry pick of #1666: migrate hyperdisk/chd/storagepools to GCE v1 disk API
+#1667: remove support for GCE Alpha Disks by @amacaskill in #1669
+- [release-1.13] Record original error code to operation_errors metric for temporary errors by @k8s-infra-cherrypick-robot in #1672
+- [release-1.13] Remove short variable declaration from validateStoragePools by @k8s-infra-cherrypick-robot in #1674
+- Fix CVE-2023-45288 by @dannawang0221 in #1683
+
+
+# v1.13.5 - Changelog since v1.13.4
+
+## Changes by Kind
+
+### Uncategorized
+_Nothing has changed._
+
+
 # v1.13.4 - Changelog since v1.13.3
 
 ## Changes by Kind

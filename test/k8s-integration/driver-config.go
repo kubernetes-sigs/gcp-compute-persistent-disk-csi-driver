@@ -10,15 +10,17 @@ import (
 )
 
 type driverConfig struct {
-	StorageClassFile     string
-	StorageClass         string
-	SnapshotClassFile    string
-	SnapshotClass        string
-	Capabilities         []string
-	SupportedFsType      []string
-	MinimumVolumeSize    string
-	NumAllowedTopologies int
-	Timeouts             map[string]string
+	StorageClassFile          string
+	StorageClass              string
+	SnapshotClassFile         string
+	SnapshotClass             string
+	VolumeAttributesClassFile string
+	VolumeAttributesClass     string
+	Capabilities              []string
+	SupportedFsType           []string
+	MinimumVolumeSize         string
+	NumAllowedTopologies      int
+	Timeouts                  map[string]string
 }
 
 const (
@@ -124,17 +126,28 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 		absSnapshotClassFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.snapshotClassFile)
 		snapshotClassName = testParams.snapshotClassFile[:strings.LastIndex(testParams.snapshotClassFile, ".")]
 	} else {
-		snapshotClassName = "no-volumesnapshotclass"
+		snapshotClassName = "no-vsc"
+	}
+
+	var absVacFilePath string
+	var vacName string
+	if testParams.volumeAttributesClassFile != "" {
+		absVacFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.volumeAttributesClassFile)
+		vacName = testParams.volumeAttributesClassFile[:strings.LastIndex(testParams.volumeAttributesClassFile, ".")]
+	} else {
+		vacName = "no-vac"
 	}
 
 	if !strings.Contains(testParams.storageClassFile, "sc-extreme") {
 		caps = append(caps, "pvcDataSource")
 	}
-	minimumVolumeSize := "5Gi"
+	minimumVolumeSize := "10Gi"
 	numAllowedTopologies := 1
 	if testParams.storageClassFile == regionalPDStorageClass {
 		minimumVolumeSize = "200Gi"
 		numAllowedTopologies = 2
+	} else if len(testParams.volumeAttributesClassFile) > 0 {
+		minimumVolumeSize = "100Gi"
 	}
 	timeouts := map[string]string{
 		dataSourceProvisionTimeoutKey: dataSourceProvisionTimeout,
@@ -142,15 +155,17 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 	extLoc := strings.LastIndex(testParams.storageClassFile, ".")
 	scName := testParams.storageClassFile[:extLoc]
 	params := driverConfig{
-		StorageClassFile:     filepath.Join(testParams.pkgDir, testConfigDir, testParams.storageClassFile),
-		StorageClass:         scName,
-		SnapshotClassFile:    absSnapshotClassFilePath,
-		SnapshotClass:        snapshotClassName,
-		SupportedFsType:      fsTypes,
-		Capabilities:         caps,
-		MinimumVolumeSize:    minimumVolumeSize,
-		NumAllowedTopologies: numAllowedTopologies,
-		Timeouts:             timeouts,
+		StorageClassFile:          filepath.Join(testParams.pkgDir, testConfigDir, testParams.storageClassFile),
+		StorageClass:              scName,
+		SnapshotClassFile:         absSnapshotClassFilePath,
+		SnapshotClass:             snapshotClassName,
+		VolumeAttributesClassFile: absVacFilePath,
+		VolumeAttributesClass:     vacName,
+		SupportedFsType:           fsTypes,
+		Capabilities:              caps,
+		MinimumVolumeSize:         minimumVolumeSize,
+		NumAllowedTopologies:      numAllowedTopologies,
+		Timeouts:                  timeouts,
 	}
 
 	// Write config file

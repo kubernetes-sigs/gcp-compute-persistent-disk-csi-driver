@@ -5,4 +5,6 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
+  # Add labels for testing.
+  labels: key1=value1,key2=value2
 volumeBindingMode: WaitForFirstConsumer

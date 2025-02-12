@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -40,15 +41,16 @@ type NonBlockingGRPCServer interface {
 	ForceStop()
 }
 
-func NewNonBlockingGRPCServer(enableOtelTracing bool) NonBlockingGRPCServer {
-	return &nonBlockingGRPCServer{otelTracing: enableOtelTracing}
+func NewNonBlockingGRPCServer(enableOtelTracing bool, metricsManager *metrics.MetricsManager) NonBlockingGRPCServer {
+	return &nonBlockingGRPCServer{otelTracing: enableOtelTracing, metricsManager: metricsManager}
 }
 
 // NonBlocking server
 type nonBlockingGRPCServer struct {
-	wg          sync.WaitGroup
-	server      *grpc.Server
-	otelTracing bool
+	wg             sync.WaitGroup
+	server         *grpc.Server
+	otelTracing    bool
+	metricsManager *metrics.MetricsManager
 }
 
 func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
@@ -73,10 +75,17 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 }
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
-	grpcInterceptor := grpc.UnaryInterceptor(logGRPC)
-	if s.otelTracing {
-		grpcInterceptor = grpc.ChainUnaryInterceptor(logGRPC, otelgrpc.UnaryServerInterceptor())
+	interceptors := []grpc.UnaryServerInterceptor{logGRPC}
+	if s.metricsManager != nil {
+		metricsInterceptor := metrics.MetricInterceptor{
+			MetricsManager: s.metricsManager,
+		}
+		interceptors = append(interceptors, metricsInterceptor.UnaryInterceptor())
 	}
+	if s.otelTracing {
+		interceptors = append(interceptors, otelgrpc.UnaryServerInterceptor())
+	}
+	grpcInterceptor := grpc.ChainUnaryInterceptor(interceptors...)
 
 	opts := []grpc.ServerOption{
 		grpcInterceptor,
