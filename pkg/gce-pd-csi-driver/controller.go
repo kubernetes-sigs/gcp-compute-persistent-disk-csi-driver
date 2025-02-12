@@ -105,6 +105,9 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools.
 	enableStoragePools bool
 
+	// If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration
+	enableDataCache bool
+
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
@@ -298,6 +301,14 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	defer func() {
 		gceCS.Metrics.RecordOperationErrorMetrics("CreateVolume", err, diskTypeForMetric, enableConfidentialCompute, enableStoragePools)
 	}()
+
+	// Apply Parameters (case-insensitive). We leave validation of
+	// the values to the cloud provider.
+	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.enableDataCache, gceCS.Driver.extraTags)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
+	}
+
 	// Validate arguments
 	volumeCapabilities := req.GetVolumeCapabilities()
 	capacityRange := req.GetCapacityRange()
@@ -320,7 +331,6 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	params, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.Driver.extraTags)
 	diskTypeForMetric = params.DiskType
 	enableConfidentialCompute = strconv.FormatBool(params.EnableConfidentialCompute)
 	hasStoragePools := len(params.StoragePools) > 0
@@ -359,11 +369,11 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 
 	if gceCS.multiZoneVolumeHandleConfig.Enable && params.MultiZoneProvisioning {
 		// Create multi-zone disk, that may have up to N disks.
-		return gceCS.createMultiZoneDisk(ctx, req, params)
+		return gceCS.createMultiZoneDisk(ctx, req, params, dataCacheParams, gceCS.enableDataCache)
 	}
 
 	// Create single device zonal or regional disk
-	return gceCS.createSingleDeviceDisk(ctx, req, params)
+	return gceCS.createSingleDeviceDisk(ctx, req, params, dataCacheParams, gceCS.enableDataCache)
 }
 
 func (gceCS *GCEControllerServer) getSupportedZonesForPDType(ctx context.Context, zones []string, diskType string) ([]string, error) {
@@ -418,7 +428,7 @@ func (gceCS *GCEControllerServer) getMultiZoneProvisioningZones(ctx context.Cont
 	return combinedZones.List(), nil
 }
 
-func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters) (*csi.CreateVolumeResponse, error) {
+func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool) (*csi.CreateVolumeResponse, error) {
 	// Determine the zones that are needed.
 	var err error
 
@@ -464,7 +474,7 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	// Use the first response as a template
 	volumeId := fmt.Sprintf("projects/%s/zones/%s/disks/%s", gceCS.CloudProvider.GetDefaultProject(), common.MultiZoneValue, req.GetName())
 	klog.V(4).Infof("CreateVolume succeeded for multi-zone disks in zones %s: %v", zones, multiZoneVolKey)
-	return generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, volumeId), nil
+	return generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
 }
 
 func (gceCS *GCEControllerServer) getZonesWithDiskNameAndType(ctx context.Context, name string, diskType string) ([]string, error) {
@@ -508,7 +518,7 @@ func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Contex
 	return gceCS.CloudProvider.SetDiskAccessMode(ctx, project, volKey, readOnlyManyAccessMode)
 }
 
-func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters) (*csi.CreateVolumeResponse, error) {
+func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool) (*csi.CreateVolumeResponse, error) {
 	var err error
 	var locationTopReq *locationRequirements
 	if useVolumeCloning(req) {
@@ -560,7 +570,7 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
 	}
 
-	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, volumeID), err
+	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
 }
 
 func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, volKey *meta.Key, zones []string) (*gce.CloudDisk, error) {
@@ -962,6 +972,15 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		PublishContext: nil,
 	}
 
+	// Set data cache publish context
+	if gceCS.enableDataCache && req.GetVolumeContext() != nil {
+		if req.GetVolumeContext()[common.ContextDataCacheSize] != "" {
+			pubVolResp.PublishContext = map[string]string{}
+			pubVolResp.PublishContext[common.ContexLocalSsdCacheSize] = req.GetVolumeContext()[common.ContextDataCacheSize]
+			pubVolResp.PublishContext[common.ContextDataCacheMode] = req.GetVolumeContext()[common.ContextDataCacheMode]
+		}
+	}
+
 	instanceZone, instanceName, err := common.NodeIDToZoneAndName(nodeID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "could not split nodeID: %v", err.Error()), nil
@@ -1232,10 +1251,11 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 
 	// Validate the disk parameters match the disk we GET
-	params, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.Driver.extraTags)
+	params, _, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.enableDataCache, gceCS.Driver.extraTags)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}
+
 	if err := gce.ValidateDiskParameters(disk, params); err != nil {
 		return generateFailedValidationMessage("Parameters %v do not match given disk %s: %v", req.GetParameters(), disk.GetName(), err.Error()), nil
 	}
@@ -2270,7 +2290,7 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 	return info, nil
 }
 
-func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, volumeId string) *csi.CreateVolumeResponse {
+func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		tops = append(tops, &csi.Topology{
@@ -2285,6 +2305,14 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 			VolumeContext:      paramsToVolumeContext(params),
 			AccessibleTopology: tops,
 		},
+	}
+	// Set data cache volume context
+	if enableDataCache && dataCacheParams != (common.DataCacheParameters{}) {
+		if createResp.Volume.VolumeContext == nil {
+			createResp.Volume.VolumeContext = map[string]string{}
+		}
+		createResp.Volume.VolumeContext[common.ContextDataCacheMode] = dataCacheParams.DataCacheMode
+		createResp.Volume.VolumeContext[common.ContextDataCacheSize] = dataCacheParams.DataCacheSize
 	}
 	snapshotID := disk.GetSnapshotId()
 	imageID := disk.GetImageId()

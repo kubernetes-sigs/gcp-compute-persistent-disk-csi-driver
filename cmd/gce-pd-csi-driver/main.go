@@ -27,9 +27,12 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -68,10 +71,13 @@ var (
 	maxConcurrentFormat     = flag.Int("max-concurrent-format", 1, "The maximum number of concurrent format exec calls")
 	concurrentFormatTimeout = flag.Duration("concurrent-format-timeout", 1*time.Minute, "The maximum duration of a format operation before its concurrency token is released")
 
-	maxConcurrentFormatAndMount = flag.Int("max-concurrent-format-and-mount", 1, "If set then format and mount operations are serialized on each node. This is stronger than max-concurrent-format as it includes fsck and other mount operations")
-	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
-	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
-	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	maxConcurrentFormatAndMount   = flag.Int("max-concurrent-format-and-mount", 1, "If set then format and mount operations are serialized on each node. This is stronger than max-concurrent-format as it includes fsck and other mount operations")
+	formatAndMountTimeout         = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
+	fallbackRequisiteZonesFlag    = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
+	enableStoragePoolsFlag        = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	enableControllerDataCacheFlag = flag.Bool("enable-controller-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
+	enableNodeDataCacheFlag       = flag.Bool("enable-node-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration")
+	nodeName                      = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -90,7 +96,9 @@ var (
 )
 
 const (
-	driverName = "pd.csi.storage.gke.io"
+	driverName          = "pd.csi.storage.gke.io"
+	dataCacheLabel      = "datacache-storage-gke-io"
+	dataCacheLabelValue = "enabled"
 )
 
 func init() {
@@ -209,7 +217,7 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig)
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableControllerDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -227,9 +235,21 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
-		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
+		nsArgs := driver.NodeServerArgs{
+			EnableDataCache: *enableNodeDataCacheFlag,
+		}
+		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
+		}
+	}
+
+	if *enableNodeDataCacheFlag {
+		if nodeName == nil || *nodeName == "" {
+			klog.Errorf("Data cache enabled, but --node-name not passed")
+		}
+		if err := setupDataCache(ctx, *nodeName); err != nil {
+			klog.Errorf("DataCache setup failed: %v", err)
 		}
 	}
 
@@ -310,4 +330,34 @@ func urlFlag(target **url.URL, name string, usage string) {
 		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
+}
+
+func setupDataCache(ctx context.Context, nodeName string) error {
+	klog.V(2).Infof("Seting up data cache for node %s", nodeName)
+	if nodeName != common.TestNode {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			return err
+		}
+		kubeClient, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			return err
+		}
+		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
+			return err
+		}
+		if val, found := node.GetLabels()[dataCacheLabel]; !found || val != dataCacheLabelValue {
+			klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
+			return nil
+		}
+	}
+	klog.V(2).Info("Raiding local ssds to setup data cache")
+	if err := driver.RaidLocalSsds(); err != nil {
+		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
+	}
+
+	klog.V(2).Infof("Datacache enabled for node %s", nodeName)
+	return nil
 }

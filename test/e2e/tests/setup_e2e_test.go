@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,16 +37,19 @@ import (
 )
 
 var (
-	project          = flag.String("project", "", "Project to run tests in")
-	serviceAccount   = flag.String("service-account", "", "Service account to bring up instance with")
-	architecture     = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	zones            = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
-	machineType      = flag.String("machine-type", "n2-standard-2", "Type of machine to provision instance on")
-	imageURL         = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
-	runInProw        = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
-	deleteInstances  = flag.Bool("delete-instances", false, "Delete the instances after tests run")
-	cloudtopHost     = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
-	extraDriverFlags = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
+	project                   = flag.String("project", "", "Project to run tests in")
+	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
+	vmNamePrefix              = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
+	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
+	minCpuPlatform            = flag.String("min-cpu-platform", "rome", "Minimum CPU architecture")
+	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	machineType               = flag.String("machine-type", "n2-standard-2", "Type of machine to provision instance on")
+	imageURL                  = flag.String("image-url", "projects/debian-cloud/global/images/family/debian-11", "OS image url to get image from")
+	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
+	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
+	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
+	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
+	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
 
 	testContexts        = []*remote.TestContext{}
 	computeService      *compute.Service
@@ -53,6 +57,8 @@ var (
 	computeBetaService  *computebeta.Service
 	kmsClient           *cloudkms.KeyManagementClient
 )
+
+const localSSDCount int64 = 2
 
 func init() {
 	klog.InitFlags(flag.CommandLine)
@@ -70,6 +76,7 @@ var _ = BeforeSuite(func() {
 	defer close(tcc)
 
 	zones := strings.Split(*zones, ",")
+	// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -95,14 +102,21 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	for _, zone := range zones {
-		go func(curZone string) {
-			defer GinkgoRecover()
-			tcc <- NewTestContext(curZone)
-		}(zone)
+	numberOfInstancesPerZone := 2
+
+	setupContext := func(zones []string, randInt int) {
+		for _, zone := range zones {
+			go func(curZone string) {
+				defer GinkgoRecover()
+				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+			}(zone)
+		}
+	}
+	for j := 0; j < numberOfInstancesPerZone; j++ {
+		setupContext(zones, j)
 	}
 
-	for i := 0; i < len(zones); i++ {
+	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
@@ -130,21 +144,29 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func getRemoteInstanceConfig() *remote.InstanceConfig {
-	return &remote.InstanceConfig{
-		Project:        *project,
-		Architecture:   *architecture,
-		MachineType:    *machineType,
-		ServiceAccount: *serviceAccount,
-		ImageURL:       *imageURL,
-		CloudtopHost:   *cloudtopHost}
+func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
 }
 
-func NewTestContext(zone string) *remote.TestContext {
-	nodeID := fmt.Sprintf("gce-pd-csi-e2e-%s", zone)
+func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
-	i, err := remote.SetupInstance(getRemoteInstanceConfig(), zone, nodeID, computeService)
+	instanceConfig := remote.InstanceConfig{
+		Project:                   *project,
+		Architecture:              *architecture,
+		MinCpuPlatform:            minCpuPlatform,
+		Zone:                      zone,
+		Name:                      nodeID,
+		MachineType:               machineType,
+		ServiceAccount:            *serviceAccount,
+		ImageURL:                  *imageURL,
+		CloudtopHost:              *cloudtopHost,
+		EnableConfidentialCompute: *enableConfidentialCompute,
+		ComputeService:            computeService,
+		LocalSSDCount:             localSSDCount,
+	}
+	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
@@ -163,7 +185,16 @@ func NewTestContext(zone string) *remote.TestContext {
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
+	pkgs := []string{"lvm2", "mdadm", "grep", "coreutils"}
+	err = testutils.InstallDependencies(i, pkgs)
+	if err != nil {
+		klog.Fatalf("Failed to install dependency package on node %v: error : %v", i.GetNodeID(), err)
+	}
 
+	err = testutils.SetupDataCachingConfig(i)
+	if err != nil {
+		klog.Fatalf("Failed to setup data cache required config error %v", err)
+	}
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 	if err != nil {

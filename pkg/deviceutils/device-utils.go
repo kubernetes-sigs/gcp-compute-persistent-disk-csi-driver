@@ -231,7 +231,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devicePath, innerErr = existingDevicePath(devicePaths)
 		if innerErr != nil {
 			e := fmt.Errorf("for disk %s failed to check for existing device path: %w", deviceName, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Error: %s", e.Error())
 			return false, e
 		}
 
@@ -243,7 +243,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 			innerErr := udevadmTriggerForDiskIfExists(deviceName)
 			if innerErr != nil {
 				e := fmt.Errorf("for disk %s failed to trigger udevadm fix of non existent device path: %w", deviceName, innerErr)
-				klog.Errorf(e.Error())
+				klog.Errorf("Error: %s", e.Error())
 				return false, e
 			}
 			// Go to next retry loop to get the deviceName again after
@@ -256,7 +256,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devFsPath, innerErr := filepath.EvalSymlinks(devicePath)
 		if innerErr != nil {
 			e := fmt.Errorf("filepath.EvalSymlinks(%q) failed: %w", devicePath, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Error: %s", e.Error())
 			return false, e
 		}
 		klog.V(4).Infof("For disk %s the /dev/* path is %s for disk/by-id path %s", deviceName, devFsPath, devicePath)
@@ -264,7 +264,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		devFsSerial, innerErr := getDevFsSerial(devFsPath)
 		if innerErr != nil {
 			e := fmt.Errorf("couldn't get serial number for disk %s at device path %s: %w", deviceName, devFsPath, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Error: %s", e.Error())
 			return false, e
 		}
 		klog.V(4).Infof("For disk %s, device path %s, found serial number %s", deviceName, devFsPath, devFsSerial)
@@ -281,7 +281,7 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 		innerErr = udevadmTriggerForDiskIfExists(deviceName)
 		if innerErr != nil {
 			e := fmt.Errorf("failed to trigger udevadm fix of misconfigured disk for %q: %w", deviceName, innerErr)
-			klog.Errorf(e.Error())
+			klog.Errorf("Error: %s", e.Error())
 			return false, e
 		}
 		// Go to next retry loop to get the deviceName again after
