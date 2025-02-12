@@ -32,4 +32,16 @@ const (
 
 	// Label that is set on a disk when it is used by a 'multi-zone' VolumeHandle
 	MultiZoneLabel = "goog-gke-multi-zone"
+
+	// Data cache mode
+	DataCacheModeWriteBack    = "writeback"
+	DataCacheModeWriteThrough = "writethrough"
+
+	ContextDataCacheSize = "data-cache-size"
+	ContextDataCacheMode = "data-cache-mode"
+
+	// Keys in the publish context
+	ContexLocalSsdCacheSize = "local-ssd-cache-size"
+	// Node name for E2E tests
+	TestNode = "test-node-csi-e2e"
 )
