@@ -40,8 +40,11 @@ const (
 	ContextDataCacheSize = "data-cache-size"
 	ContextDataCacheMode = "data-cache-mode"
 
+	// If disk is created newly then the content source would be nil or empty
+	ContextDiskSource = "disk-content-source"
+
 	// Keys in the publish context
-	ContexLocalSsdCacheSize = "local-ssd-cache-size"
+	ContextLocalSsdCacheSize = "local-ssd-cache-size"
 	// Node name for E2E tests
 	TestNode = "test-node-csi-e2e"
 )
