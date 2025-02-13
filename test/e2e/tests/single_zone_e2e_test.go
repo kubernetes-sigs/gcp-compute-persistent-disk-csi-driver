@@ -80,7 +80,6 @@ const (
 )
 
 var _ = Describe("GCE PD CSI Driver", func() {
-
 	It("Should get reasonable volume limits from nodes with NodeGetInfo", func() {
 		testContext := getRandomTestContext()
 		resp, err := testContext.Client.NodeGetInfo()
@@ -905,19 +904,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
-	// Pending while multi-writer feature is in Alpha
-	PIt("Should create and delete multi-writer disk", func() {
+	It("Should create and delete multi-writer disk", func() {
 		Expect(testContexts).ToNot(BeEmpty())
-		testContext := getRandomTestContext()
+		testContext := getRandomMwTestContext()
 
-		p, _, _ := testContext.Instance.GetIdentity()
+		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
-
-		// Hardcode to us-east1-a while feature is in alpha
-		zone := "us-east1-a"
-
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, zone, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -925,21 +919,20 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
-			_, err = computeAlphaService.Disks.Get(p, zone, volName).Do()
+			_, err = computeService.Disks.Get(p, z, volName).Do()
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 		}()
 	})
 
-	// Pending while multi-writer feature is in Alpha
-	PIt("Should complete entire disk lifecycle with multi-writer disk", func() {
-		testContext := getRandomTestContext()
+	It("Should complete entire disk lifecycle with multi-writer disk", func() {
+		testContext := getRandomMwTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
 
 		// Create and Validate Disk
-		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalMultiWriterDisk(client, p, z, hdbDiskType)
 
 		defer func() {
 			// Delete Disk
@@ -1787,6 +1780,8 @@ func deleteVolumeOrError(client *remote.CsiClient, volID string) {
 func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, project, zone string, diskType string) (string, string) {
 	// Create Disk
 	disk := typeToDisk[diskType]
+
+	disk.params[common.ParameterAccessMode] = "READ_WRITE_MANY"
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volume, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
 		&csi.TopologyRequirement{
@@ -1814,11 +1809,8 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	Expect(cloudDisk.Status).To(Equal(readyState))
 	Expect(cloudDisk.SizeGb).To(Equal(defaultMwSizeGb))
 	Expect(cloudDisk.Name).To(Equal(volName))
+	Expect(cloudDisk.AccessMode).To(Equal("READ_WRITE_MANY"))
 	disk.validate(cloudDisk)
-
-	alphaDisk, err := computeAlphaService.Disks.Get(project, zone, volName).Do()
-	Expect(err).To(BeNil(), "Failed to get cloud disk using alpha API")
-	Expect(alphaDisk.MultiWriter).To(Equal(true))
 
 	return volName, volume.VolumeId
 }

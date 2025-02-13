@@ -188,7 +188,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 }
 
 // Disk Methods
-func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
+func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key) (*CloudDisk, error) {
 	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return nil, notFoundError()
@@ -220,7 +220,6 @@ func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *
 	if multiWriter && !resp.GetMultiWriter() {
 		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
 	}
-
 	klog.V(4).Infof("Compatible disk already exists")
 	return ValidateDiskParameters(resp, params)
 }
