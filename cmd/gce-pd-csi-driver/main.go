@@ -102,7 +102,11 @@ const (
 	driverName          = "pd.csi.storage.gke.io"
 	dataCacheLabel      = "datacache-storage-gke-io"
 	dataCacheLabelValue = "enabled"
+	raidedLocalSsdName  = "csi-driver-data-cache"
+	raidedLssdPrefix    = "/dev/md/"
 )
+
+var raidedLocalSsdPath = raidedLssdPrefix + raidedLocalSsdName
 
 func init() {
 	// klog verbosity guide for this package
@@ -258,9 +262,10 @@ func handle() {
 		if nodeName == nil || *nodeName == "" {
 			klog.Errorf("Data cache enabled, but --node-name not passed")
 		}
-		if err := setupDataCache(ctx, *nodeName); err != nil {
+		if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 			klog.Errorf("DataCache setup failed: %v", err)
 		}
+		go driver.StartWatcher(*nodeName)
 	}
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
@@ -342,7 +347,7 @@ func urlFlag(target **url.URL, name string, usage string) {
 	})
 }
 
-func setupDataCache(ctx context.Context, nodeName string) error {
+func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 	klog.V(2).Infof("Seting up data cache for node %s", nodeName)
 	if nodeName != common.TestNode {
 		cfg, err := rest.InClusterConfig()
@@ -366,6 +371,38 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 	klog.V(2).Info("Raiding local ssds to setup data cache")
 	if err := driver.RaidLocalSsds(); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
+	}
+
+	// vgcreate with the raided local ssds.
+	info, err := common.RunCommand("grep", raidedLocalSsdName, "ls", raidedLssdPrefix)
+	if err != nil {
+		return fmt.Errorf("================== failed while listing raided devices, err: %v, output:%v ===============", err, info)
+	}
+	infoString := strings.TrimSpace(string(info))
+	klog.V(2).Infof("=================== Got Raided LSSD name %v ===================", infoString)
+	raidedLocalSsdPath = raidedLssdPrefix + infoString
+	volumeGroupName := driver.GetVolumeGroupName(nodeId)
+
+	klog.V(2).Infof("============================== vgscan before vgcreate ==============================")
+	vgExists := driver.CheckVgExists(volumeGroupName)
+	klog.V(2).Infof("============================== vgscan info contains volumeGroupName or not %v ==============================", vgExists)
+	// Check if the required volume group already exists
+	if vgExists {
+		klog.V(2).Infof("============================== VG exists, now check if PD is part of VG ==============================")
+
+		// Clean up Volume Group before adding the PD
+		driver.ReduceVolumeGroup(volumeGroupName, true)
+
+		// validate that raidedLSSD is part of VG
+		err = driver.ValidateRaidedLSSDinVG(volumeGroupName)
+		if err != nil {
+			return fmt.Errorf("validateRaidedLSSDinVG error: %v", err)
+		}
+	} else {
+		err := driver.CreateVg(volumeGroupName, raidedLocalSsdPath)
+		if err != nil {
+			return err
+		}
 	}
 
 	klog.V(2).Infof("Datacache enabled for node %s", nodeName)
