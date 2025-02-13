@@ -22,6 +22,9 @@ import (
 )
 
 const (
+	// Disk Params
+	ParameterAccessMode = "access-mode"
+
 	// Parameters for StorageClass
 	ParameterKeyType                          = "type"
 	ParameterKeyReplicationType               = "replication-type"
@@ -107,6 +110,9 @@ type DiskParameters struct {
 	// Values: {bool}
 	// Default: false
 	MultiZoneProvisioning bool
+	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
+	// Default: READ_WRITE_SINGLE
+	AccessMode string
 }
 
 func (dp *DiskParameters) IsRegional() bool {
@@ -261,6 +267,10 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			p.MultiZoneProvisioning = paramEnableMultiZoneProvisioning
 			if paramEnableMultiZoneProvisioning {
 				p.Labels[MultiZoneLabel] = "true"
+			}
+		case ParameterAccessMode:
+			if v != "" {
+				p.AccessMode = v
 			}
 		default:
 			return p, fmt.Errorf("parameters contains invalid option %q", k)
