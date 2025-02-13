@@ -130,12 +130,8 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 	}
 
 	var absVacFilePath string
-	var vacName string
 	if testParams.volumeAttributesClassFile != "" {
 		absVacFilePath = filepath.Join(testParams.pkgDir, testConfigDir, testParams.volumeAttributesClassFile)
-		vacName = testParams.volumeAttributesClassFile[:strings.LastIndex(testParams.volumeAttributesClassFile, ".")]
-	} else {
-		vacName = "no-vac"
 	}
 
 	if !strings.Contains(testParams.storageClassFile, "sc-extreme") {
@@ -160,7 +156,6 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 		SnapshotClassFile:         absSnapshotClassFilePath,
 		SnapshotClass:             snapshotClassName,
 		VolumeAttributesClassFile: absVacFilePath,
-		VolumeAttributesClass:     vacName,
 		SupportedFsType:           fsTypes,
 		Capabilities:              caps,
 		MinimumVolumeSize:         minimumVolumeSize,
