@@ -33,7 +33,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	klog.V(2).Infof("============================== Start LVM PoC NodeStageVolume Steps ==============================")
 	klog.V(2).Infof("============================== volumeGroupName is %v ==============================", volumeGroupName)
 
-	info, err := common.RunCommand("grep", raidedLocalSsdName, "ls", raidedLssdPrefix)
+	info, err := common.RunCommand("grep", []string{raidedLocalSsdName}, "ls", raidedLssdPrefix)
 	if err != nil {
 		klog.Errorf("================== failed while listing raided devices, err: %v, output:%v ===============", err, info)
 	}
@@ -63,7 +63,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		"-o",
 		"vg_name",
 	}
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "pvs", args...)
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
 		klog.Errorf("errored while checking physical volume details %v: %s", err, info)
 		// On error info contains the error message which we cannot use for further steps
@@ -81,7 +81,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	} else if vgNameForPv != "VG" && vgNameForPv != "" {
 
 		klog.V(2).Infof("============================== Deactivate VG %s ==============================", vgNameForPv)
-		info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
 		if err != nil {
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
@@ -99,7 +99,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				"--force",
 				"-y", // force remove cache without flushing data
 			}
-			info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
+			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 			if err != nil {
 				klog.Errorf("errored while uncaching main LV. %v: %s", err, info)
 			}
@@ -107,14 +107,14 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			reduceVolumeGroup(vgNameForPv, false)
 		}
 		klog.V(2).Infof("============================== Merge VG %v to Node VG %v ==============================", vgNameForPv, volumeGroupName)
-		info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
 		if err != nil {
 			klog.Errorf("Errored while merging Volume group %s into %s %v: %s", vgNameForPv, volumeGroupName, err, info)
 		}
 
 	} else {
 		klog.V(2).Infof("============================== Extend Node VG %v for PV %v ==============================", volumeGroupName, devicePath)
-		info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgextend", []string{volumeGroupName, devicePath}...)
+		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, devicePath}...)
 		if err != nil {
 			klog.Errorf("Errored while extending VGs %v: %s", err, info)
 		}
@@ -127,7 +127,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		"-o",
 		"lv_name",
 	}
-	lvList, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvs", args...)
+	lvList, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 	if err != nil {
 		return mainDevicePath, fmt.Errorf("lv list error %w: %s", err, info)
 	}
@@ -144,7 +144,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			volumeGroupName,
 			devicePath,
 		}
-		info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvcreate", args...)
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 		if err != nil {
 			return mainDevicePath, fmt.Errorf("lvcreate error %w: %s", err, info)
 		}
@@ -173,7 +173,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			volumeGroupName,
 			raidedLocalSsdPath,
 		}
-		info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvcreate", args...)
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 		if err != nil {
 			klog.V(2).Infof("============================== lvcreate error %v: %s ==============================", err, info)
 			return mainDevicePath, fmt.Errorf("lvcreate error %w: %s", err, info)
@@ -196,7 +196,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--force",
 			"-y",
 		}
-		info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 		if err != nil {
 			klog.V(2).Infof("============================== lvconvert error %v: %s ==============================", err, info)
 			return mainDevicePath, fmt.Errorf("lvconvert error %w: %s", err, info)
@@ -205,7 +205,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 
 	// activate all the LVs in the Volume group
 	klog.V(2).Infof("============================== Activate Volume group %s ==============================", volumeGroupName)
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgchange", []string{"-ay", volumeGroupName}...)
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", volumeGroupName}...)
 	if err != nil {
 		klog.Errorf("Failed to activate VG %v %v:%s", volumeGroupName, err, info)
 	}
@@ -260,7 +260,7 @@ func FetchRaidedLssdCountForDatacache() (int, error) {
 		"--detail",
 		raidedLssdPrefix + raidedLocalSsdName,
 	}
-	info, err := common.RunCommand("grep", "Raid Devices", "mdadm", args...)
+	info, err := common.RunCommand("grep", []string{"Raid Devices"}, "mdadm", args...)
 	if err != nil {
 		return 0, fmt.Errorf("Error getting RAIDed devices for Datacache")
 	}
@@ -282,7 +282,7 @@ func FetchRaidedLssds() ([]string, error) {
 		"--export",
 	}
 
-	info, err := common.RunCommand("grep", "/dev", "mdadm", args...)
+	info, err := common.RunCommand("grep", []string{"/dev"}, "mdadm", args...)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching RAIDed LSSDs: %v; err:%v", info, err)
 	}
@@ -306,7 +306,7 @@ func FetchRaidedLssds() ([]string, error) {
 func FetchAllLssds() ([]string, error) {
 	diskList := []string{}
 
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
 	if err != nil {
 		return nil, fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
 	}
@@ -335,9 +335,22 @@ func FetchAllLssds() ([]string, error) {
 	return diskList, nil
 }
 
+func FetchLSSDsWihtEmptyMountPoint() ([]string, error) {
+	info, err := common.RunCommand("grep", []string{"-E", `^\S+\s*$`} /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MOUNTPOINT", "-pdn"}...)
+	if err != nil {
+		return nil, fmt.Errorf("Error while fetching disks with no mount point: %v; err:%v", info, err)
+	}
+	infoList := strings.Split(string(info), "\n")
+	diskList := []string{}
+	for _, ssd := range infoList {
+		diskList = append(diskList, strings.TrimSpace(ssd))
+	}
+	return diskList, nil
+}
+
 func checkVgExists(volumeGroupName string) bool {
 	args := []string{}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
 	if err != nil {
 		klog.Errorf("vgscan error %v: %s", err, info)
 		return false
@@ -359,7 +372,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 		"-an",
 		"/dev/" + volumeGroupName + "/" + mainLvName,
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvchange", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvchange", args...)
 	if err != nil {
 		klog.Errorf("Errored while deactivating the disk  %v: %s", err, info)
 	}
@@ -368,7 +381,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 		volumeGroupName + "/" + mainLvName,
 		"-y",
 	}
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvconvert", args...)
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 	if err != nil {
 		return fmt.Errorf("errored while uncaching the disk %w: %s", err, info)
 	}
@@ -397,7 +410,7 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 		raidedLocalSsds,
 		"-v",
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgcreate", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgcreate", args...)
 	if err != nil {
 		klog.Errorf("vgcreate error %v: %s", err, info)
 		return fmt.Errorf("vgcreate error %w: %s", err, info)
@@ -406,7 +419,7 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 
 	klog.V(2).Infof("============================== vgscan after vgcreate ==============================")
 	args = []string{}
-	info, err = common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgscan", args...)
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
 	if err != nil {
 		klog.Errorf("vgscan error %v: %s", err, info)
 	} else {
@@ -424,7 +437,7 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 	if force {
 		args = append(args, "--force")
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "vgreduce", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
 	if err != nil {
 		klog.Errorf("Errored while cleaning up volume group %v: %s", err, info)
 	}
@@ -441,7 +454,7 @@ func RaidLocalSsds(availableLssds []string) error {
 		strconv.Itoa(len(availableLssds)),
 	}
 	args = append(args, availableLssds...)
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "mdadm", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "mdadm", args...)
 	if err != nil {
 		return fmt.Errorf("errored while RAIDing LSSDs info: %v; err:%v", info, err)
 	}
@@ -469,7 +482,7 @@ func IsRaided() (bool, error) {
 		"--detail",
 		"--scan",
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "mdadm", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "mdadm", args...)
 	if err != nil {
 		return false, fmt.Errorf("errored while scanning for raided LSSD %v: %s", err, info)
 	}
@@ -489,7 +502,7 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		"-o",
 		"pool_lv",
 	}
-	poolName, err := common.RunCommand("" /* pipedCmd */, "" /* pipeCmdArg */, "lvs", args...)
+	poolName, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lvs", args...)
 	if err != nil {
 		return fmt.Errorf("lvs error %w", err), false
 	}

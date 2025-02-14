@@ -347,16 +347,25 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 		return nil, fmt.Errorf("Error listing RAIDed LSSDs %v", err)
 	}
 
-	availableLssds := []string{}
-
+	unRaidedLssds := []string{}
 	for _, l := range allLssds {
 		if !slices.Contains(raidedLssds, l) {
-			availableLssds = append(availableLssds, l)
+			unRaidedLssds = append(unRaidedLssds, l)
 		}
-		if len(availableLssds) == lssdCount {
-			return availableLssds, nil
+		if len(unRaidedLssds) == lssdCount {
+			break
 		}
 	}
+
+	LSSDsWithEmptyMountPoint, err := driver.FetchLSSDsWihtEmptyMountPoint()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing LSSDs with empty mountpoint: %v", err)
+	}
+
+	// We need to ensure the disks to be used for Datacache are both unRAIDed & not containing mountpoints for ephemeral storage already
+	availableLssds := slices.Filter(nil, unRaidedLssds, func(e string) bool {
+		return slices.Contains(LSSDsWithEmptyMountPoint, e)
+	})
 
 	if len(availableLssds) == 0 {
 		return nil, fmt.Errorf("No LSSDs available to set up caching")

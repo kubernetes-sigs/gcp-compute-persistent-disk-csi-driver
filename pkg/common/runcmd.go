@@ -16,7 +16,7 @@ const (
 // RunCommand wraps a k8s exec to deal with the no child process error. Same as exec.CombinedOutput.
 // On error, the output is included so callers don't need to echo it again.
 
-func RunCommand(pipeCmd string, pipeCmdArg string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+func RunCommand(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
 	execCmd1 := exec.Command(cmd1, execCmdArgs...)
 
 	if pipeCmd != "" {
@@ -47,9 +47,9 @@ func checkError(err error, execCmd exec.Cmd) error {
 	}
 	return err
 }
-func execPipeCommand(pipeCmd string, pipeCmdArg string, execCmd1 *exec.Cmd) ([]byte, error) {
+func execPipeCommand(pipeCmd string, pipeCmdArg []string, execCmd1 *exec.Cmd) ([]byte, error) {
 
-	execPipeCmd := exec.Command(pipeCmd, pipeCmdArg)
+	execPipeCmd := exec.Command(pipeCmd, pipeCmdArg...)
 	stdoutPipe, err := execCmd1.StdoutPipe()
 	if err != nil {
 		klog.Errorf("failed command %v: got error:%v", execCmd1, err)
