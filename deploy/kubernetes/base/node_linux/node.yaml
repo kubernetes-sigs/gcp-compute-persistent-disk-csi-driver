@@ -46,8 +46,15 @@ spec:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
             - "--run-controller-service=false"
+            - "--enable-node-data-cache"
+            - "--node-name=$(KUBE_NODE_NAME)"
           securityContext:
             privileged: true
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -66,6 +73,8 @@ spec:
               mountPath: /run/udev
             - name: sys
               mountPath: /sys
+            - name: lib-modules
+              mountPath: /lib/modules
       volumes:
         - name: registration-dir
           hostPath:
@@ -100,6 +109,10 @@ spec:
         - name: sys
           hostPath:
             path: /sys
+            type: Directory
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
             type: Directory
       # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
       # See "special case". This will tolerate everything. Node component should

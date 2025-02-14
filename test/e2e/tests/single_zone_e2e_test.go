@@ -109,7 +109,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */)
+		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
@@ -157,7 +157,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
 
 		// Validate that the link is correct
@@ -227,7 +227,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "failed to repair /dev/by-id symlink and stage volume")
 
 		// Validate that the link is correct
@@ -334,7 +334,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 
 			// Attach Disk
-			err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */)
+			err := testAttachWriteReadDetach(underSpecifiedID, volName, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache*/)
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 		},
 		Entry("on pd-standard", standardDiskType),
@@ -591,7 +591,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			// Delete Disk
-			err := client.DeleteVolume(volID)
+			err = wait.Poll(5*time.Second, 1*time.Minute, func() (bool, error) {
+				err := client.DeleteVolume(volID)
+				if err == nil {
+					return true, err
+				}
+				return false, err
+			})
+
 			Expect(err).To(BeNil(), "DeleteVolume failed")
 
 			// Validate Disk Deleted
@@ -678,7 +685,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}()
 
 			// Test disk works
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle before revoking CMEK key")
 
 			// Revoke CMEK key
@@ -699,7 +706,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 
 			// Make sure attach of PD fails
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).ToNot(BeNil(), "Volume lifecycle should have failed, but succeeded")
 
 			// Restore CMEK key
@@ -720,7 +727,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			// The controller publish failure in above step would set a backoff condition on the node. Wait suffcient amount of time for the driver to accept new controller publish requests.
 			time.Sleep(time.Second)
 			// Make sure attach of PD succeeds
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, controllerInstance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).To(BeNil(), "Failed to go through volume lifecycle after restoring CMEK key")
 		},
 		Entry("on pd-standard", standardDiskType),
@@ -863,7 +870,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 
 		// Attach Disk
-		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, verifyVolumeStats, nil)
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, verifyVolumeStats, nil, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
@@ -900,7 +907,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 
 		// Attach Disk
-		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil)
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, false /* fs */, verifyVolumeStats, nil, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
@@ -963,7 +970,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 			return nil
 		}
-		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, writeFunc, verifyReadFunc)
+		err := testLifecycleWithVerify(volID, volName, instance, client, false /* readOnly */, true /* block */, writeFunc, verifyReadFunc, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
@@ -1393,7 +1400,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 			},
 		}
-		err = client.NodeStageVolume(volID, stageDir, volCap)
+		err = client.NodeStageVolume(volID, stageDir, volCap, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
 
 		// Validate that the link is correct
@@ -1430,81 +1437,111 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 		}()
 	})
-
-	It("Should unpublish if there is an error unpublishing and device has been in use longer than timeout", func() {
+	It("Should create disks, attach them to instance with local ssd, setup caching between LSSD->detach->reattach to same instance", func() {
+		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
-
-		// Create Disk
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-
-		defer func() {
-			// Delete Disk
-			err := client.DeleteVolume(volID)
-			Expect(err).To(BeNil(), "DeleteVolume failed")
-
-			// Validate Disk Deleted
-			_, err = computeService.Disks.Get(p, z, volName).Do()
-			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
-		}()
+		defer deleteVolumeOrError(client, volID)
 
 		// Attach Disk
-		err := client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), false /* forceAttach */)
-		Expect(err).To(BeNil(), "ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err)
+		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, true /* detachAndReattach */, true /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
-		defer func() {
-			// Detach Disk
-			err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-			if err != nil {
-				klog.Errorf("Failed to detach disk: %v", err)
+	})
+	It("Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		zoneToContext := map[string][]*remote.TestContext{}
+		testZoneContexts := []*remote.TestContext{}
+		for _, tc := range testContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = []*remote.TestContext{tc}
+			} else {
+				zoneToContext[z] = append(zoneToContext[z], tc)
 			}
-		}()
-
-		// Stage Disk
-		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
-		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
-
-		// Create private bind mount to keep the device's state as "in use"
-		boundMountStageDir := filepath.Join("/tmp/bindmount", volName, "bindmount")
-		boundMountStageMkdirOutput, err := instance.SSH("mkdir", "-p", boundMountStageDir)
-		Expect(err).To(BeNil(), "mkdir failed on instance %v: output: %v: %v", instance.GetNodeID(), boundMountStageMkdirOutput, err)
-		bindMountOutput, err := instance.SSH("mount", "--rbind", "--make-private", stageDir, boundMountStageDir)
-		Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindMountOutput, err)
-
-		privateBindMountRemoved := false
-		unmountAndRmPrivateBindMount := func() {
-			if !privateBindMountRemoved {
-				// Umount and delete private mount staging directory
-				bindUmountOutput, err := instance.SSH("umount", boundMountStageDir)
-				Expect(err).To(BeNil(), "Bind mount failed on instance %v: output: %v: %v", instance.GetNodeID(), bindUmountOutput, err)
-				err = testutils.RmAll(instance, boundMountStageDir)
-				Expect(err).To(BeNil(), "Failed to rm mount stage dir %s: %v", boundMountStageDir, err)
+			if len(zoneToContext[z]) >= 2 {
+				testZoneContexts = zoneToContext[z]
+				break
 			}
-			privateBindMountRemoved = true
 		}
+		if len(testZoneContexts) < 2 {
+			klog.Fatalf("No test contexts setup %v", testZoneContexts)
+		}
+		testContextForVm1 := testZoneContexts[0]
+		p, z, _ := testContextForVm1.Instance.GetIdentity()
 
+		client := testContextForVm1.Client
+		firstInstance := testContextForVm1.Instance
+
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		defer deleteVolumeOrError(client, volID)
+
+		testContextForVm2 := testZoneContexts[1]
+		secondClient := testContextForVm2.Client
+		secondInstance := testContextForVm2.Instance
+		unmountDisk := func(client *remote.CsiClient, volID string, args *verifyArgs) {
+			err := client.NodeUnpublishVolume(volID, args.publishDir)
+			if err != nil {
+				klog.Errorf("NodeUnpublishVolume failed with error: %v", err)
+			}
+		}
+		attachMountArgs := attachAndMountArgs{
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    false,
+			setupDataCache: true,
+		}
+		// Controller Publish (Attach) - Node Stage - Node Publish(Mount) Volume
+		err, _, args := testAttachAndMount(volID, volName, firstInstance, client, attachMountArgs)
+		if err != nil {
+			klog.Errorf("Failed to attach and mount: %v", err.Error())
+		}
+		// Write file in the volume
+		firstMountVerify, _ := testWriteAndReadFile(firstInstance, false /* readOnly */)
+		err = firstMountVerify(args)
+		if err != nil {
+			klog.Errorf("failed to verify after first mount to %s: %v", args, err)
+		}
+		Expect(err).To(BeNil(), "Failed to write data to volume %s on instance %s", volName, firstInstance.GetName())
+		// Unmount Disk
+		unmountDisk(client, volID, args)
+
+		// Node Unstage
+		err = client.NodeUnstageVolume(volID, args.stageDir)
+		if err != nil {
+			klog.Errorf("Failed to unstage volume: %v", err)
+		}
+		detach(volID, firstInstance, client)
+
+		// Attach Disk to secondInstance
+		err, detacher, stageDir := testAttach(volID, volName, secondInstance, secondClient, attachMountArgs)
+		if err != nil {
+			klog.Errorf("Failed to attach disk %v", err)
+		}
 		defer func() {
-			unmountAndRmPrivateBindMount()
+			detacher()
+			deleteVolumeOrError(secondClient, volID)
 		}()
 
-		// Unstage Disk. This should record a "deviceInUse" error
-		err = client.NodeUnstageVolume(volID, stageDir)
-		Expect(err).ToNot(BeNil(), "Expected failure during unstage")
-		Expect(err).To(MatchError(ContainSubstring(("is still in use"))))
+		// Mount disk
+		err, _, args = testMount(volID, volName, secondInstance, secondClient, attachMountArgs, stageDir)
+		if err != nil {
+			klog.Fatalf("Failed to mount disk %v", err)
+		}
+		_, secondMountRead := testWriteAndReadFile(secondInstance, false /* readOnly */)
+		err = secondMountRead(args)
+		if err != nil {
+			klog.Errorf("failed to verify after second mount to %s: %v", args, err)
+		}
+		// Unmount disk for cleanup
+		unmountDisk(secondClient, volID, args)
+		Expect(err).To(BeNil(), "Failed to read data from volume %s on instance %s", volName, secondInstance.GetName())
 
-		// Wait 12s (10s timeout specified in CLI + 2s buffer) and try again
-		time.Sleep(12 * time.Second)
-		err = client.NodeUnstageVolume(volID, stageDir)
-		Expect(err).To(BeNil(), "Failed to unpublish after 10s in-use timeout for volume: %s, stageDir: %s, unexpected err: %s", volID, stageDir, err)
-
-		// Unstage Disk
-		fp := filepath.Join("/tmp/", volName)
-		err = testutils.RmAll(instance, fp)
-		Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
 	})
 
 	It("Should block unstage if filesystem mounted", func() {
@@ -1541,7 +1578,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, false)
 		Expect(err).To(BeNil(), "failed to stage volume: %v", err)
 
 		// Create private bind mount

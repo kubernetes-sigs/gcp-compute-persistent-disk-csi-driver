@@ -71,6 +71,9 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--allow-hdha-provisioning",
 		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
+		"--enable-controller-data-cache",
+		"--enable-node-data-cache",
+		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
@@ -78,8 +81,9 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 	workspace := remote.NewWorkspaceDir("gce-pd-e2e-")
 	// Log at V(6) as the compute API calls are emitted at that level and it's
 	// useful to see what's happening when debugging tests.
-	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=6 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
+	driverRunCmd := fmt.Sprintf("sh -c '/usr/bin/nohup %s/gce-pd-csi-driver -v=2 --endpoint=%s %s 2> %s/prog.out < /dev/null > /dev/null &'",
 		workspace, endpoint, strings.Join(extra_flags, " "), workspace)
+	klog.Infof("driverCmd %s", driverRunCmd)
 	config := &remote.ClientConfig{
 		PkgPath:      pkgPath,
 		BinPath:      binPath,
@@ -274,6 +278,33 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 	output, err := instance.SSH("cp", src, dest)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s. Output: %v, errror: %v", src, dest, output, err.Error())
+	}
+	return nil
+}
+
+func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	_, _ = instance.SSH("apt-get", "update")
+	for _, pkg := range pkgs {
+		output, err := instance.SSH("apt-get", "install", "-y", pkg)
+		if err != nil {
+			return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+		}
+	}
+	return nil
+}
+
+func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
+	output, err := instance.SSH("/bin/sed", "-i", "-e", "\"s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field allow_mixed_block_sizes, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_sync = 1.*/ udev_sync = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_sync, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_rules = 1.*/ udev_rules = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_rules, error:%v; output: %v", err, output)
 	}
 	return nil
 }
