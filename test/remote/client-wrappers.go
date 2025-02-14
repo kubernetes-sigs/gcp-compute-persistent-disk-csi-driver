@@ -58,9 +58,6 @@ const (
 	contextDataCacheSize = "data-cache-size"
 	contextDataCacheMode = "data-cache-mode"
 
-	// Keys in the publish context
-	contexLocalSsdCacheSize = "local-ssd-cache-size"
-
 	defaultLocalSsdCacheSize = "200Gi"
 	defaultDataCacheMode     = common.DataCacheModeWriteThrough
 )
@@ -203,8 +200,8 @@ func (c *CsiClient) NodeStageBlockVolume(volId, stageDir string, setupDataCache 
 func (c *CsiClient) NodeStageVolume(volId string, stageDir string, volumeCap *csipb.VolumeCapability, setupDataCache bool) error {
 	publishContext := map[string]string{}
 	if setupDataCache {
-		publishContext[contexLocalSsdCacheSize] = defaultLocalSsdCacheSize
-		publishContext[contextDataCacheMode] = defaultDataCacheMode
+		publishContext[common.ContextDataCacheSize] = defaultLocalSsdCacheSize
+		publishContext[common.ContextDataCacheMode] = defaultDataCacheMode
 	}
 	nodeStageReq := &csipb.NodeStageVolumeRequest{
 		VolumeId:          volId,

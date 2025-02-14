@@ -32,6 +32,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -58,7 +59,7 @@ var (
 	kmsClient           *cloudkms.KeyManagementClient
 )
 
-const localSSDCount int64 = 2
+// const localSSDCount int64 = 2
 
 func init() {
 	klog.InitFlags(flag.CommandLine)
@@ -160,9 +161,10 @@ func NewTestContext(zone string, instanceNumber string) *remote.TestContext {
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
-		LocalSSDCount:             localSSDCount,
+		LocalSSDCount:             common.LocalSSDCountForDataCache,
 	}
 	i, err := remote.SetupInstance(instanceConfig)
+
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
 	}
