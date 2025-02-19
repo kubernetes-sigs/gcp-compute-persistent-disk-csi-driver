@@ -19,7 +19,6 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -110,33 +109,22 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	numberOfInstancesPerZone := 2
-
-	setupContext := func(zone string) {
-		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
-		for j := 0; j < numberOfInstancesPerZone; j++ {
-			go func(curZone string, randInt int) {
-				defer GinkgoRecover()
-				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
-			}(zone, j)
-		}
+	for _, zone := range zones {
 		go func(curZone string) {
 			defer GinkgoRecover()
-			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
+			tcc <- NewDefaultTestContext(curZone)
+		}(zone)
+		go func(curZone string) {
+			defer GinkgoRecover()
+			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType)
 		}(zone)
 	}
 
-	for _, zone := range zones {
-		setupContext(zone)
-	}
-
-	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
+	for i := 0; i < len(zones); i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
-	}
-	for i := 0; i < len(zones); i++ {
-		tc := <-hdtcc
+		tc = <-hdtcc
 		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
@@ -170,12 +158,12 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
-	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
+func NewDefaultTestContext(zone string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType)
 }
 
-func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
+func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
