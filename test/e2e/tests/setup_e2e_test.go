@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,7 @@ var (
 	computeAlphaService   *computealpha.Service
 	computeBetaService    *computebeta.Service
 	kmsClient             *cloudkms.KeyManagementClient
+	defaultInstanceNumber = 0
 )
 
 const localSSDCount int64 = 2
@@ -163,7 +165,7 @@ func NewDefaultTestContext(zone string) *remote.TestContext {
 }
 
 func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
+	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, strconv.Itoa(defaultInstanceNumber))
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
