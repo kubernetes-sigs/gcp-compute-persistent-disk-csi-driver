@@ -148,7 +148,6 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 			EnableConfidentialCompute: true,
 		}
 	}
-	klog.Infof("=======Adding LocalSSD %v=============", localSSDCount)
 
 	localSSDConfig := &compute.AttachedDisk{
 		Type: "SCRATCH",

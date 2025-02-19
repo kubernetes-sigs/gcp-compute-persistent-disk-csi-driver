@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,11 +73,10 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
-	tcc := make(chan *remote.TestContext)
-	defer close(tcc)
-
+	numberOfInstancesPerZone := 2
 	zones := strings.Split(*zones, ",")
-	// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
+	tcc := make(chan *remote.TestContext, len(zones)*numberOfInstancesPerZone)
+	defer close(tcc)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -102,18 +102,21 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	numberOfInstancesPerZone := 2
-
-	setupContext := func(zones []string, randInt int) {
-		for _, zone := range zones {
-			go func(curZone string) {
+	setupContext := func(zone string) {
+		var wg sync.WaitGroup
+		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
+		for j := 0; j < numberOfInstancesPerZone; j++ {
+			wg.Add(1)
+			go func(curZone string, randInt int) {
 				defer GinkgoRecover()
+				defer wg.Done()
 				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
-			}(zone)
+			}(zone, j)
 		}
 	}
-	for j := 0; j < numberOfInstancesPerZone; j++ {
-		setupContext(zones, j)
+
+	for _, zone := range zones {
+		setupContext(zone)
 	}
 
 	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
@@ -165,6 +168,11 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
 		LocalSSDCount:             localSSDCount,
+	}
+
+	if machineType == *hdMachineType {
+		// Machine type is defaulted to c3-standard-2 which doesn't support LSSD and we don't need LSSD for HdHA test context
+		instanceConfig.LocalSSDCount = 0
 	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {

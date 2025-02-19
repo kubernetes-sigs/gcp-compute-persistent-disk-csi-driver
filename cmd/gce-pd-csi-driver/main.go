@@ -333,7 +333,7 @@ func urlFlag(target **url.URL, name string, usage string) {
 }
 
 func setupDataCache(ctx context.Context, nodeName string) error {
-	klog.V(2).Infof("Seting up data cache for node %s", nodeName)
+	klog.V(2).Infof("Setting up data cache for node %s", nodeName)
 	if nodeName != common.TestNode {
 		cfg, err := rest.InClusterConfig()
 		if err != nil {
