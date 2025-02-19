@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,13 +79,12 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
-	tcc := make(chan *remote.TestContext)
-	hdtcc := make(chan *remote.TestContext)
+	numberOfInstancesPerZone := 2
+	zones := strings.Split(*zones, ",")
+	tcc := make(chan *remote.TestContext, len(zones)*numberOfInstancesPerZone)
+	hdtcc := make(chan *remote.TestContext, len(zones))
 	defer close(tcc)
 	defer close(hdtcc)
-
-	zones := strings.Split(*zones, ",")
-	// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -110,29 +110,37 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	numberOfInstancesPerZone := 2
-
-	setupContext := func(zones []string, randInt int) {
-		for _, zone := range zones {
-			go func(curZone string) {
+	setupContext := func(zone string) {
+		var wg sync.WaitGroup
+		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
+		for j := 0; j < numberOfInstancesPerZone; j++ {
+			wg.Add(1)
+			go func(curZone string, randInt int) {
 				defer GinkgoRecover()
+				defer wg.Done()
 				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
-			}(zone)
-			go func(curZone string) {
-				defer GinkgoRecover()
-				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, strconv.Itoa(randInt))
-			}(zone)
+			}(zone, j)
 		}
+		go func(curZone string) {
+			wg.Add(1)
+			defer GinkgoRecover()
+			defer wg.Done()
+			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
+		}(zone)
+		wg.Wait()
 	}
-	for j := 0; j < numberOfInstancesPerZone; j++ {
-		setupContext(zones, j)
+
+	for _, zone := range zones {
+		setupContext(zone)
 	}
 
 	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
-		tc = <-hdtcc
+	}
+	for i := 0; i < len(zones); i++ {
+		tc := <-hdtcc
 		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
@@ -187,6 +195,11 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
 		LocalSSDCount:             localSSDCount,
+	}
+
+	if machineType == *hdMachineType {
+		// Machine type is defaulted to c3-standard-2 which doesn't support LSSD and we don't need LSSD for HdHA test context
+		instanceConfig.LocalSSDCount = 0
 	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
