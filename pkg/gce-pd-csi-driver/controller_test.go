@@ -30,6 +30,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	compute "google.golang.org/api/compute/v1"
@@ -276,7 +277,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 					Name:       name,
 					SelfLink:   fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
 					Type:       common.ParameterHdHADiskType,
-					AccessMode: gceReadWriteManyAccessMode,
+					AccessMode: common.GCEReadWriteManyAccessMode,
 					Region:     "country-region",
 				}),
 			},
@@ -1229,6 +1230,38 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "fail with invalid hyperdisk access mode ROO",
+			req: &csi.CreateVolumeRequest{
+				Name:       name,
+				Parameters: map[string]string{"type": "hyperdisk-balanced"},
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "success with hyperdisk access mode RWO",
+			req: &csi.CreateVolumeRequest{
+				Name:               name,
+				Parameters:         map[string]string{"type": "hyperdisk-balanced"},
+				VolumeCapabilities: stdVolCaps,
+			},
+			expVol: &csi.Volume{
+				VolumeId:           "projects/test-project/zones/country-region-zone/disks/test-name",
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+				CapacityBytes:      MinimumVolumeSizeInBytes,
+			},
+		},
 	}
 
 	// Run test cases
@@ -1260,16 +1293,8 @@ func TestCreateVolumeArguments(t *testing.T) {
 			t.Fatalf("Expected volume %v, got nil volume", tc.expVol)
 		}
 
-		if !reflect.DeepEqual(vol, tc.expVol) {
-			errStr := fmt.Sprintf("Expected volume: %#v\nTopology %#v\n\n to equal volume: %#v\nTopology %#v\n\n",
-				vol, vol.GetAccessibleTopology()[0], tc.expVol, tc.expVol.GetAccessibleTopology()[0])
-			if len(vol.GetAccessibleTopology()) != len(tc.expVol.GetAccessibleTopology()) {
-				t.Errorf("Accessible topologies are not the same length, got %v, expected %v", len(vol.GetAccessibleTopology()), len(tc.expVol.GetAccessibleTopology()))
-			}
-			for i := 0; i < len(vol.GetAccessibleTopology()); i++ {
-				errStr += fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
-			}
-			t.Error(errStr)
+		if diff := cmp.Diff(vol, tc.expVol, protocmp.Transform()); diff != "" {
+			t.Errorf("unexpected diff (-vol, +expVol): \n%s", diff)
 		}
 	}
 }
@@ -1710,6 +1735,181 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, common.MultiZoneLabel, disk.GetLabels())
 			}
 		}
+	}
+}
+func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
+	testCases := []struct {
+		name           string
+		req            *csi.CreateVolumeRequest
+		existingDisk   *gce.CloudDisk
+		expAccessMode  string
+		expMultiWriter bool
+		expErrCode     codes.Code
+	}{
+		{
+			name: "success non-multi-writer PD",
+			req: &csi.CreateVolumeRequest{
+				Name: name,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "pd-balanced",
+				},
+			},
+			expMultiWriter: false,
+		},
+		{
+			name: "success multi-writer PD",
+			req: &csi.CreateVolumeRequest{
+				Name: name,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "pd-balanced",
+				},
+			},
+			expMultiWriter: true,
+		},
+		{
+			name: "success multi-writer Hyperdisk",
+			req: &csi.CreateVolumeRequest{
+				Name: name,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "hyperdisk-balanced",
+				},
+			},
+			expAccessMode: common.GCEReadWriteManyAccessMode,
+		},
+		{
+			name: "success non-multi-writer Hyperdisk",
+			req: &csi.CreateVolumeRequest{
+				Name: name,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "hyperdisk-balanced",
+				},
+			},
+			expAccessMode: common.GCEReadWriteOnceAccessMode,
+		},
+		{
+			name: "failure unsupported access mode for Hyperdisk",
+			req: &csi.CreateVolumeRequest{
+				Name: name,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "hyperdisk-balanced",
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			// Setup new driver each time so no interference
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+
+			// Start Test
+			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+			if err != nil {
+				serverError, ok := status.FromError(err)
+				if !ok {
+					t.Fatalf("Could not get error status code from err: %v", serverError)
+				}
+				if serverError.Code() != tc.expErrCode {
+					t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+				}
+				return
+			}
+			if tc.expErrCode != codes.OK {
+				t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+			}
+
+			expVol := &csi.Volume{
+				CapacityBytes: MinimumVolumeSizeInBytes,
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone": zone,
+						},
+					},
+				},
+			}
+
+			// Make sure responses match
+			vol := resp.GetVolume()
+			if diff := cmp.Diff(expVol, vol, protocmp.Transform()); diff != "" {
+				t.Errorf("Accessible topologies mismatch (-want +got):\n%s", diff)
+			}
+
+			// Now check the fake "disk" for multi-writer or access mode, depending on disk type.
+			_, volKey, err := common.VolumeIDToKey(vol.GetVolumeId())
+			if err != nil {
+				t.Fatalf("unexptected error while parsing volume id %v", vol.GetVolumeId())
+			}
+			disk, err := fcp.GetDisk(context.Background(), project, volKey)
+			if err != nil {
+				t.Fatalf("unexpected error while getting disk from fake cloud provider: %v", err)
+			}
+			if disk.GetAccessMode() != tc.expAccessMode {
+				t.Errorf("want access mode %q, got access mode %q", tc.expAccessMode, disk.GetAccessMode())
+			}
+			if disk.GetMultiWriter() != tc.expMultiWriter {
+				t.Errorf("want multi writer = %v, got multi writer = %v.", tc.expMultiWriter, disk.GetMultiWriter())
+			}
+		})
 	}
 }
 
@@ -4849,8 +5049,8 @@ func TestCreateVolumeDiskReady(t *testing.T) {
 			}
 
 			vol := resp.GetVolume()
-			if !reflect.DeepEqual(vol, tc.expVol) {
-				t.Fatalf("Mismatch in expected vol %v, current volume: %v\n", tc.expVol, vol)
+			if diff := cmp.Diff(vol, tc.expVol, protocmp.Transform()); diff != "" {
+				t.Errorf("unexpected diff (-vol, +expVol): \n%s", diff)
 			}
 		})
 	}
@@ -5345,7 +5545,6 @@ func TestCreateConfidentialVolume(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		t.Logf("test case: %s", tc.name)
 		t.Run(tc.name, func(t *testing.T) {
 			fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
 			if err != nil {
