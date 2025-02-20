@@ -59,7 +59,7 @@ func SetupInstance(cfg InstanceConfig) (*InstanceInfo, error) {
 		cfg: cfg,
 	}
 
-	err := instance.CreateOrGetInstance()
+	err := instance.CreateOrGetInstance(int(cfg.LocalSSDCount))
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +81,13 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 			klog.Warningf("Failed to remove archive file %s: %v", archivePath, err)
 		}
 	}()
+
+	// Copy dependencies
+	_, _ = instance.SSH("apt-get", "update")
+	output, err := instance.SSH("apt-get", "install", "-y", "mdadm", "lvm2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to install dependencies. Output: %v, errror: %v", output, err.Error())
+	}
 
 	// Upload archive to instance and run binaries
 	driverPID, err := instance.UploadAndRun(archivePath, config.WorkspaceDir, config.RunDriverCmd)
