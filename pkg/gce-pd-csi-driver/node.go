@@ -46,6 +46,7 @@ type GCENodeServer struct {
 	DeviceUtils     deviceutils.DeviceUtils
 	VolumeStatter   mountmanager.Statter
 	MetadataService metadataservice.MetadataService
+	EnableDataCache bool
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
@@ -78,6 +79,8 @@ type NodeServerArgs struct {
 	EnableDeviceInUseCheck bool
 
 	DeviceInUseTimeout time.Duration
+
+	EnableDataCache bool
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -294,6 +297,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
 	volumeCapability := req.GetVolumeCapability()
+	nodeId := ns.MetadataService.GetName()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume ID must be provided")
 	}
@@ -327,12 +331,25 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		partition = part
 	}
 	devicePath, err := getDevicePath(ns, volumeID, partition)
-
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err.Error()))
 	}
 
-	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
+	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
+
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
+		if len(nodeId) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
+		}
+		devFsPath, err := filepath.EvalSymlinks(devicePath)
+		if err != nil {
+			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
+		}
+		devicePath, err = setupCaching(devFsPath, req, nodeId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
+		}
+	}
 
 	// Part 2: Check if mount already exists at stagingTargetPath
 	if ns.isVolumePathMounted(stagingTargetPath) {
@@ -486,6 +503,15 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		ns.deviceInUseErrors.deleteDevice(volumeID)
 	}
 
+	// The NodeUnstageVolume does not have any volume or publish context, we need to get the info from LVM locally
+	// Check if cache group cache-{volumeID} exist in LVM
+	if ns.EnableDataCache {
+		nodeId := ns.MetadataService.GetName()
+		err := cleanupCache(volumeID, nodeId)
+		if err != nil {
+			klog.Errorf("Failed to cleanup cache for volume %s: %v", volumeID, err)
+		}
+	}
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
