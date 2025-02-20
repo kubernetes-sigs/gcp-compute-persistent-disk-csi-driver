@@ -241,14 +241,14 @@ func handle() {
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
-	}
-
-	if *enableDataCacheFlag {
-		if nodeName == nil || *nodeName == "" {
-			klog.Errorf("Data cache enabled, but --node-name not passed")
-		}
-		if err := setupDataCache(ctx, *nodeName); err != nil {
-			klog.Errorf("DataCache setup failed: %v", err)
+		if *enableDataCacheFlag {
+			if nodeName == nil || *nodeName == "" {
+				klog.Errorf("Data Cache enabled, but --node-name not passed")
+			}
+			if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
+				klog.Errorf("DataCache setup failed: %v", err)
+			}
+			go driver.StartWatcher(*nodeName)
 		}
 	}
 
@@ -331,8 +331,16 @@ func urlFlag(target **url.URL, name string, usage string) {
 	})
 }
 
-func setupDataCache(ctx context.Context, nodeName string) error {
-	klog.V(2).Infof("Setting up data cache for node %s", nodeName)
+func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
+	isAlreadyRaided, err := driver.IsRaided()
+	if err != nil {
+		klog.V(4).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
+	} else if isAlreadyRaided {
+		klog.V(4).Infof("Local SSDs are already RAIDed. Skipping Data Cache setup.")
+		return nil
+	}
+
+	lssdCount := common.LocalSSDCountForDataCache
 	if nodeName != common.TestNode {
 		cfg, err := rest.InClusterConfig()
 		if err != nil {
@@ -357,6 +365,11 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
 	}
 
-	klog.V(2).Infof("Datacache enabled for node %s", nodeName)
+	// Initializing data cache node (VG checks w/ raided lssd)
+	if err := driver.InitializeDataCacheNode(nodeId); err != nil {
+		return err
+	}
+
+	klog.V(4).Infof("LSSD caching is setup for the Data Cache enabled node %s", nodeName)
 	return nil
 }
