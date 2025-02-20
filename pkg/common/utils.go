@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"regexp"
 	"slices"
@@ -78,6 +79,7 @@ const (
 	// Full or partial URL of the zone resource, in the format:
 	//   projects/{project}/zones/{zone}
 	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
+	alphanums      = "bcdfghjklmnpqrstvwxz2456789"
 )
 
 var (
@@ -100,6 +102,8 @@ var (
 		http.StatusNotFound:        codes.NotFound,
 		http.StatusConflict:        codes.FailedPrecondition,
 	}
+
+	validDataCacheMode = []string{DataCacheModeWriteBack, DataCacheModeWriteThrough}
 
 	// Regular expressions for validating parent_id, key and value of a resource tag.
 	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
@@ -390,6 +394,15 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 		return -1, err
 	}
 	return volumehelpers.RoundUpToMiB(quantity)
+}
+
+// ConvertGiStringToInt64 converts a GiB string to int64
+func ConvertGiStringToInt64(str string) (int64, error) {
+	quantity, err := resource.ParseQuantity(str)
+	if err != nil {
+		return -1, err
+	}
+	return volumehelpers.RoundUpToGiB(quantity)
 }
 
 // ConvertStringToBool converts a string to a boolean.
@@ -684,6 +697,22 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	return strings.Join(splitId, "/"), nil
 }
 
+func StringInSlice(s string, list []string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateDataCacheMode(s string) error {
+	if StringInSlice(s, validDataCacheMode) {
+		return nil
+	}
+	return fmt.Errorf("invalid data-cache-mode %s. Only \"writeback\" and \"writethrough\" is a valid input", s)
+}
+
 // NewLimiter returns a token bucket based request rate limiter after initializing
 // the passed values for limit, burst (or token bucket) size. If opted for emptyBucket
 // all initial tokens are reserved for the first burst.
@@ -699,4 +728,17 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 
 func IsHyperdisk(diskType string) bool {
 	return strings.HasPrefix(diskType, "hyperdisk-")
+}
+
+// shortString is inspired by k8s.io/apimachinery/pkg/util/rand.SafeEncodeString, but takes data from a hash.
+func ShortString(s string) string {
+	hasher := fnv.New128a()
+	hasher.Write([]byte(s))
+	sum := hasher.Sum([]byte{})
+	const sz = 8
+	short := make([]byte, sz)
+	for i := 0; i < sz; i++ {
+		short[i] = alphanums[int(sum[i])%len(alphanums)]
+	}
+	return string(short)
 }

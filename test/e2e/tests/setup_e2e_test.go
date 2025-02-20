@@ -19,7 +19,9 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,6 +65,8 @@ var (
 	kmsClient             *cloudkms.KeyManagementClient
 )
 
+const localSSDCount int64 = 2
+
 func init() {
 	klog.InitFlags(flag.CommandLine)
 }
@@ -75,12 +79,12 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
-	tcc := make(chan *remote.TestContext)
-	hdtcc := make(chan *remote.TestContext)
+	numberOfInstancesPerZone := 2
+	zones := strings.Split(*zones, ",")
+	tcc := make(chan *remote.TestContext, len(zones)*numberOfInstancesPerZone)
+	hdtcc := make(chan *remote.TestContext, len(zones))
 	defer close(tcc)
 	defer close(hdtcc)
-
-	zones := strings.Split(*zones, ",")
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -106,22 +110,37 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	for _, zone := range zones {
+	setupContext := func(zone string) {
+		var wg sync.WaitGroup
+		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
+		for j := 0; j < numberOfInstancesPerZone; j++ {
+			wg.Add(1)
+			go func(curZone string, randInt int) {
+				defer GinkgoRecover()
+				defer wg.Done()
+				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+			}(zone, j)
+		}
 		go func(curZone string) {
+			wg.Add(1)
 			defer GinkgoRecover()
-			tcc <- NewDefaultTestContext(curZone)
+			defer wg.Done()
+			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
 		}(zone)
-		go func(curZone string) {
-			defer GinkgoRecover()
-			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType)
-		}(zone)
+		wg.Wait()
 	}
 
-	for i := 0; i < len(zones); i++ {
+	for _, zone := range zones {
+		setupContext(zone)
+	}
+
+	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
-		tc = <-hdtcc
+	}
+	for i := 0; i < len(zones); i++ {
+		tc := <-hdtcc
 		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
@@ -155,12 +174,12 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewDefaultTestContext(zone string) *remote.TestContext {
-	return NewTestContext(zone, *minCpuPlatform, *machineType)
+func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
 }
 
-func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s-%s", *vmNamePrefix, zone, machineType)
+func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
@@ -175,6 +194,12 @@ func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContex
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
+		LocalSSDCount:             localSSDCount,
+	}
+
+	if machineType == *hdMachineType {
+		// Machine type is defaulted to c3-standard-2 which doesn't support LSSD and we don't need LSSD for HdHA test context
+		instanceConfig.LocalSSDCount = 0
 	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
@@ -195,7 +220,16 @@ func NewTestContext(zone, minCpuPlatform, machineType string) *remote.TestContex
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
+	pkgs := []string{"lvm2", "mdadm", "grep", "coreutils"}
+	err = testutils.InstallDependencies(i, pkgs)
+	if err != nil {
+		klog.Fatalf("Failed to install dependency package on node %v: error : %v", i.GetNodeID(), err)
+	}
 
+	err = testutils.SetupDataCachingConfig(i)
+	if err != nil {
+		klog.Fatalf("Failed to setup data cache required config error %v", err)
+	}
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 	if err != nil {

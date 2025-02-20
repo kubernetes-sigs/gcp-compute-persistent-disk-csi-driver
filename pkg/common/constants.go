@@ -37,4 +37,16 @@ const (
 	GCEReadOnlyManyAccessMode  = "READ_ONLY_MANY"
 	GCEReadWriteManyAccessMode = "READ_WRITE_MANY"
 	GCEReadWriteOnceAccessMode = "READ_WRITE_SINGLE"
+
+	// Data cache mode
+	DataCacheModeWriteBack    = "writeback"
+	DataCacheModeWriteThrough = "writethrough"
+
+	ContextDataCacheSize = "data-cache-size"
+	ContextDataCacheMode = "data-cache-mode"
+
+	// Keys in the publish context
+	ContexLocalSsdCacheSize = "local-ssd-cache-size"
+	// Node name for E2E tests
+	TestNode = "test-node-csi-e2e"
 )
