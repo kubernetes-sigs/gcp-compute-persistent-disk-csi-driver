@@ -50,5 +50,5 @@ const (
 
 	// Node label for datacache
 	NodeLabelPrefix         = "cloud.google.com/%s"
-	DataCacheLssdCountLabel = "data-cache-disk"
+	DataCacheLssdCountLabel = "gke-data-cache-disk"
 )

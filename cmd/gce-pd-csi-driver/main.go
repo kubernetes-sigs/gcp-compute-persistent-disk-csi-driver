@@ -390,6 +390,10 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 	if nodeName != common.TestNode {
 		var err error
 		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		if lssdCount == 0 {
+			klog.Infof("Datacache is not enabled on node %v", nodeName)
+			return nil
+		}
 		if err != nil {
 			return err
 		}

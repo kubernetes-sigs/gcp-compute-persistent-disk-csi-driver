@@ -20,10 +20,8 @@ const (
 	mainLvSuffix       = "csi-main"
 	raidedLocalSsdName = "csi-driver-data-cache"
 	raidMode           = "0"
-	raidedLssdPrefix   = "/dev/md/"
+	raidedLocalSsdPath = "/dev/md0"
 )
-
-var raidedLocalSsdPath = raidedLssdPrefix + raidedLocalSsdName
 
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
 	volumeId := req.GetVolumeId()
@@ -33,13 +31,12 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	klog.V(2).Infof("============================== Start LVM PoC NodeStageVolume Steps ==============================")
 	klog.V(2).Infof("============================== volumeGroupName is %v ==============================", volumeGroupName)
 
-	info, err := common.RunCommand("grep", []string{raidedLocalSsdName}, "ls", raidedLssdPrefix)
+	info, err := common.RunCommand("grep", []string{raidedLocalSsdPath}, "ls", raidedLocalSsdPath)
 	if err != nil {
 		klog.Errorf("================== failed while listing raided devices, err: %v, output:%v ===============", err, info)
 	}
 	infoString := strings.TrimSpace(string(info))
 	klog.V(2).Infof("=================== Got Raided LSSD name %v ===================", infoString)
-	raidedLocalSsdPath = raidedLssdPrefix + infoString
 
 	klog.V(2).Infof("============================== vgscan before vgcreate ==============================")
 	vgExists := checkVgExists(volumeGroupName)
@@ -233,23 +230,26 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 		return common.LocalSSDCountForDataCache, nil
 	}
 	cfg, err := rest.InClusterConfig()
+	// We want to capture API errors with node label fetching, so return -1
+	// in those cases instead of 0.
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
-		return 0, err
+		return -1, err
 	}
 	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
 		dataCacheCount, err := strconv.Atoi(val)
 		if err != nil {
-			return 0, fmt.Errorf("Error getting Datacache's LSSD count from node label: %v", err)
+			return -1, fmt.Errorf("Error getting Datacache's LSSD count from node label: %v", err)
 		}
+		klog.Infof("Number of local SSDs requested for Datacache: %v", dataCacheCount)
 		return dataCacheCount, nil
 	}
 	return 0, fmt.Errorf("Cannot get Datacache's LSSD count from node label")
@@ -258,7 +258,7 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 func FetchRaidedLssdCountForDatacache() (int, error) {
 	args := []string{
 		"--detail",
-		raidedLssdPrefix + raidedLocalSsdName,
+		raidedLocalSsdPath,
 	}
 	info, err := common.RunCommand("grep", []string{"Raid Devices"}, "mdadm", args...)
 	if err != nil {
@@ -446,7 +446,9 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 func RaidLocalSsds(availableLssds []string) error {
 	args := []string{
 		"--create",
-		raidedLssdPrefix + raidedLocalSsdName,
+		raidedLocalSsdPath,
+		"--name",
+		raidedLocalSsdName,
 		"-l" + raidMode,
 		// Force RAIDing as sometime it might fail for caution if there is just 1 LSSD present as 1 LSSD need not be RAIDed
 		"--force",
