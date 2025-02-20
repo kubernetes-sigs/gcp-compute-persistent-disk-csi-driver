@@ -32,4 +32,9 @@ const (
 
 	// Label that is set on a disk when it is used by a 'multi-zone' VolumeHandle
 	MultiZoneLabel = "goog-gke-multi-zone"
+
+	// GCE Access Modes that are valid for hyperdisks only.
+	GCEReadOnlyManyAccessMode  = "READ_ONLY_MANY"
+	GCEReadWriteManyAccessMode = "READ_WRITE_MANY"
+	GCEReadWriteOnceAccessMode = "READ_WRITE_SINGLE"
 )
