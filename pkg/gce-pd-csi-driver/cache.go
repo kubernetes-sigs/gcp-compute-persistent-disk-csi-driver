@@ -242,7 +242,6 @@ func getLvName(suffix string, volumeId string) string {
 }
 
 func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string) error {
-	klog.V(2).Infof(" vgcreate=")
 	args := []string{
 		"--zero",
 		"y",
