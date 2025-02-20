@@ -696,3 +696,7 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 
 	return limiter
 }
+
+func IsHyperdisk(diskType string) bool {
+	return strings.HasPrefix(diskType, "hyperdisk-")
+}
