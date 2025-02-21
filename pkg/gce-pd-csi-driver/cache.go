@@ -16,27 +16,43 @@ import (
 )
 
 const (
-	cacheSuffix        = "csi-fast"
-	mainLvSuffix       = "csi-main"
-	raidedLocalSsdName = "csi-driver-data-cache"
-	raidMode           = "0"
-	raidedLocalSsdPath = "/dev/md0"
+	cacheSuffix               = "csi-fast"
+	mainLvSuffix              = "csi-main"
+	raidedLocalSsdName        = "csi-driver-data-cache"
+	raidMode                  = "0"
+	initialRaidedLocalSsdPath = "/dev/md0"
 )
 
+func fetchRAIDedLocalSsdPath() (string, error) {
+	args := []string{
+		"--detail",
+		"--scan",
+	}
+	info, err := common.RunCommand("grep", []string{raidedLocalSsdName}, "mdadm", args...)
+	if err != nil || len(info) == 0 {
+		return "", fmt.Errorf("Error getting RAIDed device path for Datacache %v, output:%v ===============", err, string(info))
+	}
+	infoString := strings.TrimSpace(string(info))
+	infoSlice := strings.Split(infoString, " ")
+
+	// We want to get the second element in the array, which is the path to the RAIDed device
+	return infoSlice[1], nil
+}
+
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
+
+	// The device path may have changed after rebooting, so we need to fetch the path again
+	raidedLocalSsdPath, err := fetchRAIDedLocalSsdPath()
+	if err != nil {
+		return "", err
+	}
+
 	volumeId := req.GetVolumeId()
 	volumeGroupName := getVolumeGroupName(nodeId)
 	mainDevicePath := "/dev/" + volumeGroupName + "/" + getLvName(mainLvSuffix, volumeId)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
 	klog.V(2).Infof("============================== Start LVM PoC NodeStageVolume Steps ==============================")
 	klog.V(2).Infof("============================== volumeGroupName is %v ==============================", volumeGroupName)
-
-	info, err := common.RunCommand("grep", []string{raidedLocalSsdPath}, "ls", raidedLocalSsdPath)
-	if err != nil {
-		klog.Errorf("================== failed while listing raided devices, err: %v, output:%v ===============", err, info)
-	}
-	infoString := strings.TrimSpace(string(info))
-	klog.V(2).Infof("=================== Got Raided LSSD name %v ===================", infoString)
 
 	klog.V(2).Infof("============================== vgscan before vgcreate ==============================")
 	vgExists := checkVgExists(volumeGroupName)
@@ -46,7 +62,10 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
 	} else {
-		err := createVg(volumeGroupName, devicePath, raidedLocalSsdPath)
+		if err != nil {
+			return "", err
+		}
+		err = createVg(volumeGroupName, devicePath, raidedLocalSsdPath)
 		if err != nil {
 			return mainDevicePath, err
 		}
@@ -60,14 +79,14 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		"-o",
 		"vg_name",
 	}
-	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
 		klog.Errorf("errored while checking physical volume details %v: %s", err, info)
 		// On error info contains the error message which we cannot use for further steps
 		info = nil
 	}
 
-	infoString = strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
+	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
 	infoString = strings.ReplaceAll(infoString, ".", "")
 	infoString = strings.ReplaceAll(infoString, "\"", "")
 	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
@@ -258,7 +277,7 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 func FetchRaidedLssdCountForDatacache() (int, error) {
 	args := []string{
 		"--detail",
-		raidedLocalSsdPath,
+		initialRaidedLocalSsdPath,
 	}
 	info, err := common.RunCommand("grep", []string{"Raid Devices"}, "mdadm", args...)
 	if err != nil {
@@ -403,6 +422,10 @@ func getLvName(suffix string, volumeId string) string {
 
 func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string) error {
 	klog.V(2).Infof("============================== vgcreate ==============================")
+
+	// mdadm --detail --scan
+	// grep csi-driver-data-cache
+
 	args := []string{
 		"--zero",
 		"y",
@@ -446,7 +469,7 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 func RaidLocalSsds(availableLssds []string) error {
 	args := []string{
 		"--create",
-		raidedLocalSsdPath,
+		initialRaidedLocalSsdPath,
 		"--name",
 		raidedLocalSsdName,
 		"-l" + raidMode,
