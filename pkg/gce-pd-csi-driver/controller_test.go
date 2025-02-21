@@ -236,7 +236,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.ParameterHdHADiskType,
+					Type:     common.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -253,7 +253,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.ParameterHdHADiskType,
+					Type:     common.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -276,7 +276,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:       name,
 					SelfLink:   fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:       common.ParameterHdHADiskType,
+					Type:       common.DiskTypeHdHA,
 					AccessMode: common.GCEReadWriteManyAccessMode,
 					Region:     "country-region",
 				}),
@@ -921,7 +921,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               name,
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyType: common.ParameterHdHADiskType},
+				Parameters:         map[string]string{common.ParameterKeyType: common.DiskTypeHdHA},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
@@ -954,7 +954,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.ParameterHdHADiskType,
+					common.ParameterKeyType: common.DiskTypeHdHA,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -978,7 +978,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.ParameterHdHADiskType,
+					common.ParameterKeyType: common.DiskTypeHdHA,
 				},
 			},
 			expVol: &csi.Volume{
@@ -1261,6 +1261,42 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: stdTopology,
 				CapacityBytes:      MinimumVolumeSizeInBytes,
 			},
+		},
+		{
+			name: "fail with hyperdisk-throughput access mode ROX",
+			req: &csi.CreateVolumeRequest{
+				Name:       name,
+				Parameters: map[string]string{"type": "hyperdisk-throughput"},
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "fail with hyperdisk-extreme access mode RWX",
+			req: &csi.CreateVolumeRequest{
+				Name:       name,
+				Parameters: map[string]string{"type": "hyperdisk-extreme"},
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
 		},
 	}
 
@@ -2454,8 +2490,9 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.createReq)
 			if err != nil {
 				t.Errorf("Expected no error, got %v", err)
+			} else {
+				volId = resp.GetVolume().VolumeId
 			}
-			volId = resp.GetVolume().VolumeId
 		}
 
 		tc.modifyReq.VolumeId = volId
@@ -3047,7 +3084,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyType: common.ParameterHdHADiskType,
+				common.ParameterKeyType: common.DiskTypeHdHA,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: true},

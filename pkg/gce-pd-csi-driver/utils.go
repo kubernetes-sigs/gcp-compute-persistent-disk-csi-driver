@@ -41,6 +41,11 @@ var (
 		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  common.GCEReadOnlyManyAccessMode,
 		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: common.GCEReadWriteManyAccessMode,
 	}
+
+	supportedMultiAttachAccessModes = map[csi.VolumeCapability_AccessMode_Mode]bool{
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  true,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: true,
+	}
 )
 
 func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability_AccessMode {
@@ -256,6 +261,24 @@ func getReadOnlyFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
 		}
 		if readOnly {
 			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func getMultiAttachementFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
+	if vcs == nil {
+		return false, errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		if vc.GetAccessMode() == nil {
+			return false, errors.New("access mode is nil")
+		}
+		mode := vc.GetAccessMode().GetMode()
+		if isMultiAttach, ok := supportedMultiAttachAccessModes[mode]; !ok {
+			return false, nil
+		} else {
+			return isMultiAttach, nil
 		}
 	}
 	return false, nil

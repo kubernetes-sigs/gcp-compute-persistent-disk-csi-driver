@@ -233,6 +233,10 @@ var (
 	}
 	listDisksFieldsWithUsers      = append(listDisksFieldsWithoutUsers, "items/users")
 	disksWithModifiableAccessMode = []string{"hyperdisk-ml"}
+	disksWithUnsettableAccessMode = map[string]bool{
+		common.DiskTypeHdE: true,
+		common.DiskTypeHdT: true,
+	}
 )
 
 func isDiskReady(disk *gce.CloudDisk) (bool, error) {
@@ -374,8 +378,17 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource must be provided when AccessMode is set to read only")
 	}
 
-	if readonly && params.DiskType == common.ParameterHdHADiskType {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid access mode for disk type %s", common.ParameterHdHADiskType)
+	if readonly && params.DiskType == common.DiskTypeHdHA {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid access mode for disk type %s", common.DiskTypeHdHA)
+	}
+
+	// Hyperdisk-throughput and hyperdisk-extreme do not support attaching to multiple VMs.
+	isMultiAttach, err := getMultiAttachementFromCapabilities(volumeCapabilities)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to parse volume capabilities: %v", err)
+	}
+	if isMultiAttach && disksWithUnsettableAccessMode[params.DiskType] {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid access mode for disk type %s", params.DiskType)
 	}
 
 	// Validate multi-zone provisioning configuration
@@ -602,6 +615,12 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	if common.IsHyperdisk(params.DiskType) {
 		if am, err := getHyperdiskAccessModeFromCapabilities(req.GetVolumeCapabilities()); err != nil {
 			return nil, err
+		} else if disksWithUnsettableAccessMode[params.DiskType] {
+			// Disallow multi-attach for HdT and HdE. These checks were done in `createVolumeInternal`,
+			// but repeating them here future-proves us from possible refactors.
+			if am != common.GCEReadWriteOnceAccessMode {
+				return nil, status.Errorf(codes.Internal, "")
+			}
 		} else {
 			accessMode = am
 		}
@@ -1570,7 +1589,7 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
 	}
 	if common.IsHyperdisk(disk.GetPDType()) && disk.GetAccessMode() == common.GCEReadWriteManyAccessMode {
-		return nil, status.Errorf(codes.InvalidArgument, "Cannot create snapshot for disk type %s with access mode %s", common.ParameterHdHADiskType, common.GCEReadWriteManyAccessMode)
+		return nil, status.Errorf(codes.InvalidArgument, "Cannot create snapshot for disk type %s with access mode %s", common.DiskTypeHdHA, common.GCEReadWriteManyAccessMode)
 	}
 
 	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)

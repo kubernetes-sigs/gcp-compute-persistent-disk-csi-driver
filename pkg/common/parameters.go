@@ -42,7 +42,6 @@ const (
 	ParameterKeyDataCacheMode               = "data-cache-mode"
 	ParameterKeyResourceTags                = "resource-tags"
 	ParameterKeyEnableMultiZoneProvisioning = "enable-multi-zone-provisioning"
-	ParameterHdHADiskType                   = "hyperdisk-balanced-high-availability"
 
 	// Parameters for VolumeSnapshotClass
 	ParameterKeyStorageLocations = "storage-locations"
@@ -76,6 +75,11 @@ const (
 	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
 	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
 	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
+
+	// Hyperdisk disk types
+	DiskTypeHdHA = "hyperdisk-balanced-high-availability"
+	DiskTypeHdT  = "hyperdisk-throughput"
+	DiskTypeHdE  = "hyperdisk-extreme"
 )
 
 type DataCacheParameters struct {
@@ -130,7 +134,7 @@ type DiskParameters struct {
 }
 
 func (dp *DiskParameters) IsRegional() bool {
-	return dp.ReplicationType == "regional-pd" || dp.DiskType == ParameterHdHADiskType
+	return dp.ReplicationType == "regional-pd" || dp.DiskType == DiskTypeHdHA
 }
 
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
@@ -200,8 +204,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		case ParameterKeyType:
 			if v != "" {
 				p.DiskType = strings.ToLower(v)
-				if !pp.EnableHdHA && p.DiskType == ParameterHdHADiskType {
-					return p, d, fmt.Errorf("parameters contain invalid disk type %s", ParameterHdHADiskType)
+				if !pp.EnableHdHA && p.DiskType == DiskTypeHdHA {
+					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
 				}
 			}
 		case ParameterKeyReplicationType:
