@@ -44,6 +44,13 @@ const (
 	ContexLocalSsdCacheSize = "local-ssd-cache-size"
 	// Node name for E2E tests
 	TestNode = "test-node-csi-e2e"
+
+	// Default LSSD count for datacache E2E tests
+	LocalSSDCountForDataCache = 2
+
+	// Node label for datacache
+	NodeLabelPrefix         = "cloud.google.com/%s"
+	DataCacheLssdCountLabel = "gke-data-cache-disk"
 )
 
 // doc https://cloud.google.com/compute/docs/disks/hyperdisks#max-total-disks-per-vm
