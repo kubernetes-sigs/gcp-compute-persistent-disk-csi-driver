@@ -347,7 +347,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
+			return nil, status.Error(codes.DataLoss, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 		}
 	}
 
@@ -509,7 +509,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		nodeId := ns.MetadataService.GetName()
 		err := cleanupCache(volumeID, nodeId)
 		if err != nil {
-			klog.Errorf("Failed to cleanup cache for volume %s: %v", volumeID, err)
+			return nil, status.Errorf(codes.DataLoss, "Failed to cleanup cache for volume %s: %v", volumeID, err)
 		}
 	}
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
