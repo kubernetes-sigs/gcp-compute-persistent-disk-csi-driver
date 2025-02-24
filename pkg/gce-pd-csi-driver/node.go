@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
@@ -72,6 +73,8 @@ type GCENodeServer struct {
 	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedNodeServer
+
+	metricsManager *metrics.MetricsManager
 }
 
 type NodeServerArgs struct {
@@ -84,6 +87,8 @@ type NodeServerArgs struct {
 	EnableDataCache bool
 
 	DataCacheEnabledNodePool bool
+
+	MetricsManager *metrics.MetricsManager
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -415,6 +420,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 				klog.V(4).Infof("NodeStageVolume succeeded with \"noload\" option on %v to %s", volumeID, stagingTargetPath)
 				return &csi.NodeStageVolumeResponse{}, nil
 			}
+		}
+
+		if ns.metricsManager != nil {
+			ns.metricsManager.RecordMountErrorMetric(err)
 		}
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
