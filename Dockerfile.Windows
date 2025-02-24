@@ -21,7 +21,7 @@ WORKDIR /code
 ADD . /code/
 RUN cd /code/ && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=${STAGINGVERSION} make gce-pd-driver-windows
 
-FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}
+FROM ${BASE_IMAGE}
 LABEL description="PD CSI driver"
 COPY --from=builder /code/bin/gce-pd-csi-driver.exe /gce-pd-csi-driver.exe
 
