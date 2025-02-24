@@ -27,12 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -102,9 +98,7 @@ var (
 )
 
 const (
-	driverName          = "pd.csi.storage.gke.io"
-	dataCacheLabel      = "datacache-storage-gke-io"
-	dataCacheLabelValue = "enabled"
+	driverName = "pd.csi.storage.gke.io"
 )
 
 func init() {
@@ -350,29 +344,74 @@ func urlFlag(target **url.URL, name string, usage string) {
 	})
 }
 
-func setupDataCache(ctx context.Context, nodeName string) error {
-	klog.V(2).Infof("Setting up data cache for node %s", nodeName)
-	if nodeName != common.TestNode {
-		cfg, err := rest.InClusterConfig()
-		if err != nil {
-			return err
+func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
+	allLssds, err := driver.FetchAllLssds()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing all LSSDs %v", err)
+	}
+
+	raidedLssds, err := driver.FetchRaidedLssds()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing RAIDed LSSDs %v", err)
+	}
+
+	unRaidedLssds := []string{}
+	for _, l := range allLssds {
+		if !slices.Contains(raidedLssds, l) {
+			unRaidedLssds = append(unRaidedLssds, l)
 		}
-		kubeClient, err := kubernetes.NewForConfig(cfg)
-		if err != nil {
-			return err
-		}
-		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
-			return err
-		}
-		if val, found := node.GetLabels()[dataCacheLabel]; !found || val != dataCacheLabelValue {
-			klog.V(2).Infof("Datacache not enabled for node %s; node label %s=%s and not %s", nodeName, dataCacheLabel, val, dataCacheLabelValue)
-			return nil
+		if len(unRaidedLssds) == lssdCount {
+			break
 		}
 	}
-	klog.V(2).Info("Raiding local ssds to setup data cache")
-	if err := driver.RaidLocalSsds(); err != nil {
+
+	LSSDsWithEmptyMountPoint, err := driver.FetchLSSDsWihtEmptyMountPoint()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing LSSDs with empty mountpoint: %v", err)
+	}
+
+	// We need to ensure the disks to be used for Datacache are both unRAIDed & not containing mountpoints for ephemeral storage already
+	availableLssds := slices.Filter(nil, unRaidedLssds, func(e string) bool {
+		return slices.Contains(LSSDsWithEmptyMountPoint, e)
+	})
+
+	if len(availableLssds) == 0 {
+		return nil, fmt.Errorf("No LSSDs available to set up caching")
+	}
+
+	if len(availableLssds) < lssdCount {
+		return nil, fmt.Errorf("Not enough LSSDs available to set up caching. Available LSSDs: %v, wanted LSSDs: %v", len(availableLssds), lssdCount)
+	}
+	return availableLssds, nil
+}
+
+func setupDataCache(ctx context.Context, nodeName string) error {
+	isAlreadyRaided, err := driver.IsRaided()
+	if err != nil {
+		klog.V(2).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
+	} else if isAlreadyRaided {
+		klog.V(2).Infof("Local SSDs are already RAIDed. Skipping Datacache setup.")
+		return nil
+	}
+
+	lssdCount := common.LocalSSDCountForDataCache
+	if nodeName != common.TestNode {
+		var err error
+		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		if lssdCount == 0 {
+			klog.Infof("Datacache is not enabled on node %v", nodeName)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+	lssdNames, err := fetchLssdsForRaiding(lssdCount)
+	if err != nil {
+		klog.Fatalf("Failed to get sufficient SSDs for Datacache's caching setup: %v", err)
+	}
+	klog.V(2).Infof("Raiding local ssds to setup data cache: %v", lssdNames)
+	if err := driver.RaidLocalSsds(lssdNames); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup data caching, got error %v", err)
 	}
 

@@ -337,13 +337,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
-	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContextDataCacheSize] != "" {
 		if len(nodeId) == 0 {
 			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
 		}
 		devFsPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
+		}
+		configError := ValidateDataCacheConfig(req.GetPublishContext()[common.ContextDataCacheMode], req.GetPublishContext()[common.ContextDataCacheSize], ctx, nodeId)
+		if configError != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error validate configuration for Datacache: %v", err.Error()))
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
