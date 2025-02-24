@@ -59,10 +59,27 @@ func clusterDownGKE(gceZone, gceRegion string) error {
 	return nil
 }
 
+const hardcodeBuildChange = `/template:/,/spec:/s/spec:$/spec:\n\ \ \ \ \ \ nodeSelector:\n\ \ \ \ \ \ \ \ kubernetes.io\/os: linux/`
+
 func buildKubernetes(k8sDir, command string) error {
-	cmd := exec.Command("make", "-C", k8sDir, command)
+	// TODO: REMOVE THESE HARDCODED LINES
+	cmd := exec.Command("sed", "-i", hardcodeBuildChange, fmt.Sprintf("%s/cluster/addons/node-problem-detector/npd.yaml", k8sDir))
 	cmd.Env = os.Environ()
-	err := runCommand(fmt.Sprintf("Running command in kubernetes/kubernetes path=%s", k8sDir), cmd)
+	err := runCommand(fmt.Sprintf("Make hardcoded change in path=%s", k8sDir), cmd)
+	if err != nil {
+		return fmt.Errorf("failed to make hardcoded changes before building Kubernetes: %w", err)
+	}
+
+	cmd = exec.Command("cat", fmt.Sprintf("%s/cluster/addons/node-problem-detector/npd.yaml", k8sDir))
+	cmd.Env = os.Environ()
+	err = runCommand(fmt.Sprintf("Check hardcoded change in path=%s", k8sDir), cmd)
+	if err != nil {
+		return fmt.Errorf("failed to check hardcoded changes before building Kubernetes: %w", err)
+	}
+
+	cmd = exec.Command("make", "-C", k8sDir, command)
+	cmd.Env = os.Environ()
+	err = runCommand(fmt.Sprintf("Running command in kubernetes/kubernetes path=%s", k8sDir), cmd)
 	if err != nil {
 		return fmt.Errorf("failed to build Kubernetes: %w", err)
 	}

@@ -25,7 +25,7 @@ for ((i=0;i<${#imagetags[@]};++i)); do
   BASEIMAGE="${baseimages[i]}"
   echo $BASEIIMAGE
 
-  full_version=$(docker manifest inspect ${BASEIMAGE} | grep "os.version" | head -n 1 | awk '{print $2}') || true
+  full_version=$(docker manifest inspect ${BASEIMAGE} | grep "os.version" | head -n 1 | awk '{print $2}' | sed 's/^\"//' | sed 's/\",$//') || true
   echo $full_version
 
   IMAGETAG=${STAGINGIMAGE}:${STAGINGVERSION}_${imagetags[i]}
