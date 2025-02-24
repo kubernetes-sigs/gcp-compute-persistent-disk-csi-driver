@@ -29,6 +29,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -184,5 +185,37 @@ func TestErrorCodeLabelValue(t *testing.T) {
 		if diff := cmp.Diff(tc.wantErrorCode, errCode); diff != "" {
 			t.Errorf("%s: -want err, +got err\n%s", tc.name, diff)
 		}
+	}
+}
+
+func TestMountOperationError(t *testing.T) {
+	testCases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "no error",
+			want: "OK",
+		},
+		{
+			name: "unknown error",
+			err:  fmt.Errorf("fake error"),
+			want: "UnknownError",
+		},
+		{
+			name: "mount error",
+			err:  mount.NewMountError(mount.FormatFailed, "file system format failed"),
+			want: string(mount.FormatFailed),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mountErrorType(tc.err)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("%s: -want err, +got err\n%s", tc.name, diff)
+			}
+		})
 	}
 }
