@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
@@ -59,14 +60,30 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
+// Reflect magic below simply clears Secrets map from request.
+func clearSecrets(req interface{}) interface{} {
+	v := reflect.ValueOf(&req).Elem()
+	e := reflect.New(v.Elem().Type()).Elem()
+	e.Set(v.Elem())
+	f := reflect.Indirect(e).FieldByName("Secrets")
+	if f.IsValid() && f.CanSet() && f.Kind() == reflect.Map {
+		f.Set(reflect.MakeMap(f.Type()))
+		v.Set(e)
+	}
+	return req
+}
+
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info.FullMethod == ProbeCSIFullMethod {
 		return handler(ctx, req)
 	}
-	// Note that secrets are not included in any RPC message. In the past protosanitizer and other log
+	// Note that secrets may be included in some RPC messages
+	// (https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/1372),
+	// but the driver ignores them. In the past protosanitizer and other log
 	// stripping was shown to cause a significant increase of CPU usage (see
 	// https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/356#issuecomment-550529004).
-	klog.V(4).Infof("%s called with request: %s", info.FullMethod, req)
+	// That is why we use hand-crafted clearSecrets() below rather than protosanitizer.
+	klog.V(4).Infof("%s called with request: %s", info.FullMethod, clearSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
 		klog.Errorf("%s returned with error: %v", info.FullMethod, err.Error())
