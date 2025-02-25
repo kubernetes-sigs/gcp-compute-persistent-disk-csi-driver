@@ -726,6 +726,10 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 	return limiter
 }
 
+func IsHyperdisk(diskType string) bool {
+	return strings.HasPrefix(diskType, "hyperdisk-")
+}
+
 // shortString is inspired by k8s.io/apimachinery/pkg/util/rand.SafeEncodeString, but takes data from a hash.
 func ShortString(s string) string {
 	hasher := fnv.New128a()

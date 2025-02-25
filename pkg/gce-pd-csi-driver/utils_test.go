@@ -775,3 +775,85 @@ func TestValidateStoragePoolZones(t *testing.T) {
 		}
 	}
 }
+
+func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		vcs     []*csi.VolumeCapability
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "error with nil vcs",
+			wantErr: true,
+		},
+		{
+			name:    "error with no vcs",
+			vcs:     []*csi.VolumeCapability{},
+			wantErr: true,
+		},
+		{
+			name: "error with nil access mode",
+			vcs: []*csi.VolumeCapability{
+				{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "error with unsupported CSI access mode",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "success getting ROX",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+					},
+				},
+			},
+			want: common.GCEReadOnlyManyAccessMode,
+		},
+		{
+			name: "success getting RWO",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			want: common.GCEReadWriteOnceAccessMode,
+		},
+		{
+			name: "success getting RWX",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+			want: common.GCEReadWriteManyAccessMode,
+		},
+	} {
+		t.Logf("Running test: %v", tc.name)
+		am, err := getHyperdiskAccessModeFromCapabilities(tc.vcs)
+		if err != nil {
+			if !tc.wantErr {
+				t.Errorf("unexpected error: %v", err)
+			}
+			continue
+		}
+		if am != tc.want {
+			t.Errorf("want %s, got %s", tc.want, am)
+		}
+	}
+}

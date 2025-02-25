@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -33,7 +33,20 @@ const (
 	fsTypeXFS = "xfs"
 )
 
-var ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
+var (
+	ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
+
+	csiAccessModeToHyperdiskMode = map[csi.VolumeCapability_AccessMode_Mode]string{
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:      common.GCEReadWriteOnceAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  common.GCEReadOnlyManyAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: common.GCEReadWriteManyAccessMode,
+	}
+
+	supportedMultiAttachAccessModes = map[csi.VolumeCapability_AccessMode_Mode]bool{
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  true,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: true,
+	}
+)
 
 func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability_AccessMode {
 	return &csi.VolumeCapability_AccessMode{Mode: mode}
@@ -137,7 +150,7 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
 	default:
-		return fmt.Errorf("%v access mode is not supported for for PD", am.GetMode())
+		return fmt.Errorf("%v access mode is not supported for GCE disks", am.GetMode())
 	}
 	return nil
 }
@@ -251,6 +264,42 @@ func getReadOnlyFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func getMultiAttachementFromCapabilities(vcs []*csi.VolumeCapability) (bool, error) {
+	if vcs == nil {
+		return false, errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		if vc.GetAccessMode() == nil {
+			return false, errors.New("access mode is nil")
+		}
+		mode := vc.GetAccessMode().GetMode()
+		if isMultiAttach, ok := supportedMultiAttachAccessModes[mode]; !ok {
+			return false, nil
+		} else {
+			return isMultiAttach, nil
+		}
+	}
+	return false, nil
+}
+
+func getHyperdiskAccessModeFromCapabilities(vcs []*csi.VolumeCapability) (string, error) {
+	if vcs == nil {
+		return "", errors.New("volume capabilities is nil")
+	}
+	for _, vc := range vcs {
+		if vc.GetAccessMode() == nil {
+			return "", errors.New("access mode is nil")
+		}
+		mode := vc.GetAccessMode().GetMode()
+		if am, ok := csiAccessModeToHyperdiskMode[mode]; !ok {
+			return "", errors.New("found unsupported access mode for hyperdisk")
+		} else {
+			return am, nil
+		}
+	}
+	return "", errors.New("volume capabilities is nil")
 }
 
 func collectMountOptions(fsType string, mntFlags []string) []string {
