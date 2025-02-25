@@ -48,7 +48,7 @@ const (
 	// Default LSSD count for datacache E2E tests
 	LocalSSDCountForDataCache = 2
 
-	// Node label for datacache
+	// Node label for Data Cache (only applicable to GKE nodes)
 	NodeLabelPrefix         = "cloud.google.com/%s"
 	DataCacheLssdCountLabel = "gke-data-cache-disk"
 )

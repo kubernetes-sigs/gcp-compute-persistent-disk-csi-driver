@@ -67,8 +67,11 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
-		"--enable-data-cache",
-		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
+	}
+
+	if instance.GetLocalSSD() > 0 {
+		extra_flags = append(extra_flags, "--enable-data-cache")
+		extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", utilcommon.TestNode))
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)

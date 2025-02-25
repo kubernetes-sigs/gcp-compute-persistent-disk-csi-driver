@@ -338,7 +338,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 		configError := ValidateDataCacheConfig(req.GetPublishContext()[common.ContextDataCacheMode], req.GetPublishContext()[common.ContextDataCacheSize], ctx, nodeId)
 		if configError != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error validate configuration for Datacache: %v", err.Error()))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error validate configuration for Data Cache: %v", err.Error()))
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
