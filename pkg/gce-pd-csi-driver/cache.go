@@ -369,11 +369,17 @@ func cleanupCache(volumeId string, nodeId string) error {
 
 	volumeGroupName := getVolumeGroupName(nodeId)
 	if !checkVgExists(volumeGroupName) {
+		klog.V(4).Infof("Volume group %s not found, no cache clean up needed", volumeGroupName)
 		// If volume group doesn't exist then there's nothing to uncache
 		return nil
 	}
 	reduceVolumeGroup(volumeGroupName, true)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
+	if !checkLvExists(mainLvName) {
+		klog.V(4).Infof("Logical volume %s not found, assuming caching wasn't setup for the PVC %s or is cleaned up", mainLvName, volumeId)
+		// If logical volume doesn't exist then there's nothing to uncache
+		return nil
+	}
 	args := []string{
 		"-an",
 		"/dev/" + volumeGroupName + "/" + mainLvName,
@@ -392,6 +398,17 @@ func cleanupCache(volumeId string, nodeId string) error {
 		return fmt.Errorf("Failed to uncache volume %s %w: %s", volumeId, err, info)
 	}
 	return nil
+}
+
+func checkLvExists(lvName string) bool {
+	args := []string{}
+	info, err := common.RunCommand("" /* pipedCmd */, "" /* pipedCmdArg */, "lvscan", args...)
+	if err != nil {
+		klog.Errorf("Errored while checking if logical volume exists for %s %v: %s", lvName, err, info)
+		return false
+	}
+	// Check if the required logical volume already exists
+	return strings.Contains(string(info), lvName)
 }
 
 func getVolumeGroupName(nodePath string) string {
