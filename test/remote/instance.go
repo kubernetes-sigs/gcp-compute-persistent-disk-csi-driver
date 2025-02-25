@@ -80,6 +80,10 @@ func (i *InstanceInfo) GetNodeID() string {
 	return common.CreateNodeID(i.cfg.Project, i.cfg.Zone, i.cfg.Name)
 }
 
+func (i *InstanceInfo) GetLocalSSD() int64 {
+	return i.cfg.LocalSSDCount
+}
+
 func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) bool {
 	if !strings.Contains(curInst.MachineType, newInst.MachineType) {
 		klog.Infof("Machine type mismatch")

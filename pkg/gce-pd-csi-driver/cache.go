@@ -16,11 +16,10 @@ import (
 )
 
 const (
-	cacheSuffix               = "csi-fast"
-	mainLvSuffix              = "csi-main"
-	raidedLocalSsdName        = "csi-driver-data-cache"
-	raidMode                  = "0"
-	initialRaidedLocalSsdPath = "/dev/md0"
+	cacheSuffix        = "csi-fast"
+	mainLvSuffix       = "csi-main"
+	raidedLocalSsdName = "csi-driver-data-cache"
+	raidMode           = "0"
 )
 
 func fetchRAIDedLocalSsdPath() (string, error) {
@@ -30,12 +29,13 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 	}
 	info, err := common.RunCommand("grep", []string{raidedLocalSsdName}, "mdadm", args...)
 	if err != nil || len(info) == 0 {
-		return "", fmt.Errorf("Error getting RAIDed device path for Datacache %v, output:%v ===============", err, string(info))
+		return "", fmt.Errorf("Error getting RAIDed device path for Data Cache %v, output:%v", err, string(info))
 	}
 	infoString := strings.TrimSpace(string(info))
 	infoSlice := strings.Split(infoString, " ")
 
-	// We want to get the second element in the array, which is the path to the RAIDed device
+	// We want to get the second element in the array (sample: ARRAY /dev/md126 metadata=1.2 name=csi-driver-data-cache UUID=*),
+	//  which is the path to the RAIDed device
 	return infoSlice[1], nil
 }
 
@@ -51,7 +51,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	volumeGroupName := getVolumeGroupName(nodeId)
 	mainDevicePath := "/dev/" + volumeGroupName + "/" + getLvName(mainLvSuffix, volumeId)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
-	klog.V(2).Infof("Volume group available on node %v ", volumeGroupName)
+	klog.V(4).Infof("Volume group available on node %v ", volumeGroupName)
 	vgExists := checkVgExists(volumeGroupName)
 	if vgExists {
 		// Clean up Volume Group before adding the PD
@@ -82,9 +82,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	infoString = strings.ReplaceAll(infoString, "\"", "")
 	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
 	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
-	klog.V(2).Infof("============================== Physical volume is part of Volume group: %v ==============================", vgNameForPv)
+	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
-		klog.V(2).Infof("============================== Physical Volume(PV) already exists in the Volume Group ==============================")
+		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group")
 	} else if vgNameForPv != "VG" && vgNameForPv != "" {
 
 		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
@@ -157,7 +157,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	cacheLvName := getLvName(cacheSuffix, volumeId)
 	if isCached {
 		// Validate that cache is setup for required size
-		klog.V(2).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
+		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
 		fastCacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
 		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
@@ -207,8 +207,8 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	return mainDevicePath, nil
 }
 
-func ValidateDataCacheConfig(dataCacheMode string, datacacheSize string, ctx context.Context, nodeName string) error {
-	if dataCacheMode != "" && datacacheSize != "" {
+func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx context.Context, nodeName string) error {
+	if dataCacheMode != "" && dataCacheSize != "" {
 		isAlreadyRaided, err := IsRaided()
 		if err != nil {
 			return fmt.Errorf("Local SSDs are not setup for caching; got error: %v", err)
@@ -218,48 +218,50 @@ func ValidateDataCacheConfig(dataCacheMode string, datacacheSize string, ctx con
 		}
 		return nil
 	}
-	klog.Infof("Data cache is not enabled for PVC")
+	klog.V(4).Infof("Data Cache is not enabled for PVC (data-cache-size: %v, data-cache-mode: %v). Please set both these parameters in StorageClass to enable caching", dataCacheSize, dataCacheMode)
 	return nil
 }
 
 func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
-	if nodeName == common.TestNode {
-		return common.LocalSSDCountForDataCache, nil
-	}
 	cfg, err := rest.InClusterConfig()
 	// We want to capture API errors with node label fetching, so return -1
 	// in those cases instead of 0.
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
-		return -1, err
+		return 0, err
 	}
 	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
 		dataCacheCount, err := strconv.Atoi(val)
 		if err != nil {
-			return -1, fmt.Errorf("Error getting Datacache's LSSD count from node label: %v", err)
+			return 0, fmt.Errorf("Error getting Data Cache's LSSD count from node label: %v", err)
 		}
-		klog.Infof("Number of local SSDs requested for Datacache: %v", dataCacheCount)
+		klog.V(4).Infof("Number of local SSDs requested for Data Cache: %v", dataCacheCount)
 		return dataCacheCount, nil
 	}
-	return 0, fmt.Errorf("Cannot get Datacache's LSSD count from node label")
+	// This will be returned for a non-Data-Cache node pool
+	return 0, nil
 }
 
 func FetchRaidedLssdCountForDatacache() (int, error) {
+	raidedPath, err := fetchRAIDedLocalSsdPath()
+	if err != nil {
+		return 0, err
+	}
 	args := []string{
 		"--detail",
-		initialRaidedLocalSsdPath,
+		raidedPath,
 	}
 	info, err := common.RunCommand("grep", []string{"Raid Devices"}, "mdadm", args...)
 	if err != nil {
-		return 0, fmt.Errorf("Error getting RAIDed devices for Datacache")
+		return 0, fmt.Errorf("Error getting RAIDed devices for Data Cache")
 	}
 	if len(info) != 0 {
 		raidedDeviceInfo := strings.Split(strings.TrimSpace(string(info)), ":")
@@ -294,7 +296,7 @@ func FetchRaidedLssds() ([]string, error) {
 		}
 	}
 
-	klog.V(2).Infof("Raided NVME list %v", raidedLssdList)
+	klog.V(4).Infof("Raided NVME list %v", raidedLssdList)
 
 	return raidedLssdList, nil
 }
@@ -309,7 +311,7 @@ func FetchAllLssds() ([]string, error) {
 	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
 	re, err := regexp.Compile("nvme_card([0-9]+)?$")
 	if err != nil {
-		klog.V(2).ErrorS(err, "Errored while compiling to check PD or LSSD")
+		klog.V(4).ErrorS(err, "Errored while compiling to check PD or LSSD")
 	}
 	for _, ssd := range infoList {
 		ssd = strings.TrimSpace(ssd)
@@ -322,7 +324,7 @@ func FetchAllLssds() ([]string, error) {
 		}
 	}
 
-	klog.V(2).Infof("NVME list %v", diskList)
+	klog.V(4).Infof("NVME list %v", diskList)
 
 	return diskList, nil
 }
@@ -358,6 +360,7 @@ func cleanupCache(volumeId string, nodeId string) error {
 		// If volume group doesn't exist then there's nothing to uncache
 		return nil
 	}
+	reduceVolumeGroup(volumeGroupName, true)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
 	args := []string{
 		"-an",
@@ -404,7 +407,7 @@ func createVg(volumeGroupName string, devicePath string, raidedLocalSsds string)
 	if err != nil {
 		return fmt.Errorf("Volume group creation failed %w: %s", err, info)
 	}
-	klog.Infof("Volume group creation succeeded for %v", volumeGroupName)
+	klog.V(4).Infof("Volume group creation succeeded for %v", volumeGroupName)
 
 	args = []string{}
 	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
@@ -431,8 +434,6 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 func RaidLocalSsds(availableLssds []string) error {
 	args := []string{
 		"--create",
-		initialRaidedLocalSsdPath,
-		"--name",
 		raidedLocalSsdName,
 		"-l" + raidMode,
 		// Force RAIDing as sometime it might fail for caution if there is just 1 LSSD present as 1 LSSD need not be RAIDed
@@ -448,7 +449,7 @@ func RaidLocalSsds(availableLssds []string) error {
 	// Validate if Raided successfully
 	isAlreadyRaided, err := IsRaided()
 	if err != nil {
-		klog.V(2).Infof("Errored while scanning for available raided LocalSSDs err:%v=", err)
+		klog.V(4).Infof("Errored while scanning for available raided LocalSSDs err:%v=", err)
 	}
 	if !isAlreadyRaided {
 		return fmt.Errorf("failed raiding, raided device not found on scanning")
