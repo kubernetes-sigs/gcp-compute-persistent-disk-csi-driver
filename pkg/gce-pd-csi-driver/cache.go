@@ -3,6 +3,7 @@ package gceGCEDriver
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,10 +17,13 @@ import (
 )
 
 const (
-	cacheSuffix        = "csi-fast"
-	mainLvSuffix       = "csi-main"
-	raidedLocalSsdName = "csi-driver-data-cache"
-	raidMode           = "0"
+	cacheSuffix              = "csi-fast"
+	mainLvSuffix             = "csi-main"
+	raidedLocalSsdName       = "csi-driver-data-cache"
+	raidMode                 = "0"
+	maxAllowedChunks   int64 = 1000000 // This is the max allowed chunks for LVM
+	GiB                int64 = 1024 * 1024 * 1024
+	KiB                int64 = 1024
 )
 
 func fetchRAIDedLocalSsdPath() (string, error) {
@@ -159,21 +163,30 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
-		fastCacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
-		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
-		args = []string{
-			"--yes",
-			"-n",
-			cacheLvName,
-			"-L",
-			// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
-			fastCacheSize + "g",
-			volumeGroupName,
-			raidedLocalSsdPath,
-		}
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
+		chunkSize, err := fetchChunkSize(cacheSize)
 		if err != nil {
-			return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
+			klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", cacheSize, err)
+			return mainDevicePath, err
+		}
+		// Check if LV exists
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		lvExists := strings.Contains(string(info), cacheLvName)
+		if !lvExists {
+			args = []string{
+				"--yes",
+				"-n",
+				cacheLvName,
+				"-L",
+				// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
+				cacheSize + "g",
+				volumeGroupName,
+				raidedLocalSsdPath,
+			}
+			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+			if err != nil {
+				return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
+			}
 		}
 
 		// Once caching is setup, link the PD to cache
@@ -188,7 +201,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			req.GetPublishContext()[common.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
-			string(chunkSize),
+			chunkSize,
 			"--force",
 			"-y",
 		}
@@ -495,6 +508,21 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+func fetchChunkSize(cacheSize string) (string, error) {
+	var chunkSize float64
+	var maxChunkSize int64 = 1 * GiB   // Max allowed chunk size as per LVM documentation
+	var minChunkSize int64 = 320 * KiB // This is randomly selected, we need a multiple of 32KiB, the default size would be too small for caching https://man7.org/linux/man-pages/man8/lvcreate.8.html (--chunksize)
+	cacheSizeInt, err := common.ConvertGiStringToInt64(cacheSize)
+	if err != nil {
+		return "0", err
+	}
+	// Chunksize should be divisible by 32Kib so we need (chunksize/32*1024)*32*1024
+	chunkSize = float64(cacheSizeInt) / float64(maxAllowedChunks)
+	chunkSize = math.Ceil(chunkSize/float64(32*KiB)) * float64(32*KiB)
+	chunkSize = math.Min(math.Max(chunkSize, float64(minChunkSize)), float64(maxChunkSize))
+	return strconv.FormatInt(int64(chunkSize), 10), nil
 }
 
 func fetchChunkSizeKiB(cacheSize string) (string, error) {
