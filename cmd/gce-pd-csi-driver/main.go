@@ -229,7 +229,8 @@ func handle() {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
 		nsArgs := driver.NodeServerArgs{
-			EnableDataCache: *enableDataCacheFlag,
+			EnableDataCache:          *enableDataCacheFlag,
+			DataCacheEnabledNodePool: isDataCacheEnabledNodePool(ctx, *nodeName),
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
@@ -323,6 +324,14 @@ func urlFlag(target **url.URL, name string, usage string) {
 		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
+}
+
+func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) bool {
+	dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+	if err != nil || dataCacheLSSDCount == 0 {
+		return false
+	}
+	return true
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {

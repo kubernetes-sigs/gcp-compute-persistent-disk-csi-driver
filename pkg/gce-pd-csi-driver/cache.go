@@ -207,7 +207,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	return mainDevicePath, nil
 }
 
-func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx context.Context, nodeName string) error {
+func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx context.Context) error {
 	if dataCacheMode != "" && dataCacheSize != "" {
 		isAlreadyRaided, err := IsRaided()
 		if err != nil {
@@ -218,8 +218,7 @@ func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx con
 		}
 		return nil
 	}
-	klog.V(4).Infof("Data Cache is not enabled for PVC (data-cache-size: %v, data-cache-mode: %v). Please set both these parameters in StorageClass to enable caching", dataCacheSize, dataCacheMode)
-	return nil
+	return fmt.Errorf("Data Cache is not enabled for PVC (data-cache-size: %v, data-cache-mode: %v). Please set both parameters in StorageClass to enable caching", dataCacheSize, dataCacheMode)
 }
 
 func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
