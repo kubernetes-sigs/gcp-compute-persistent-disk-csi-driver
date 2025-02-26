@@ -1823,6 +1823,42 @@ func TestValidateDataCacheMode(t *testing.T) {
 
 }
 
+func TestValidateNonNegativeInt(t *testing.T) {
+	testCases := []struct {
+		name        string
+		cacheSize   int64
+		expectError bool
+	}{
+		{
+			name:      "valid input - positive cache size",
+			cacheSize: 100000,
+		},
+		{
+			name:        "invalid input - cachesize 0",
+			cacheSize:   0,
+			expectError: true,
+		},
+		{
+			name:        "invalid input - negative cache size",
+			cacheSize:   -100,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		err := ValidateNonNegativeInt(tc.cacheSize)
+		if err != nil && !tc.expectError {
+			t.Errorf("Got error %v  validate data cache mode %d; expect no error", err, tc.cacheSize)
+		}
+
+		if err == nil && tc.expectError {
+			t.Errorf("Got no error validate data cache mode %d; expect an error", tc.cacheSize)
+		}
+	}
+
+}
+
 func TestParseZoneFromURI(t *testing.T) {
 	testcases := []struct {
 		name      string

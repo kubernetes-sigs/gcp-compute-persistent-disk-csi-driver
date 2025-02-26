@@ -713,6 +713,13 @@ func ValidateDataCacheMode(s string) error {
 	return fmt.Errorf("invalid data-cache-mode %s. Only \"writeback\" and \"writethrough\" is a valid input", s)
 }
 
+func ValidateNonNegativeInt(n int64) error {
+	if n <= 0 {
+		return fmt.Errorf("Input should be set to > 0, got %d", n)
+	}
+	return nil
+}
+
 // NewLimiter returns a token bucket based request rate limiter after initializing
 // the passed values for limit, burst (or token bucket) size. If opted for emptyBucket
 // all initial tokens are reserved for the first burst.
