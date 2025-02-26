@@ -260,11 +260,13 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if !enableDataCache {
 				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
 			}
-			// TODO: need to parse or validate the string
 
 			paramDataCacheSize, err := ConvertGiStringToInt64(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid dataCacheSize parameter: %w", err)
+			}
+			if err := ValidateNonNegativeInt(paramDataCacheSize); err != nil {
+				return p, d, fmt.Errorf("parameters contains invalid option: %s: %w", ParameterKeyDataCacheSize, err)
 			}
 			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
 		case ParameterKeyDataCacheMode:
@@ -272,7 +274,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
 			}
 			if err := ValidateDataCacheMode(v); err != nil {
-				return p, d, fmt.Errorf("parameters contains invalid option: %w", err)
+				return p, d, fmt.Errorf("parameters contains invalid option: %s: %w", ParameterKeyDataCacheMode, err)
 			}
 			d.DataCacheMode = v
 		case ParameterKeyResourceTags:
