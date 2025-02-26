@@ -23,10 +23,10 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 
-BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2019
+BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Both arrays MUST be index aligned.
-WINDOWS_IMAGE_TAGS=ltsc2019
+WINDOWS_IMAGE_TAGS=ltsc2022
 WINDOWS_BASE_IMAGES=$(BASE_IMAGE_LTSC2019)
 
 GCFLAGS=""
@@ -55,7 +55,7 @@ build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VER
 	  --push .
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
-	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
+	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows/amd64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
