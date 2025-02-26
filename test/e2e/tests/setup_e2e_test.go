@@ -33,6 +33,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -64,8 +65,6 @@ var (
 	computeBetaService    *computebeta.Service
 	kmsClient             *cloudkms.KeyManagementClient
 )
-
-const localSSDCount int64 = 2
 
 func init() {
 	klog.InitFlags(flag.CommandLine)
@@ -194,7 +193,7 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
-		LocalSSDCount:             localSSDCount,
+		LocalSSDCount:             common.LocalSSDCountForDataCache,
 	}
 
 	if machineType == *hdMachineType {

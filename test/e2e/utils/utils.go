@@ -71,8 +71,11 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--allow-hdha-provisioning",
 		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
-		"--enable-data-cache",
-		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
+	}
+
+	if instance.GetLocalSSD() > 0 {
+		extra_flags = append(extra_flags, "--enable-data-cache")
+		extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", utilcommon.TestNode))
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)

@@ -16,7 +16,7 @@ const (
 // RunCommand wraps a k8s exec to deal with the no child process error. Same as exec.CombinedOutput.
 // On error, the output is included so callers don't need to echo it again.
 
-func RunCommand(pipeCmd string, pipeCmdArg string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+func RunCommand(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
 	execCmd1 := exec.Command(cmd1, execCmdArgs...)
 
 	if pipeCmd != "" {
@@ -47,9 +47,9 @@ func checkError(err error, execCmd exec.Cmd) error {
 	}
 	return err
 }
-func execPipeCommand(pipeCmd string, pipeCmdArg string, execCmd1 *exec.Cmd) ([]byte, error) {
+func execPipeCommand(pipeCmd string, pipeCmdArg []string, execCmd1 *exec.Cmd) ([]byte, error) {
 
-	execPipeCmd := exec.Command(pipeCmd, pipeCmdArg)
+	execPipeCmd := exec.Command(pipeCmd, pipeCmdArg...)
 	stdoutPipe, err := execCmd1.StdoutPipe()
 	if err != nil {
 		klog.Errorf("failed command %v: got error:%v", execCmd1, err)
@@ -63,8 +63,12 @@ func execPipeCommand(pipeCmd string, pipeCmdArg string, execCmd1 *exec.Cmd) ([]b
 	execPipeCmd.Stdin = stdoutPipe
 	output, err := execPipeCmd.CombinedOutput()
 	if err != nil {
+		// Some commands (such as grep) will return an error with exit status of 1
+		if len(output) == 0 && err.(*exec.ExitError).ExitCode() == 1 {
+			return output, nil
+		}
 		err = checkError(err, *execPipeCmd)
-		return nil, fmt.Errorf("%s failed: %w; output: %s", pipeCmd, err, string(output))
+		return nil, fmt.Errorf("%s failed: %w; output: %s", execPipeCmd, err, string(output))
 	}
 
 	return output, nil
