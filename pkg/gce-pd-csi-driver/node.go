@@ -344,7 +344,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 			if ns.DataCacheEnabledNodePool {
 				return nil, status.Error(codes.DataLoss, fmt.Sprintf("Error validate configuration for Data Cache: %v", configError.Error()))
 			}
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Data Cache PVC is requested for an incompatible node pool: %v", configError.Error()))
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("The Data Cache PVC is scheduled on an incompatible node pool. Please select a node pool with data cache configured: %v", configError.Error()))
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
