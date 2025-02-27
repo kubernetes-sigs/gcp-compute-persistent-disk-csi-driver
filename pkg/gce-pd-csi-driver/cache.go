@@ -3,6 +3,7 @@ package gceGCEDriver
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,10 +17,18 @@ import (
 )
 
 const (
-	cacheSuffix        = "csi-fast"
-	mainLvSuffix       = "csi-main"
-	raidedLocalSsdName = "csi-driver-data-cache"
-	raidMode           = "0"
+	cacheSuffix                = "csi-fast"
+	mainLvSuffix               = "csi-main"
+	raidedLocalSsdName         = "csi-driver-data-cache"
+	raidMode                   = "0"
+	maxAllowedChunks   int64   = 1000000 // This is the max allowed chunks for LVM
+	GiB                float64 = 1024 * 1024 * 1024
+	KiB                float64 = 1024
+)
+
+var (
+	maxChunkSize float64 = 1 * GiB   // Max allowed chunk size as per LVM documentation
+	minChunkSize float64 = 160 * KiB // This is randomly selected, we need a multiple of 32KiB, the default size would be too small for caching https://man7.org/linux/man-pages/man8/lvcreate.8.html (--chunksize)
 )
 
 func fetchRAIDedLocalSsdPath() (string, error) {
@@ -84,7 +93,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
 	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
-		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group")
+		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group %v", volumeGroupName)
 	} else if vgNameForPv != "VG" && vgNameForPv != "" {
 
 		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
@@ -159,21 +168,30 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
-		fastCacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
-		chunkSize := "960" // Cannot use default chunk size(64KiB) as it errors on maxChunksAllowed. Unit - KiB
-		args = []string{
-			"--yes",
-			"-n",
-			cacheLvName,
-			"-L",
-			// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
-			fastCacheSize + "g",
-			volumeGroupName,
-			raidedLocalSsdPath,
-		}
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
+		chunkSize, err := fetchChunkSizeKiB(cacheSize)
 		if err != nil {
-			return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
+			klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", cacheSize, err)
+			return mainDevicePath, err
+		}
+		// Check if LV exists
+		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		lvExists := strings.Contains(string(info), cacheLvName)
+		if !lvExists {
+			args = []string{
+				"--yes",
+				"-n",
+				cacheLvName,
+				"-L",
+				// ConvertGiStringToInt64 converts the input size to GiB so default to "g" for cache size - LVM g|G is GiB.
+				cacheSize + "g",
+				volumeGroupName,
+				raidedLocalSsdPath,
+			}
+			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+			if err != nil {
+				return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
+			}
 		}
 
 		// Once caching is setup, link the PD to cache
@@ -188,7 +206,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			req.GetPublishContext()[common.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
-			string(chunkSize),
+			chunkSize, // default unit is KiB
 			"--force",
 			"-y",
 		}
@@ -357,11 +375,17 @@ func cleanupCache(volumeId string, nodeId string) error {
 
 	volumeGroupName := getVolumeGroupName(nodeId)
 	if !checkVgExists(volumeGroupName) {
+		klog.V(4).Infof("Volume group %s not found, no cache clean up needed", volumeGroupName)
 		// If volume group doesn't exist then there's nothing to uncache
 		return nil
 	}
 	reduceVolumeGroup(volumeGroupName, true)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
+	if !checkLvExists(mainLvName) {
+		klog.V(4).Infof("Logical volume %s not found, assuming caching wasn't setup for the PVC %s or is cleaned up", mainLvName, volumeId)
+		// If logical volume doesn't exist then there's nothing to uncache
+		return nil
+	}
 	args := []string{
 		"-an",
 		"/dev/" + volumeGroupName + "/" + mainLvName,
@@ -380,6 +404,17 @@ func cleanupCache(volumeId string, nodeId string) error {
 		return fmt.Errorf("Failed to uncache volume %s %w: %s", volumeId, err, info)
 	}
 	return nil
+}
+
+func checkLvExists(lvName string) bool {
+	args := []string{}
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvscan", args...)
+	if err != nil {
+		klog.Errorf("Errored while checking if logical volume exists for %s %v: %s", lvName, err, info)
+		return false
+	}
+	// Check if the required logical volume already exists
+	return strings.Contains(string(info), lvName)
 }
 
 func getVolumeGroupName(nodePath string) string {
@@ -496,4 +531,19 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+func fetchChunkSizeKiB(cacheSize string) (string, error) {
+	var chunkSize float64
+
+	cacheSizeInt, err := common.ConvertGiStringToInt64(cacheSize)
+	if err != nil {
+		return "0", err
+	}
+	// Chunksize should be divisible by 32Kib so we need (chunksize/32*1024)*32*1024
+	chunkSize = (float64(cacheSizeInt) * GiB) / float64(maxAllowedChunks)
+	chunkSize = math.Round(chunkSize/(32*KiB)) * (32 * KiB)
+	chunkSize = math.Min(math.Max(chunkSize, minChunkSize), maxChunkSize) / KiB
+	// default chunk size unit KiB
+	return strconv.FormatInt(int64(chunkSize), 10) + "KiB", nil
 }
