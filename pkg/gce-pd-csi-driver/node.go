@@ -41,12 +41,13 @@ import (
 )
 
 type GCENodeServer struct {
-	Driver          *GCEDriver
-	Mounter         *mount.SafeFormatAndMount
-	DeviceUtils     deviceutils.DeviceUtils
-	VolumeStatter   mountmanager.Statter
-	MetadataService metadataservice.MetadataService
-	EnableDataCache bool
+	Driver                   *GCEDriver
+	Mounter                  *mount.SafeFormatAndMount
+	DeviceUtils              deviceutils.DeviceUtils
+	VolumeStatter            mountmanager.Statter
+	MetadataService          metadataservice.MetadataService
+	EnableDataCache          bool
+	DataCacheEnabledNodePool bool
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
@@ -81,6 +82,8 @@ type NodeServerArgs struct {
 	DeviceInUseTimeout time.Duration
 
 	EnableDataCache bool
+
+	DataCacheEnabledNodePool bool
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -337,7 +340,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
-	if ns.EnableDataCache && req.GetPublishContext()[common.ContextDataCacheSize] != "" {
+	if ns.EnableDataCache && (req.GetPublishContext()[common.ContextDataCacheSize] != "" || req.GetPublishContext()[common.ContextDataCacheMode] != "") {
 		if len(nodeId) == 0 {
 			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
 		}
@@ -345,9 +348,12 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
 		}
-		configError := ValidateDataCacheConfig(req.GetPublishContext()[common.ContextDataCacheMode], req.GetPublishContext()[common.ContextDataCacheSize], ctx, nodeId)
+		configError := ValidateDataCacheConfig(req.GetPublishContext()[common.ContextDataCacheMode], req.GetPublishContext()[common.ContextDataCacheSize], ctx)
 		if configError != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error validate configuration for Data Cache: %v", err.Error()))
+			if ns.DataCacheEnabledNodePool {
+				return nil, status.Error(codes.DataLoss, fmt.Sprintf("Error validate configuration for Data Cache: %v", configError.Error()))
+			}
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("The Data Cache PVC is scheduled on an incompatible node pool. Please select a node pool with data cache configured: %v", configError.Error()))
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {

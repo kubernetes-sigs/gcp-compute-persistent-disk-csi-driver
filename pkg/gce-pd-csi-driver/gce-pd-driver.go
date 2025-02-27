@@ -147,15 +147,16 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 
 func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, args NodeServerArgs) *GCENodeServer {
 	return &GCENodeServer{
-		Driver:                 gceDriver,
-		Mounter:                mounter,
-		DeviceUtils:            deviceUtils,
-		MetadataService:        meta,
-		volumeLocks:            common.NewVolumeLocks(),
-		VolumeStatter:          statter,
-		enableDeviceInUseCheck: args.EnableDeviceInUseCheck,
-		deviceInUseErrors:      newDeviceErrMap(args.DeviceInUseTimeout),
-		EnableDataCache:        args.EnableDataCache,
+		Driver:                   gceDriver,
+		Mounter:                  mounter,
+		DeviceUtils:              deviceUtils,
+		MetadataService:          meta,
+		volumeLocks:              common.NewVolumeLocks(),
+		VolumeStatter:            statter,
+		enableDeviceInUseCheck:   args.EnableDeviceInUseCheck,
+		deviceInUseErrors:        newDeviceErrMap(args.DeviceInUseTimeout),
+		EnableDataCache:          args.EnableDataCache,
+		DataCacheEnabledNodePool: args.DataCacheEnabledNodePool,
 	}
 }
 
