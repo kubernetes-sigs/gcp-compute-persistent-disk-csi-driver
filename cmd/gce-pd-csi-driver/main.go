@@ -254,14 +254,13 @@ func handle() {
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
-	}
-
-	if *enableDataCacheFlag {
-		if nodeName == nil || *nodeName == "" {
-			klog.Errorf("Data Cache enabled, but --node-name not passed")
-		}
-		if err := setupDataCache(ctx, *nodeName); err != nil {
-			klog.Errorf("Data Cache setup failed: %v", err)
+		if *enableDataCacheFlag {
+			if nodeName == nil || *nodeName == "" {
+				klog.Errorf("Data Cache enabled, but --node-name not passed")
+			}
+			if err := setupDataCache(ctx, *nodeName); err != nil {
+				klog.Errorf("Data Cache setup failed: %v", err)
+			}
 		}
 	}
 
