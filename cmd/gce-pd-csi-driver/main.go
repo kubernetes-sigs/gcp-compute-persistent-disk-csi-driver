@@ -259,10 +259,12 @@ func handle() {
 			if nodeName == nil || *nodeName == "" {
 				klog.Errorf("Data Cache enabled, but --node-name not passed")
 			}
-			if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
-				klog.Errorf("DataCache setup failed: %v", err)
+			if nsArgs.DataCacheEnabledNodePool {
+				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
+					klog.Errorf("Data Cache setup failed: %v", err)
+				}
+				go driver.StartWatcher(*nodeName)
 			}
-			go driver.StartWatcher(*nodeName)
 		}
 	}
 
@@ -346,9 +348,11 @@ func urlFlag(target **url.URL, name string, usage string) {
 }
 
 func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) bool {
-	dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
-	if err != nil || dataCacheLSSDCount == 0 {
-		return false
+	if nodeName != common.TestNode { // disregard logic below when E2E testing.
+		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		if err != nil || dataCacheLSSDCount == 0 {
+			return false
+		}
 	}
 	return true
 }
