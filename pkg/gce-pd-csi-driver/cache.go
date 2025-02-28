@@ -453,6 +453,9 @@ func createVg(volumeGroupName string, raidedLocalSsds string) error {
 }
 
 func reduceVolumeGroup(volumeGroupName string, force bool) {
+	if !checkVgExists(volumeGroupName) {
+		return
+	}
 	args := []string{
 		"--removemissing",
 		volumeGroupName,
