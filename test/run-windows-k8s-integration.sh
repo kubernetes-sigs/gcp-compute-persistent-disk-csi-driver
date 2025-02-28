@@ -28,7 +28,7 @@ export KUBE_BUILD_PLATFORMS=${KUBE_BUILD_PLATFORMS:-"linux/amd64 windows/amd64"}
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    kt2_version=22d5b1410bef09ae679fa5813a5f0d196b6079de
     go install sigs.k8s.io/kubetest2@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
