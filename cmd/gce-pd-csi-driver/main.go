@@ -262,7 +262,9 @@ func handle() {
 			if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 				klog.Errorf("DataCache setup failed: %v", err)
 			}
-			go driver.StartWatcher(*nodeName)
+			if nsArgs.DataCacheEnabledNodePool {
+				go driver.StartWatcher(*nodeName)
+			}
 		}
 	}
 
