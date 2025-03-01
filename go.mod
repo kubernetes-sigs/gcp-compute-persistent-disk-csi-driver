@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.12.4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/kubernetes-csi/csi-proxy/client v1.1.3
+	github.com/kubernetes-csi/csi-proxy/client v1.2.0
 	github.com/kubernetes-csi/csi-test/v5 v5.3.0
 	github.com/onsi/ginkgo/v2 v2.20.1
 	github.com/onsi/gomega v1.34.1
