@@ -372,9 +372,16 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 		return nil, err
 	}
 
+	// Validate and determine multi-zone provisioning configuration
+	multiZoneVolume, err := gceCS.getRequestIsMultiZone(req, params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate multi-zone provisioning request: %v", err)
+	}
+
 	// Validate VolumeContentSource is set when access mode is read only
 	readonly, _ := getReadOnlyFromCapabilities(volumeCapabilities)
-	if readonly && req.GetVolumeContentSource() == nil {
+	if readonly && req.GetVolumeContentSource() == nil && !multiZoneVolume {
+		// Allow readonly volumes to be dynamically created for multi-zone volumes.
 		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource must be provided when AccessMode is set to read only")
 	}
 
@@ -389,12 +396,6 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	}
 	if isMultiAttach && disksWithUnsettableAccessMode[params.DiskType] {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid access mode for disk type %s", params.DiskType)
-	}
-
-	// Validate multi-zone provisioning configuration
-	err = gceCS.validateMultiZoneProvisioning(req, params)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume failed to validate multi-zone provisioning request: %v", err)
 	}
 
 	// Verify that the regional availability class is only used on regional disks.
@@ -485,12 +486,19 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 
+	// If creating an empty disk (content source nil), always create RWO disks
+	// This allows multi-zone disks to be created as underlying RWO disks, so they can be hydrated.
+	accessMode := common.GCEReadWriteOnceAccessMode
+	if req.GetVolumeContentSource() != nil {
+		accessMode = common.GCEReadOnlyManyAccessMode
+	}
+
 	createDiskErrs := []error{}
 	createdDisks := make([]*gce.CloudDisk, 0, len(zones))
 	for _, zone := range zones {
 		volKey := meta.ZonalKey(req.GetName(), zone)
 		klog.V(4).Infof("Creating single zone disk for zone %q and volume: %v", zone, volKey)
-		disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, []string{zone})
+		disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, []string{zone}, accessMode)
 		if err != nil {
 			createDiskErrs = append(createDiskErrs, err)
 			continue
@@ -593,11 +601,16 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 	if err != nil {
 		return nil, common.LoggedError("Failed to convert volume key to volume ID: ", err)
 	}
+	accessMode, err := getAccessMode(req, params)
+	if err != nil {
+		return nil, common.LoggedError("Failed to get access mode: ", err)
+	}
+
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
-	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones)
+	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 
 	if err != nil {
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
@@ -606,30 +619,36 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
 }
 
-func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, volKey *meta.Key, zones []string) (*gce.CloudDisk, error) {
-	capacityRange := req.GetCapacityRange()
-	capBytes, _ := getRequestCapacity(capacityRange)
+func getAccessMode(req *csi.CreateVolumeRequest, params common.DiskParameters) (string, error) {
 	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
-	accessMode := ""
-	multiWriter := false
 	if common.IsHyperdisk(params.DiskType) {
 		if am, err := getHyperdiskAccessModeFromCapabilities(req.GetVolumeCapabilities()); err != nil {
-			return nil, err
+			return "", err
 		} else if disksWithUnsettableAccessMode[params.DiskType] {
 			// Disallow multi-attach for HdT and HdE. These checks were done in `createVolumeInternal`,
 			// but repeating them here future-proves us from possible refactors.
 			if am != common.GCEReadWriteOnceAccessMode {
-				return nil, status.Errorf(codes.Internal, "")
+				return "", status.Errorf(codes.Internal, "")
 			}
 		} else {
-			accessMode = am
+			return am, nil
 		}
-	} else {
-		multiWriter, _ = getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	}
 
 	if readonly && slices.Contains(disksWithModifiableAccessMode, params.DiskType) {
-		accessMode = common.GCEReadOnlyManyAccessMode
+		return common.GCEReadOnlyManyAccessMode, nil
+	}
+
+	return "", nil
+}
+
+func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, volKey *meta.Key, zones []string, accessMode string) (*gce.CloudDisk, error) {
+	capacityRange := req.GetCapacityRange()
+	capBytes, _ := getRequestCapacity(capacityRange)
+
+	multiWriter := false
+	if !common.IsHyperdisk(params.DiskType) {
+		multiWriter, _ = getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	}
 
 	// Validate if disk already exists
@@ -1039,12 +1058,12 @@ func (gceCS *GCEControllerServer) validateMultiZoneDisk(volumeID string, disk *g
 	return nil
 }
 
-func (gceCS *GCEControllerServer) validateMultiZoneProvisioning(req *csi.CreateVolumeRequest, params common.DiskParameters) error {
+func (gceCS *GCEControllerServer) getRequestIsMultiZone(req *csi.CreateVolumeRequest, params common.DiskParameters) (bool, error) {
 	if !gceCS.multiZoneVolumeHandleConfig.Enable {
-		return nil
+		return false, nil
 	}
 	if !params.MultiZoneProvisioning {
-		return nil
+		return false, nil
 	}
 
 	// For volume populator, we want to allow multiple RWO disks to be created
@@ -1052,18 +1071,18 @@ func (gceCS *GCEControllerServer) validateMultiZoneProvisioning(req *csi.CreateV
 
 	// We don't have support volume cloning from an existing PVC
 	if useVolumeCloning(req) {
-		return fmt.Errorf("%q parameter does not support volume cloning", common.ParameterKeyEnableMultiZoneProvisioning)
+		return false, fmt.Errorf("%q parameter does not support volume cloning", common.ParameterKeyEnableMultiZoneProvisioning)
 	}
 
 	if readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities()); !readonly && req.GetVolumeContentSource() != nil {
-		return fmt.Errorf("%q parameter does not support specifying volume content source in readwrite mode", common.ParameterKeyEnableMultiZoneProvisioning)
+		return false, fmt.Errorf("%q parameter does not support specifying volume content source in readwrite mode", common.ParameterKeyEnableMultiZoneProvisioning)
 	}
 
 	if !slices.Contains(gceCS.multiZoneVolumeHandleConfig.DiskTypes, params.DiskType) {
-		return fmt.Errorf("%q parameter with unsupported disk type: %v", common.ParameterKeyEnableMultiZoneProvisioning, params.DiskType)
+		return false, fmt.Errorf("%q parameter with unsupported disk type: %v", common.ParameterKeyEnableMultiZoneProvisioning, params.DiskType)
 	}
 
-	return nil
+	return true, nil
 }
 
 func isMultiZoneVolKey(volumeKey *meta.Key) bool {
