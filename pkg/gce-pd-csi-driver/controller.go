@@ -232,7 +232,7 @@ var (
 		"nextPageToken",
 	}
 	listDisksFieldsWithUsers      = append(listDisksFieldsWithoutUsers, "items/users")
-	disksWithModifiableAccessMode = []string{"hyperdisk-ml"}
+	disksWithModifiableAccessMode = []string{common.DiskTypeHdML}
 	disksWithUnsettableAccessMode = map[string]bool{
 		common.DiskTypeHdE: true,
 		common.DiskTypeHdT: true,
@@ -374,7 +374,8 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 
 	// Validate VolumeContentSource is set when access mode is read only
 	readonly, _ := getReadOnlyFromCapabilities(volumeCapabilities)
-	if readonly && req.GetVolumeContentSource() == nil {
+
+	if readonly && req.GetVolumeContentSource() == nil && params.DiskType != common.DiskTypeHdML {
 		return nil, status.Error(codes.InvalidArgument, "VolumeContentSource must be provided when AccessMode is set to read only")
 	}
 
@@ -485,12 +486,19 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
 
+	// If creating an empty disk (content source nil), always create RWO disks (when supported)
+	// This allows disks to be created as underlying RWO disks, so they can be hydrated.
+	accessMode := common.GCEReadWriteOnceAccessMode
+	if req.GetVolumeContentSource() != nil {
+		accessMode = common.GCEReadOnlyManyAccessMode
+	}
+
 	createDiskErrs := []error{}
 	createdDisks := make([]*gce.CloudDisk, 0, len(zones))
 	for _, zone := range zones {
 		volKey := meta.ZonalKey(req.GetName(), zone)
 		klog.V(4).Infof("Creating single zone disk for zone %q and volume: %v", zone, volKey)
-		disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, []string{zone})
+		disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, []string{zone}, accessMode)
 		if err != nil {
 			createDiskErrs = append(createDiskErrs, err)
 			continue
@@ -593,11 +601,23 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 	if err != nil {
 		return nil, common.LoggedError("Failed to convert volume key to volume ID: ", err)
 	}
+	accessMode, err := getAccessMode(req, params)
+	if err != nil {
+		return nil, common.LoggedError("Failed to get access mode: ", err)
+	}
+
+	// If creating an empty disk (content source nil), always create RWO disks (when supported)
+	// This allows disks to be created as underlying RWO disks, so they can be hydrated.
+	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
+	if readonly && req.GetVolumeContentSource() == nil && params.DiskType == common.DiskTypeHdML {
+		accessMode = common.GCEReadWriteOnceAccessMode
+	}
+
 	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
-	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones)
+	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 
 	if err != nil {
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
@@ -606,30 +626,36 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
 }
 
-func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, volKey *meta.Key, zones []string) (*gce.CloudDisk, error) {
-	capacityRange := req.GetCapacityRange()
-	capBytes, _ := getRequestCapacity(capacityRange)
+func getAccessMode(req *csi.CreateVolumeRequest, params common.DiskParameters) (string, error) {
 	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
-	accessMode := ""
-	multiWriter := false
 	if common.IsHyperdisk(params.DiskType) {
 		if am, err := getHyperdiskAccessModeFromCapabilities(req.GetVolumeCapabilities()); err != nil {
-			return nil, err
+			return "", err
 		} else if disksWithUnsettableAccessMode[params.DiskType] {
 			// Disallow multi-attach for HdT and HdE. These checks were done in `createVolumeInternal`,
 			// but repeating them here future-proves us from possible refactors.
 			if am != common.GCEReadWriteOnceAccessMode {
-				return nil, status.Errorf(codes.Internal, "")
+				return "", status.Errorf(codes.Internal, "")
 			}
 		} else {
-			accessMode = am
+			return am, nil
 		}
-	} else {
-		multiWriter, _ = getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	}
 
 	if readonly && slices.Contains(disksWithModifiableAccessMode, params.DiskType) {
-		accessMode = common.GCEReadOnlyManyAccessMode
+		return common.GCEReadOnlyManyAccessMode, nil
+	}
+
+	return "", nil
+}
+
+func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, volKey *meta.Key, zones []string, accessMode string) (*gce.CloudDisk, error) {
+	capacityRange := req.GetCapacityRange()
+	capBytes, _ := getRequestCapacity(capacityRange)
+
+	multiWriter := false
+	if !common.IsHyperdisk(params.DiskType) {
+		multiWriter, _ = getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	}
 
 	// Validate if disk already exists
