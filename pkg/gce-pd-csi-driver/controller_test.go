@@ -1504,6 +1504,43 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
 		},
 		{
+			name: "success empty ROX multi-zone disk no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			expZones: []string{"us-central1-a", "us-central1-b"},
+		},
+		{
 			name: "err single ROX multi-zone no topology",
 			req: &csi.CreateVolumeRequest{
 				Name:          "test-name",
@@ -1557,40 +1594,6 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 							SnapshotId: testSnapshotID,
 						},
 					},
-				},
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
-						},
-					},
-					Preferred: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
-						},
-					},
-				},
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
-			name: "err no content source",
-			req: &csi.CreateVolumeRequest{
-				Name:          "test-name",
-				CapacityRange: stdCapRange,
-				VolumeCapabilities: []*csi.VolumeCapability{
-					{
-						AccessType: &csi.VolumeCapability_Mount{
-							Mount: &csi.VolumeCapability_MountVolume{},
-						},
-						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-						},
-					},
-				},
-				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
