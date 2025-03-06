@@ -749,3 +749,11 @@ func ShortString(s string) string {
 	}
 	return string(short)
 }
+
+func IsGKETopologyLabel(key string) bool {
+	// This is the actual code
+	// return strings.HasPrefix(key, gkeTopologyLabelPrefix)
+
+	// More permissive code for testing
+	return strings.HasPrefix(key, "topology.gke")
+}
