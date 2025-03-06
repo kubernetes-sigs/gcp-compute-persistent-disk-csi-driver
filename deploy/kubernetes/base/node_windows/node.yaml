@@ -47,6 +47,8 @@ spec:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
             - "--run-controller-service=false"
+          command:
+            - /gce-pd-csi-driver
           volumeMounts:
             - name: kubelet-dir
               mountPath: C:\var\lib\kubelet
