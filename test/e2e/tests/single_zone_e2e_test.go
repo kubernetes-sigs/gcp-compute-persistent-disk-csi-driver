@@ -2028,7 +2028,8 @@ func waitForMetadataUpdate(numMinutes int, project, zone, volName string, initia
 		Steps:    numMinutes,
 		Cap:      time.Duration(numMinutes) * time.Minute,
 	}
-	err := wait.ExponentialBackoffWithContext(context.Background(), backoff, func() (bool, error) {
+
+	err := wait.ExponentialBackoffWithContext(context.Background(), backoff, func(_ context.Context) (bool, error) {
 		disk, err := computeService.Disks.Get(project, zone, volName).Do()
 		if err != nil {
 			return false, nil
