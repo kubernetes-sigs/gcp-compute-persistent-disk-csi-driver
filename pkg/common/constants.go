@@ -18,7 +18,8 @@ package common
 
 const (
 	// Keys for Topology. This key will be shared amongst drivers from GCP
-	TopologyKeyZone = "topology.gke.io/zone"
+	TopologyKeyPrefix = "topology.gke.io"
+	TopologyKeyZone   = TopologyKeyPrefix + "/zone"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"

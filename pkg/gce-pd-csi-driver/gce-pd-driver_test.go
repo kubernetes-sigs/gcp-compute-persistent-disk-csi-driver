@@ -21,12 +21,12 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
-func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk) *GCEDriver {
+func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, args ...*GCEControllerServerArgs) *GCEDriver {
 	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	return initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+	return initGCEDriverWithCloudProvider(t, fakeCloudProvider, args...)
 }
 
 func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan gce.Signal) *GCEDriver {
@@ -41,7 +41,7 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 	return initGCEDriverWithCloudProvider(t, fakeBlockingBlockProvider)
 }
 
-func controllerServerForTest(cloudProvider gce.GCECompute) *GCEControllerServer {
+func controllerServerForTest(cloudProvider gce.GCECompute, args *GCEControllerServerArgs) *GCEControllerServer {
 	gceDriver := GetGCEDriver()
 	errorBackoffInitialDuration := 200 * time.Millisecond
 	errorBackoffMaxDuration := 5 * time.Minute
@@ -54,14 +54,28 @@ func controllerServerForTest(cloudProvider gce.GCECompute) *GCEControllerServer 
 		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-extreme"},
 		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
 	}
-
-	return NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */)
+	return NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */, args)
 }
 
-func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute) *GCEDriver {
+func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute, args ...*GCEControllerServerArgs) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
-	controllerServer := controllerServerForTest(cloudProvider)
+
+	// Passing args as a variadic argument prevents updating many function
+	// calls.  We may want to update this in the future.
+	var controllerArgs *GCEControllerServerArgs
+	switch {
+	case len(args) == 0:
+		controllerArgs = &GCEControllerServerArgs{
+			EnableDiskTopology: false,
+		}
+	case len(args) == 1:
+		controllerArgs = args[0]
+	default:
+		t.Fatalf("Invalid number of arguments structs: %v", len(args))
+	}
+
+	controllerServer := controllerServerForTest(cloudProvider, controllerArgs)
 	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)

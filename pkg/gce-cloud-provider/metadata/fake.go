@@ -20,12 +20,12 @@ type fakeServiceManager struct{}
 
 var _ MetadataService = &fakeServiceManager{}
 
-const (
-	FakeZone    = "country-region-zone"
-	FakeProject = "test-project"
+var (
+	FakeMachineType = "n1-standard-1"
+	FakeZone        = "country-region-zone"
+	FakeProject     = "test-project"
+	FakeName        = "test-name"
 )
-
-var FakeMachineType = "n1-standard-1"
 
 func NewFakeService() MetadataService {
 	return &fakeServiceManager{}
@@ -40,7 +40,7 @@ func (manager *fakeServiceManager) GetProject() string {
 }
 
 func (manager *fakeServiceManager) GetName() string {
-	return "test-name"
+	return FakeName
 }
 
 func (manager *fakeServiceManager) GetMachineType() string {
@@ -49,4 +49,12 @@ func (manager *fakeServiceManager) GetMachineType() string {
 
 func SetMachineType(s string) {
 	FakeMachineType = s
+}
+
+func SetZone(s string) {
+	FakeZone = s
+}
+
+func SetName(s string) {
+	FakeName = s
 }

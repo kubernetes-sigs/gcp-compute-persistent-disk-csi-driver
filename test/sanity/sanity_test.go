@@ -73,16 +73,20 @@ func TestSanity(t *testing.T) {
 
 	mounter := mountmanager.NewFakeSafeMounter()
 	deviceUtils := deviceutils.NewFakeDeviceUtils(true)
-	args := driver.NodeServerArgs{
+	nodeArgs := &driver.NodeServerArgs{
 		EnableDeviceInUseCheck: true,
 		DeviceInUseTimeout:     0,
-		EnableDataCache:        true}
+		EnableDataCache:        enableDataCache,
+	}
 
-	//Initialize GCE Driver
+	// Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true)
+	contArgs := &driver.GCEControllerServerArgs{
+		EnableDiskTopology: false,
+	}
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true, contArgs)
 	fakeStatter := mountmanager.NewFakeStatterWithOptions(mounter, mountmanager.FakeStatterOptions{IsBlock: false})
-	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), fakeStatter, args)
+	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), fakeStatter, nodeArgs)
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, nil, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())

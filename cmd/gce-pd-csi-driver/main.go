@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -93,6 +95,8 @@ var (
 	diskSupportsThroughputChangeFlag = flag.String("supports-dynamic-throughput-provisioning", "", "Comma separated list of disk types that support dynamic throughput provisioning")
 
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
+
+	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a topology.gke.io/[disk-type] topology label to the Topologies returned in CreateVolumeResponse")
 
 	version string
 )
@@ -227,7 +231,10 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag)
+		args := &driver.GCEControllerServerArgs{
+			EnableDiskTopology: *diskTopology,
+		}
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -239,6 +246,7 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get safe mounter: %v", err.Error())
 		}
+
 		deviceUtils := deviceutils.NewDeviceUtils()
 		statter := mountmanager.NewStatter(mounter)
 		meta, err := metadataservice.NewMetadataService()
@@ -249,13 +257,26 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
-		nsArgs := driver.NodeServerArgs{
+
+		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
+			EnableDiskTopology:       *diskTopology,
 		}
+
+		if *diskTopology {
+			klog.V(2).Infof("Setting up kubeClient")
+			kubeClient, err := instantiateKubeClient()
+			if err != nil {
+				klog.Fatalf("Failed to instantiate Kubernetes client: %v", err)
+			}
+			nsArgs.KubeClient = kubeClient
+		}
+
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
+
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
@@ -290,6 +311,18 @@ func handle() {
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
+}
+
+func instantiateKubeClient() (*kubernetes.Clientset, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create REST Config for k8s client: %w", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create k8s client: %w", err)
+	}
+	return kubeClient, nil
 }
 
 func notEmpty(v string) bool {

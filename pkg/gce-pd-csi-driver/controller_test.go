@@ -58,6 +58,7 @@ const (
 	name                         = "test-name"
 	parameterConfidentialCompute = "EnableConfidentialCompute"
 	testDiskEncryptionKmsKey     = "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY"
+	stdDiskType                  = "test-disk-type"
 )
 
 var (
@@ -66,7 +67,7 @@ var (
 		RequiredBytes: common.GbToBytes(20),
 	}
 	stdParams = map[string]string{
-		common.ParameterKeyType: "test-type",
+		common.ParameterKeyType: stdDiskType,
 	}
 	stdTopology = []*csi.Topology{
 		{
@@ -616,6 +617,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		enableStoragePools bool
 		expVol             *csi.Volume
 		expErrCode         codes.Code
+		EnableDiskTopology bool
 	}{
 		{
 			name: "success default",
@@ -736,7 +738,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{"type": "test-type"},
+				Parameters:         map[string]string{"type": stdDiskType},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
@@ -762,7 +764,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{"type": "test-type"},
+				Parameters:         map[string]string{"type": stdDiskType},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
@@ -1346,13 +1348,84 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.OK,
 		},
+		// Disk Topology Enabled tests
+		{
+			name: "success with disk topology enabled",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							common.TopologyKeyZone: zone,
+							// Disk type is added as topology segment.
+							common.TopologyLabelKey(stdDiskType): "true",
+						},
+					},
+				},
+			},
+			EnableDiskTopology: true,
+		},
+		{
+			// Desired as the disk type label should match the `type` parameter,
+			// not the accessibility requirements.
+			name: "success: disk topology labels in accessibility requirements have no effect",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"type": stdDiskType},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{
+								common.TopologyKeyZone:                       "topology-zone3",
+								common.TopologyLabelKey("another-disk-type"): "true",
+							},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{
+								common.TopologyKeyZone:                       "topology-zone3",
+								common.TopologyLabelKey("another-disk-type"): "true",
+							},
+						},
+					},
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      fmt.Sprintf("projects/%s/zones/topology-zone3/disks/%s", project, name),
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							common.TopologyKeyZone:               "topology-zone3",
+							common.TopologyLabelKey(stdDiskType): "true",
+						},
+					},
+				},
+			},
+			EnableDiskTopology: true,
+		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		args := &GCEControllerServerArgs{
+			EnableDiskTopology: tc.EnableDiskTopology,
+		}
+		gceDriver := initGCEDriver(t, nil, args)
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -3241,11 +3314,11 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
 	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
 	zonalParams := map[string]string{
-		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
+		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	regionalParams := map[string]string{
-		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	requisiteTopology := []*csi.Topology{
@@ -3690,7 +3763,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
+				common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
 				common.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
 			},
 			sourceTopology: &csi.TopologyRequirement{
@@ -3892,17 +3965,26 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		Name:               "test-name",
 		CapacityRange:      stdCapRange,
 		VolumeCapabilities: stdVolCaps,
-		Parameters:         map[string]string{"type": "test-type"},
+		Parameters:         map[string]string{"type": stdDiskType},
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					Segments: map[string]string{
+						common.TopologyKeyZone:            "topology-zone3",
+						common.TopologyLabelKey("disk-1"): "true",
+					},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					Segments: map[string]string{
+						common.TopologyKeyZone:            "topology-zone1",
+						common.TopologyLabelKey("disk-2"): "true",
+					},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					Segments: map[string]string{
+						common.TopologyKeyZone:            "topology-zone2",
+						common.TopologyLabelKey("disk-3"): "true",
+					},
 				},
 			},
 		},
@@ -4297,7 +4379,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 		expErr   bool
 	}{
 		{
-			name: "succes: normal",
+			name: "success: normal",
 			topology: []*csi.Topology{
 				{
 					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
@@ -4306,7 +4388,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 			expZones: sets.NewString([]string{"test-zone"}...),
 		},
 		{
-			name: "succes: multiple topologies",
+			name: "success: multiple topologies",
 			topology: []*csi.Topology{
 				{
 					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
@@ -4364,6 +4446,18 @@ func TestGetZonesFromTopology(t *testing.T) {
 		{
 			name:     "success: no topology",
 			expZones: sets.NewString(),
+		},
+		{
+			name: "success: disk type label is ignored without causing an error",
+			topology: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						common.TopologyKeyZone:               "test-zone",
+						common.TopologyLabelKey("disk-type"): "true",
+					},
+				},
+			},
+			expZones: sets.NewString([]string{"test-zone"}...),
 		},
 	}
 	for _, tc := range testCases {

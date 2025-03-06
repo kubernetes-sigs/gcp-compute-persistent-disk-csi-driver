@@ -120,6 +120,12 @@ type GCEControllerServer struct {
 	// Embed UnimplementedControllerServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedControllerServer
+
+	EnableDiskTopology bool
+}
+
+type GCEControllerServerArgs struct {
+	EnableDiskTopology bool
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -320,7 +326,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	if len(req.GetName()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	if volumeCapabilities == nil || len(volumeCapabilities) == 0 {
+	if len(volumeCapabilities) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
@@ -517,7 +523,7 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	// Use the first response as a template
 	volumeId := fmt.Sprintf("projects/%s/zones/%s/disks/%s", gceCS.CloudProvider.GetDefaultProject(), common.MultiZoneValue, req.GetName())
 	klog.V(4).Infof("CreateVolume succeeded for multi-zone disks in zones %s: %v", zones, multiZoneVolKey)
-	return generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
+	return gceCS.generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
 }
 
 func (gceCS *GCEControllerServer) getZonesWithDiskNameAndType(ctx context.Context, name string, diskType string) ([]string, error) {
@@ -623,7 +629,7 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
 	}
 
-	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
+	return gceCS.generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
 }
 
 func getAccessMode(req *csi.CreateVolumeRequest, params common.DiskParameters) (string, error) {
@@ -2304,9 +2310,11 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 func getZoneFromSegment(seg map[string]string) (string, error) {
 	var zone string
 	for k, v := range seg {
-		switch k {
-		case common.TopologyKeyZone:
+		switch {
+		case k == common.TopologyKeyZone:
 			zone = v
+		case common.IsGKETopologyLabel(k):
+			continue
 		default:
 			return "", fmt.Errorf("topology segment has unknown key %v", k)
 		}
@@ -2396,7 +2404,7 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 		case contextForceAttach:
 			b, err := common.ConvertStringToBool(val)
 			if err != nil {
-				return nil, fmt.Errorf("Bad volume context force attach: %v", err)
+				return nil, fmt.Errorf("bad volume context force attach: %w", err)
 			}
 			info.ForceAttach = b
 		}
@@ -2404,13 +2412,22 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 	return info, nil
 }
 
-func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
+func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
-		tops = append(tops, &csi.Topology{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
-		})
+		top := &csi.Topology{
+			Segments: map[string]string{
+				common.TopologyKeyZone: zone,
+			},
+		}
+
+		if gceCS.EnableDiskTopology {
+			top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
+		}
+
+		tops = append(tops, top)
 	}
+
 	realDiskSizeBytes := common.GbToBytes(disk.GetSizeGb())
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{

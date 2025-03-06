@@ -31,9 +31,11 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -49,6 +51,9 @@ type GCENodeServer struct {
 	MetadataService          metadataservice.MetadataService
 	EnableDataCache          bool
 	DataCacheEnabledNodePool bool
+
+	KubeClient         kubernetes.Interface
+	EnableDiskTopology bool
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
@@ -85,6 +90,10 @@ type NodeServerArgs struct {
 	EnableDataCache bool
 
 	DataCacheEnabledNodePool bool
+
+	KubeClient kubernetes.Interface
+
+	EnableDiskTopology bool
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -566,11 +575,26 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	top := &csi.Topology{
-		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
+		Segments: map[string]string{
+			common.TopologyKeyZone: ns.MetadataService.GetZone(),
+		},
+	}
+
+	if ns.EnableDiskTopology {
+		labels, err := ns.gkeTopologyLabels(ctx, ns.MetadataService.GetName())
+		if err != nil {
+			// Perhaps we don't want to fail here.  We are introducing a new
+			// dependency and we might be better off allowing this failure to
+			// happen and moving on to retrieve the zone from GCE MDS.
+			return nil, err
+		}
+
+		for k, v := range labels {
+			top.Segments[k] = v
+		}
 	}
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
-
 	volumeLimits, err := ns.GetVolumeLimits()
 	if err != nil {
 		klog.Errorf("GetVolumeLimits failed: %v", err.Error())
@@ -581,7 +605,32 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		MaxVolumesPerNode:  volumeLimits,
 		AccessibleTopology: top,
 	}
+
+	klog.V(2).Infof("Returning NodeGetInfoResponse: %+v", resp)
+
 	return resp, err
+}
+
+// gkeTopologyLabels retrieves the node labels with the prefix
+// `topology.gke.io/` for the specified node.
+func (ns *GCENodeServer) gkeTopologyLabels(ctx context.Context, nodeName string) (map[string]string, error) {
+	klog.V(2).Infof("Retrieving node topology labels for node %q", nodeName)
+
+	node, err := ns.KubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		// Q: Should we retry if we fail to get the node?
+		return nil, err
+	}
+
+	topology := make(map[string]string)
+	for k, v := range node.GetLabels() {
+		if common.IsGKETopologyLabel(k) {
+			klog.V(2).Infof("Including node topology label %q=%q", k, v)
+			topology[k] = v
+		}
+	}
+
+	return topology, nil
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
