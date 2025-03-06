@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -239,19 +241,27 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get safe mounter: %v", err.Error())
 		}
+
 		deviceUtils := deviceutils.NewDeviceUtils()
 		statter := mountmanager.NewStatter(mounter)
 		meta, err := metadataservice.NewMetadataService()
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
+
+		kubeClient, err := instantiateKubeClient()
+		if err != nil {
+			klog.Fatalf("Failed to instantiate Kubernetes client: %v", err)
+		}
 		nsArgs := driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool(ctx, *nodeName),
+			KubeClient:               kubeClient,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
+
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
@@ -286,6 +296,19 @@ func handle() {
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
+}
+
+func instantiateKubeClient() (*kubernetes.Clientset, error) {
+	klog.V(2).Infof("Setting up kubeClient")
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create REST Config for k8s client: %w", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create k8s client: %w", err)
+	}
+	return kubeClient, nil
 }
 
 func notEmpty(v string) bool {
