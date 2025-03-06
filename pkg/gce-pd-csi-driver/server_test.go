@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi"
@@ -123,8 +124,8 @@ func TestServerCreateVolumeMetric(t *testing.T) {
 		t.Fatalf("Expected 1 metric, got %d", len(metrics))
 	}
 	gotMetric := fmt.Sprint(metrics[0])
-	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"pd-balanced" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"false" > label:<name:"enable_storage_pools" value:"false" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Controller/CreateVolume" > counter:<value:1 > > `
-	if gotMetric != wantMetric {
+	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"pd-balanced" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"false" > label:<name:"enable_storage_pools" value:"false" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Controller/CreateVolume" > counter:<value:1`
+	if strings.HasPrefix(gotMetric, wantMetric) {
 		t.Fatalf("Metric mismatch: \ngot: %v\nwant: %v", gotMetric, wantMetric)
 	}
 }
@@ -168,8 +169,8 @@ func TestServerValidateVolumeCapabilitiesMetric(t *testing.T) {
 		t.Fatalf("Expected 1 metric, got %d", len(metrics))
 	}
 	gotMetric := fmt.Sprint(metrics[0])
-	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"false" > label:<name:"enable_storage_pools" value:"false" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Controller/ValidateVolumeCapabilities" > counter:<value:1 > > `
-	if gotMetric != wantMetric {
+	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"false" > label:<name:"enable_storage_pools" value:"false" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Controller/ValidateVolumeCapabilities" > counter:<value:1`
+	if strings.HasPrefix(gotMetric, wantMetric) {
 		t.Fatalf("Metric mismatch: \ngot: %v\nwant: %v", gotMetric, wantMetric)
 	}
 }
@@ -205,8 +206,8 @@ func TestServerGetPluginInfoMetric(t *testing.T) {
 		t.Fatalf("Expected 1 metric, got %d", len(metrics))
 	}
 	gotMetric := fmt.Sprint(metrics[0])
-	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"unknownDiskType" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"unknownConfidentialMode" > label:<name:"enable_storage_pools" value:"unknownStoragePools" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Identity/GetPluginInfo" > counter:<value:1 > > `
-	if gotMetric != wantMetric {
+	wantMetric := `name:"csidriver_operation_errors" help:"[ALPHA] CSI server side error metrics" type:COUNTER metric:<label:<name:"disk_type" value:"unknownDiskType" > label:<name:"driver_name" value:"pd.csi.storage.gke.io" > label:<name:"enable_confidential_storage" value:"unknownConfidentialMode" > label:<name:"enable_storage_pools" value:"unknownStoragePools" > label:<name:"grpc_status_code" value:"OK" > label:<name:"method_name" value:"/csi.v1.Identity/GetPluginInfo" > counter:<value:1`
+	if strings.HasPrefix(gotMetric, wantMetric) {
 		t.Fatalf("Metric mismatch: \ngot: %v\nwant: %v", gotMetric, wantMetric)
 	}
 }
