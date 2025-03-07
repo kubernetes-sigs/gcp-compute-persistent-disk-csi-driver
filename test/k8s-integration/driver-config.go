@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"k8s.io/klog/v2"
 )
 
 type driverConfig struct {
@@ -168,6 +171,14 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// Also print the config file
+	var strBuf bytes.Buffer
+	err = t.Execute(&strBuf, params)
+	if err != nil {
+		klog.Warningf("Failed to print storage test config file: %v", err)
+	}
+	klog.Infof("Executing test with the following config:\n%v", strBuf.String())
 
 	return configFilePath, nil
 }
