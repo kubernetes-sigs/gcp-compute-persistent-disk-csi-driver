@@ -35,6 +35,8 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 )
@@ -731,6 +733,15 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 	}
 
 	return limiter
+}
+
+func GetKubeClient(kubeconfig string) (clientset.Interface, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset.NewForConfig(config)
 }
 
 func IsHyperdisk(diskType string) bool {
