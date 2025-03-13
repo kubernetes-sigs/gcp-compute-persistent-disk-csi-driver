@@ -1064,8 +1064,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
+		wantIOPs, wantThroughput := int64(7000), int64(250)
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyType: common.DiskTypeHdHA,
+			common.ParameterKeyType:                          common.DiskTypeHdHA,
+			common.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
+			common.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1086,6 +1089,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
 		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(wantIOPs))
+		Expect(cloudDisk.ProvisionedThroughput).To(Equal(wantThroughput))
 		zonesSet := sets.NewString(zones...)
 		for _, replicaZone := range cloudDisk.ReplicaZones {
 			tokens := strings.Split(replicaZone, "/")
