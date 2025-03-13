@@ -75,6 +75,7 @@ spec:
               mountPath: /sys
             - name: lib-modules
               mountPath: /lib/modules
+              readOnly: true
       volumes:
         - name: registration-dir
           hostPath:
