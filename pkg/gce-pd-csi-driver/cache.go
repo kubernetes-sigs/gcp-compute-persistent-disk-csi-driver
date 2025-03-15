@@ -7,10 +7,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	fsnotify "github.com/fsnotify/fsnotify"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -242,8 +245,6 @@ func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx con
 
 func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
 	cfg, err := rest.InClusterConfig()
-	// We want to capture API errors with node label fetching, so return -1
-	// in those cases instead of 0.
 	if err != nil {
 		return 0, err
 	}
@@ -251,9 +252,8 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 	if err != nil {
 		return 0, err
 	}
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
 	if err != nil {
-		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
 		return 0, err
 	}
 	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
@@ -264,8 +264,31 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 		klog.V(4).Infof("Number of local SSDs requested for Data Cache: %v", dataCacheCount)
 		return dataCacheCount, nil
 	}
-	// This will be returned for a non-Data-Cache node pool
 	return 0, nil
+}
+
+func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string) (*v1.Node, error) {
+	var nodeObj *v1.Node
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Steps:    5,
+	}
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			klog.Warningf("Error getting node %s: %v, retrying...\n", nodeName, err)
+			return false, nil
+		}
+		nodeObj = node
+		klog.V(4).Infof("Successfully retrieved node info %s\n", nodeName)
+		return true, nil
+	})
+
+	if err != nil {
+		klog.Errorf("Failed to get node %s after retries: %v\n", nodeName, err)
+	}
+	return nodeObj, err
 }
 
 func FetchRaidedLssdCountForDatacache() (int, error) {
