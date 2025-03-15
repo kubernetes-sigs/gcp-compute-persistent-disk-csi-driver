@@ -42,9 +42,9 @@ func (v *Error) Error() string {
 	return fmt.Sprintf("%s: %s", v.Field, v.ErrorBody())
 }
 
-type omitValueType struct{}
+type OmitValueType struct{}
 
-var omitValue = omitValueType{}
+var omitValue = OmitValueType{}
 
 // ErrorBody returns the error message without the field name.  This is useful
 // for building nice-looking higher-level error reporting.
@@ -66,7 +66,7 @@ func (v *Error) ErrorBody() string {
 		valueType := reflect.TypeOf(value)
 		if value == nil || valueType == nil {
 			value = "null"
-		} else if valueType.Kind() == reflect.Ptr {
+		} else if valueType.Kind() == reflect.Pointer {
 			if reflectValue := reflect.ValueOf(value); reflectValue.IsNil() {
 				value = "null"
 			} else {
@@ -200,12 +200,12 @@ func Invalid(field *Path, value interface{}, detail string) *Error {
 // NotSupported returns a *Error indicating "unsupported value".
 // This is used to report unknown values for enumerated fields (e.g. a list of
 // valid values).
-func NotSupported(field *Path, value interface{}, validValues []string) *Error {
+func NotSupported[T ~string](field *Path, value interface{}, validValues []T) *Error {
 	detail := ""
 	if len(validValues) > 0 {
 		quotedValues := make([]string, len(validValues))
 		for i, v := range validValues {
-			quotedValues[i] = strconv.Quote(v)
+			quotedValues[i] = strconv.Quote(fmt.Sprint(v))
 		}
 		detail = "supported values: " + strings.Join(quotedValues, ", ")
 	}
@@ -220,26 +220,24 @@ func Forbidden(field *Path, detail string) *Error {
 	return &Error{ErrorTypeForbidden, field.String(), "", detail}
 }
 
-// TooLong returns a *Error indicating "too long".  This is used to
-// report that the given value is too long.  This is similar to
-// Invalid, but the returned error will not include the too-long
-// value.
+// TooLong returns a *Error indicating "too long".  This is used to report that
+// the given value is too long.  This is similar to Invalid, but the returned
+// error will not include the too-long value. If maxLength is negative, it will
+// be included in the message.  The value argument is not used.
 func TooLong(field *Path, value interface{}, maxLength int) *Error {
-	return &Error{ErrorTypeTooLong, field.String(), value, fmt.Sprintf("must have at most %d bytes", maxLength)}
-}
-
-// TooLongMaxLength returns a *Error indicating "too long".  This is used to
-// report that the given value is too long.  This is similar to
-// Invalid, but the returned error will not include the too-long
-// value. If maxLength is negative, no max length will be included in the message.
-func TooLongMaxLength(field *Path, value interface{}, maxLength int) *Error {
 	var msg string
 	if maxLength >= 0 {
-		msg = fmt.Sprintf("may not be longer than %d", maxLength)
+		msg = fmt.Sprintf("may not be more than %d bytes", maxLength)
 	} else {
 		msg = "value is too long"
 	}
-	return &Error{ErrorTypeTooLong, field.String(), value, msg}
+	return &Error{ErrorTypeTooLong, field.String(), "<value omitted>", msg}
+}
+
+// TooLongMaxLength returns a *Error indicating "too long".
+// Deprecated: Use TooLong instead.
+func TooLongMaxLength(field *Path, value interface{}, maxLength int) *Error {
+	return TooLong(field, "", maxLength)
 }
 
 // TooMany returns a *Error indicating "too many". This is used to
