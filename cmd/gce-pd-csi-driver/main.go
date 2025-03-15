@@ -149,13 +149,22 @@ func handle() {
 	}
 
 	var metricsManager *metrics.MetricsManager = nil
-	if *runControllerService && *httpEndpoint != "" {
+	runServiceWithMetrics := *runControllerService || *runNodeService
+	if runServiceWithMetrics && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
-		mm.RegisterPDCSIMetric()
 
-		if metrics.IsGKEComponentVersionAvailable() {
-			mm.EmitGKEComponentVersion()
+		switch {
+		case *runControllerService:
+			mm.RegisterPDCSIMetric()
+			if metrics.IsGKEComponentVersionAvailable() {
+				mm.EmitGKEComponentVersion()
+			}
+		case *runNodeService:
+			if err := mm.EmmitProcessStartTime(); err != nil {
+				klog.Errorf("Failed to emit process start time: %v", err.Error())
+			}
+			mm.RegisterMountMetric()
 		}
 		metricsManager = &mm
 	}
@@ -250,6 +259,7 @@ func handle() {
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool(ctx, *nodeName),
+			MetricsManager:           metricsManager,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
