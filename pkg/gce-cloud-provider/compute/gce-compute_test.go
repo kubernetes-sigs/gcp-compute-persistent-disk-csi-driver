@@ -15,8 +15,10 @@ limitations under the License.
 package gcecloudprovider
 
 import (
+	"context"
 	"testing"
 
+	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -100,6 +102,154 @@ func TestValidateDiskParameters(t *testing.T) {
 		if tc.expectErr && err == nil {
 			t.Fatalf("Test case #%v: ValidateDiskParameters expected error, but got no error", i)
 		}
+	}
+}
+
+func TestValidateExistingDisk(t *testing.T) {
+	hyperdisk := "hyperdisk-balanced"
+	pd := "pd-balanced"
+	for _, tc := range []struct {
+		name        string
+		reqBytes    int64
+		limBytes    int64
+		multiWriter bool
+		accessMode  string
+		disk        *computebeta.Disk
+		diskType    string
+		wantErr     bool
+	}{
+		{
+			name:     "invalid reqbytes - too big",
+			reqBytes: common.GbToBytes(10),
+			disk: &computebeta.Disk{
+				SizeGb: 5,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "valid reqbytes",
+			reqBytes: common.GbToBytes(5),
+			disk: &computebeta.Disk{
+				SizeGb: 8,
+			},
+		},
+		{
+			name:     "invalid limbytes",
+			limBytes: common.GbToBytes(5),
+			disk: &computebeta.Disk{
+				SizeGb: 10,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "valid limbytes",
+			limBytes: common.GbToBytes(5),
+			disk: &computebeta.Disk{
+				SizeGb: 3,
+			},
+		},
+		{
+			name:        "valid pd with same multi-writer config",
+			multiWriter: true,
+			disk: &computebeta.Disk{
+				MultiWriter: true,
+			},
+			diskType: pd,
+		},
+		{
+			name:        "valid pd with compatible multi-writer config",
+			multiWriter: false,
+			disk: &computebeta.Disk{
+				MultiWriter: true,
+			},
+			diskType: pd,
+		},
+		{
+			name:        "invalid pd with incompatible multi-writer config",
+			multiWriter: true,
+			disk: &computebeta.Disk{
+				MultiWriter: false,
+			},
+			diskType: pd,
+			wantErr:  true,
+		},
+		{
+			name:       "valid hyperdisk with same access mode config",
+			accessMode: common.GCEReadWriteManyAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadWriteManyAccessMode,
+			},
+			diskType: hyperdisk,
+		},
+		{
+			name:       "valid hyperdisk with compatible access mode config - ROX can use RWX",
+			accessMode: common.GCEReadOnlyManyAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadWriteManyAccessMode,
+			},
+			diskType: hyperdisk,
+		},
+		{
+			name:       "valid hyperdisk with compatible access mode config - RWO can use RWX",
+			accessMode: common.GCEReadWriteOnceAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadWriteManyAccessMode,
+			},
+			diskType: hyperdisk,
+		},
+		{
+			name:       "invalid hyperdisk with incompatible access mode config - ROX cannot use RWO",
+			accessMode: common.GCEReadOnlyManyAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadWriteOnceAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
+		{
+			name:       "invalid hyperdisk with incompatible access mode config - RWO cannot use ROX",
+			accessMode: common.GCEReadWriteOnceAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadOnlyManyAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
+		{
+			name:       "invalid hyperdisk with incompatible access mode config - RWX cannot use ROX",
+			accessMode: common.GCEReadWriteManyAccessMode,
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadOnlyManyAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
+		{
+			name:       "invalid access mode",
+			accessMode: "RANDOM_ERROR",
+			disk: &computebeta.Disk{
+				AccessMode: common.GCEReadOnlyManyAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Bootstrap correct disk
+			d := tc.disk
+			d.Type = tc.diskType
+			d.Zone = "zone"
+
+			// Bootstrap params. We don't care about these as they are already tested in previous unit test.
+			params := common.DiskParameters{
+				DiskType: tc.diskType,
+			}
+
+			err := ValidateExistingDisk(context.Background(), CloudDiskFromBeta(tc.disk), params, tc.reqBytes, tc.limBytes, tc.multiWriter, tc.accessMode)
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Errorf("want error: %v, got error: %v", tc.wantErr, err)
+			}
+		})
 	}
 }
 

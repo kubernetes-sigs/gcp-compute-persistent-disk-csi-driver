@@ -5,7 +5,7 @@ set -x
 
 readonly PKGDIR=sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
-TIMEOUT=30m
+TIMEOUT=50m
 if [ "$RUN_CONTROLLER_MODIFY_VOLUME_TESTS" = true ]; then
     TIMEOUT=45m
 fi

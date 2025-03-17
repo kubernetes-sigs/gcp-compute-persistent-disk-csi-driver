@@ -63,6 +63,7 @@ func TestSanity(t *testing.T) {
 
 	fallbackRequisiteZones := []string{}
 	enableStoragePools := false
+	enableDataCache := true
 	multiZoneVolumeHandleConfig := driver.MultiZoneVolumeHandleConfig{}
 	listVolumesConfig := driver.ListVolumesConfig{}
 	provisionableDisksConfig := driver.ProvisionableDisksConfig{
@@ -72,12 +73,16 @@ func TestSanity(t *testing.T) {
 
 	mounter := mountmanager.NewFakeSafeMounter()
 	deviceUtils := deviceutils.NewFakeDeviceUtils(true)
+	args := driver.NodeServerArgs{
+		EnableDeviceInUseCheck: true,
+		DeviceInUseTimeout:     0,
+		EnableDataCache:        true}
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true)
 	fakeStatter := mountmanager.NewFakeStatterWithOptions(mounter, mountmanager.FakeStatterOptions{IsBlock: false})
-	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), fakeStatter)
+	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), fakeStatter, args)
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, nil, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())

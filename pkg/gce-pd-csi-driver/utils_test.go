@@ -297,11 +297,12 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 
 func TestValidateStoragePools(t *testing.T) {
 	testCases := []struct {
-		name    string
-		req     *csi.CreateVolumeRequest
-		params  common.DiskParameters
-		project string
-		expErr  error
+		name       string
+		req        *csi.CreateVolumeRequest
+		params     common.DiskParameters
+		project    string
+		expErr     error
+		enableHdHA bool
 	}{
 		{
 			name: "success with storage pools not enabled",
@@ -396,7 +397,58 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "test-project",
-			expErr:  fmt.Errorf("storage pools do not support regional PD"),
+			expErr:  fmt.Errorf("storage pools do not support regional disks"),
+		},
+		{
+			name: "fail storage pools with HdHA, even when HdHA is allowed",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced-high-availability",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project:    "test-project",
+			expErr:     fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+			enableHdHA: true,
+		},
+		{
+			name: "fail storage pools with HdHA when HdHA is not allowed",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: common.DiskParameters{
+				DiskType: "hyperdisk-balanced-high-availability",
+				StoragePools: []common.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
 		},
 		{
 			name: "fail storage pools with disk clones",
@@ -720,6 +772,88 @@ func TestValidateStoragePoolZones(t *testing.T) {
 			if diff := cmp.Diff(err.Error(), tc.expErr.Error()); diff != "" {
 				t.Errorf("%s: -want, +got \n%s", input, diff)
 			}
+		}
+	}
+}
+
+func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		vcs     []*csi.VolumeCapability
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "error with nil vcs",
+			wantErr: true,
+		},
+		{
+			name:    "error with no vcs",
+			vcs:     []*csi.VolumeCapability{},
+			wantErr: true,
+		},
+		{
+			name: "error with nil access mode",
+			vcs: []*csi.VolumeCapability{
+				{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "error with unsupported CSI access mode",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "success getting ROX",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+					},
+				},
+			},
+			want: common.GCEReadOnlyManyAccessMode,
+		},
+		{
+			name: "success getting RWO",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			want: common.GCEReadWriteOnceAccessMode,
+		},
+		{
+			name: "success getting RWX",
+			vcs: []*csi.VolumeCapability{
+				{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			},
+			want: common.GCEReadWriteManyAccessMode,
+		},
+	} {
+		t.Logf("Running test: %v", tc.name)
+		am, err := getHyperdiskAccessModeFromCapabilities(tc.vcs)
+		if err != nil {
+			if !tc.wantErr {
+				t.Errorf("unexpected error: %v", err)
+			}
+			continue
+		}
+		if am != tc.want {
+			t.Errorf("want %s, got %s", tc.want, am)
 		}
 	}
 }

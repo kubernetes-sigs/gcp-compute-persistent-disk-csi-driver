@@ -29,7 +29,6 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
-
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
@@ -64,6 +63,9 @@ var (
 	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 100, "Steps for wait for operation backoff")
 	waitForOpBackoffCap       = flag.Duration("wait-op-backoff-cap", 0, "Cap for wait for operation backoff")
 
+	enableDeviceInUseCheck = flag.Bool("enable-device-in-use-check-on-node-unstage", true, "If set to true, block NodeUnstageVolume requests until the specified device is not in use")
+	deviceInUseTimeout     = flag.Duration("device-in-use-timeout", 30*time.Second, "Max time to wait for a device to be unused when attempting to unstage. Exceeding the timeout will cause an unstage request to return success and ignore the device in use check.")
+
 	maxProcs                = flag.Int("maxprocs", 1, "GOMAXPROCS override")
 	maxConcurrentFormat     = flag.Int("max-concurrent-format", 1, "The maximum number of concurrent format exec calls")
 	concurrentFormatTimeout = flag.Duration("concurrent-format-timeout", 1*time.Minute, "The maximum duration of a format operation before its concurrency token is released")
@@ -72,6 +74,9 @@ var (
 	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
+	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
+	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with Data Cache configuration")
+	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
 	multiZoneVolumeHandleEnableFlag    = flag.Bool("multi-zone-volume-handle-enable", false, "If set to true, the multi-zone volumeHandle feature will be enabled")
@@ -125,7 +130,7 @@ func handle() {
 	if version == "" {
 		klog.Fatalf("version must be set at compile time")
 	}
-	klog.V(2).Infof("Driver vendor version %v", version)
+	klog.V(4).Infof("Driver vendor version %v", version)
 
 	// Start tracing as soon as possible
 	if *enableOtelTracing {
@@ -222,7 +227,7 @@ func handle() {
 		}
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig)
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -240,9 +245,30 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
-		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter)
+		isDataCacheEnabledNodePool, err := isDataCacheEnabledNodePool(ctx, *nodeName)
+		if err != nil {
+			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
+		}
+		nsArgs := driver.NodeServerArgs{
+			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
+			DeviceInUseTimeout:       *deviceInUseTimeout,
+			EnableDataCache:          *enableDataCacheFlag,
+			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
+		}
+		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
+		}
+		if *enableDataCacheFlag {
+			if nodeName == nil || *nodeName == "" {
+				klog.Errorf("Data Cache enabled, but --node-name not passed")
+			}
+			if nsArgs.DataCacheEnabledNodePool {
+				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
+					klog.Errorf("Data Cache setup failed: %v", err)
+				}
+				go driver.StartWatcher(*nodeName)
+			}
 		}
 	}
 
@@ -323,4 +349,86 @@ func urlFlag(target **url.URL, name string, usage string) {
 		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
+}
+
+func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
+	if !*enableDataCacheFlag {
+		return false, nil
+	}
+	if len(nodeName) > 0 && nodeName != common.TestNode { // disregard logic below when E2E testing.
+		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		return dataCacheLSSDCount != 0, err
+	}
+	return true, nil
+}
+
+func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
+	allLssds, err := driver.FetchAllLssds()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing all LSSDs %v", err)
+	}
+
+	raidedLssds, err := driver.FetchRaidedLssds()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing RAIDed LSSDs %v", err)
+	}
+
+	LSSDsWithEmptyMountPoint, err := driver.FetchLSSDsWihtEmptyMountPoint()
+	if err != nil {
+		return nil, fmt.Errorf("Error listing LSSDs with empty mountpoint: %v", err)
+	}
+
+	// We need to ensure the disks to be used for Data Cache are both unRAIDed & not containing mountpoints for ephemeral storage already
+	availableLssds := slices.Filter(nil, allLssds, func(e string) bool {
+		return slices.Contains(LSSDsWithEmptyMountPoint, e) && !slices.Contains(raidedLssds, e)
+	})
+
+	if len(availableLssds) == 0 {
+		return nil, fmt.Errorf("No LSSDs available to set up caching")
+	}
+
+	if len(availableLssds) < lssdCount {
+		return nil, fmt.Errorf("Not enough LSSDs available to set up caching. Available LSSDs: %v, wanted LSSDs: %v", len(availableLssds), lssdCount)
+	}
+
+	return availableLssds[:lssdCount], nil
+}
+
+func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
+	isAlreadyRaided, err := driver.IsRaided()
+	if err != nil {
+		klog.V(4).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
+	} else if isAlreadyRaided {
+		klog.V(4).Infof("Local SSDs are already RAIDed. Skipping Data Cache setup.")
+		return nil
+	}
+
+	lssdCount := common.LocalSSDCountForDataCache
+	if nodeName != common.TestNode {
+		var err error
+		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		if err != nil {
+			return err
+		}
+		if lssdCount == 0 {
+			klog.V(4).Infof("Data Cache is not enabled on node %v, so skipping caching setup", nodeName)
+			return nil
+		}
+	}
+	lssdNames, err := fetchLssdsForRaiding(lssdCount)
+	if err != nil {
+		klog.Fatalf("Failed to get sufficient SSDs for Data Cache's caching setup: %v", err)
+	}
+	klog.V(4).Infof("Raiding local ssds to setup Data Cache: %v", lssdNames)
+	if err := driver.RaidLocalSsds(lssdNames); err != nil {
+		return fmt.Errorf("Failed to Raid local SSDs, unable to setup Data Cache, got error %v", err)
+	}
+
+	// Initializing data cache node (VG checks w/ raided lssd)
+	if err := driver.InitializeDataCacheNode(nodeId); err != nil {
+		return err
+	}
+
+	klog.V(4).Infof("LSSD caching is setup for the Data Cache enabled node %s", nodeName)
+	return nil
 }

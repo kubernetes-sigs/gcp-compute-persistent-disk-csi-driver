@@ -19,7 +19,9 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +33,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -40,21 +43,27 @@ var (
 	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
 	vmNamePrefix              = flag.String("vm-name-prefix", "gce-pd-csi-e2e", "VM name prefix")
 	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
-	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Milan", "Minimum CPU architecture")
+	minCpuPlatform            = flag.String("min-cpu-platform", "rome", "Minimum CPU architecture")
+	mwMinCpuPlatform          = flag.String("min-cpu-platform-mw", "sapphirerapids", "Minimum CPU architecture for multiwriter tests")
 	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
-	machineType               = flag.String("machine-type", "n2d-standard-2", "Type of machine to provision instance on")
+	machineType               = flag.String("machine-type", "n2d-standard-4", "Type of machine to provision instance on")
 	imageURL                  = flag.String("image-url", "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-2404-lts-amd64", "OS image url to get image from")
 	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
 	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
 	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
+	// Multi-writer is only supported on M3, C3, and N4
+	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
+	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on")
+	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "sapphirerapids", "Minimum CPU architecture")
 
-	testContexts        = []*remote.TestContext{}
-	computeService      *compute.Service
-	computeAlphaService *computealpha.Service
-	computeBetaService  *computebeta.Service
-	kmsClient           *cloudkms.KeyManagementClient
+	testContexts          = []*remote.TestContext{}
+	hyperdiskTestContexts = []*remote.TestContext{}
+	computeService        *compute.Service
+	computeAlphaService   *computealpha.Service
+	computeBetaService    *computebeta.Service
+	kmsClient             *cloudkms.KeyManagementClient
 )
 
 func init() {
@@ -69,10 +78,12 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
-	tcc := make(chan *remote.TestContext)
-	defer close(tcc)
-
+	numberOfInstancesPerZone := 2
 	zones := strings.Split(*zones, ",")
+	tcc := make(chan *remote.TestContext, len(zones)*numberOfInstancesPerZone)
+	hdtcc := make(chan *remote.TestContext, len(zones))
+	defer close(tcc)
+	defer close(hdtcc)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -98,16 +109,38 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	for _, zone := range zones {
+	setupContext := func(zone string) {
+		var wg sync.WaitGroup
+		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
+		for j := 0; j < numberOfInstancesPerZone; j++ {
+			wg.Add(1)
+			go func(curZone string, randInt int) {
+				defer GinkgoRecover()
+				defer wg.Done()
+				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+			}(zone, j)
+		}
 		go func(curZone string) {
+			wg.Add(1)
 			defer GinkgoRecover()
-			tcc <- NewTestContext(curZone)
+			defer wg.Done()
+			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
 		}(zone)
+		wg.Wait()
 	}
 
-	for i := 0; i < len(zones); i++ {
+	for _, zone := range zones {
+		setupContext(zone)
+	}
+
+	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
 		tc := <-tcc
 		testContexts = append(testContexts, tc)
+		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
+	}
+	for i := 0; i < len(zones); i++ {
+		tc := <-hdtcc
+		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
 		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
 	}
 })
@@ -118,6 +151,13 @@ var _ = AfterSuite(func() {
 		Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
 		if *deleteInstances {
 			tc.Instance.DeleteInstance()
+		}
+	}
+	for _, mwTc := range hyperdiskTestContexts {
+		err := remote.TeardownDriverAndClient(mwTc)
+		Expect(err).To(BeNil(), "Multiwriter Teardown Driver and Client failed with error")
+		if *deleteInstances {
+			mwTc.Instance.DeleteInstance()
 		}
 	}
 })
@@ -133,22 +173,32 @@ func getDriverConfig() testutils.DriverConfig {
 	}
 }
 
-func NewTestContext(zone string) *remote.TestContext {
-	nodeID := fmt.Sprintf("%s-%s", *vmNamePrefix, zone)
+func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
+}
+
+func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
+	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
 	instanceConfig := remote.InstanceConfig{
 		Project:                   *project,
 		Architecture:              *architecture,
-		MinCpuPlatform:            *minCpuPlatform,
+		MinCpuPlatform:            minCpuPlatform,
 		Zone:                      zone,
 		Name:                      nodeID,
-		MachineType:               *machineType,
+		MachineType:               machineType,
 		ServiceAccount:            *serviceAccount,
 		ImageURL:                  *imageURL,
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
+		LocalSSDCount:             common.LocalSSDCountForDataCache,
+	}
+
+	if machineType == *hdMachineType {
+		// Machine type is defaulted to c3-standard-2 which doesn't support LSSD and we don't need LSSD for HdHA test context
+		instanceConfig.LocalSSDCount = 0
 	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
@@ -169,7 +219,16 @@ func NewTestContext(zone string) *remote.TestContext {
 	if err != nil {
 		klog.Fatalf("Failed to copy google_nvme_id to containerized directory: %v", err)
 	}
+	pkgs := []string{"lvm2", "mdadm", "grep", "coreutils"}
+	err = testutils.InstallDependencies(i, pkgs)
+	if err != nil {
+		klog.Fatalf("Failed to install dependency package on node %v: error : %v", i.GetNodeID(), err)
+	}
 
+	err = testutils.SetupDataCachingConfig(i)
+	if err != nil {
+		klog.Fatalf("Failed to setup data cache required config error %v", err)
+	}
 	klog.Infof("Creating new driver and client for node %s", i.GetName())
 	tc, err := testutils.GCEClientAndDriverSetup(i, getDriverConfig())
 	if err != nil {
@@ -184,4 +243,9 @@ func getRandomTestContext() *remote.TestContext {
 	Expect(testContexts).ToNot(BeEmpty())
 	rn := rand.Intn(len(testContexts))
 	return testContexts[rn]
+}
+func getRandomMwTestContext() *remote.TestContext {
+	Expect(hyperdiskTestContexts).ToNot(BeEmpty())
+	rn := rand.Intn(len(hyperdiskTestContexts))
+	return hyperdiskTestContexts[rn]
 }

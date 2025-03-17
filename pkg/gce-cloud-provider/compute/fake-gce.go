@@ -23,6 +23,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
@@ -79,6 +80,10 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		mockDiskStatus: "READY",
 	}
 	for _, d := range cloudDisks {
+		if d.LocationType() == meta.Regional {
+			fcp.disks[meta.RegionalKey(d.GetName(), d.GetRegion()).String()] = d
+			continue
+		}
 		diskZone := d.GetZone()
 		if diskZone == "" {
 			diskZone = zone
@@ -184,7 +189,7 @@ func (cloud *FakeCloudProvider) ListSnapshots(ctx context.Context, filter string
 }
 
 // Disk Methods
-func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key, api GCEAPIVersion) (*CloudDisk, error) {
+func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, volKey *meta.Key) (*CloudDisk, error) {
 	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return nil, notFoundError()
@@ -192,56 +197,30 @@ func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, vol
 	return disk, nil
 }
 
-func (cloud *FakeCloudProvider) ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool) error {
-	if resp == nil {
-		return fmt.Errorf("disk does not exist")
-	}
-	requestValid := common.GbToBytes(resp.GetSizeGb()) >= reqBytes || reqBytes == 0
-	responseValid := common.GbToBytes(resp.GetSizeGb()) <= limBytes || limBytes == 0
-	if !requestValid || !responseValid {
-		return fmt.Errorf(
-			"disk already exists with incompatible capacity. Need %v (Required) < %v (Existing) < %v (Limit)",
-			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
-	}
-
-	respType := strings.Split(resp.GetPDType(), "/")
-	typeMatch := strings.TrimSpace(respType[len(respType)-1]) == strings.TrimSpace(params.DiskType)
-	typeDefault := params.DiskType == "" && strings.TrimSpace(respType[len(respType)-1]) == "pd-standard"
-	if !typeMatch && !typeDefault {
-		return fmt.Errorf("disk already exists with incompatible type. Need %v. Got %v",
-			params.DiskType, respType[len(respType)-1])
-	}
-
-	// We are assuming here that a multiWriter disk could be used as non-multiWriter
-	if multiWriter && !resp.GetMultiWriter() {
-		return fmt.Errorf("disk already exists with incompatible capability. Need MultiWriter. Got non-MultiWriter")
-	}
-
-	klog.V(4).Infof("Compatible disk already exists")
-	return ValidateDiskParameters(resp, params)
-}
-
 func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	if disk, ok := cloud.disks[volKey.String()]; ok {
-		err := cloud.ValidateExistingDisk(ctx, disk, params,
+		err := ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
 			int64(capacityRange.GetLimitBytes()),
-			multiWriter)
+			multiWriter, accessMode)
 		if err != nil {
 			return err
 		}
 	}
 
-	computeDisk := &computev1.Disk{
-		Name:                  volKey.Name,
-		SizeGb:                common.BytesToGbRoundUp(capBytes),
-		Description:           "Disk created by GCE-PD CSI Driver",
-		Type:                  cloud.GetDiskTypeURI(project, volKey, params.DiskType),
-		SourceDiskId:          volumeContentSourceVolumeID,
-		Status:                cloud.mockDiskStatus,
-		Labels:                params.Labels,
-		ProvisionedIops:       params.ProvisionedIOPSOnCreate,
-		ProvisionedThroughput: params.ProvisionedThroughputOnCreate,
+	computeDisk := &computebeta.Disk{
+		Name:                      volKey.Name,
+		SizeGb:                    common.BytesToGbRoundUp(capBytes),
+		Description:               "Disk created by GCE-PD CSI Driver",
+		Type:                      cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		SourceDiskId:              volumeContentSourceVolumeID,
+		Status:                    cloud.mockDiskStatus,
+		Labels:                    params.Labels,
+		ProvisionedIops:           params.ProvisionedIOPSOnCreate,
+		ProvisionedThroughput:     params.ProvisionedThroughputOnCreate,
+		AccessMode:                accessMode,
+		MultiWriter:               multiWriter,
+		EnableConfidentialCompute: params.EnableConfidentialCompute,
 	}
 
 	if snapshotID != "" {
@@ -260,7 +239,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	}
 
 	if params.DiskEncryptionKMSKey != "" {
-		computeDisk.DiskEncryptionKey = &computev1.CustomerEncryptionKey{
+		computeDisk.DiskEncryptionKey = &computebeta.CustomerEncryptionKey{
 			KmsKeyName: params.DiskEncryptionKMSKey,
 		}
 	}
@@ -275,13 +254,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 		return fmt.Errorf("could not create disk, key was neither zonal nor regional, instead got: %v", volKey.String())
 	}
 
-	if containsBetaDiskType(hyperdiskTypes, params.DiskType) {
-		betaDisk := convertV1DiskToBetaDisk(computeDisk)
-		betaDisk.EnableConfidentialCompute = params.EnableConfidentialCompute
-		cloud.disks[volKey.String()] = CloudDiskFromBeta(betaDisk)
-	} else {
-		cloud.disks[volKey.String()] = CloudDiskFromV1(computeDisk)
-	}
+	cloud.disks[volKey.String()] = CloudDiskFromBeta(computeDisk)
 	return nil
 }
 

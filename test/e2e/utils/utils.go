@@ -68,7 +68,14 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--use-instance-api-to-list-volumes-published-nodes",
 		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
 		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
+		"--allow-hdha-provisioning",
+		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
+	}
+
+	extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", utilcommon.TestNode))
+	if instance.GetLocalSSD() > 0 {
+		extra_flags = append(extra_flags, "--enable-data-cache")
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
@@ -272,6 +279,33 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 	output, err := instance.SSH("cp", src, dest)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s. Output: %v, errror: %v", src, dest, output, err.Error())
+	}
+	return nil
+}
+
+func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	_, _ = instance.SSH("apt-get", "update")
+	for _, pkg := range pkgs {
+		output, err := instance.SSH("apt-get", "install", "-y", pkg)
+		if err != nil {
+			return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+		}
+	}
+	return nil
+}
+
+func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
+	output, err := instance.SSH("/bin/sed", "-i", "-e", "\"s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field allow_mixed_block_sizes, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_sync = 1.*/ udev_sync = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_sync, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_rules = 1.*/ udev_rules = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_rules, error:%v; output: %v", err, output)
 	}
 	return nil
 }

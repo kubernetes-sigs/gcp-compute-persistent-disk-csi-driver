@@ -332,7 +332,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Snapshot
@@ -413,11 +413,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
@@ -479,7 +479,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Snapshot
@@ -551,11 +551,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1 and validate contents
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
@@ -617,7 +617,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}()
 
 		// Attach Disk
-		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */)
+		err := testAttachWriteReadDetach(underSpecifiedID, snapshotVolName, tc0.Instance, controllerClient, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Create Disk Image
@@ -707,11 +707,11 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
 		// Attach Disk to node1
-		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
 		// Attach Disk to node1
-		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volID, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 	})
 
@@ -806,18 +806,18 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volID0 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[0], volName)
 		volID1 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[1], volName)
 
-		err = testAttachWriteReadDetach(volID0, volName, tc0.Instance, tc0.Client, false /* readonly */)
+		err = testAttachWriteReadDetach(volID0, volName, tc0.Instance, tc0.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol1")
 
-		err = testAttachWriteReadDetach(volID1, volName, tc1.Instance, tc1.Client, false /* readonly */)
+		err = testAttachWriteReadDetach(volID1, volName, tc1.Instance, tc1.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol2")
 
 		// Validate disks can be used in multi-zone mode on both nodes
 		volIDMultiZone := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
-		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc0.Instance, tc0.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
 
-		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc1.Instance, tc1.Client, true /* readonly */)
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
 
 		// Validate disks are ROX now
@@ -910,7 +910,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			if i >= 1 {
 				readOnly = true
 			}
-			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, readOnly)
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, readOnly, false /* detachAndReattach */, false /* setupDataCache */)
 			Expect(err).To(BeNil(), "failed volume lifecycle checks")
 			i = i + 1
 		}
@@ -998,6 +998,207 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Attach disk to instance in the first zone.
 		tc0 := zoneToContext[zones[0]]
 		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, attachAndMountArgs{
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    false,
+			setupDataCache: false,
+		})
+		detachers = append(detachers, detacher)
+		Expect(err).To(BeNil(), "failed attach in zone 0")
+		testFileName := filepath.Join(args.publishDir, "force-attach-test")
+		testFileContents := "force attach test"
+		err = testutils.WriteFile(tc0.Instance, testFileName, testFileContents)
+		Expect(err).To(BeNil(), "failed write in zone 0")
+		_, err = tc0.Instance.SSH("sync") // Sync so force detach doesn't lose data.
+		Expect(err).To(BeNil(), "failed sync")
+
+		readContents, err := testutils.ReadFile(tc0.Instance, testFileName)
+		Expect(err).To(BeNil(), "failed read in zone 0")
+		Expect(strings.TrimSpace(string(readContents))).To(BeIdenticalTo(testFileContents), "content mismatch in zone 0")
+
+		// Now force attach to the second instance without detaching.
+		tc1 := zoneToContext[zones[1]]
+		err, detacher, _ = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, attachAndMountArgs{
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    true,
+			setupDataCache: false,
+		})
+		detachers = append(detachers, detacher)
+		Expect(err).To(BeNil(), "failed force attach in zone 1")
+		readContents, err = testutils.ReadFile(tc1.Instance, testFileName)
+		Expect(err).To(BeNil(), "failed read in zone 1")
+		Expect(strings.TrimSpace(string(readContents))).To(BeIdenticalTo(testFileContents), "content mismatch in zone 1")
+	})
+
+	It("Should successfully run through entire lifecycle of a HdHA volume on instances in 2 zones", func() {
+		// Create new driver and client
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones(zones)
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		wantIOPs, wantThroughput := int64(7000), int64(250)
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyType:                          common.DiskTypeHdHA,
+			common.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
+			common.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
+		}, defaultRepdSizeGb, &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+				},
+			},
+		}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(hdhaDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		Expect(cloudDisk.ProvisionedIops).To(Equal(wantIOPs))
+		Expect(cloudDisk.ProvisionedThroughput).To(Equal(wantThroughput))
+		zonesSet := sets.NewString(zones...)
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			Expect(zonesSet.Has(actualZone)).To(BeTrue(), "Expected zone %v to exist in zone set %v", actualZone, zones)
+		}
+
+		defer func() {
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// For each of the two instances
+		i := 0
+		for _, testContext := range zoneToContext {
+			err = testAttachWriteReadDetach(volume.VolumeId, volName, testContext.Instance, testContext.Client, false, false /* detachAndReattach */, false /* setupDataCache */)
+			Expect(err).To(BeNil(), "failed volume lifecycle checks")
+			i = i + 1
+		}
+	})
+
+	It("Should create a HdHA instance, write to it, force-attach it to another instance, and read the same data", func() {
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		region, err := common.GetRegionFromZones(zones)
+		Expect(err).To(BeNil(), "Failed to get region from zones")
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		volume, err := controllerClient.CreateVolume(volName, map[string]string{
+			common.ParameterKeyType:           common.DiskTypeHdHA,
+			common.ParameterAvailabilityClass: common.ParameterRegionalHardFailoverClass,
+		}, defaultRepdSizeGb, &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+				},
+				{
+					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+				},
+			},
+		}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		// Validate Disk Created
+		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
+		Expect(cloudDisk.Type).To(ContainSubstring(hdhaDiskType))
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
+		Expect(cloudDisk.Name).To(Equal(volName))
+		Expect(len(cloudDisk.ReplicaZones)).To(Equal(2))
+		zonesSet := sets.NewString(zones...)
+		for _, replicaZone := range cloudDisk.ReplicaZones {
+			tokens := strings.Split(replicaZone, "/")
+			actualZone := tokens[len(tokens)-1]
+			Expect(zonesSet.Has(actualZone)).To(BeTrue(), "Expected zone %v to exist in zone set %v", actualZone, zones)
+		}
+		Expect(volume.VolumeContext).To(HaveKeyWithValue("force-attach", "true"))
+
+		detachers := []detacherFunc{}
+
+		defer func() {
+			// Perform any detaches
+			for _, fn := range detachers {
+				fn()
+			}
+
+			// Delete Disk
+			controllerClient.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.RegionDisks.Get(p, region, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach disk to instance in the first zone.
+		tc0 := zoneToContext[zones[0]]
+		err, detacher, args := testAttachAndMount(volume.VolumeId, volName, tc0.Instance, tc0.Client, attachAndMountArgs{
 			readOnly:    false,
 			useBlock:    false,
 			forceAttach: false,
@@ -1018,9 +1219,10 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Now force attach to the second instance without detaching.
 		tc1 := zoneToContext[zones[1]]
 		err, detacher, _ = testAttachAndMount(volume.VolumeId, volName, tc1.Instance, tc1.Client, attachAndMountArgs{
-			readOnly:    false,
-			useBlock:    false,
-			forceAttach: true,
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    true,
+			setupDataCache: false,
 		})
 		detachers = append(detachers, detacher)
 		Expect(err).To(BeNil(), "failed force attach in zone 1")
@@ -1040,7 +1242,12 @@ func deleteDisk(controllerClient *remote.CsiClient, p, zone, volID, volName stri
 	Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
 }
 
-func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool) error {
+func testAttachWriteReadDetach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly bool, detachAndReattach bool, setupDataCache bool) error {
+	writeFile, verifyReadFile := testWriteAndReadFile(instance, readOnly)
+	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile, detachAndReattach, setupDataCache)
+}
+
+func testWriteAndReadFile(instance *remote.InstanceInfo, readOnly bool) (verifyFunc, verifyFunc) {
 	var testFileContents = "test"
 	writeFile := func(a *verifyArgs) error {
 		if !readOnly {
@@ -1066,46 +1273,61 @@ func testAttachWriteReadDetach(volID string, volName string, instance *remote.In
 		}
 		return nil
 	}
-	return testLifecycleWithVerify(volID, volName, instance, client, readOnly, false /* fs */, writeFile, verifyReadFile)
+	return writeFile, verifyReadFile
 }
 
 type attachAndMountArgs struct {
-	readOnly    bool
-	useBlock    bool
-	forceAttach bool
+	readOnly       bool
+	useBlock       bool
+	forceAttach    bool
+	setupDataCache bool
 }
 
 func testAttachAndMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, args attachAndMountArgs) (error, func(), *verifyArgs) {
+	klog.Infof("Starting testAttachAndMount with volume %v node %v \n", volID, instance.GetNodeID())
+	err, unstageAndDetach, stageDir := testAttach(volID, volName, instance, client, args)
+	if err != nil {
+		return err, nil, nil
+	}
+	// Mount Disk
+	err, unpublish, returnArgs := testMount(volID, volName, instance, client, args, stageDir)
+	if err != nil {
+		unstageAndDetach()
+		return err, nil, nil
+	}
+	unpublishUnstageAndDetach := func() {
+		unpublish()
+		unstageAndDetach()
+	}
+	return nil, unpublishUnstageAndDetach, returnArgs
+}
+
+func testAttach(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, args attachAndMountArgs) (error, func(), string) {
+	klog.Infof("Starting testAttach with volume %v node %v \n", volID, instance.GetNodeID())
 	// Attach Disk
 	var err error
+	var stageDir string
 	if args.readOnly {
 		err = client.ControllerPublishVolumeReadOnly(volID, instance.GetNodeID())
 	} else {
 		err = client.ControllerPublishVolumeReadWrite(volID, instance.GetNodeID(), args.forceAttach)
 	}
 	if err != nil {
-		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error()), nil, nil
-	}
-
-	detach := func() {
-		// Detach Disk
-		err = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-		if err != nil {
-			klog.Errorf("Failed to detach disk: %v", err)
-		}
+		return fmt.Errorf("ControllerPublishVolume failed with error for disk %v on node %v: %v", volID, instance.GetNodeID(), err.Error()), nil, stageDir
 	}
 
 	// Stage Disk
-	stageDir := filepath.Join("/tmp/", volName, "stage")
+	stageDir = filepath.Join("/tmp/", volName, "stage")
 	if args.useBlock {
-		err = client.NodeStageBlockVolume(volID, stageDir)
+		err = client.NodeStageBlockVolume(volID, stageDir, args.setupDataCache)
+
 	} else {
-		err = client.NodeStageExt4Volume(volID, stageDir)
+		err = client.NodeStageExt4Volume(volID, stageDir, args.setupDataCache)
 	}
 
 	if err != nil {
-		detach()
-		return fmt.Errorf("NodeStageExt4Volume failed with error: %w", err), nil, nil
+		_ = detach(volID, instance, client)
+		return fmt.Errorf("NodeStageExt4Volume failed with error: %w for node: %v", err, instance.GetNodeID()), nil, stageDir
 	}
 
 	unstageAndDetach := func() {
@@ -1120,9 +1342,23 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 			klog.Errorf("Failed to rm file path %s: %v", fp, err)
 		}
 
-		detach()
+		detach(volID, instance, client)
 	}
+	return nil, unstageAndDetach, stageDir
+}
 
+func detach(volID string, instance *remote.InstanceInfo, client *remote.CsiClient) error {
+	// Detach Disk
+	err := client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+	if err != nil {
+		klog.Errorf("Failed to detach disk  %v", err)
+		return fmt.Errorf("Failed to detach disk: %v", err)
+	}
+	return nil
+}
+
+func testMount(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, args attachAndMountArgs, stageDir string) (error, func(), *verifyArgs) {
+	var err error
 	// Mount Disk
 	publishDir := filepath.Join("/tmp/", volName, "mount")
 
@@ -1133,7 +1369,6 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 	}
 
 	if err != nil {
-		unstageAndDetach()
 		return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error()), nil, nil
 	}
 
@@ -1144,14 +1379,10 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 			klog.Errorf("Failed to unpublish volume: %v", err)
 		}
 	}
-	unpublishUnstageAndDetach := func() {
-		unpublish()
-		unstageAndDetach()
-	}
 
 	err = testutils.ForceChmod(instance, filepath.Join("/tmp/", volName), "777", !args.readOnly /* recursive */)
 	if err != nil {
-		unpublishUnstageAndDetach()
+		unpublish()
 		return fmt.Errorf("Chmod failed with error: %v", err.Error()), nil, nil
 	}
 
@@ -1160,16 +1391,18 @@ func testAttachAndMount(volID string, volName string, instance *remote.InstanceI
 		stageDir:   stageDir,
 	}
 
-	return nil, unpublishUnstageAndDetach, returnArgs
+	return nil, unpublish, returnArgs
 }
 
-func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc) error {
+func testLifecycleWithVerify(volID string, volName string, instance *remote.InstanceInfo, client *remote.CsiClient, readOnly, useBlock bool, firstMountVerify, secondMountVerify verifyFunc, detachAndReattach bool, setupDataCache bool) error {
 	klog.Infof("Starting testAttachWriteReadDetach with volume %v node %v with readonly %v\n", volID, instance.GetNodeID(), readOnly)
-	err, detacher, args := testAttachAndMount(volID, volName, instance, client, attachAndMountArgs{
-		readOnly:    readOnly,
-		useBlock:    useBlock,
-		forceAttach: false,
-	})
+	attachArgs := attachAndMountArgs{
+		readOnly:       readOnly,
+		useBlock:       useBlock,
+		forceAttach:    false,
+		setupDataCache: setupDataCache,
+	}
+	err, detacher, args := testAttachAndMount(volID, volName, instance, client, attachArgs)
 	if err != nil {
 		return fmt.Errorf("failed to attach and mount: %w", err)
 	}
@@ -1186,13 +1419,28 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		return fmt.Errorf("NodeUnpublishVolume failed with error: %v", err.Error())
 	}
 
+	stageDir := args.stageDir
+	if detachAndReattach {
+		// Unstage and detach
+		err = client.NodeUnstageVolume(volID, stageDir)
+		if err != nil {
+			klog.Errorf("Failed to unstage volume: %v", err)
+		}
+		detach(volID, instance, client)
+		// Reattach the volume
+		err, _, stageDir = testAttach(volID, volName, instance, client, attachArgs)
+		if err != nil {
+			return err
+		}
+	}
+
 	if secondMountVerify != nil {
 		// Mount disk somewhere else
 		secondPublishDir := filepath.Join("/tmp/", volName, "secondmount")
 		if useBlock {
-			err = client.NodePublishBlockVolume(volID, args.stageDir, secondPublishDir)
+			err = client.NodePublishBlockVolume(volID, stageDir, secondPublishDir)
 		} else {
-			err = client.NodePublishVolume(volID, args.stageDir, secondPublishDir)
+			err = client.NodePublishVolume(volID, stageDir, secondPublishDir)
 		}
 		if err != nil {
 			return fmt.Errorf("NodePublishVolume failed with error: %v", err.Error())
