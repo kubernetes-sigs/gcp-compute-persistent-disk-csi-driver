@@ -58,15 +58,15 @@ build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019
-	$(DOCKER) manifest create --amend $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
+	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
@@ -92,13 +92,13 @@ build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buil
 	$(DOCKER) buildx build --platform=linux/amd64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
 		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg BUILDPLATFORM=linux \
-		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
@@ -126,7 +126,7 @@ init-buildx:
 	$(DOCKER) run --rm --privileged multiarch/qemu-user-static --reset --credential yes --persistent yes
 	# Ensure we use a builder that can leverage it (the default on linux will not)
 	-$(DOCKER) buildx rm multiarch-multiplatform-builder
-	$(DOCKER) buildx create --use --name=multiarch-multiplatform-builder --driver-opt network=host --driver-opt image=moby/buildkit:v0.11.3
+	$(DOCKER) buildx create --use --name=multiarch-multiplatform-builder --driver-opt network=host --driver-opt image=moby/buildkit:v0.20.0
 	# Register gcloud as a Docker credential helper.
 	# Required for "docker buildx build --push".
 	gcloud auth configure-docker --quiet

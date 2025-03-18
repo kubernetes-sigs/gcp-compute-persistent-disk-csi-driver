@@ -25,15 +25,16 @@ for ((i=0;i<${#imagetags[@]};++i)); do
   BASEIMAGE="${baseimages[i]}"
   echo $BASEIIMAGE
 
-  full_version=$(docker manifest inspect ${BASEIMAGE} | grep "os.version" | head -n 1 | awk '{print $2}') || true
+  full_version=$(docker manifest inspect ${BASEIMAGE} | grep "os.version" | head -n 1 | awk '{print $2}' | sed 's/^\"//' | sed 's/\",$//') || true
   echo $full_version
 
   IMAGETAG=${STAGINGIMAGE}:${STAGINGVERSION}_${imagetags[i]}
   image_folder=$(echo "${IMAGETAG}" | sed "s|/|_|g" | sed "s/:/-/")
   echo ${manifest_folder}
 
-  # sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":$full_version/" \
-  # "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
+  # Needed for Windows nodes to correctly recognize the version of image to pull.
+  # Populates the os.version field of the multi-arch image manifest.
+  docker manifest annotate --os windows --arch amd64 --os-version ${full_version} ${STAGINGIMAGE}:${STAGINGVERSION} ${IMAGETAG}
 
   # manifest after transformations
   cat "${HOME}/.docker/manifests/${manifest_folder}/${image_folder}"
