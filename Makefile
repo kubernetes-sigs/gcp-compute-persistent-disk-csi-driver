@@ -24,6 +24,7 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 
 BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2019
+BASE_IMAGE_LTSC2022=mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Both arrays MUST be index aligned.
 WINDOWS_IMAGE_TAGS=ltsc2019
@@ -60,14 +61,20 @@ build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
-build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019
-	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
-	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="$(WINDOWS_IMAGE_TAGS)" WINDOWS_BASE_IMAGES="$(WINDOWS_BASE_IMAGES)" ./manifest_osversion.sh
+build-and-push-windows-container-ltsc2022: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows/amd64 \
+		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2022 \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2022) \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
+
+build-and-push-multi-arch: build-and-push-container-linux-amd64 build-and-push-container-linux-arm64 build-and-push-windows-container-ltsc2019 build-and-push-windows-container-ltsc2022
+	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2022
+	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019, ltsc2022" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019), $(BASE_IMAGE_LTSC2022)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
-build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019
-	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019
-	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019)" ./manifest_osversion.sh
+build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-push-windows-container-ltsc2019 build-and-push-windows-container-ltsc2022
+	$(DOCKER) manifest create $(STAGINGIMAGE):$(STAGINGVERSION) $(STAGINGIMAGE):$(STAGINGVERSION)_linux $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2022
+	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019, ltsc2022" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019), $(BASE_IMAGE_LTSC2022)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container

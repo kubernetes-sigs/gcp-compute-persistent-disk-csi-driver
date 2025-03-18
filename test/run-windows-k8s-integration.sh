@@ -21,6 +21,7 @@ readonly test_version=${TEST_VERSION:-master}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly use_kubetest2=${USE_KUBETEST2:-true}
 readonly num_windows_nodes=${NUM_WINDOWS_NODES:-3}
+readonly windows_distribution=${WINDOWS_NODE_OS_DISTRIBUTION:-win2019}
 
 # build platforms for `make quick-release`
 export KUBE_BUILD_PLATFORMS=${KUBE_BUILD_PLATFORMS:-"linux/amd64 windows/amd64"}
@@ -33,6 +34,11 @@ if [ "$use_kubetest2" = true ]; then
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@${kt2_version}
+fi
+
+if [ "$windows_distribution" != "win2019" -a "$windows_distribution" != "win2022"]; then
+    print "Invalid windows distribution $windows_distribution provided. Exiting."
+    exit 1
 fi
 
 ${PKGDIR}/bin/k8s-integration-test \
@@ -54,4 +60,5 @@ ${PKGDIR}/bin/k8s-integration-test \
     --storageclass-files=sc-windows.yaml \
     --snapshotclass-files=pd-volumesnapshotclass.yaml \
     --test-focus='External.Storage' \
-    --use-kubetest2="${use_kubetest2}"
+    --use-kubetest2="${use_kubetest2}" \
+    --image-type="${windows_distribution}"

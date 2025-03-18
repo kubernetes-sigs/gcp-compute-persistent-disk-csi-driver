@@ -126,7 +126,7 @@ func deleteDriver(testParams *testParameters, deployOverlayName string) error {
 	return nil
 }
 
-func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
+func pushImage(pkgDir, stagingImage, stagingVersion, platform, imageType string) error {
 	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", stagingVersion)
 	if err != nil {
 		return err
@@ -138,7 +138,6 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	var cmd *exec.Cmd
 
 	if platform == "windows" {
-		// build multi-arch image which can work for both Linux and Windows
 		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-multi-arch",
 			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
 			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
