@@ -86,23 +86,23 @@ func (i *InstanceInfo) GetLocalSSD() int64 {
 
 func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) bool {
 	if !strings.Contains(curInst.MachineType, newInst.MachineType) {
-		klog.Infof("Machine type mismatch")
+		klog.Infof("Machine type mismatch (current: %v, new: %v)", curInst.MachineType, newInst.MachineType)
 		return true
 	}
 	// Ideally we could compare to see if the new instance has a greater minCpuPlatfor
 	// For now we just check it was set and it's different.
 	if curInst.MinCpuPlatform != "" && curInst.MinCpuPlatform != newInst.MinCpuPlatform {
-		klog.Infof("CPU Platform mismatch")
+		klog.Infof("CPU Platform mismatch (current: %v, new: %v)", curInst.MinCpuPlatform, newInst.MinCpuPlatform)
 		return true
 	}
 	if (curInst.ConfidentialInstanceConfig != nil && newInst.ConfidentialInstanceConfig == nil) ||
 		(curInst.ConfidentialInstanceConfig == nil && newInst.ConfidentialInstanceConfig != nil) ||
 		(curInst.ConfidentialInstanceConfig != nil && newInst.ConfidentialInstanceConfig != nil && curInst.ConfidentialInstanceConfig.EnableConfidentialCompute != newInst.ConfidentialInstanceConfig.EnableConfidentialCompute) {
-		klog.Infof("Confidential compute mismatch")
+		klog.Infof("Confidential compute mismatch (current: %v, new: %v)", curInst.ConfidentialInstanceConfig, newInst.ConfidentialInstanceConfig)
 		return true
 	}
 	if curInst.SourceMachineImage != newInst.SourceMachineImage {
-		klog.Infof("Source Machine Mismatch")
+		klog.Infof("Source Machine Mismatch (current: %v, new: %v)", curInst.SourceMachineImage, newInst.SourceMachineImage)
 		return true
 	}
 	return false
