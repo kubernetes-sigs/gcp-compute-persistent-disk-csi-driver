@@ -289,7 +289,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, tc.seedDisks)
+		gceDriver := initGCEDriver(t, tc.seedDisks, &GCEControllerServerArgs{})
 
 		// Start Test
 		resp, err := gceDriver.cs.CreateSnapshot(context.Background(), tc.req)
@@ -336,7 +336,7 @@ func TestUnsupportedMultiZoneCreateSnapshot(t *testing.T) {
 
 	t.Logf("test case: %s", testCase.name)
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 		Enable: true,
 	}
@@ -371,7 +371,7 @@ func TestUnsupportedMultiZoneControllerExpandVolume(t *testing.T) {
 
 	t.Logf("test case: %s", testCase.name)
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 		Enable: true,
 	}
@@ -426,7 +426,7 @@ func TestDeleteSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 		_, err := gceDriver.cs.DeleteSnapshot(context.Background(), tc.req)
 		if err != nil {
@@ -548,7 +548,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 		}
 
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, disks)
+		gceDriver := initGCEDriver(t, disks, &GCEControllerServerArgs{})
 
 		for i := 0; i < tc.numSnapshots; i++ {
 			volumeID := fmt.Sprintf("%s%d", testVolumeID, i)
@@ -1821,7 +1821,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 		gceDriver.cs.fallbackRequisiteZones = tc.fallbackZones
@@ -2055,7 +2055,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			// Start Test
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -2252,7 +2252,7 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 
@@ -2369,7 +2369,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 	for _, tc := range testCases {
 		var d []*gce.CloudDisk
 		fcp, err := gce.CreateFakeCloudProvider(project, zone, d)
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 		if err != nil {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
@@ -2478,7 +2478,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			t.Fatalf("Failed to create mock cloud provider: %v", err)
 		}
 
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		project, volKey, err := common.VolumeIDToKey(testVolumeID)
 		if err != nil {
 			t.Fatalf("Failed convert key: %v", err)
@@ -2640,7 +2640,7 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create mock cloud provider")
 		}
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 		for volKey, err := range tc.modifyVolumeErrors {
 			fcp.AddDiskForErr(volKey, err)
@@ -2726,7 +2726,7 @@ func TestListVolumePagination(t *testing.T) {
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
 				}))
 			}
-			gceDriver := initGCEDriver(t, d)
+			gceDriver := initGCEDriver(t, d, &GCEControllerServerArgs{})
 			tok := ""
 			for i, expectedEntry := range tc.expectedEntries {
 				lvr := &csi.ListVolumesRequest{
@@ -2813,7 +2813,7 @@ func TestListAttachedVolumePagination(t *testing.T) {
 				}
 				fakeCloudProvider.InsertInstance(&instance, zone, instanceName)
 			}
-			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
 			// Use attached disks (instances.list) API
 			gceDriver.cs.listVolumesConfig.UseInstancesAPIForPublishedNodes = true
 
@@ -2878,7 +2878,7 @@ func TestListVolumeArgs(t *testing.T) {
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
 				}))
 			}
-			gceDriver := initGCEDriver(t, d)
+			gceDriver := initGCEDriver(t, d, &GCEControllerServerArgs{})
 			lvr := &csi.ListVolumesRequest{
 				MaxEntries: tc.maxEntries,
 			}
@@ -3073,7 +3073,7 @@ func TestListVolumeResponse(t *testing.T) {
 				fakeCloudProvider.InsertInstance(&instance, instance.Zone, instance.Name)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
 			gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 				Enable: true,
 			}
@@ -3143,7 +3143,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 		if err != nil {
@@ -3870,7 +3870,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
 		req := &csi.CreateVolumeRequest{
@@ -3990,7 +3990,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		},
 	}
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 	tZones := map[string]bool{}
 	// Start Test
@@ -4073,7 +4073,7 @@ func TestDeleteVolume(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, tc.seedDisks)
+		gceDriver := initGCEDriver(t, tc.seedDisks, &GCEControllerServerArgs{})
 
 		_, err := gceDriver.cs.DeleteVolume(context.Background(), tc.req)
 		if err == nil && tc.expErr {
@@ -4125,7 +4125,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 		_, err = gceDriver.cs.DeleteVolume(context.Background(), tc.req)
@@ -5250,7 +5250,7 @@ func TestCreateVolumeDiskReady(t *testing.T) {
 			// Setup hook to create new disks with given status.
 			fcp.UpdateDiskStatus(tc.diskStatus)
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			// Start Test
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -5771,7 +5771,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			if tc.req.VolumeContentSource.GetType() != nil {
 				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
