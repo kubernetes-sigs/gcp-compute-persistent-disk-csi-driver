@@ -315,6 +315,7 @@ func (cloud *CloudProvider) ListSnapshots(ctx context.Context, filter string) ([
 			return nil, "", err
 		}
 		items = append(items, snapshotList.Items...)
+		nextPageToken = snapshotList.NextPageToken
 	}
 	return items, "", nil
 }
@@ -1310,6 +1311,7 @@ func (cloud *CloudProvider) ListImages(ctx context.Context, filter string) ([]*c
 			return nil, "", err
 		}
 		items = append(items, imageList.Items...)
+		nextPageToken = imageList.NextPageToken
 	}
 	return items, "", nil
 }

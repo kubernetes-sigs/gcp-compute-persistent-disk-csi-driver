@@ -310,6 +310,20 @@ func (c *CsiClient) NodeGetVolumeStats(volumeID, volumePath string) (available, 
 	return
 }
 
+func (c *CsiClient) ListSnapshots() ([]string, error) {
+	lsr := &csipb.ListSnapshotsRequest{}
+	resp, err := c.ctrlClient.ListSnapshots(context.Background(), lsr)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots := []string{}
+	for _, e := range resp.Entries {
+		snapshots = append(snapshots, e.Snapshot.SnapshotId)
+	}
+	return snapshots, nil
+}
+
 func (c *CsiClient) CreateSnapshot(snapshotName, sourceVolumeId string, params map[string]string) (string, error) {
 
 	csr := &csipb.CreateSnapshotRequest{
