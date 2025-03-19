@@ -45,7 +45,7 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 		return "", fmt.Errorf("Error getting RAIDed device path for Data Cache %v, output:%v", err, string(info))
 	}
 	infoString := strings.TrimSpace(string(info))
-	infoSlice := strings.Split(infoString, " ")
+	infoSlice := strings.Fields(infoString)
 
 	// We want to get the second element in the array (sample: ARRAY /dev/md126 metadata=1.2 name=csi-driver-data-cache UUID=*),
 	//  which is the path to the RAIDed device
@@ -357,7 +357,7 @@ func FetchAllLssds() ([]string, error) {
 	for _, ssd := range infoList {
 		ssd = strings.TrimSpace(ssd)
 		if strings.HasPrefix(ssd, "/dev/nvme") {
-			ssdDetails := strings.Split(ssd, " ")
+			ssdDetails := strings.Fields(ssd)
 			lssd := re.MatchString(ssdDetails[1])
 			if lssd {
 				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
