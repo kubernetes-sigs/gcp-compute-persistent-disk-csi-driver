@@ -581,7 +581,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	}
 
 	if ns.EnableDiskTopology {
-		labels, err := ns.gkeTopologyLabels(ctx, ns.MetadataService.GetName())
+		labels, err := ns.fetchGKETopologyLabels(ctx, ns.MetadataService.GetName())
 		if err != nil {
 			// Perhaps we don't want to fail here.  We are introducing a new
 			// dependency and we might be better off allowing this failure to
@@ -611,9 +611,9 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	return resp, err
 }
 
-// gkeTopologyLabels retrieves the node labels with the prefix
+// fetchGKETopologyLabels retrieves the node labels with the prefix
 // `topology.gke.io/` for the specified node.
-func (ns *GCENodeServer) gkeTopologyLabels(ctx context.Context, nodeName string) (map[string]string, error) {
+func (ns *GCENodeServer) fetchGKETopologyLabels(ctx context.Context, nodeName string) (map[string]string, error) {
 	klog.V(2).Infof("Retrieving node topology labels for node %q", nodeName)
 
 	node, err := ns.KubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
