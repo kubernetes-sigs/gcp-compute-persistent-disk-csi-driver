@@ -21,12 +21,12 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
-func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, args ...*GCEControllerServerArgs) *GCEDriver {
+func initGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, args *GCEControllerServerArgs) *GCEDriver {
 	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, cloudDisks)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
-	return initGCEDriverWithCloudProvider(t, fakeCloudProvider, args...)
+	return initGCEDriverWithCloudProvider(t, fakeCloudProvider, args)
 }
 
 func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExecute chan chan gce.Signal) *GCEDriver {
@@ -38,7 +38,7 @@ func initBlockingGCEDriver(t *testing.T, cloudDisks []*gce.CloudDisk, readyToExe
 		FakeCloudProvider: fakeCloudProvider,
 		ReadyToExecute:    readyToExecute,
 	}
-	return initGCEDriverWithCloudProvider(t, fakeBlockingBlockProvider)
+	return initGCEDriverWithCloudProvider(t, fakeBlockingBlockProvider, &GCEControllerServerArgs{})
 }
 
 func controllerServerForTest(cloudProvider gce.GCECompute, args *GCEControllerServerArgs) *GCEControllerServer {
@@ -57,25 +57,11 @@ func controllerServerForTest(cloudProvider gce.GCECompute, args *GCEControllerSe
 	return NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */, args)
 }
 
-func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute, args ...*GCEControllerServerArgs) *GCEDriver {
+func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute, args *GCEControllerServerArgs) *GCEDriver {
 	vendorVersion := "test-vendor"
 	gceDriver := GetGCEDriver()
 
-	// Passing args as a variadic argument prevents updating many function
-	// calls.  We may want to update this in the future.
-	var controllerArgs *GCEControllerServerArgs
-	switch {
-	case len(args) == 0:
-		controllerArgs = &GCEControllerServerArgs{
-			EnableDiskTopology: false,
-		}
-	case len(args) == 1:
-		controllerArgs = args[0]
-	default:
-		t.Fatalf("Invalid number of arguments structs: %v", len(args))
-	}
-
-	controllerServer := controllerServerForTest(cloudProvider, controllerArgs)
+	controllerServer := controllerServerForTest(cloudProvider, args)
 	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
