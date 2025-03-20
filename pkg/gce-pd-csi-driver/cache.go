@@ -210,7 +210,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			req.GetPublishContext()[common.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
-			chunkSize, // default unit is KiB
+			chunkSize,
 			"--force",
 			"-y",
 		}
@@ -563,7 +563,7 @@ func isCachingSetup(mainLvName string) (error, bool) {
 func fetchChunkSizeKiB(cacheSize string) (string, error) {
 	var chunkSize float64
 
-	cacheSizeInt, err := common.ConvertGiStringToInt64(cacheSize)
+	cacheSizeInt, err := strconv.ParseInt(cacheSize, 10, 64)
 	if err != nil {
 		return "0", err
 	}
