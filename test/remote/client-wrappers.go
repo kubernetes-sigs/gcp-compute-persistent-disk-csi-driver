@@ -56,7 +56,7 @@ const (
 	// Keys in the volume context.
 	contextForceAttach = "force-attach"
 
-	defaultLocalSsdCacheSize = "200Gi"
+	defaultLocalSsdCacheSize = "200"
 	defaultDataCacheMode     = common.DataCacheModeWriteThrough
 )
 
