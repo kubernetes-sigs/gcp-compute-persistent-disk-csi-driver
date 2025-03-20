@@ -274,7 +274,7 @@ func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nod
 		Factor:   2.0,
 		Steps:    5,
 	}
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
 		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
 			klog.Warningf("Error getting node %s: %v, retrying...\n", nodeName, err)
