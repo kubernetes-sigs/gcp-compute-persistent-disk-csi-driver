@@ -357,6 +357,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 		devicePath, err = setupCaching(devFsPath, req, nodeId)
 		if err != nil {
+			errStatus, _ := status.FromError(err)
+			if errStatus.Code() == codes.InvalidArgument {
+				return nil, err
+			}
 			return nil, status.Error(codes.DataLoss, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 		}
 	}
