@@ -27,7 +27,7 @@ FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.5 AS debian
 
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2 mdadm
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2 mdadm btrfs-progs
 
 # Since we're leveraging apt to pull in dependencies, we use `gcr.io/distroless/base` because it includes glibc.
 FROM gcr.io/distroless/base-debian12 AS distroless-base
@@ -48,6 +48,7 @@ COPY --from=debian /etc/mke2fs.conf /etc/mke2fs.conf
 COPY --from=debian /lib/udev/scsi_id /lib/udev_containerized/scsi_id
 COPY --from=debian /bin/mount /bin/mount
 COPY --from=debian /bin/umount /bin/umount
+COPY --from=debian /bin/btrfs /bin/btrfs
 COPY --from=debian /sbin/blkid /sbin/blkid
 COPY --from=debian /sbin/blockdev /sbin/blockdev
 COPY --from=debian /sbin/dumpe2fs /sbin/dumpe2fs
@@ -131,6 +132,7 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libnvme.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libsystemd.so.0 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libgpg-error.so.0 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzo2.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \

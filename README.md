@@ -92,6 +92,12 @@ As part of the deployment process, the driver is deployed in a newly created nam
 
 Controller-level and node-level deployments will both have priorityClassName set, and the corresponding priority value is close to the maximum possible for user-created PriorityClasses.
 
+## Notes on filesystems
+
+As noted in [GCP PD documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/gce-pd-csi-driver), `ext4` and `xfs` are officially supported. `btrfs` support is experimental:
+- As of writing, Ubuntu VM images support btrfs, but [COS does not](https://cloud.google.com/container-optimized-os/docs/concepts/supported-filesystems).
+- Early testers have observed CSI driver OOMs when mounting larger (1TiB+) btrfs volumes under default memory constraints. The default constraint, as of writing, is 50MiB.
+
 ## Further Documentation
 
 [Local Development](docs/kubernetes/development.md)
