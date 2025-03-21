@@ -111,6 +111,9 @@ github.com/gogo/protobuf/sortkeys
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
+# github.com/golang/mock v1.6.0
+## explicit; go 1.11
+github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.5.4
 ## explicit; go 1.17
 github.com/golang/protobuf/proto
@@ -210,7 +213,7 @@ github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1
 github.com/kubernetes-csi/csi-proxy/client/groups/filesystem/v1beta1
 github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1
 github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1beta1
-# github.com/kubernetes-csi/csi-test/v5 v5.3.0
+# github.com/kubernetes-csi/csi-test/v5 v5.3.1
 ## explicit; go 1.18
 github.com/kubernetes-csi/csi-test/v5/pkg/sanity
 github.com/kubernetes-csi/csi-test/v5/utils
@@ -652,7 +655,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.32.2
+# k8s.io/api v0.32.3
 ## explicit; go 1.23.0
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1alpha1
@@ -710,7 +713,7 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 k8s.io/api/storagemigration/v1alpha1
-# k8s.io/apimachinery v0.32.2
+# k8s.io/apimachinery v0.32.3
 ## explicit; go 1.23.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -904,11 +907,11 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/watchlist
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider v0.32.2
+# k8s.io/cloud-provider v0.32.3
 ## explicit; go 1.23.0
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/helpers
-# k8s.io/component-base v0.32.2
+# k8s.io/component-base v0.32.3
 ## explicit; go 1.23.0
 k8s.io/component-base/metrics
 k8s.io/component-base/metrics/prometheusextension
@@ -933,7 +936,7 @@ k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/spec3
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/mount-utils v0.32.2
+# k8s.io/mount-utils v0.32.3
 ## explicit; go 1.23.0
 k8s.io/mount-utils
 # k8s.io/test-infra v0.0.0-20210730160938-8ad9b8c53bd8
@@ -964,7 +967,7 @@ sigs.k8s.io/boskos/storage
 ## explicit; go 1.21
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/structured-merge-diff/v4 v4.4.2
+# sigs.k8s.io/structured-merge-diff/v4 v4.6.0
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/merge
