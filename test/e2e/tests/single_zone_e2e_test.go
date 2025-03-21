@@ -1065,6 +1065,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		})
 		Expect(err).To(BeNil(), "Could not wait for snapshot be ready")
 
+		snapshots, err := client.ListSnapshots()
+		Expect(err).To(BeNil(), "Could not list snapshots")
+		Expect(snapshots).To(ContainElement(snapshotID), "Couldn't find snapshot ID")
+
 		defer func() {
 			// Delete Disk
 			err := client.DeleteVolume(volID)
@@ -1123,6 +1127,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(cleanSelfLink(snapshot.SelfLink))
 		Expect(err).To(BeNil(), "Failed to parse snapshot ID")
 		Expect(snapshotType).To(Equal(common.DiskImageType), "Expected images type in snapshot ID")
+
+		snapshots, err := client.ListSnapshots()
+		Expect(err).To(BeNil(), "Could not list snapshots")
+		Expect(snapshots).To(ContainElement(snapshotID), "Couldn't find snapshot ID")
 
 		defer func() {
 			// Delete Disk
