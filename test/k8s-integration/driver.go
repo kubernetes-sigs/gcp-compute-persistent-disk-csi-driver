@@ -126,7 +126,7 @@ func deleteDriver(testParams *testParameters, deployOverlayName string) error {
 	return nil
 }
 
-func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
+func pushImage(pkgDir, stagingImage, stagingVersion, platform, imageType string) error {
 	err := os.Setenv("GCE_PD_CSI_STAGING_VERSION", stagingVersion)
 	if err != nil {
 		return err
@@ -138,8 +138,15 @@ func pushImage(pkgDir, stagingImage, stagingVersion, platform string) error {
 	var cmd *exec.Cmd
 
 	if platform == "windows" {
-		// build multi-arch image which can work for both Linux and Windows
-		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-multi-arch",
+		var winVersion string
+		if imageType == "win2019" {
+			winVersion = "2019"
+		} else if imageType == "win2022" {
+			winVersion = "2022"
+		} else {
+			return fmt.Errorf("invalid imageType %v supplied for windows", imageType)
+		}
+		cmd = exec.Command("make", "-C", pkgDir, "build-and-push-windows-container-ltsc"+winVersion,
 			fmt.Sprintf("GCE_PD_CSI_STAGING_VERSION=%s", stagingVersion),
 			fmt.Sprintf("GCE_PD_CSI_STAGING_IMAGE=%s", stagingImage))
 		err = runCommand("Building and Pushing GCP Container for Windows", cmd)
