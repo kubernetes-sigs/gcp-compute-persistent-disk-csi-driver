@@ -391,6 +391,8 @@ func checkVgExists(volumeGroupName string) bool {
 		return false
 	}
 	// Check if the required volume group already exists
+	klog.V(4).Infof("samhalim checkvgexist info: %v ", string(info))
+	klog.V(4).Infof("samhalim does it contains? %v ", strings.Contains(string(info), volumeGroupName))
 	return strings.Contains(string(info), volumeGroupName)
 }
 
@@ -489,7 +491,15 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 	}
 	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
 	if err != nil {
-		klog.Errorf("Errored while cleaning up volume group %v: %s", err, info)
+		klog.V(2).Infof("samhalim this is info: %v", string(info))
+		klog.V(2).Infof("samhalim this is err: %v", err.Error())
+		klog.V(2).Infof("samhalim info true?: %v", strings.Contains(string(info), "duplicate VG names with vgrename uuid"))
+		klog.V(2).Infof("samhalim err true?: %v", strings.Contains(err.Error(), "duplicate VG names with vgrename uuid"))
+		if strings.Contains(string(info), "duplicate VG names with vgrename uuid") || strings.Contains(err.Error(), "duplicate VG names with vgrename uuid") {
+			removeAndFixDuplicate(volumeGroupName)
+		} else {
+			klog.Errorf("Errored while cleaning up volume group %v: %s", err, info)
+		}
 	}
 }
 
@@ -542,6 +552,62 @@ func IsRaided() (bool, error) {
 	return false, nil
 }
 
+func removeAndFixDuplicate(vgName string) {
+	// Get the new VG duplicate. This is the VG name that has 0 lv_count
+	args := []string{
+		"-v",
+		"--noheadings",
+		"-o",
+		"vg_uuid",
+		"--select",
+		"vg_name=" + vgName,
+		"--select",
+		"lv_count=0",
+	}
+	uuidToRemove, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+	if err != nil {
+		klog.Errorf("errored while running vgs to remove duplicate %v: %s", err, uuidToRemove)
+	}
+	klog.V(2).Infof("samhalim this is uuidToRemove %s", string(uuidToRemove))
+
+	vgRename := vgName + "-new"
+	// rename UUID to something else so we can vgremove.
+	args = []string{
+		string(uuidToRemove),
+		vgRename,
+	}
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", args...)
+	if err != nil {
+		klog.Errorf("errored while running vgrename to remove duplicate %v: %s", err, info)
+	}
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgremove", []string{vgRename}...)
+	if err != nil {
+		klog.Errorf("errored while running vgremove to remove duplicate %v: %s", err, info)
+	}
+
+	// Extend new Raided LSSD to the old VG
+	raidedLocalSsdPath, err := fetchRAIDedLocalSsdPath()
+	if err != nil {
+		klog.Errorf("failed to get raided lssd path to remove duplicate")
+	}
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{vgName, raidedLocalSsdPath}...)
+	if err != nil {
+		klog.Errorf("errored while running vgextend to remove duplicate %v: %s", err, info)
+	}
+
+	// remove any leftover old metadata using vgck
+	vgckUpdateMetadata(vgName)
+	// put log here that remove and fix duplicate is successful
+}
+
+func vgckUpdateMetadata(vgName string) {
+	// remove any leftover old metadata using vgck
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", []string{"--updatemetadata", vgName}...)
+	if err != nil {
+		klog.Errorf("errored while running vgck for cleanup to remove duplicate %v: %s", err, info)
+	}
+}
+
 func isCachingSetup(mainLvName string) (error, bool) {
 	// Verify caching is setup for PD
 	args := []string{
@@ -583,6 +649,7 @@ func InitializeDataCacheNode(nodeId string) error {
 	volumeGroupName := getVolumeGroupName(nodeId)
 
 	vgExists := checkVgExists(volumeGroupName)
+	klog.V(4).Infof("samhalim vgexist %v", vgExists)
 	// Check if the required volume group already exists
 	if vgExists {
 		// Clean up Volume Group before adding the PD
@@ -636,6 +703,7 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
+			vgckUpdateMetadata(getVolumeGroupName(nodeName))
 			klog.V(2).Infof("disk attach/detach event %#v\n", event)
 		}
 	}
