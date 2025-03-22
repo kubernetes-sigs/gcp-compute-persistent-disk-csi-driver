@@ -754,3 +754,11 @@ func ShortString(s string) string {
 	}
 	return string(short)
 }
+
+func IsGKETopologyLabel(key string) bool {
+	return strings.HasPrefix(key, TopologyKeyPrefix)
+}
+
+func TopologyLabelKey(diskType string) string {
+	return fmt.Sprintf("%s/%s", TopologyKeyPrefix, diskType)
+}
