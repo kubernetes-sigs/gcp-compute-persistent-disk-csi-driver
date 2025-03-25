@@ -63,7 +63,11 @@ func createServerClient(mm *metrics.MetricsManager, socketFile string, seedDisks
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fake cloud provider: %v", err)
 	}
-	controllerServer := controllerServerForTest(fakeCloudProvider)
+
+	args := &GCEControllerServerArgs{
+		EnableDiskTopology: false,
+	}
+	controllerServer := controllerServerForTest(fakeCloudProvider, args)
 	if err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, identityServer, controllerServer, nil); err != nil {
 		return nil, fmt.Errorf("failed to setup GCE Driver: %v", err)
 	}
