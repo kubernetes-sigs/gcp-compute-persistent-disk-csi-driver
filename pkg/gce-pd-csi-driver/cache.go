@@ -11,6 +11,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	fsnotify "github.com/fsnotify/fsnotify"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -165,7 +167,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 	err, isCached := isCachingSetup(mainLvName)
 	if err != nil {
-		klog.Errorf("faild to check if caching ius setup for LV, continuing to setup caching.")
+		klog.Errorf("failed to check if caching is setup for LV, continuing to setup caching.")
 	}
 	cacheLvName := getLvName(cacheSuffix, volumeId)
 	if isCached {
@@ -194,6 +196,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			}
 			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 			if err != nil {
+				if strings.Contains(err.Error(), "insufficient free space") {
+					return mainDevicePath, status.Error(codes.InvalidArgument, fmt.Sprintf("Error setting up cache: %v", err.Error()))
+				}
 				return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
 			}
 		}
@@ -391,6 +396,7 @@ func checkVgExists(volumeGroupName string) bool {
 		return false
 	}
 	// Check if the required volume group already exists
+	klog.Infof("check vg exists output: %v, volumeGroupName: %v", string(info), volumeGroupName)
 	return strings.Contains(string(info), volumeGroupName)
 }
 
