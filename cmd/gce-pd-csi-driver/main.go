@@ -38,6 +38,7 @@ import (
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/nodelabels"
 )
 
 var (
@@ -229,11 +230,27 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
+
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
 		args := &driver.GCEControllerServerArgs{
 			EnableDiskTopology: *diskTopology,
 		}
+
+		if *diskTopology {
+			klog.V(2).Infof("Setting up kubeClient")
+			kubeClient, err := instantiateKubeClient()
+			if err != nil {
+				klog.Fatalf("Failed to instantiate Kubernetes client: %v", err)
+			}
+			klog.V(2).Infof("Setting up node lister with informer")
+			labelVerifier, err := nodelabels.NewVerifier(ctx, kubeClient)
+			if err != nil {
+				klog.Fatalf("Failed to create node label verifier: %v", err)
+			}
+			args.LabelVerifier = labelVerifier
+		}
+
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
