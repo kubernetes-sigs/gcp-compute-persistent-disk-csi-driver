@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/nodelabels"
 )
 
 type GCEControllerServer struct {
@@ -122,10 +123,12 @@ type GCEControllerServer struct {
 	csi.UnimplementedControllerServer
 
 	EnableDiskTopology bool
+	LabelVerifier      *nodelabels.Verifier
 }
 
 type GCEControllerServerArgs struct {
 	EnableDiskTopology bool
+	LabelVerifier      *nodelabels.Verifier
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -471,9 +474,7 @@ func (gceCS *GCEControllerServer) getMultiZoneProvisioningZones(ctx context.Cont
 }
 
 func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool) (*csi.CreateVolumeResponse, error) {
-	// Determine the zones that are needed.
 	var err error
-
 	// For multi-zone, we either select:
 	// 1) The zones specified in requisite topology requirements
 	// 2) All zones in the region that are compatible with the selected disk type
@@ -523,7 +524,12 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	// Use the first response as a template
 	volumeId := fmt.Sprintf("projects/%s/zones/%s/disks/%s", gceCS.CloudProvider.GetDefaultProject(), common.MultiZoneValue, req.GetName())
 	klog.V(4).Infof("CreateVolume succeeded for multi-zone disks in zones %s: %v", zones, multiZoneVolKey)
-	return gceCS.generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
+
+	resp, err := gceCS.generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate createVolumeResponse: %w", err)
+	}
+	return resp, nil
 }
 
 func (gceCS *GCEControllerServer) getZonesWithDiskNameAndType(ctx context.Context, name string, diskType string) ([]string, error) {
@@ -623,13 +629,22 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
+<<<<<<< HEAD
 	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
+=======
+>>>>>>> 474af8f4 (Only add disk support Topology if all nodes have a disk support label)
 
+	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones)
 	if err != nil {
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
 	}
 
-	return gceCS.generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
+	resp, err := gceCS.generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate createVolumeResponse: %w", err)
+	}
+
+	return resp, nil
 }
 
 func getAccessMode(req *csi.CreateVolumeRequest, params common.DiskParameters) (string, error) {
@@ -2412,7 +2427,7 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 	return info, nil
 }
 
-func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
+func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) (*csi.CreateVolumeResponse, error) {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
 		top := &csi.Topology{
@@ -2422,7 +2437,14 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 		}
 
 		if gceCS.EnableDiskTopology {
-			top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
+			klog.V(4).Infof("Verifying disk support labels on cluster nodes before adding disk support topology")
+			addDiskSupportTopology, err := gceCS.allNodesHaveDiskSupportLabel()
+			if err != nil {
+				return nil, fmt.Errorf("failed to check if all nodes have disk support label: %w", err)
+			}
+			if addDiskSupportTopology {
+				top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
+			}
 		}
 
 		tops = append(tops, top)
@@ -2479,7 +2501,15 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 		}
 		createResp.Volume.ContentSource = contentSource
 	}
-	return createResp
+	return createResp, nil
+}
+
+func (gceCS *GCEControllerServer) allNodesHaveDiskSupportLabel() (bool, error) {
+	allNodesHaveDiskSupportLabel, err := gceCS.LabelVerifier.AllNodesHaveDiskSupportLabel()
+	if err != nil {
+		return false, fmt.Errorf("failed to check if all nodes have disk support label: %w", err)
+	}
+	return allNodesHaveDiskSupportLabel, nil
 }
 
 func getResourceId(resourceLink string) (string, error) {

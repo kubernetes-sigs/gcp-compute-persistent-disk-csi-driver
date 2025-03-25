@@ -37,6 +37,8 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
@@ -47,6 +49,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/nodelabels"
 )
 
 const (
@@ -617,7 +620,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		enableStoragePools bool
 		expVol             *csi.Volume
 		expErrCode         codes.Code
-		EnableDiskTopology bool
+		enableDiskTopology bool
 	}{
 		{
 			name: "success default",
@@ -1371,7 +1374,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			EnableDiskTopology: true,
+			enableDiskTopology: true,
 		},
 		{
 			// Desired as the disk type label should match the `type` parameter,
@@ -1414,19 +1417,31 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			EnableDiskTopology: true,
+			enableDiskTopology: true,
 		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
+
 		// Setup new driver each time so no interference
 		args := &GCEControllerServerArgs{
-			EnableDiskTopology: tc.EnableDiskTopology,
+			EnableDiskTopology: tc.enableDiskTopology,
+			LabelVerifier: nodelabels.NewFakeVerifier(t, []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-with-disk-support-label",
+						Labels: map[string]string{
+							common.TopologyLabelKey(stdDiskType): "true",
+						},
+					},
+				},
+			}),
 		}
 		gceDriver := initGCEDriver(t, nil, args)
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
+
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		if err != nil {
