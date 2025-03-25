@@ -57,3 +57,16 @@ const (
 	NodeLabelPrefix         = "cloud.google.com/%s"
 	DataCacheLssdCountLabel = "gke-data-cache-disk"
 )
+
+// doc https://cloud.google.com/compute/docs/disks/hyperdisks#max-total-disks-per-vm
+var Gen4MachineHyperdiskAttachLimitMap = []struct {
+	max   int64
+	value int64
+}{
+	{max: 4, value: 16},
+	{max: 8, value: 24},
+	{max: 16, value: 32},
+	{max: 32, value: 48},
+	{max: 64, value: 64},
+	{max: 1024, value: 128},
+}
