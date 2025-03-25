@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -89,8 +90,12 @@ var _ csi.NodeServer = &GCENodeServer{}
 // node boot disk is considered an attachable disk so effective attach limit is
 // one less.
 const (
-	volumeLimitSmall     int64 = 15
-	volumeLimitBig       int64 = 127
+	volumeLimitSmall int64 = 15
+	volumeLimitBig   int64 = 127
+	// doc https://cloud.google.com/compute/docs/memory-optimized-machines#x4_disks
+	x4HyperdiskLimit int64 = 40
+	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a4-disks
+	a4HyperdiskLimit     int64 = 128
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
 	fsTypeExt3                 = "ext3"
@@ -527,6 +532,9 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
 	volumeLimits, err := ns.GetVolumeLimits()
+	if err != nil {
+		klog.Errorf("GetVolumeLimits failed: %v", err.Error())
+	}
 
 	resp := &csi.NodeGetInfoResponse{
 		NodeId:             nodeID,
@@ -693,5 +701,24 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 			return volumeLimitSmall, nil
 		}
 	}
+	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-"}
+	for _, gen4Prefix := range gen4MachineTypesPrefix {
+		if strings.HasPrefix(machineType, gen4Prefix) {
+			cpuString := machineType[strings.LastIndex(machineType, "-")+1:]
+			cpus, err := strconv.ParseInt(cpuString, 10, 64)
+			if err != nil {
+				return volumeLimitSmall, fmt.Errorf("invalid cpuString %s for machine type: %v", cpuString, machineType)
+			}
+			return common.MapNumber(cpus), nil
+
+		}
+		if strings.HasPrefix(machineType, "x4-") {
+			return x4HyperdiskLimit, nil
+		}
+		if strings.HasPrefix(machineType, "a4-") {
+			return a4HyperdiskLimit, nil
+		}
+	}
+
 	return volumeLimitBig, nil
 }

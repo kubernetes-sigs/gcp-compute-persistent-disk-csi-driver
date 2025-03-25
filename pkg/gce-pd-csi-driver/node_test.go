@@ -222,6 +222,7 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		name           string
 		machineType    string
 		expVolumeLimit int64
+		expectError    bool
 	}{
 		{
 			name:           "Predifined standard machine",
@@ -253,13 +254,54 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "e2-micro",
 			expVolumeLimit: volumeLimitSmall,
 		},
+		{
+			name:           "c4-standard-192",
+			machineType:    "c4-standard-192",
+			expVolumeLimit: 128,
+		},
+		{
+			name:           "c4-standard-48",
+			machineType:    "c4-standard-48",
+			expVolumeLimit: 64,
+		},
+		{
+			name:           "c4a-standard-4",
+			machineType:    "c4a-standard-4",
+			expVolumeLimit: 16,
+		},
+		{
+			name:           "n4-standard-16",
+			machineType:    "n4-standard-16",
+			expVolumeLimit: 32,
+		},
+		{
+			name:           "n4-highcpu-4",
+			machineType:    "n4-highcpu-4",
+			expVolumeLimit: 16,
+		},
+		{
+			name:           "invalid gen4 machine type",
+			machineType:    "n4-highcpu-4xyz",
+			expVolumeLimit: volumeLimitSmall,
+			expectError:    true,
+		},
+		{
+			name:           "x4-megamem-960-metal",
+			machineType:    "x4-megamem-960-metal",
+			expVolumeLimit: x4HyperdiskLimit,
+		},
+		{
+			name:           "a4-highgpu-8g",
+			machineType:    "a4-highgpu-8g",
+			expVolumeLimit: a4HyperdiskLimit,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
 		metadataservice.SetMachineType(tc.machineType)
 		res, err := ns.NodeGetInfo(context.Background(), req)
-		if err != nil {
+		if err != nil && !tc.expectError {
 			t.Fatalf("Failed to get node info: %v", err)
 		} else {
 			volumeLimit := res.GetMaxVolumesPerNode()
