@@ -754,3 +754,13 @@ func ShortString(s string) string {
 	}
 	return string(short)
 }
+
+// MapNumber is a function to map input cpu number to the Hyperdisk attach limit
+func MapNumber(num int64) int64 {
+	for _, r := range Gen4MachineHyperdiskAttachLimitMap {
+		if num <= r.max {
+			return r.value
+		}
+	}
+	return 0
+}
