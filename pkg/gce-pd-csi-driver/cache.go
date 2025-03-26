@@ -248,19 +248,7 @@ func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx con
 	return fmt.Errorf("Data Cache is not enabled for PVC (data-cache-size: %v, data-cache-mode: %v). Please set both parameters in StorageClass to enable caching", dataCacheSize, dataCacheMode)
 }
 
-func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return 0, err
-	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return 0, err
-	}
-	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
-	if err != nil {
-		return 0, err
-	}
+func GetDataCacheCountFromNodeLabel(ctx context.Context, node *v1.Node) (int, error) {
 	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
 		dataCacheCount, err := strconv.Atoi(val)
 		if err != nil {
@@ -272,14 +260,22 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 	return 0, nil
 }
 
-func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string) (*v1.Node, error) {
+func FetchNodeWithRetry(ctx context.Context, nodeName string) (*v1.Node, error) {
 	var nodeObj *v1.Node
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	backoff := wait.Backoff{
 		Duration: 1 * time.Second,
 		Factor:   2.0,
 		Steps:    5,
 	}
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
 		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
 			klog.Warningf("Error getting node %s: %v, retrying...\n", nodeName, err)

@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -245,15 +246,26 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
-		isDataCacheEnabledNodePool, err := isDataCacheEnabledNodePool(ctx, *nodeName)
-		if err != nil {
-			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
+		var node *v1.Node
+		var isDataCacheEnabledNodePoolCheck bool
+		if *nodeName == common.TestNode {
+			isDataCacheEnabledNodePoolCheck = true
+		} else if len(*nodeName) > 0 && *nodeName != common.TestNode {
+			node, err = driver.FetchNodeWithRetry(ctx, *nodeName)
+			if err != nil {
+				klog.Fatalf("Failed to get node info from API server: %v", err.Error())
+			}
+			isDataCacheEnabledNodePoolCheck, err = isDataCacheEnabledNodePool(ctx, node)
+			if err != nil {
+				klog.Fatalf("Unable to fetch node labels: %v", err.Error())
+			}
 		}
+		// isDataCacheEnabledNodePool := true
 		nsArgs := driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
-			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
+			DataCacheEnabledNodePool: isDataCacheEnabledNodePoolCheck,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
@@ -264,7 +276,7 @@ func handle() {
 				klog.Errorf("Data Cache enabled, but --node-name not passed")
 			}
 			if nsArgs.DataCacheEnabledNodePool {
-				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
+				if err := setupDataCache(ctx, node, *nodeName); err != nil {
 					klog.Errorf("Data Cache setup failed: %v", err)
 				}
 				go driver.StartWatcher(*nodeName)
@@ -351,15 +363,16 @@ func urlFlag(target **url.URL, name string, usage string) {
 	})
 }
 
-func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
+func isDataCacheEnabledNodePool(ctx context.Context, node *v1.Node) (bool, error) {
 	if !*enableDataCacheFlag {
 		return false, nil
 	}
-	if len(nodeName) > 0 && nodeName != common.TestNode { // disregard logic below when E2E testing.
-		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
-		return dataCacheLSSDCount != 0, err
-	}
-	return true, nil
+	// nodeName := node.Name
+	// if len(nodeName) > 0 && nodeName != common.TestNode { // disregard logic below when E2E testing.
+	dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, node)
+	return dataCacheLSSDCount != 0, err
+	// }
+	// return true, nil
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
@@ -394,7 +407,7 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 	return availableLssds[:lssdCount], nil
 }
 
-func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
+func setupDataCache(ctx context.Context, node *v1.Node, nodeName string) error {
 	isAlreadyRaided, err := driver.IsRaided()
 	if err != nil {
 		klog.V(4).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
@@ -404,9 +417,11 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 	}
 
 	lssdCount := common.LocalSSDCountForDataCache
+	nodeUid := nodeName
 	if nodeName != common.TestNode {
-		var err error
-		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
+		nodeUid = string(node.ObjectMeta.UID)
+		// lssdCount := 4
+		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, node)
 		if err != nil {
 			return err
 		}
@@ -425,7 +440,7 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 	}
 
 	// Initializing data cache node (VG checks w/ raided lssd)
-	if err := driver.InitializeDataCacheNode(nodeId); err != nil {
+	if err := driver.InitializeDataCacheNode(nodeUid); err != nil {
 		return err
 	}
 
