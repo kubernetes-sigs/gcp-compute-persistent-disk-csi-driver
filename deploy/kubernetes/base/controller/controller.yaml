@@ -126,6 +126,7 @@ spec:
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=300s"
+            - "--retry-interval-max=60s"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
