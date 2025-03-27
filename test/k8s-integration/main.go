@@ -300,7 +300,7 @@ func handle() error {
 	// Build and push the driver, if required. Defer the driver image deletion.
 	if *doDriverBuild {
 		klog.Infof("Building GCE PD CSI Driver")
-		err := pushImage(testParams.pkgDir, *stagingImage, testParams.stagingVersion, testParams.platform)
+		err := pushImage(testParams.pkgDir, *stagingImage, testParams.stagingVersion, testParams.platform, *imageType)
 		if err != nil {
 			return fmt.Errorf("failed pushing image: %v", err.Error())
 		}
