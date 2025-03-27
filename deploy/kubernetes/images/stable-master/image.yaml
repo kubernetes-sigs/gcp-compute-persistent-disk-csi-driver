@@ -31,7 +31,8 @@ metadata:
   name: imagetag-csi-snapshotter
 imageTag:
   name: registry.k8s.io/sig-storage/csi-snapshotter
-  newTag: "v7.0.2"
+  newName: us-central1-docker.pkg.dev/psch-joonix/psch-csi-snapshotter-testing/csi-snapshotter
+  newTag: "it-testing3"
 ---
 
 apiVersion: builtin
