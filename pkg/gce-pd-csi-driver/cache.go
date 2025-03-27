@@ -71,6 +71,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	if vgExists {
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
+		validateRaidedLSSDinVG(volumeGroupName, raidedLocalSsdPath)
 	} else {
 		err := createVg(volumeGroupName, raidedLocalSsdPath)
 		if err != nil {
@@ -579,33 +580,6 @@ func fetchChunkSizeKiB(cacheSize string) (string, error) {
 	chunkSize = math.Min(math.Max(chunkSize, minChunkSize), maxChunkSize) / KiB
 	// default chunk size unit KiB
 	return strconv.FormatInt(int64(chunkSize), 10) + "KiB", nil
-}
-
-func InitializeDataCacheNode(nodeId string) error {
-	raidedLocalSsdPath, err := fetchRAIDedLocalSsdPath()
-	if err != nil {
-		return err
-	}
-	volumeGroupName := getVolumeGroupName(nodeId)
-
-	vgExists := checkVgExists(volumeGroupName)
-	// Check if the required volume group already exists
-	if vgExists {
-		// Clean up Volume Group before adding the PD
-		reduceVolumeGroup(volumeGroupName, true)
-
-		// validate that raidedLSSD is part of VG
-		err = validateRaidedLSSDinVG(volumeGroupName, raidedLocalSsdPath)
-		if err != nil {
-			return fmt.Errorf("failed validate local ssd in vg %v: %v", volumeGroupName, err)
-		}
-	} else {
-		err := createVg(volumeGroupName, raidedLocalSsdPath)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func StartWatcher(nodeName string) {
