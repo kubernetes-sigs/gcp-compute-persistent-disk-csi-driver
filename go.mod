@@ -2,7 +2,7 @@ module sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 
 go 1.23.0
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.12.4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/kubernetes-csi/csi-proxy/client v1.2.0
+	github.com/kubernetes-csi/csi-proxy/client v1.2.1
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
