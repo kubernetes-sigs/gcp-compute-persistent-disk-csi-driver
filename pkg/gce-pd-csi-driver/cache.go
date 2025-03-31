@@ -44,7 +44,7 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 	}
 	info, err := common.RunCommand("grep", []string{raidedLocalSsdName}, "mdadm", args...)
 	if err != nil || len(info) == 0 {
-		return "", fmt.Errorf("Error getting RAIDed device path for Data Cache %v, output:%v", err, string(info))
+		return "", fmt.Errorf("Error getting RAIDed device path for Data Cache %v, output:%s", err, string(info))
 	}
 	infoString := strings.TrimSpace(string(info))
 	infoSlice := strings.Fields(infoString)
@@ -55,6 +55,9 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 }
 
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
+	var args []string
+	var err error
+	var info []byte
 
 	// The device path may have changed after rebooting, so we need to fetch the path again
 	raidedLocalSsdPath, err := fetchRAIDedLocalSsdPath()
@@ -77,32 +80,13 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			return mainDevicePath, err
 		}
 	}
-
-	// Check if the Physical Volume(PV) is part of some other volume group
-	args := []string{
-		"--select",
-		"pv_name=" + devicePath,
-		"-o",
-		"vg_name",
-	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
-	if err != nil {
-		klog.Errorf("errored while checking physical volume details %v: %s", err, info)
-		// On error info contains the error message which we cannot use for further steps
-		info = nil
-	}
-
-	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
-	infoString = strings.ReplaceAll(infoString, ".", "")
-	infoString = strings.ReplaceAll(infoString, "\"", "")
-	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
-	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
+	vgNameForPv := fetchVgNameForPv(devicePath)
 	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
 		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group %v", volumeGroupName)
 	} else if vgNameForPv != "VG" && vgNameForPv != "" {
 
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
+		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
 		if err != nil {
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
@@ -113,7 +97,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 
 		if isCached {
 			// Uncache LV
-			args = []string{
+			args := []string{
 				"--uncache",
 				vgNameForPv + "/" + mainLvName,
 				"--force",
@@ -181,10 +165,10 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			return mainDevicePath, err
 		}
 		// Check if LV exists
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 		lvExists := strings.Contains(string(info), cacheLvName)
 		if !lvExists {
-			args = []string{
+			args := []string{
 				"--yes",
 				"-n",
 				cacheLvName,
@@ -194,7 +178,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				volumeGroupName,
 				raidedLocalSsdPath,
 			}
-			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+			info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 			if err != nil {
 				if strings.Contains(err.Error(), "insufficient free space") {
 					return mainDevicePath, status.Error(codes.InvalidArgument, fmt.Sprintf("Error setting up cache: %v", err.Error()))
@@ -204,7 +188,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 
 		// Once caching is setup, link the PD to cache
-		args = []string{
+		args := []string{
 			"--type",
 			"cache",
 			"--cachevol",
@@ -329,7 +313,7 @@ func FetchRaidedLssds() ([]string, error) {
 
 	info, err := common.RunCommand("grep", []string{"/dev"}, "mdadm", args...)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching RAIDed LSSDs: %v; err:%v", info, err)
+		return nil, fmt.Errorf("error fetching RAIDed LSSDs: %s; err:%v", info, err)
 	}
 
 	if len(info) != 0 {
@@ -352,7 +336,7 @@ func FetchAllLssds() ([]string, error) {
 
 	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MODEL", "-p", "-d", "-n"}...)
 	if err != nil {
-		return nil, fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
+		return nil, fmt.Errorf("errored while fetching NVME disks info: %s; err:%v", info, err)
 	}
 	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
 	re, err := regexp.Compile("nvme_card([0-9]+)?$")
@@ -378,7 +362,7 @@ func FetchAllLssds() ([]string, error) {
 func FetchLSSDsWihtEmptyMountPoint() ([]string, error) {
 	info, err := common.RunCommand("grep", []string{"-E", `^\S+\s*$`} /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MOUNTPOINT", "-pdn"}...)
 	if err != nil {
-		return nil, fmt.Errorf("Error while fetching disks with no mount point: %v; err:%v", info, err)
+		return nil, fmt.Errorf("Error while fetching disks with no mount point: %s; err:%v", info, err)
 	}
 	infoList := strings.Split(string(info), "\n")
 	diskList := []string{}
@@ -396,7 +380,7 @@ func checkVgExists(volumeGroupName string) bool {
 		return false
 	}
 	// Check if the required volume group already exists
-	klog.Infof("check vg exists output: %v, volumeGroupName: %v", string(info), volumeGroupName)
+	klog.Infof("check vg exists output: %s, volumeGroupName: %v", info, volumeGroupName)
 	return strings.Contains(string(info), volumeGroupName)
 }
 
@@ -487,13 +471,22 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 		return
 	}
 	args := []string{
+		"--updatemetadata",
+		volumeGroupName,
+	}
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
+	if err != nil {
+		klog.Errorf("Errored while update volume group metadata %v: %s", err, info)
+	}
+
+	args = []string{
 		"--removemissing",
 		volumeGroupName,
 	}
 	if force {
 		args = append(args, "--force")
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
+	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
 	if err != nil {
 		klog.Errorf("Errored while cleaning up volume group %v: %s", err, info)
 	}
@@ -512,7 +505,7 @@ func RaidLocalSsds(availableLssds []string) error {
 	args = append(args, availableLssds...)
 	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "mdadm", args...)
 	if err != nil {
-		return fmt.Errorf("errored while RAIDing LSSDs info: %v; err:%v", info, err)
+		return fmt.Errorf("errored while RAIDing LSSDs info: %s; err:%v", info, err)
 	}
 	// Validate if Raided successfully
 	isAlreadyRaided, err := IsRaided()
@@ -673,4 +666,29 @@ func addRaidedLSSDToVg(vgName, lssdPath string) error {
 		return fmt.Errorf("errored while extending VGs %v: %s", err, info)
 	}
 	return nil
+}
+
+func fetchVgNameForPv(pvName string) string {
+	// Check if the Physical Volume(PV) is part of some other volume group
+	args := []string{
+		"--select",
+		"pv_name=" + pvName,
+		"-o",
+		"vg_name",
+		"--noheadings",
+		"2>/dev/null", //NOT RECOMMENDED
+	}
+	info, err := common.RunCommand("grep", []string{pvName}, "pvs", args...)
+	if err != nil {
+		klog.Errorf("errored while checking physical volume details %v: %s", err, info)
+		// On error info contains the error message which we cannot use for further steps
+		info = nil
+	}
+	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
+	infoSlice := strings.Fields(infoString)
+	if len(infoSlice) == 0 {
+		return ""
+	}
+	klog.V(4).Infof("Physical volume is part of Volume group: %v", infoSlice[0])
+	return infoSlice[0]
 }
