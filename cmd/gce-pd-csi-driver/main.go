@@ -29,6 +29,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -50,6 +51,10 @@ var (
 	metricsPath          = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 	grpcLogCharCap       = flag.Int("grpc-log-char-cap", 10000, "The maximum amount of characters logged for every grpc responses")
 	enableOtelTracing    = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
+
+	// Kubernetes client configuration flags
+	master     = flag.String("master", "", "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	kubeconfig = flag.String("kubeconfig", "", "Path to a kubeconfig file, specifying how to connect to the API server. If not set, in-cluster config will be used")
 
 	errorBackoffInitialDurationMs = flag.Int("backoff-initial-duration-ms", 200, "The amount of ms for the initial duration of the backoff condition for controller publish/unpublish CSI operations. Default is 200.")
 	errorBackoffMaxDurationMs     = flag.Int("backoff-max-duration-ms", 300000, "The amount of ms for the max duration of the backoff condition for controller publish/unpublish CSI operations. Default is 300000 (5m).")
@@ -281,7 +286,6 @@ func handle() {
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 		}
-
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
 		if *maxConcurrentFormatAndMount > 0 {
@@ -321,10 +325,20 @@ func handle() {
 }
 
 func instantiateKubeClient() (*kubernetes.Clientset, error) {
-	cfg, err := rest.InClusterConfig()
+	var cfg *rest.Config
+	var err error
+
+	if *master != "" || *kubeconfig != "" {
+		klog.Infof("Either master or kubeconfig specified. building kube config from that..")
+		cfg, err = clientcmd.BuildConfigFromFlags(*master, *kubeconfig)
+	} else {
+		klog.Infof("No master or kubeconfig specified. building in-cluster kube config")
+		cfg, err = rest.InClusterConfig()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST Config for k8s client: %w", err)
 	}
+
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create k8s client: %w", err)
