@@ -65,13 +65,6 @@ func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAn
 	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
 }
 
-func getTestGCEDriverWithMockKubeClient(t *testing.T, kubeClient kubernetes.Interface) *GCEDriver {
-	args := &NodeServerArgs{
-		KubeClient: kubeClient,
-	}
-	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), args)
-}
-
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService, args *NodeServerArgs) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	nodeServer := NewNodeServer(gceDriver, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter(mounter), args)
@@ -384,7 +377,7 @@ func TestNodeGetInfo_Topologies(t *testing.T) {
 			},
 		},
 	}
-	gceDriver := getTestGCEDriverWithMockKubeClient(t, NewFakeKubeClient([]*corev1.Node{nodeA, nodeB}))
+	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
 
 	volumeLimit, err := ns.GetVolumeLimits()

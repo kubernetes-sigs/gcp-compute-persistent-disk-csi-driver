@@ -280,16 +280,6 @@ func handle() {
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
-			EnableDiskTopology:       *diskTopology,
-		}
-
-		if *diskTopology {
-			klog.V(2).Infof("Setting up kubeClient")
-			kubeClient, err := instantiateKubeClient()
-			if err != nil {
-				klog.Fatalf("Failed to instantiate Kubernetes client: %v", err)
-			}
-			nsArgs.KubeClient = kubeClient
 		}
 
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
