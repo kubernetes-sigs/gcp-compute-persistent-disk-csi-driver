@@ -629,12 +629,8 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
-<<<<<<< HEAD
-	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
-=======
->>>>>>> 474af8f4 (Only add disk support Topology if all nodes have a disk support label)
 
-	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones)
+	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 	if err != nil {
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
 	}

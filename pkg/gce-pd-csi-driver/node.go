@@ -31,7 +31,6 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
@@ -587,28 +586,6 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	klog.V(2).Infof("Returning NodeGetInfoResponse: %+v", resp)
 
 	return resp, err
-}
-
-// fetchGKETopologyLabels retrieves the node labels with the prefix
-// `topology.gke.io/` for the specified node.
-func (ns *GCENodeServer) fetchGKETopologyLabels(ctx context.Context, nodeName string) (map[string]string, error) {
-	klog.V(2).Infof("Retrieving node topology labels for node %q", nodeName)
-
-	node, err := ns.KubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		// Q: Should we retry if we fail to get the node?
-		return nil, err
-	}
-
-	topology := make(map[string]string)
-	for k, v := range node.GetLabels() {
-		if common.IsGKETopologyLabel(k) {
-			klog.V(2).Infof("Including node topology label %q=%q", k, v)
-			topology[k] = v
-		}
-	}
-
-	return topology, nil
 }
 
 func (ns *GCENodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
