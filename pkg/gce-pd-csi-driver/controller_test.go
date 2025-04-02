@@ -1298,6 +1298,54 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
+		{
+			name: "err empty HdB ROX single-zone disk no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "hyperdisk-balanced",
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "success empty HdML ROX single-zone disk no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          name,
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType: "hyperdisk-ml",
+				},
+			},
+			expVol: &csi.Volume{
+				CapacityBytes:      common.GbToBytes(20),
+				VolumeId:           testVolumeID,
+				VolumeContext:      nil,
+				AccessibleTopology: stdTopology,
+			},
+			expErrCode: codes.OK,
+		},
 	}
 
 	// Run test cases
@@ -1318,6 +1366,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 			}
 			continue
 		}
+		t.Logf("ErroCode: %v", err)
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
 		}
@@ -1504,6 +1553,80 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
 		},
 		{
+			name: "success empty HdML ROX multi-zone disk no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-ml",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			expZones: []string{"us-central1-a", "us-central1-b"},
+		},
+		{
+			name: "error empty HdB ROX multi-zone disk no content source",
+			req: &csi.CreateVolumeRequest{
+				Name:          "test-name",
+				CapacityRange: stdCapRange,
+				VolumeCapabilities: []*csi.VolumeCapability{
+					{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{},
+						},
+						AccessMode: &csi.VolumeCapability_AccessMode{
+							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+						},
+					},
+				},
+				Parameters: map[string]string{
+					common.ParameterKeyType:                        "hyperdisk-balanced",
+					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+				},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			expErrCode: codes.InvalidArgument,
+		},
+		{
 			name: "err single ROX multi-zone no topology",
 			req: &csi.CreateVolumeRequest{
 				Name:          "test-name",
@@ -1557,40 +1680,6 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 							SnapshotId: testSnapshotID,
 						},
 					},
-				},
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
-						},
-					},
-					Preferred: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
-						},
-					},
-				},
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
-			name: "err no content source",
-			req: &csi.CreateVolumeRequest{
-				Name:          "test-name",
-				CapacityRange: stdCapRange,
-				VolumeCapabilities: []*csi.VolumeCapability{
-					{
-						AccessType: &csi.VolumeCapability_Mount{
-							Mount: &csi.VolumeCapability_MountVolume{},
-						},
-						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-						},
-					},
-				},
-				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
