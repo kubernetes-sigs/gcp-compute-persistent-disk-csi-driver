@@ -221,6 +221,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
 		// release channel based GKE clusters require autorepair to be enabled.
 		cmdParams = append(cmdParams, "--enable-autorepair")
+		cmdParams = append(cmdParams, "--enable-autoupgrade")
 	}
 
 	if isVariableSet(gkeNodeVersion) {
