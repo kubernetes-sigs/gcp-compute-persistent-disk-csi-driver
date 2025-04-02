@@ -175,9 +175,14 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
 		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
-		chunkSize, err := fetchChunkSizeKiB(cacheSize)
+		cachePvSize, err := fetchPvSize(raidedLocalSsdPath)
 		if err != nil {
-			klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", cacheSize, err)
+			klog.Errorf("Errored while fetching PV size, got %v, falling back to default chunkSize of %v", err, maxChunkSize)
+			cachePvSize = strconv.FormatFloat(maxChunkSize, 'g', -1, 64)
+		}
+		chunkSize, err := fetchChunkSizeKiB(cachePvSize)
+		if err != nil {
+			klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", cachePvSize, err)
 			return mainDevicePath, err
 		}
 		// Check if LV exists
@@ -639,6 +644,21 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)
 		// watch for events
 		case event := <-watcher.Events:
+			args := []string{
+				"--updatemetadata",
+				getVolumeGroupName(nodeName),
+			}
+			_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
+			if err != nil {
+				klog.Errorf("Error updating volume group's metadata: %v", err)
+			}
+			args = []string{}
+			info, _ := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+			args = []string{
+				getVolumeGroupName(nodeName),
+			}
+			infoVG, _ := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgdisplay", args...)
+			klog.Infof("Got VG %s and PV %s", infoVG, info)
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
@@ -673,4 +693,40 @@ func addRaidedLSSDToVg(vgName, lssdPath string) error {
 		return fmt.Errorf("errored while extending VGs %v: %s", err, info)
 	}
 	return nil
+}
+
+func fetchPvSize(pvName string) (string, error) {
+	var pvSize string
+	args := []string{
+		"--select",
+		"pv_name=" + pvName,
+		"-o",
+		"--noheadings",
+		"pv_size",
+		"--units=b",
+	}
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	if err != nil {
+		return "", fmt.Errorf("errored while fetch PV size %v: %s", err, info)
+	}
+	infoString := strings.TrimSpace(string(info))
+	infoSlice := strings.Fields(infoString)
+	re, err := regexp.Compile("^[0-9]+B$")
+	if err != nil {
+		return "", fmt.Errorf("Errored while compiling regex for PV size")
+	}
+	for _, i := range infoSlice {
+		if re.MatchString(i) {
+			pvSize = strings.TrimSuffix(i, "B")
+			break
+		}
+	}
+	if pvSize != "" {
+		pvSizeInt, err := strconv.ParseFloat(pvSize, 64)
+		if err != nil {
+			return "", fmt.Errorf("Error while fetching PV size for cache")
+		}
+		return strconv.FormatInt(int64(pvSizeInt/KiB), 10) + "KiB", nil
+	}
+	return "", fmt.Errorf("Error fetch PV size for cache")
 }
