@@ -61,4 +61,5 @@ ${PKGDIR}/bin/k8s-integration-test \
     --snapshotclass-files=pd-volumesnapshotclass.yaml \
     --test-focus='External.Storage' \
     --use-kubetest2="${use_kubetest2}" \
-    --image-type="${windows_distribution}"
+    --image-type="${windows_distribution}" \
+    --do-k8s-build=false
