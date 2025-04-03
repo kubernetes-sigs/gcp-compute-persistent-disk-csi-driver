@@ -1376,49 +1376,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			enableDiskTopology: true,
 		},
-		{
-			// Desired as the disk type label should match the `type` parameter,
-			// not the accessibility requirements.
-			name: "success: disk topology labels in accessibility requirements have no effect",
-			req: &csi.CreateVolumeRequest{
-				Name:               "test-name",
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{"type": stdDiskType},
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{
-								common.TopologyKeyZone:                       "topology-zone3",
-								common.TopologyLabelKey("another-disk-type"): "true",
-							},
-						},
-					},
-					Preferred: []*csi.Topology{
-						{
-							Segments: map[string]string{
-								common.TopologyKeyZone:                       "topology-zone3",
-								common.TopologyLabelKey("another-disk-type"): "true",
-							},
-						},
-					},
-				},
-			},
-			expVol: &csi.Volume{
-				CapacityBytes: common.GbToBytes(20),
-				VolumeId:      fmt.Sprintf("projects/%s/zones/topology-zone3/disks/%s", project, name),
-				VolumeContext: nil,
-				AccessibleTopology: []*csi.Topology{
-					{
-						Segments: map[string]string{
-							common.TopologyKeyZone:               "topology-zone3",
-							common.TopologyLabelKey(stdDiskType): "true",
-						},
-					},
-				},
-			},
-			enableDiskTopology: true,
-		},
 	}
 
 	// Run test cases
@@ -3984,22 +3941,13 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{
-						common.TopologyKeyZone:            "topology-zone3",
-						common.TopologyLabelKey("disk-1"): "true",
-					},
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
 				},
 				{
-					Segments: map[string]string{
-						common.TopologyKeyZone:            "topology-zone1",
-						common.TopologyLabelKey("disk-2"): "true",
-					},
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
 				},
 				{
-					Segments: map[string]string{
-						common.TopologyKeyZone:            "topology-zone2",
-						common.TopologyLabelKey("disk-3"): "true",
-					},
+					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
 				},
 			},
 		},
@@ -4461,18 +4409,6 @@ func TestGetZonesFromTopology(t *testing.T) {
 		{
 			name:     "success: no topology",
 			expZones: sets.NewString(),
-		},
-		{
-			name: "success: disk type label is ignored without causing an error",
-			topology: []*csi.Topology{
-				{
-					Segments: map[string]string{
-						common.TopologyKeyZone:               "test-zone",
-						common.TopologyLabelKey("disk-type"): "true",
-					},
-				},
-			},
-			expZones: sets.NewString([]string{"test-zone"}...),
 		},
 	}
 	for _, tc := range testCases {
