@@ -51,7 +51,7 @@ var (
 	numNodes             = flag.Int("num-nodes", 0, "the number of nodes in the test cluster")
 	numWindowsNodes      = flag.Int("num-windows-nodes", 0, "the number of Windows nodes in the test cluster")
 	imageType            = flag.String("image-type", "cos_containerd", "the image type to use for the cluster")
-	gkeReleaseChannel    = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable' or 'regular'")
+	gkeReleaseChannel    = flag.String("gke-release-channel", "", "GKE release channel to be used for cluster deploy. One of 'rapid', 'stable', 'regular' or 'extended'")
 	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
 	gkeTestClusterName   = flag.String("gke-cluster-name", "", "Name of existing cluster")
 	gkeNodeVersion       = flag.String("gke-node-version", "", "GKE cluster worker node version")
