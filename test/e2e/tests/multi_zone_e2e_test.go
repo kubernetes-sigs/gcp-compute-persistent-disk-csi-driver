@@ -95,14 +95,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should attach ROX 'multi-zone' PV instances to two separate VMs", func() {
 		checkSkipMultiZoneTests()
 
-		// Create new driver and client
-
-		Expect(testContexts).NotTo(BeEmpty())
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -189,14 +187,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create RWO 'multi-zone' PV instances from a previously created disk", func() {
 		checkSkipMultiZoneTests()
 
-		// Create new driver and client
-
-		Expect(testContexts).NotTo(BeEmpty())
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -289,12 +285,13 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should create ROX 'multi-zone' PV from existing snapshot", func() {
 		checkSkipMultiZoneTests()
-		Expect(testContexts).NotTo(BeEmpty())
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -317,7 +314,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		tc0 := zoneToContext[zones[0]]
 		tc1 := zoneToContext[zones[1]]
 
-		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], standardDiskType)
+		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], ssdDiskType)
 
 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(snapshotVolName, true /* isZonal */)
 
@@ -436,12 +433,13 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should create ROX 'multi-zone' PV from existing snapshot with no topology", func() {
 		checkSkipMultiZoneTests()
-		Expect(testContexts).NotTo(BeEmpty())
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -464,7 +462,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		tc0 := zoneToContext[zones[0]]
 		tc1 := zoneToContext[zones[1]]
 
-		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], standardDiskType)
+		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], ssdDiskType)
 
 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(snapshotVolName, true /* isZonal */)
 
@@ -574,12 +572,13 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should create ROX 'multi-zone' PV from existing disk image", func() {
 		checkSkipMultiZoneTests()
-		Expect(testContexts).NotTo(BeEmpty())
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -602,7 +601,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		tc0 := zoneToContext[zones[0]]
 		tc1 := zoneToContext[zones[1]]
 
-		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], standardDiskType)
+		snapshotVolName, snapshotVolID := createAndValidateUniqueZonalDisk(controllerClient, p, zones[0], ssdDiskType)
 
 		underSpecifiedID := common.GenerateUnderspecifiedVolumeID(snapshotVolName, true /* isZonal */)
 
@@ -717,13 +716,14 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should create RWO 'multi-zone' PV that has empty disks", func() {
 		checkSkipMultiZoneTests()
+
 		// Create new driver and client
-		Expect(testContexts).NotTo(BeEmpty())
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range testContexts {
+		for _, tc := range hyperdiskTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -829,6 +829,207 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
 		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
 
+	})
+
+	It("Should create ROX 'multi-zone' PV that has empty disks in RWO mode", func() {
+		checkSkipMultiZoneTests()
+
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		// Attach disk to instance in the first zone.
+		tc0 := zoneToContext[zones[0]]
+		tc1 := zoneToContext[zones[1]]
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
+			common.ParameterKeyEnableMultiZoneProvisioning: "true",
+			common.ParameterKeyType:                        "hyperdisk-ml",
+		}, defaultHdmlSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					},
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					},
+				},
+			},
+			[]*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+					},
+				},
+			},
+			nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		volID := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
+		defer func() {
+			// Delete Disk
+			err := controllerClient.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, zones[0], volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found. Err: %v", err)
+			_, err = computeService.Disks.Get(p, zones[1], volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found. Err: %v", err)
+		}()
+
+		disk1, err := computeService.Disks.Get(p, zones[0], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[0], volName)
+		disk2, err := computeService.Disks.Get(p, zones[1], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
+
+		// Validate disks have multi-zone labels
+		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+
+		// Validate disks are RWO
+		Expect(disk1.AccessMode).To(Equal("READ_WRITE_SINGLE"))
+		Expect(disk2.AccessMode).To(Equal("READ_WRITE_SINGLE"))
+
+		// Validate underlying disks can be used
+		volID0 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[0], volName)
+		volID1 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[1], volName)
+
+		err = testAttachWriteReadDetach(volID0, volName, tc0.Instance, tc0.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol1")
+
+		err = testAttachWriteReadDetach(volID1, volName, tc1.Instance, tc1.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol2")
+
+		// Validate disks can be used in multi-zone mode on both nodes
+		volIDMultiZone := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
+
+		err = testAttachWriteReadDetach(volIDMultiZone, volName, tc1.Instance, tc1.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol2")
+
+		// Validate disks are ROX now
+		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[0], volName)
+		disk2, err = computeService.Disks.Get(p, zones[1], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
+
+		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
+		Expect(disk2.AccessMode).To(Equal("READ_ONLY_MANY"))
+	})
+
+	It("Should create ROX 'single-zone' PV that has empty disks in RWO mode", func() {
+		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+
+		zoneToContext := map[string]*remote.TestContext{}
+		zones := []string{}
+
+		for _, tc := range hyperdiskTestContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			// Zone hasn't been seen before
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc
+				zones = append(zones, z)
+			}
+			if len(zoneToContext) == 2 {
+				break
+			}
+		}
+
+		controllerContext := zoneToContext[zones[0]]
+		controllerClient := controllerContext.Client
+		controllerInstance := controllerContext.Instance
+
+		p, _, _ := controllerInstance.GetIdentity()
+
+		// Attach disk to instance in the first zone.
+		tc0 := zoneToContext[zones[0]]
+
+		// Create Disk
+		volName := testNamePrefix + string(uuid.NewUUID())
+		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
+			common.ParameterKeyType: "hyperdisk-ml",
+		}, defaultHdmlSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					},
+				},
+			},
+			[]*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+					},
+				},
+			},
+			nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		volID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[0], volName)
+		defer func() {
+			// Delete Disk
+			err := controllerClient.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disk Deleted
+			_, err = computeService.Disks.Get(p, zones[0], volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found. Err: %v", err)
+		}()
+
+		disk1, err := computeService.Disks.Get(p, zones[0], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[0], volName)
+
+		// Validate disks are RWO
+		Expect(disk1.AccessMode).To(Equal("READ_WRITE_SINGLE"))
+
+		// Validate underlying disks can be used
+		volID1 := fmt.Sprintf("projects/%s/zones/%s/disks/%s", p, zones[0], volName)
+
+		err = testAttachWriteReadDetach(volID1, volName, tc0.Instance, tc0.Client, false /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/write/read/detach on vol1")
+
+		// Validate disks can be used in single-zone mode on both nodes
+		err = testAttachWriteReadDetach(volID1, volName, tc0.Instance, tc0.Client, true /* readonly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to attach/read/detach on vol1")
+
+		// Validate disk is ROX now
+		disk1, err = computeService.Disks.Get(p, zones[0], volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[0], volName)
+
+		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
 	})
 
 	It("Should successfully run through entire lifecycle of an RePD volume on instances in 2 zones", func() {

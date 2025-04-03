@@ -80,6 +80,7 @@ const (
 	DiskTypeHdHA = "hyperdisk-balanced-high-availability"
 	DiskTypeHdT  = "hyperdisk-throughput"
 	DiskTypeHdE  = "hyperdisk-extreme"
+	DiskTypeHdML = "hyperdisk-ml"
 )
 
 type DataCacheParameters struct {
