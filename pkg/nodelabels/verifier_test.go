@@ -63,7 +63,7 @@ func TestAllNodesHaveDiskSupportLabel(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "only zone labels are not sufficient",
+			name: "only zone labels",
 			nodes: []*corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{

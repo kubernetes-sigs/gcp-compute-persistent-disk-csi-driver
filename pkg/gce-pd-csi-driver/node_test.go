@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
 
@@ -36,22 +35,12 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 const (
 	defaultVolumeID    = "project/test001/zones/c1/disks/testDisk"
 	defaultTargetPath  = "/mnt/test"
 	defaultStagingPath = "/staging"
-	testZoneA          = "test-zone-a"
-	testZoneB          = "test-zone-b"
-	testDiskA          = "testDiskA"
-	testDiskB          = "testDiskB"
-	testNodeA          = "test-node-a"
-	testNodeB          = "test-node-b"
 )
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
@@ -339,20 +328,6 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 
 		t.Logf("Get node info: %v", res)
 	}
-}
-
-// NewFakeKubeClient creates a fake Kubernetes client with predefined nodes.
-func NewFakeKubeClient(nodes []*corev1.Node) kubernetes.Interface {
-	// Convert the list of nodes to a slice of runtime.Object
-	var objects []runtime.Object
-	for _, node := range nodes {
-		objects = append(objects, node)
-	}
-
-	// Create a fake clientset with the predefined objects
-	clientset := fake.NewSimpleClientset(objects...)
-
-	return clientset
 }
 
 func TestNodePublishVolume(t *testing.T) {
