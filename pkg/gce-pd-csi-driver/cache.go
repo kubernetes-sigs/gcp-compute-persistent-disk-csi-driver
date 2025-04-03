@@ -175,10 +175,18 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
 		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
-		chunkSize, err := fetchChunkSizeKiB(cacheSize)
+		maxChunkSizeStr := strconv.FormatInt(int64(maxChunkSize/KiB), 10)
+		var chunkSize string
+		cachePvSize, err := fetchPvSizeGiB()
 		if err != nil {
-			klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", cacheSize, err)
-			return mainDevicePath, err
+			klog.Errorf("Errored while fetching PV size, got %v, falling back to default chunkSize of %v", err, maxChunkSize)
+			chunkSize = maxChunkSizeStr
+		} else {
+			chunkSize, err = fetchChunkSizeKiB(cachePvSize)
+			if err != nil {
+				klog.Errorf("Errored to fetch cache size, verify the data-cache-size is valid: got %v, error: %q", chunkSize, err)
+				chunkSize = maxChunkSizeStr
+			}
 		}
 		// Check if LV exists
 		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
@@ -642,7 +650,7 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
-			klog.V(2).Infof("disk attach/detach event %#v\n", event)
+			klog.V(6).Infof("disk attach/detach event %#v\n", event)
 		}
 	}
 }
@@ -673,4 +681,49 @@ func addRaidedLSSDToVg(vgName, lssdPath string) error {
 		return fmt.Errorf("errored while extending VGs %v: %s", err, info)
 	}
 	return nil
+}
+
+func fetchPvSizeGiB() (string, error) {
+	args := []string{
+		"--select",
+		"-o",
+		"--noheadings",
+		"pv_size",
+		"--units=b",
+	}
+	// RAIDed device is always registered with its /dev/md127 equivalent in VG so cannot check it directly based on the RAIDed LSSD path which could be /dev/md/csi-driver-data-cache
+	info, err := common.RunCommand("grep" /* pipedCmd */, []string{"/dev/md"} /* pipedCmdArg */, "pvs", args...)
+	if err != nil {
+		return "", fmt.Errorf("errored while fetching PV size %v: %s", err, info)
+	}
+	infoString := strings.TrimSpace(string(info))
+	infoSlice := strings.Fields(infoString)
+	pvSize, err := fetchNumberGiB(infoSlice)
+	if err != nil {
+		return "", fmt.Errorf("Error fetching PV size for cache %v", err)
+	}
+	return pvSize, nil
+
+}
+
+func fetchNumberGiB(infoSlice []string) (string, error) {
+	re, err := regexp.Compile("^[0-9]+B$")
+	if err != nil {
+		return "", fmt.Errorf("Failed to compile regex match %v", err)
+	}
+	var pvSize string
+	for _, i := range infoSlice {
+		if re.MatchString(i) {
+			pvSize, err = strings.TrimSuffix(i, "B"), nil
+			if err != nil {
+				return "", fmt.Errorf("Failed to extract PV size %v", err)
+			}
+			break
+		}
+	}
+	pvSizeInt, err := strconv.ParseFloat(pvSize, 64)
+	if err != nil {
+		return "", fmt.Errorf("Error while fetching PV size for cache %v", err)
+	}
+	return strconv.FormatInt(int64(math.Ceil(pvSizeInt/GiB)), 10) + "GiB", nil
 }
