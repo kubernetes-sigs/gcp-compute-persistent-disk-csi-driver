@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -99,7 +98,7 @@ func TestServerCreateVolumeMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	controllerClient := csipb.NewControllerClient(conn)
+	controllerClient := csi.NewControllerClient(conn)
 	req := &csi.CreateVolumeRequest{
 		Name:               name,
 		CapacityRange:      stdCapRange,
@@ -149,7 +148,7 @@ func TestServerValidateVolumeCapabilitiesMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	controllerClient := csipb.NewControllerClient(conn)
+	controllerClient := csi.NewControllerClient(conn)
 	req := &csi.ValidateVolumeCapabilitiesRequest{
 		VolumeId:           fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name),
 		VolumeCapabilities: stdVolCaps,
@@ -191,7 +190,7 @@ func TestServerGetPluginInfoMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	idClient := csipb.NewIdentityClient(conn)
+	idClient := csi.NewIdentityClient(conn)
 	resp, err := idClient.GetPluginInfo(context.Background(), &csi.GetPluginInfoRequest{})
 	if err != nil {
 		t.Fatalf("GetPluginInfo returned unexpected error: %v", err)
