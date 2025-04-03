@@ -2321,11 +2321,9 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 func getZoneFromSegment(seg map[string]string) (string, error) {
 	var zone string
 	for k, v := range seg {
-		switch {
-		case k == common.TopologyKeyZone:
+		switch k {
+		case common.TopologyKeyZone:
 			zone = v
-		case common.IsGKETopologyLabel(k):
-			continue
 		default:
 			return "", fmt.Errorf("topology segment has unknown key %v", k)
 		}
