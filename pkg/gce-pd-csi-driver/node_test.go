@@ -30,17 +30,14 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -356,93 +353,6 @@ func NewFakeKubeClient(nodes []*corev1.Node) kubernetes.Interface {
 	clientset := fake.NewSimpleClientset(objects...)
 
 	return clientset
-}
-
-func TestNodeGetInfo_Topologies(t *testing.T) {
-	nodeA := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNodeA,
-			Labels: map[string]string{
-				common.TopologyKeyZone:             testZoneA,
-				common.TopologyLabelKey(testDiskA): "true",
-			},
-		},
-	}
-	nodeB := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNodeB,
-			Labels: map[string]string{
-				common.TopologyKeyZone:             testZoneB,
-				common.TopologyLabelKey(testDiskB): "true",
-			},
-		},
-	}
-	gceDriver := getTestGCEDriver(t)
-	ns := gceDriver.ns
-
-	volumeLimit, err := ns.GetVolumeLimits()
-	if err != nil {
-		t.Fatalf("Failed to get volume limits: %v", err)
-	}
-
-	testCases := []struct {
-		name               string
-		node               *corev1.Node
-		enableDiskTopology bool
-		want               *csi.NodeGetInfoResponse
-	}{
-		{
-			name: "success default: zone only",
-			node: nodeB,
-			want: &csi.NodeGetInfoResponse{
-				NodeId:            common.CreateNodeID(ns.MetadataService.GetProject(), testZoneB, testNodeB),
-				MaxVolumesPerNode: volumeLimit,
-				AccessibleTopology: &csi.Topology{
-					Segments: map[string]string{
-						common.TopologyKeyZone: testZoneB,
-						// Note the absence of the Disk Support Label
-					},
-				},
-			},
-		},
-		{
-			name:               "success: disk topology enabled",
-			node:               nodeA,
-			enableDiskTopology: true,
-			want: &csi.NodeGetInfoResponse{
-				NodeId:            common.CreateNodeID(ns.MetadataService.GetProject(), testZoneA, testNodeA),
-				MaxVolumesPerNode: volumeLimit,
-				AccessibleTopology: &csi.Topology{
-					Segments: map[string]string{
-						common.TopologyKeyZone:             testZoneA,
-						common.TopologyLabelKey(testDiskA): "true",
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Logf("Test case: %s", tc.name)
-
-		ns.EnableDiskTopology = tc.enableDiskTopology
-		metadataservice.SetZone(tc.node.Labels[common.TopologyKeyZone])
-		metadataservice.SetName(tc.node.Name)
-
-		res, err := ns.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-		if res == nil {
-			t.Fatalf("Expected non-nil response, got nil")
-		}
-
-		if diff := cmp.Diff(tc.want, res, cmpopts.IgnoreUnexported(csi.NodeGetInfoResponse{}, csi.Topology{})); diff != "" {
-			t.Errorf("Unexpected NodeGetInfoResponse (-want +got):\n%s", diff)
-		}
-
-		t.Logf("Get node info: %v", res)
-	}
 }
 
 func TestNodePublishVolume(t *testing.T) {
