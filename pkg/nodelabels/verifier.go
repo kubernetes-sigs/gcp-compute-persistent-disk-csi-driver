@@ -76,7 +76,7 @@ func allNodesHaveDiskSupportLabel(nodes []*corev1.Node) bool {
 
 func nodeHasDiskSupportLabel(node *corev1.Node) bool {
 	labels := node.GetLabels()
-	for key, _ := range labels {
+	for key := range labels {
 		if isNonZoneGKETopologyLabel(key) {
 			return true
 		}
