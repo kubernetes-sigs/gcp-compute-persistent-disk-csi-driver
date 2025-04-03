@@ -566,12 +566,11 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	top := &csi.Topology{
-		Segments: map[string]string{
-			common.TopologyKeyZone: ns.MetadataService.GetZone(),
-		},
+		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
+
 	volumeLimits, err := ns.GetVolumeLimits()
 	if err != nil {
 		klog.Errorf("GetVolumeLimits failed: %v", err.Error())
@@ -582,9 +581,6 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		MaxVolumesPerNode:  volumeLimits,
 		AccessibleTopology: top,
 	}
-
-	klog.V(2).Infof("Returning NodeGetInfoResponse: %+v", resp)
-
 	return resp, err
 }
 
