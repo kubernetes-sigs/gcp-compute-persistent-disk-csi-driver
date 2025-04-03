@@ -55,3 +55,63 @@ func TestFetchChunkSizeKiB(t *testing.T) {
 	}
 
 }
+
+func TestFetchNumberGiB(t *testing.T) {
+	testCases := []struct {
+		name        string
+		stringInput []string
+		expOutput   string // Outputs value in GiB
+		expErr      bool
+	}{
+		{
+			name:        "valid input 1",
+			stringInput: []string{"5000000000B"},
+			expOutput:   "5GiB", //range defined in fetchChunkSizeKiB
+		},
+		{
+			name:        "valid input 2",
+			stringInput: []string{"375000000000B"}, // 1 LSSD attached
+			expOutput:   "350GiB",                  //range defined in fetchChunkSizeKiB
+		},
+		{
+			name:        "valid input 3",
+			stringInput: []string{"9000000000000B"}, // 24 LSSD attached
+			expOutput:   "8382GiB",                  //range defined in fetchChunkSizeKiB
+		},
+		{
+			name:        "valid input 4",
+			stringInput: []string{"Some text before ", "9000000000000B", "Some text after"}, // 24 LSSD attached
+			expOutput:   "8382GiB",                                                          //range defined in fetchChunkSizeKiB
+		},
+		{
+			name:        "invalid input 1",
+			stringInput: []string{"9000000000000"},
+			expErr:      true,
+		},
+		{
+			name:        "invalid input 2",
+			stringInput: []string{"A9000000000000B"},
+			expErr:      true,
+		},
+		{
+			name:        "valid input 5",
+			stringInput: []string{"900000B"}, // <1GiB gets rounded off to 0GiB
+			expOutput:   "1GiB",
+		},
+	}
+
+	for _, tc := range testCases {
+		v, err := fetchNumberGiB(tc.stringInput)
+		if err != nil {
+			if !tc.expErr {
+				t.Errorf("Errored %s", err)
+			}
+			continue
+		}
+		if v != tc.expOutput {
+			t.Errorf("Got %s want %s", v, tc.expOutput)
+		}
+
+	}
+
+}
