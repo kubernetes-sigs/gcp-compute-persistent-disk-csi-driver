@@ -27,9 +27,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -305,28 +302,6 @@ func handle() {
 	gce.WaitForOpBackoff.Cap = *waitForOpBackoffCap
 
 	gceDriver.Run(*endpoint, *grpcLogCharCap, *enableOtelTracing, metricsManager)
-}
-
-func instantiateKubeClient() (*kubernetes.Clientset, error) {
-	var cfg *rest.Config
-	var err error
-
-	if *master != "" || *kubeconfig != "" {
-		klog.Infof("Either master or kubeconfig specified. building kube config from that..")
-		cfg, err = clientcmd.BuildConfigFromFlags(*master, *kubeconfig)
-	} else {
-		klog.Infof("No master or kubeconfig specified. building in-cluster kube config")
-		cfg, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to create REST Config for k8s client: %w", err)
-	}
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create k8s client: %w", err)
-	}
-	return kubeClient, nil
 }
 
 func notEmpty(v string) bool {
