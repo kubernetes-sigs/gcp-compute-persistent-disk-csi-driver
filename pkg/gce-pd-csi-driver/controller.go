@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/nodelabels"
 )
 
 type GCEControllerServer struct {
@@ -123,12 +122,10 @@ type GCEControllerServer struct {
 	csi.UnimplementedControllerServer
 
 	EnableDiskTopology bool
-	LabelVerifier      *nodelabels.Verifier
 }
 
 type GCEControllerServerArgs struct {
 	EnableDiskTopology bool
-	LabelVerifier      *nodelabels.Verifier
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -2431,14 +2428,7 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 		}
 
 		if gceCS.EnableDiskTopology {
-			klog.V(4).Infof("Verifying disk support labels on cluster nodes before adding disk support topology")
-			addDiskSupportTopology, err := gceCS.allNodesHaveDiskSupportLabel()
-			if err != nil {
-				return nil, fmt.Errorf("failed to check if all nodes have disk support label: %w", err)
-			}
-			if addDiskSupportTopology {
-				top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
-			}
+			top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
 		}
 
 		tops = append(tops, top)
@@ -2498,21 +2488,13 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 	return createResp, nil
 }
 
-func (gceCS *GCEControllerServer) allNodesHaveDiskSupportLabel() (bool, error) {
-	allNodesHaveDiskSupportLabel, err := gceCS.LabelVerifier.AllNodesHaveDiskSupportLabel()
-	if err != nil {
-		return false, fmt.Errorf("failed to check if all nodes have disk support label: %w", err)
-	}
-	return allNodesHaveDiskSupportLabel, nil
-}
-
 func getResourceId(resourceLink string) (string, error) {
 	url, err := neturl.Parse(resourceLink)
 	if err != nil {
-		return "", fmt.Errorf("Could not parse resource %s: %w", resourceLink, err)
+		return "", fmt.Errorf("could not parse resource %s: %w", resourceLink, err)
 	}
 	if url.Scheme != resourceApiScheme {
-		return "", fmt.Errorf("Unexpected API scheme for resource %s", resourceLink)
+		return "", fmt.Errorf("unexpected API scheme for resource %s", resourceLink)
 	}
 
 	// Note that the resource host can basically be anything, if we are running in
@@ -2521,16 +2503,16 @@ func getResourceId(resourceLink string) (string, error) {
 	// The path should be /compute/VERSION/project/....
 	elts := strings.Split(url.Path, "/")
 	if len(elts) < 4 {
-		return "", fmt.Errorf("Short resource path %s", resourceLink)
+		return "", fmt.Errorf("short resource path %s", resourceLink)
 	}
 	if elts[1] != resourceApiService {
-		return "", fmt.Errorf("Bad resource service %s in %s", elts[1], resourceLink)
+		return "", fmt.Errorf("bad resource service %s in %s", elts[1], resourceLink)
 	}
 	if _, ok := validResourceApiVersions[elts[2]]; !ok {
-		return "", fmt.Errorf("Bad version %s in %s", elts[2], resourceLink)
+		return "", fmt.Errorf("bad version %s in %s", elts[2], resourceLink)
 	}
 	if elts[3] != resourceProject {
-		return "", fmt.Errorf("Expected %v to start with %s in resource %s", elts[3:], resourceProject, resourceLink)
+		return "", fmt.Errorf("expected %v to start with %s in resource %s", elts[3:], resourceProject, resourceLink)
 	}
 	return strings.Join(elts[3:], "/"), nil
 }
