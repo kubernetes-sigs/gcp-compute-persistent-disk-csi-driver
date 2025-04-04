@@ -37,8 +37,6 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
@@ -49,7 +47,6 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/nodelabels"
 )
 
 const (
@@ -1383,19 +1380,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		t.Logf("test case: %s", tc.name)
 
 		// Setup new driver each time so no interference
-		args := &GCEControllerServerArgs{
-			EnableDiskTopology: tc.enableDiskTopology,
-			LabelVerifier: nodelabels.NewFakeVerifier(t, []*corev1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "node-with-disk-support-label",
-						Labels: map[string]string{
-							common.TopologyLabelKey(stdDiskType): "true",
-						},
-					},
-				},
-			}),
-		}
+		args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
 		gceDriver := initGCEDriver(t, nil, args)
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
