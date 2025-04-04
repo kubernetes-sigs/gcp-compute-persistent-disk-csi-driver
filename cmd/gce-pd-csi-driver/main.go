@@ -237,6 +237,7 @@ func handle() {
 
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
+		// TODO(2042): Move more of the constructor args into this struct
 		args := &driver.GCEControllerServerArgs{
 			EnableDiskTopology: *diskTopology,
 		}
@@ -265,6 +266,7 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
+		// TODO(2042): Move more of the constructor args into this struct
 		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
 			DeviceInUseTimeout:       *deviceInUseTimeout,
