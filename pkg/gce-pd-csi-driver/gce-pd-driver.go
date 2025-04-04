@@ -145,7 +145,7 @@ func NewIdentityServer(gceDriver *GCEDriver) *GCEIdentityServer {
 	}
 }
 
-func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, args NodeServerArgs) *GCENodeServer {
+func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, meta metadataservice.MetadataService, statter mountmanager.Statter, args *NodeServerArgs) *GCENodeServer {
 	return &GCENodeServer{
 		Driver:                   gceDriver,
 		Mounter:                  mounter,
@@ -160,7 +160,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 	}
 }
 
-func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, enableDataCache bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig, provisionableDisksConfig ProvisionableDisksConfig, enableHdHA bool) *GCEControllerServer {
+func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, errorBackoffInitialDuration, errorBackoffMaxDuration time.Duration, fallbackRequisiteZones []string, enableStoragePools bool, enableDataCache bool, multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig, listVolumesConfig ListVolumesConfig, provisionableDisksConfig ProvisionableDisksConfig, enableHdHA bool, args *GCEControllerServerArgs) *GCEControllerServer {
 	return &GCEControllerServer{
 		Driver:                      gceDriver,
 		CloudProvider:               cloudProvider,
@@ -174,6 +174,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		listVolumesConfig:           listVolumesConfig,
 		provisionableDisksConfig:    provisionableDisksConfig,
 		enableHdHA:                  enableHdHA,
+		EnableDiskTopology:          args.EnableDiskTopology,
 	}
 }
 

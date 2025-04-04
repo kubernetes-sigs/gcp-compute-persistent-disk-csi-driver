@@ -764,3 +764,11 @@ func MapNumber(num int64) int64 {
 	}
 	return 0
 }
+
+func IsGKETopologyLabel(key string) bool {
+	return strings.HasPrefix(key, TopologyKeyPrefix)
+}
+
+func TopologyLabelKey(diskType string) string {
+	return fmt.Sprintf("%s/%s", TopologyKeyPrefix, diskType)
+}
