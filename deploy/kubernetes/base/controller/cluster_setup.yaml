@@ -180,9 +180,6 @@ rules:
     verbs: ["use"]
     resourceNames:
       - csi-gce-pd-controller-psp
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
