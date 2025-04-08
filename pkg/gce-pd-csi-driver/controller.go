@@ -2419,7 +2419,7 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 		}
 
 		if gceCS.EnableDiskTopology {
-			top.Segments[common.TopologyLabelKey(params.DiskType)] = "true"
+			top.Segments[common.DiskTypeLabelKey(params.DiskType)] = "true"
 		}
 
 		tops = append(tops, top)

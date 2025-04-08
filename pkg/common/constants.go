@@ -18,8 +18,11 @@ package common
 
 const (
 	// Keys for Topology. This key will be shared amongst drivers from GCP
-	TopologyKeyPrefix = "topology.gke.io"
-	TopologyKeyZone   = TopologyKeyPrefix + "/zone"
+	TopologyKeyZone = "topology.gke.io/zone"
+
+	// DiskTypeKeyPrefix is the prefix for the disk type label key used as part
+	// of the Disk Topology feature.
+	DiskTypeKeyPrefix = "disk-type.gke.io"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"

@@ -1366,7 +1366,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 						Segments: map[string]string{
 							common.TopologyKeyZone: zone,
 							// Disk type is added as topology segment.
-							common.TopologyLabelKey(stdDiskType): "true",
+							common.DiskTypeLabelKey(stdDiskType): "true",
 						},
 					},
 				},
