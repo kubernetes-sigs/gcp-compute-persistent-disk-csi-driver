@@ -93,11 +93,18 @@ else
 fi
 
 if [ "$deployment_strategy" = "gke" ]; then
-  if [ "$gke_release_channel" ]; then
+  # To leverage old cluster versions, we need set both the release channel and
+  # the cluster version.
+  if [ "$gke_release_channel" = "extended" ]; then
+    base_cmd="${base_cmd} --gke-release-channel=${gke_release_channel}"
+    base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
+  elif [ -n "$gke_release_channel" ]; then
     base_cmd="${base_cmd} --gke-release-channel=${gke_release_channel}"
   else
     base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
   fi
+fi
+
 else
   base_cmd="${base_cmd} --kube-version=${kube_version}"
 fi
