@@ -103,8 +103,6 @@ if [ "$deployment_strategy" = "gke" ]; then
   else
     base_cmd="${base_cmd} --gke-cluster-version=${gke_cluster_version}"
   fi
-fi
-
 else
   base_cmd="${base_cmd} --kube-version=${kube_version}"
 fi
