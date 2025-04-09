@@ -176,8 +176,10 @@ func main() {
 
 	if *deploymentStrat == "gke" {
 		ensureVariable(kubeVersion, false, "Cannot set kube-version when using deployment strategy 'gke'. Use gke-cluster-version.")
-		ensureExactlyOneVariableSet([]*string{gkeClusterVer, gkeReleaseChannel},
-			"For GKE cluster deployment, exactly one of 'gke-cluster-version' or 'gke-release-channel' must be set")
+		if *gkeReleaseChannel != "extended" {
+			ensureExactlyOneVariableSet([]*string{gkeClusterVer, gkeReleaseChannel},
+				"For GKE cluster deployment, exactly one of 'gke-cluster-version' or 'gke-release-channel' must be set")
+		}
 		ensureVariable(kubeFeatureGates, false, "Cannot set feature gates when using deployment strategy 'gke'.")
 		if len(*localK8sDir) == 0 {
 			ensureVariable(testVersion, true, "Must set either test-version or local k8s dir when using deployment strategy 'gke'.")
