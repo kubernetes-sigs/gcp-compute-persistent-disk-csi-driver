@@ -2539,20 +2539,6 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 	return disk, nil
 }
 
-func pickRandAndConsecutive(slice []string, n int) ([]string, error) {
-	if n > len(slice) {
-		return nil, fmt.Errorf("n: %v is greater than length of provided slice: %v", n, slice)
-	}
-	sort.Strings(slice)
-	start := rand.Intn(len(slice))
-	ret := []string{}
-	for i := 0; i < n; i++ {
-		idx := (start + i) % len(slice)
-		ret = append(ret, slice[idx])
-	}
-	return ret, nil
-}
-
 func newCsiErrorBackoff(initialDuration, errorBackoffMaxDuration time.Duration) *csiErrorBackoff {
 	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration), make(map[csiErrorBackoffId]codes.Code)}
 }
