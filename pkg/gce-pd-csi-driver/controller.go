@@ -120,6 +120,12 @@ type GCEControllerServer struct {
 	// Embed UnimplementedControllerServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedControllerServer
+
+	EnableDiskTopology bool
+}
+
+type GCEControllerServerArgs struct {
+	EnableDiskTopology bool
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -320,7 +326,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	if len(req.GetName()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
-	if volumeCapabilities == nil || len(volumeCapabilities) == 0 {
+	if len(volumeCapabilities) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
@@ -465,9 +471,7 @@ func (gceCS *GCEControllerServer) getMultiZoneProvisioningZones(ctx context.Cont
 }
 
 func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *csi.CreateVolumeRequest, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool) (*csi.CreateVolumeResponse, error) {
-	// Determine the zones that are needed.
 	var err error
-
 	// For multi-zone, we either select:
 	// 1) The zones specified in requisite topology requirements
 	// 2) All zones in the region that are compatible with the selected disk type
@@ -517,7 +521,8 @@ func (gceCS *GCEControllerServer) createMultiZoneDisk(ctx context.Context, req *
 	// Use the first response as a template
 	volumeId := fmt.Sprintf("projects/%s/zones/%s/disks/%s", gceCS.CloudProvider.GetDefaultProject(), common.MultiZoneValue, req.GetName())
 	klog.V(4).Infof("CreateVolume succeeded for multi-zone disks in zones %s: %v", zones, multiZoneVolKey)
-	return generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
+
+	return gceCS.generateCreateVolumeResponseWithVolumeId(createdDisks[0], zones, params, dataCacheParams, enableDataCache, volumeId), nil
 }
 
 func (gceCS *GCEControllerServer) getZonesWithDiskNameAndType(ctx context.Context, name string, diskType string) ([]string, error) {
@@ -617,13 +622,13 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer gceCS.volumeLocks.Release(volumeID)
-	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 
+	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 	if err != nil {
 		return nil, common.LoggedError("CreateVolume failed: %v", err)
 	}
 
-	return generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), err
+	return gceCS.generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), nil
 }
 
 func getAccessMode(req *csi.CreateVolumeRequest, params common.DiskParameters) (string, error) {
@@ -2396,7 +2401,7 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 		case contextForceAttach:
 			b, err := common.ConvertStringToBool(val)
 			if err != nil {
-				return nil, fmt.Errorf("Bad volume context force attach: %v", err)
+				return nil, fmt.Errorf("bad volume context force attach: %w", err)
 			}
 			info.ForceAttach = b
 		}
@@ -2404,13 +2409,22 @@ func extractVolumeContext(context map[string]string) (*PDCSIContext, error) {
 	return info, nil
 }
 
-func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
+func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []string, params common.DiskParameters, dataCacheParams common.DataCacheParameters, enableDataCache bool, volumeId string) *csi.CreateVolumeResponse {
 	tops := []*csi.Topology{}
 	for _, zone := range zones {
-		tops = append(tops, &csi.Topology{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
-		})
+		top := &csi.Topology{
+			Segments: map[string]string{
+				common.TopologyKeyZone: zone,
+			},
+		}
+
+		if gceCS.EnableDiskTopology {
+			top.Segments[common.DiskTypeLabelKey(params.DiskType)] = "true"
+		}
+
+		tops = append(tops, top)
 	}
+
 	realDiskSizeBytes := common.GbToBytes(disk.GetSizeGb())
 	createResp := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2468,10 +2482,10 @@ func generateCreateVolumeResponseWithVolumeId(disk *gce.CloudDisk, zones []strin
 func getResourceId(resourceLink string) (string, error) {
 	url, err := neturl.Parse(resourceLink)
 	if err != nil {
-		return "", fmt.Errorf("Could not parse resource %s: %w", resourceLink, err)
+		return "", fmt.Errorf("could not parse resource %s: %w", resourceLink, err)
 	}
 	if url.Scheme != resourceApiScheme {
-		return "", fmt.Errorf("Unexpected API scheme for resource %s", resourceLink)
+		return "", fmt.Errorf("unexpected API scheme for resource %s", resourceLink)
 	}
 
 	// Note that the resource host can basically be anything, if we are running in
@@ -2480,16 +2494,16 @@ func getResourceId(resourceLink string) (string, error) {
 	// The path should be /compute/VERSION/project/....
 	elts := strings.Split(url.Path, "/")
 	if len(elts) < 4 {
-		return "", fmt.Errorf("Short resource path %s", resourceLink)
+		return "", fmt.Errorf("short resource path %s", resourceLink)
 	}
 	if elts[1] != resourceApiService {
-		return "", fmt.Errorf("Bad resource service %s in %s", elts[1], resourceLink)
+		return "", fmt.Errorf("bad resource service %s in %s", elts[1], resourceLink)
 	}
 	if _, ok := validResourceApiVersions[elts[2]]; !ok {
-		return "", fmt.Errorf("Bad version %s in %s", elts[2], resourceLink)
+		return "", fmt.Errorf("bad version %s in %s", elts[2], resourceLink)
 	}
 	if elts[3] != resourceProject {
-		return "", fmt.Errorf("Expected %v to start with %s in resource %s", elts[3:], resourceProject, resourceLink)
+		return "", fmt.Errorf("expected %v to start with %s in resource %s", elts[3:], resourceProject, resourceLink)
 	}
 	return strings.Join(elts[3:], "/"), nil
 }

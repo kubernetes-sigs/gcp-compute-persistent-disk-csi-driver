@@ -54,7 +54,7 @@ type GCENodeServer struct {
 	// for that same volume (as defined by VolumeID) return an Aborted error
 	volumeLocks *common.VolumeLocks
 
-	// enableDeviceInUseCheck, if true, will block NodeUnstageVolume requests if the specified
+	// enableDeviceInUseCheck, if true, will block NodeUnstageVolume request if the specified
 	// device is still in use (or until --device-in-use-timeout is reached, if specified)
 	enableDeviceInUseCheck bool
 	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is

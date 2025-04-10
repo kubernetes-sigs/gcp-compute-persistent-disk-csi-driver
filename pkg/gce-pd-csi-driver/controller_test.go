@@ -58,6 +58,7 @@ const (
 	name                         = "test-name"
 	parameterConfidentialCompute = "EnableConfidentialCompute"
 	testDiskEncryptionKmsKey     = "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY"
+	stdDiskType                  = "test-disk-type"
 )
 
 var (
@@ -66,7 +67,7 @@ var (
 		RequiredBytes: common.GbToBytes(20),
 	}
 	stdParams = map[string]string{
-		common.ParameterKeyType: "test-type",
+		common.ParameterKeyType: stdDiskType,
 	}
 	stdTopology = []*csi.Topology{
 		{
@@ -288,7 +289,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, tc.seedDisks)
+		gceDriver := initGCEDriver(t, tc.seedDisks, &GCEControllerServerArgs{})
 
 		// Start Test
 		resp, err := gceDriver.cs.CreateSnapshot(context.Background(), tc.req)
@@ -335,7 +336,7 @@ func TestUnsupportedMultiZoneCreateSnapshot(t *testing.T) {
 
 	t.Logf("test case: %s", testCase.name)
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 		Enable: true,
 	}
@@ -370,7 +371,7 @@ func TestUnsupportedMultiZoneControllerExpandVolume(t *testing.T) {
 
 	t.Logf("test case: %s", testCase.name)
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 	gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 		Enable: true,
 	}
@@ -425,7 +426,7 @@ func TestDeleteSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 		_, err := gceDriver.cs.DeleteSnapshot(context.Background(), tc.req)
 		if err != nil {
@@ -547,7 +548,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 		}
 
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, disks)
+		gceDriver := initGCEDriver(t, disks, &GCEControllerServerArgs{})
 
 		for i := 0; i < tc.numSnapshots; i++ {
 			volumeID := fmt.Sprintf("%s%d", testVolumeID, i)
@@ -616,6 +617,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		enableStoragePools bool
 		expVol             *csi.Volume
 		expErrCode         codes.Code
+		enableDiskTopology bool
 	}{
 		{
 			name: "success default",
@@ -736,7 +738,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{"type": "test-type"},
+				Parameters:         map[string]string{"type": stdDiskType},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
@@ -762,7 +764,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{"type": "test-type"},
+				Parameters:         map[string]string{"type": stdDiskType},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
@@ -1346,14 +1348,42 @@ func TestCreateVolumeArguments(t *testing.T) {
 			},
 			expErrCode: codes.OK,
 		},
+		// Disk Topology Enabled tests
+		{
+			name: "success with disk topology enabled",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							common.TopologyKeyZone: zone,
+							// Disk type is added as topology segment.
+							common.DiskTypeLabelKey(stdDiskType): "true",
+						},
+					},
+				},
+			},
+			enableDiskTopology: true,
+		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
+
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
+		gceDriver := initGCEDriver(t, nil, args)
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
+
 		// Start Test
 		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
 		if err != nil {
@@ -1748,7 +1778,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 		gceDriver.cs.fallbackRequisiteZones = tc.fallbackZones
@@ -1982,7 +2012,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			// Start Test
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -2179,7 +2209,7 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 
@@ -2296,7 +2326,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 	for _, tc := range testCases {
 		var d []*gce.CloudDisk
 		fcp, err := gce.CreateFakeCloudProvider(project, zone, d)
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 		if err != nil {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
@@ -2405,7 +2435,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 			t.Fatalf("Failed to create mock cloud provider: %v", err)
 		}
 
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		project, volKey, err := common.VolumeIDToKey(testVolumeID)
 		if err != nil {
 			t.Fatalf("Failed convert key: %v", err)
@@ -2567,7 +2597,7 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create mock cloud provider")
 		}
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 		for volKey, err := range tc.modifyVolumeErrors {
 			fcp.AddDiskForErr(volKey, err)
@@ -2653,7 +2683,7 @@ func TestListVolumePagination(t *testing.T) {
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
 				}))
 			}
-			gceDriver := initGCEDriver(t, d)
+			gceDriver := initGCEDriver(t, d, &GCEControllerServerArgs{})
 			tok := ""
 			for i, expectedEntry := range tc.expectedEntries {
 				lvr := &csi.ListVolumesRequest{
@@ -2740,7 +2770,7 @@ func TestListAttachedVolumePagination(t *testing.T) {
 				}
 				fakeCloudProvider.InsertInstance(&instance, zone, instanceName)
 			}
-			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
 			// Use attached disks (instances.list) API
 			gceDriver.cs.listVolumesConfig.UseInstancesAPIForPublishedNodes = true
 
@@ -2805,7 +2835,7 @@ func TestListVolumeArgs(t *testing.T) {
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/zones/zone/disk/%s", name),
 				}))
 			}
-			gceDriver := initGCEDriver(t, d)
+			gceDriver := initGCEDriver(t, d, &GCEControllerServerArgs{})
 			lvr := &csi.ListVolumesRequest{
 				MaxEntries: tc.maxEntries,
 			}
@@ -3000,7 +3030,7 @@ func TestListVolumeResponse(t *testing.T) {
 				fakeCloudProvider.InsertInstance(&instance, instance.Zone, instance.Name)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider)
+			gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
 			gceDriver.cs.multiZoneVolumeHandleConfig = MultiZoneVolumeHandleConfig{
 				Enable: true,
 			}
@@ -3070,7 +3100,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 		if err != nil {
@@ -3241,11 +3271,11 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
 	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
 	zonalParams := map[string]string{
-		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
+		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	regionalParams := map[string]string{
-		common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	requisiteTopology := []*csi.Topology{
@@ -3690,7 +3720,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: "test-type", common.ParameterKeyReplicationType: replicationTypeNone,
+				common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
 				common.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
 			},
 			sourceTopology: &csi.TopologyRequirement{
@@ -3797,7 +3827,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
-		gceDriver := initGCEDriver(t, nil)
+		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 		gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
 		req := &csi.CreateVolumeRequest{
@@ -3892,7 +3922,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		Name:               "test-name",
 		CapacityRange:      stdCapRange,
 		VolumeCapabilities: stdVolCaps,
-		Parameters:         map[string]string{"type": "test-type"},
+		Parameters:         map[string]string{"type": stdDiskType},
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -3908,7 +3938,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		},
 	}
 
-	gceDriver := initGCEDriver(t, nil)
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
 	tZones := map[string]bool{}
 	// Start Test
@@ -3991,7 +4021,7 @@ func TestDeleteVolume(t *testing.T) {
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriver(t, tc.seedDisks)
+		gceDriver := initGCEDriver(t, tc.seedDisks, &GCEControllerServerArgs{})
 
 		_, err := gceDriver.cs.DeleteVolume(context.Background(), tc.req)
 		if err == nil && tc.expErr {
@@ -4043,7 +4073,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 			t.Fatalf("Failed to create fake cloud provider: %v", err)
 		}
 		// Setup new driver each time so no interference
-		gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 		gceDriver.cs.multiZoneVolumeHandleConfig.DiskTypes = []string{"hyperdisk-ml"}
 		gceDriver.cs.multiZoneVolumeHandleConfig.Enable = true
 		_, err = gceDriver.cs.DeleteVolume(context.Background(), tc.req)
@@ -4297,7 +4327,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 		expErr   bool
 	}{
 		{
-			name: "succes: normal",
+			name: "success: normal",
 			topology: []*csi.Topology{
 				{
 					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
@@ -4306,7 +4336,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 			expZones: sets.NewString([]string{"test-zone"}...),
 		},
 		{
-			name: "succes: multiple topologies",
+			name: "success: multiple topologies",
 			topology: []*csi.Topology{
 				{
 					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
@@ -5156,7 +5186,7 @@ func TestCreateVolumeDiskReady(t *testing.T) {
 			// Setup hook to create new disks with given status.
 			fcp.UpdateDiskStatus(tc.diskStatus)
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			// Start Test
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
@@ -5677,7 +5707,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			// Setup new driver each time so no interference
-			gceDriver := initGCEDriverWithCloudProvider(t, fcp)
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			if tc.req.VolumeContentSource.GetType() != nil {
 				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)

@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -63,7 +62,11 @@ func createServerClient(mm *metrics.MetricsManager, socketFile string, seedDisks
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fake cloud provider: %v", err)
 	}
-	controllerServer := controllerServerForTest(fakeCloudProvider)
+
+	args := &GCEControllerServerArgs{
+		EnableDiskTopology: false,
+	}
+	controllerServer := controllerServerForTest(fakeCloudProvider, args)
 	if err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, identityServer, controllerServer, nil); err != nil {
 		return nil, fmt.Errorf("failed to setup GCE Driver: %v", err)
 	}
@@ -95,7 +98,7 @@ func TestServerCreateVolumeMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	controllerClient := csipb.NewControllerClient(conn)
+	controllerClient := csi.NewControllerClient(conn)
 	req := &csi.CreateVolumeRequest{
 		Name:               name,
 		CapacityRange:      stdCapRange,
@@ -145,7 +148,7 @@ func TestServerValidateVolumeCapabilitiesMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	controllerClient := csipb.NewControllerClient(conn)
+	controllerClient := csi.NewControllerClient(conn)
 	req := &csi.ValidateVolumeCapabilitiesRequest{
 		VolumeId:           fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, name),
 		VolumeCapabilities: stdVolCaps,
@@ -187,7 +190,7 @@ func TestServerGetPluginInfoMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server client: %v", err)
 	}
-	idClient := csipb.NewIdentityClient(conn)
+	idClient := csi.NewIdentityClient(conn)
 	resp, err := idClient.GetPluginInfo(context.Background(), &csi.GetPluginInfoRequest{})
 	if err != nil {
 		t.Fatalf("GetPluginInfo returned unexpected error: %v", err)
