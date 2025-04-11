@@ -111,6 +111,8 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkmod.so.2 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre2-8.so.0 \
+                #    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 \
+                #    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libgpg-error.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 # Copy NVME support required script and rules into distroless base.
