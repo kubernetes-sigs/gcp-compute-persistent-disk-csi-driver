@@ -201,10 +201,11 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 		}
 	}
 
-	var cmd *exec.Cmd
+	// Assemble parameters from passed in arguments.
 	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
 		"--quiet", "--machine-type", "n1-standard-2", "--no-enable-autoupgrade"}
+
 	if imageType == "win2019" || imageType == "win2022" {
 		cmdParams = append(cmdParams, "--image-type", "WINDOWS_LTSC_CONTAINERD")
 		if imageType == "win2019" {
@@ -215,17 +216,28 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	} else {
 		cmdParams = append(cmdParams, "--image-type", imageType)
 	}
-	if isVariableSet(gkeClusterVer) {
-		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
-	} else {
+
+	if isVariableSet(gkeReleaseChannel) {
 		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+
 		// Release channel based GKE clusters require autorepair to be enabled.
 		cmdParams = append(cmdParams, "--enable-autorepair")
 
-		// Extended channel clusters require autoupgrade to be enabled.
 		if *gkeReleaseChannel == "extended" {
+			// Extended channel clusters require autoupgrade to be enabled.
 			cmdParams = append(cmdParams, "--enable-autoupgrade")
+
+			// We often leverage the extended channel to test the oldest
+			// versions.  In that case, we specify both a release channel *and* a
+			// cluster version.
+			if isVariableSet(gkeClusterVer) {
+				cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+			}
 		}
+	} else if isVariableSet(gkeClusterVer) {
+		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+	} else {
+		return fmt.Errorf("must specify either release channel or cluster version")
 	}
 
 	if isVariableSet(gkeNodeVersion) {
@@ -236,7 +248,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 		cmdParams = append(cmdParams, "--addons", "GcePersistentDiskCsiDriver")
 	}
 
-	cmd = exec.Command("gcloud", cmdParams...)
+	cmd := exec.Command("gcloud", cmdParams...)
 	err = runCommand("Starting E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err.Error())
