@@ -37,22 +37,23 @@ import (
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
-const defaultVolumeID = "project/test001/zones/c1/disks/testDisk"
-const defaultTargetPath = "/mnt/test"
-const defaultStagingPath = "/staging"
+const (
+	defaultVolumeID    = "project/test001/zones/c1/disks/testDisk"
+	defaultTargetPath  = "/mnt/test"
+	defaultStagingPath = "/staging"
+)
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
-	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService())
+	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
 }
 
 func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount) *GCEDriver {
-	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService())
+	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
 }
 
-func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService) *GCEDriver {
+func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService, args *NodeServerArgs) *GCEDriver {
 	gceDriver := GetGCEDriver()
-	enableDataCache := false
-	nodeServer := NewNodeServer(gceDriver, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter(mounter), NodeServerArgs{true, 0, enableDataCache, false /*dataCacheEnableNodePool */})
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceUtils, metaService, mountmanager.NewFakeStatter(mounter), args)
 	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
@@ -63,7 +64,13 @@ func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, dev
 func getTestBlockingMountGCEDriver(t *testing.T, readyToExecute chan chan struct{}) *GCEDriver {
 	gceDriver := GetGCEDriver()
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
-	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter), NodeServerArgs{true, 0, true, false /*dataCacheEnableNodePool */})
+	args := &NodeServerArgs{
+		EnableDeviceInUseCheck:   true,
+		DeviceInUseTimeout:       0,
+		EnableDataCache:          true,
+		DataCacheEnabledNodePool: false,
+	}
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter), args)
 	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)
@@ -75,7 +82,13 @@ func getTestBlockingFormatAndMountGCEDriver(t *testing.T, readyToExecute chan ch
 	gceDriver := GetGCEDriver()
 	enableDataCache := true
 	mounter := mountmanager.NewFakeSafeBlockingMounter(readyToExecute)
-	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter), NodeServerArgs{true, 0, enableDataCache, false /*dataCacheEnableNodePool */}).WithSerializedFormatAndMount(5*time.Second, 1)
+	args := &NodeServerArgs{
+		EnableDeviceInUseCheck:   true,
+		DeviceInUseTimeout:       0,
+		EnableDataCache:          enableDataCache,
+		DataCacheEnabledNodePool: false,
+	}
+	nodeServer := NewNodeServer(gceDriver, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter), args).WithSerializedFormatAndMount(5*time.Second, 1)
 
 	err := gceDriver.SetupGCEDriver(driver, "test-vendor", nil, nil, nil, nil, nodeServer)
 	if err != nil {
@@ -215,7 +228,6 @@ func TestNodeGetVolumeStats(t *testing.T) {
 }
 
 func TestNodeGetVolumeLimits(t *testing.T) {
-
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
 	req := &csi.NodeGetInfoRequest{}
@@ -301,18 +313,20 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Logf("Test case: %s", tc.name)
+
 		metadataservice.SetMachineType(tc.machineType)
 		res, err := ns.NodeGetInfo(context.Background(), req)
 		if err != nil && !tc.expectError {
 			t.Fatalf("Failed to get node info: %v", err)
-		} else {
-			volumeLimit := res.GetMaxVolumesPerNode()
-			if volumeLimit != tc.expVolumeLimit {
-				t.Fatalf("Expected volume limit: %v, got %v, for machine-type: %v",
-					tc.expVolumeLimit, volumeLimit, tc.machineType)
-			}
-			t.Logf("Get node info: %v", res)
 		}
+
+		volumeLimit := res.GetMaxVolumesPerNode()
+		if volumeLimit != tc.expVolumeLimit {
+			t.Fatalf("Expected volume limit: %v, got %v, for machine-type: %v",
+				tc.expVolumeLimit, volumeLimit, tc.machineType)
+		}
+
+		t.Logf("Get node info: %v", res)
 	}
 }
 

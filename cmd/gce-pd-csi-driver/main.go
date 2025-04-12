@@ -94,6 +94,8 @@ var (
 
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
 
+	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a disk-type.gke.io/[some-disk-type] topology label to the Topologies returned in CreateVolumeResponse.")
+
 	version string
 )
 
@@ -225,9 +227,15 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
+
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
-		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag)
+		// TODO(2042): Move more of the constructor args into this struct
+		args := &driver.GCEControllerServerArgs{
+			EnableDiskTopology: *diskTopology,
+		}
+
+		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -239,6 +247,7 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get safe mounter: %v", err.Error())
 		}
+
 		deviceUtils := deviceutils.NewDeviceUtils()
 		statter := mountmanager.NewStatter(mounter)
 		meta, err := metadataservice.NewMetadataService()
@@ -249,13 +258,16 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
-		nsArgs := driver.NodeServerArgs{
+
+		// TODO(2042): Move more of the constructor args into this struct
+		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
+
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}

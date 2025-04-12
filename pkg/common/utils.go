@@ -764,3 +764,7 @@ func MapNumber(num int64) int64 {
 	}
 	return 0
 }
+
+func DiskTypeLabelKey(diskType string) string {
+	return fmt.Sprintf("%s/%s", DiskTypeKeyPrefix, diskType)
+}
