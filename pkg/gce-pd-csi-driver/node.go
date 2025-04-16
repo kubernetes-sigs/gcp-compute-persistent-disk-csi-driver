@@ -99,9 +99,9 @@ const (
 	volumeLimitSmall int64 = 15
 	volumeLimitBig   int64 = 127
 	// doc https://cloud.google.com/compute/docs/memory-optimized-machines#x4_disks
-	x4HyperdiskLimit int64 = 40
+	x4HyperdiskLimit int64 = 39
 	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a4-disks
-	a4HyperdiskLimit     int64 = 128
+	a4HyperdiskLimit     int64 = 127
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
 	fsTypeExt3                 = "ext3"
