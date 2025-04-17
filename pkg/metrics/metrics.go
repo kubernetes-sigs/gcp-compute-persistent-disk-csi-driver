@@ -32,7 +32,6 @@ const (
 	// envGKEPDCSIVersion is an environment variable set in the PDCSI controller manifest
 	// with the current version of the GKE component.
 	envGKEPDCSIVersion               = "GKE_PDCSI_VERSION"
-	pdcsiDriverName                  = "pd.csi.storage.gke.io"
 	DefaultDiskTypeForMetric         = "unknownDiskType"
 	DefaultEnableConfidentialCompute = "unknownConfidentialMode"
 	DefaultEnableStoragePools        = "unknownStoragePools"
@@ -56,12 +55,14 @@ var (
 )
 
 type MetricsManager struct {
-	registry metrics.KubeRegistry
+	registry   metrics.KubeRegistry
+	driverName string
 }
 
-func NewMetricsManager() MetricsManager {
+func NewMetricsManager(driverName string) MetricsManager {
 	mm := MetricsManager{
-		registry: metrics.NewKubeRegistry(),
+		driverName: driverName,
+		registry:   metrics.NewKubeRegistry(),
 	}
 	return mm
 }
@@ -97,7 +98,7 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	enableConfidentialStorage string,
 	enableStoragePools string) {
 	errCode := errorCodeLabelValue(operationErr)
-	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, fullMethodName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
+	pdcsiOperationErrorsMetric.WithLabelValues(mm.driverName, fullMethodName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
 	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
 }
 

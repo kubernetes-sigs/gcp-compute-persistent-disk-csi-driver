@@ -94,11 +94,9 @@ var (
 
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
 
-	version string
-)
+	driverName = flag.String("driver-name", "pd.csi.storage.gke.io", "Driver name. Defaults to pd.csi.storage.gke.io")
 
-const (
-	driverName = "pd.csi.storage.gke.io"
+	version string
 )
 
 func init() {
@@ -150,7 +148,7 @@ func handle() {
 
 	var metricsManager *metrics.MetricsManager = nil
 	if *runControllerService && *httpEndpoint != "" {
-		mm := metrics.NewMetricsManager()
+		mm := metrics.NewMetricsManager(*driverName)
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
 		mm.RegisterPDCSIMetric()
 
@@ -272,7 +270,7 @@ func handle() {
 		}
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(*driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}

@@ -16,7 +16,7 @@ spec:
       # since it replaces GCE Metadata Server with GKE Metadata Server. Remove
       # this requirement when issue is resolved and before any exposure of
       # metrics ports
-      hostNetwork: true
+      hostNetwork: false
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: csi-gce-pd-controller-sa
@@ -145,6 +145,9 @@ spec:
             - "--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme"
             - "--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml"
             - --enable-data-cache
+            - --run-node-service=false
+            - --multi-zone-volume-handle-disk-types=hyperdisk-ml
+            - --multi-zone-volume-handle-enable
           command:
             - /gce-pd-csi-driver
           env:

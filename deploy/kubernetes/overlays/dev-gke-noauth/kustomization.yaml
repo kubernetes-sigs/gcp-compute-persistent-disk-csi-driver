@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+patchesStrategicMerge:
+- controller_always_pull.yaml
+- node_always_pull.yaml
+- noauth.yaml
+- node_overwrite_pdcsi_path.yaml
+namespace: gce-pd-csi-driver
+resources:
+- ../../base/
+# Here dev overlay is using the same image as alpha
+transformers:
+- ../../images/stable-master
+# Apply patches to support dynamic provisioning for hyperdisks
+patches:
+- path: ./driver-args.yaml
+  target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: csi-gce-pd-controller
+- path: ./node-driver-args.yaml
+  target:
+    group: apps
+    version: v1
+    kind: DaemonSet
+    name: csi-gce-pd-node
+- path: ./csidriver_dev_name.yaml
+  target:
+    kind: CSIDriver
+    name: pd.csi.storage.gke.io
+# To change the dev image, add something like the following.
+images:
+- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newName: us-central1-docker.pkg.dev/psch-gke-dev/csi-dev/gcp-compute-persistent-disk-csi-driver
+  newTag: latest
