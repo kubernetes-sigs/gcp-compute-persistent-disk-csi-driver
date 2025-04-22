@@ -28,6 +28,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
 	"github.com/googleapis/gax-go/v2/apierror"
+	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -36,6 +37,7 @@ import (
 const (
 	volIDZoneFmt   = "projects/%s/zones/%s/disks/%s"
 	volIDRegionFmt = "projects/%s/regions/%s/disks/%s"
+	testDiskName   = "test-disk"
 )
 
 func TestBytesToGbRoundDown(t *testing.T) {
@@ -1950,6 +1952,199 @@ func TestNewCombinedError(t *testing.T) {
 			gotCode := CodeForError(NewCombinedError("message", tc.errors))
 			if gotCode != tc.wantCode {
 				t.Errorf("NewCombinedError(%v): got %v, want %v", tc.errors, gotCode, tc.wantCode)
+			}
+		})
+	}
+}
+func TestIsUpdateIopsThroughputValuesAllowed(t *testing.T) {
+	testcases := []struct {
+		name         string
+		diskType     string
+		expectResult bool
+	}{
+		{
+			name:         "Hyperdisk returns true",
+			diskType:     "hyperdisk-balanced",
+			expectResult: true,
+		},
+		{
+			name:         "PD disk returns true",
+			diskType:     "pd-ssd",
+			expectResult: false,
+		},
+		{
+			name:         "Unknown disk type",
+			diskType:     "not-a-disk-type-we-know",
+			expectResult: false,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			disk := &computev1.Disk{
+				Name: "test-disk",
+				Type: tc.diskType,
+			}
+			gotResult := IsUpdateIopsThroughputValuesAllowed(disk)
+			if gotResult != tc.expectResult {
+				t.Errorf("IsUpdateIopsThroughputValuesAllowed: got %v, want %v", gotResult, tc.expectResult)
+			}
+		})
+	}
+}
+
+func TestGetMinIopsThroughput(t *testing.T) {
+	testcases := []struct {
+		name                string
+		existingDisk        *computev1.Disk
+		reqGb               int64
+		expectResult        bool
+		expectMinIops       int64
+		expectMinThroughput int64
+	}{
+		{
+			name: "Hyperdisk Balanced 4 GiB to 5GiB",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-balanced",
+				ProvisionedIops:       2000,
+				ProvisionedThroughput: 140,
+				SizeGb:                4,
+			},
+			reqGb:               5,
+			expectResult:        true,
+			expectMinIops:       2500,
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk Balanced 5 GiB to 6GiB",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-balanced",
+				ProvisionedIops:       2500,
+				ProvisionedThroughput: 145,
+				SizeGb:                5,
+			},
+			reqGb:               6,
+			expectResult:        true,
+			expectMinIops:       3000,
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk Balanced 6 GiB to 10GiB - no adjustment",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-balanced",
+				ProvisionedIops:       3000,
+				ProvisionedThroughput: 145,
+				SizeGb:                6,
+			},
+			reqGb:               10,
+			expectResult:        false,
+			expectMinIops:       0, // 0 indicates no change to iops
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk Extreme with min IOPS value as 2 will adjust IOPs",
+			existingDisk: &computev1.Disk{
+				Name:            testDiskName,
+				Type:            "hyperdisk-extreme",
+				ProvisionedIops: 128,
+				SizeGb:          64,
+			},
+			reqGb:               65,
+			expectResult:        true,
+			expectMinIops:       130,
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk Extreme 64GiB to 70 GiB - no adjustment",
+			existingDisk: &computev1.Disk{
+				Name:            testDiskName,
+				Type:            "hyperdisk-extreme",
+				ProvisionedIops: 3000,
+				SizeGb:          64,
+			},
+			reqGb:               70,
+			expectResult:        false,
+			expectMinIops:       0, // 0 indicates no change to iops
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk ML with min throughput per GB will adjust throughput",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-ml",
+				ProvisionedThroughput: 400,
+				SizeGb:                3334,
+			},
+			reqGb:               3400,
+			expectResult:        true,
+			expectMinThroughput: 408,
+		},
+		{
+			name: "Hyperdisk ML 64GiB to 100 GiB - no adjustment",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-ml",
+				ProvisionedThroughput: 6400,
+				SizeGb:                64,
+			},
+			reqGb:               100,
+			expectResult:        false,
+			expectMinIops:       0, // 0 indicates no change to iops
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Hyperdisk throughput with min throughput per GB will adjust throughput",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-throughput",
+				ProvisionedThroughput: 20,
+				SizeGb:                2048,
+			},
+			reqGb:               3072,
+			expectResult:        true,
+			expectMinIops:       0,
+			expectMinThroughput: 30,
+		},
+		{
+			name: "Hyperdisk throughput 2TiB to 4TiB - no adjustment",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "hyperdisk-throughput",
+				ProvisionedThroughput: 567,
+				SizeGb:                2048,
+			},
+			reqGb:               4096,
+			expectResult:        false,
+			expectMinIops:       0, // 0 indicates no change to iops
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
+			name: "Unknown disk type, no need to update",
+			existingDisk: &computev1.Disk{
+				Name: testDiskName,
+				Type: "unknown-type",
+			},
+			reqGb:               5,
+			expectResult:        false,
+			expectMinIops:       0,
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotNeeded, gotMinIops, gotMinThroughput := GetMinIopsThroughput(tc.existingDisk, tc.reqGb)
+			if gotNeeded != tc.expectResult {
+				t.Errorf("GetMinIopsThroughput: got %v, want %v", gotNeeded, tc.expectResult)
+			}
+
+			if gotMinIops != tc.expectMinIops {
+				t.Errorf("GetMinIopsThroughput Iops: got %v, want %v", gotMinIops, tc.expectMinIops)
+			}
+
+			if gotMinThroughput != tc.expectMinThroughput {
+				t.Errorf("GetMinIopsThroughput Throughput: got %v, want %v", gotMinThroughput, tc.expectMinThroughput)
 			}
 		})
 	}
