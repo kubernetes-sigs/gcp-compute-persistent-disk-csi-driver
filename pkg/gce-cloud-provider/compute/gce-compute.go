@@ -1366,10 +1366,52 @@ func (cloud *CloudProvider) resizeZonalDisk(ctx context.Context, project string,
 	resizeReq := &computev1.DisksResizeRequest{
 		SizeGb: requestGb,
 	}
-	op, err := cloud.service.Disks.Resize(project, volKey.Zone, volKey.Name, resizeReq).Context(ctx).Do()
+
+	// Get Disk info of disk type, iops and throughput
+	disk, err := cloud.service.Disks.Get(project, volKey.Zone, volKey.Name).Context(ctx).Do()
 	if err != nil {
-		return -1, fmt.Errorf("failed to resize zonal volume %v: %w", volKey.String(), err)
+		return -1, err
 	}
+
+	var op *computev1.Operation
+	if common.IsUpdateIopsThroughputValuesAllowed(disk) {
+		// Only Hyperdisks can update iops/throughput
+		updateNeeded, minIopsUpdate, minThroughputUpdate := common.GetMinIopsThroughput(disk, requestGb)
+		// If an update is needed, IOPS and/or throughput values must be provided for the GCE Disk Update call
+		if updateNeeded {
+			updatedDisk := &computev1.Disk{
+				Name: disk.Name,
+			}
+			paths := []string{}
+			updatedDisk.SizeGb = requestGb
+			paths = append(paths, "sizeGb")
+			if minIopsUpdate != 0 {
+				updatedDisk.ProvisionedIops = minIopsUpdate
+				paths = append(paths, "provisionedIops")
+			}
+			if minThroughputUpdate != 0 {
+				updatedDisk.ProvisionedThroughput = minThroughputUpdate
+				paths = append(paths, "provisionedThroughput")
+			}
+			op, err = cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk).Context(ctx).Paths(paths...).Do()
+			if err != nil {
+				return -1, fmt.Errorf("failed to resize zonal volume via update %v: %w", volKey.String(), err)
+			}
+		} else {
+			// No updates to iops or throughput for Hyperdisk, using Resize operation
+			op, err = cloud.service.Disks.Resize(project, volKey.Zone, volKey.Name, resizeReq).Context(ctx).Do()
+			if err != nil {
+				return -1, fmt.Errorf("failed to resize zonal volume %v: %w", volKey.String(), err)
+			}
+		}
+	} else {
+		// Iops and throughput are not applicable to PD disk updates
+		op, err = cloud.service.Disks.Resize(project, volKey.Zone, volKey.Name, resizeReq).Context(ctx).Do()
+		if err != nil {
+			return -1, fmt.Errorf("failed to resize zonal volume %v: %w", volKey.String(), err)
+		}
+	}
+
 	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
@@ -1385,10 +1427,49 @@ func (cloud *CloudProvider) resizeRegionalDisk(ctx context.Context, project stri
 		SizeGb: requestGb,
 	}
 
-	op, err := cloud.service.RegionDisks.Resize(project, volKey.Region, volKey.Name, resizeReq).Context(ctx).Do()
+	// Get Disk info of disk type, iops and throughput
+	disks, err := cloud.service.RegionDisks.Get(project, volKey.Region, volKey.Name).Context(ctx).Do()
 	if err != nil {
-		return -1, fmt.Errorf("failed to resize regional volume %v: %w", volKey.String(), err)
+		return -1, err
 	}
+	var op *computev1.Operation
+	if common.IsUpdateIopsThroughputValuesAllowed(disks) {
+		// Only Hyperdisks can update iops/throughput
+		updateNeeded, minIopsUpdate, minThroughputUpdate := common.GetMinIopsThroughput(disks, requestGb)
+		// If an update is needed, IOPS and/or throughput values must be provided for the GCE Disk Update call
+		if updateNeeded {
+			updatedDisk := &computev1.Disk{
+				Name: disks.Name,
+			}
+			paths := []string{}
+			updatedDisk.SizeGb = requestGb
+			paths = append(paths, "sizeGb")
+			if minIopsUpdate != 0 {
+				updatedDisk.ProvisionedIops = minIopsUpdate
+				paths = append(paths, "provisionedIops")
+			}
+			if minThroughputUpdate != 0 {
+				updatedDisk.ProvisionedThroughput = minThroughputUpdate
+				paths = append(paths, "provisionedThroughput")
+			}
+			op, err = cloud.service.RegionDisks.Update(project, volKey.Region, volKey.Name, updatedDisk).Context(ctx).Paths(paths...).Do()
+			if err != nil {
+				return -1, fmt.Errorf("failed to resize regional volume via update %v: %w", volKey.String(), err)
+			}
+		} else {
+			// No updates to iops or throughput for Hyperdisk, using Resize operation
+			op, err = cloud.service.RegionDisks.Resize(project, volKey.Region, volKey.Name, resizeReq).Context(ctx).Do()
+			if err != nil {
+				return -1, fmt.Errorf("failed to resize regional volume %v: %w", volKey.String(), err)
+			}
+		}
+	} else {
+		op, err = cloud.service.RegionDisks.Resize(project, volKey.Region, volKey.Name, resizeReq).Context(ctx).Do()
+		if err != nil {
+			return -1, fmt.Errorf("failed to resize regional volume %v: %w", volKey.String(), err)
+		}
+	}
+
 	klog.V(5).Infof("ResizeDisk operation %s for disk %s", op.Name, volKey.Name)
 
 	err = cloud.waitForRegionalOp(ctx, project, op.Name, volKey.Region)
