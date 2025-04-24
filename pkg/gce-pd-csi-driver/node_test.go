@@ -24,23 +24,37 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 const (
 	defaultVolumeID    = "project/test001/zones/c1/disks/testDisk"
 	defaultTargetPath  = "/mnt/test"
 	defaultStagingPath = "/staging"
+	testZoneA          = "test-zone-a"
+	testZoneB          = "test-zone-b"
+	testDiskA          = "testDiskA"
+	testDiskB          = "testDiskB"
+	testNodeA          = "test-node-a"
+	testNodeB          = "test-node-b"
 )
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
@@ -49,6 +63,13 @@ func getTestGCEDriver(t *testing.T) *GCEDriver {
 
 func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount) *GCEDriver {
 	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
+}
+
+func getTestGCEDriverWithMockKubeClient(t *testing.T, kubeClient kubernetes.Interface) *GCEDriver {
+	args := &NodeServerArgs{
+		KubeClient: kubeClient,
+	}
+	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), args)
 }
 
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService, args *NodeServerArgs) *GCEDriver {
@@ -271,27 +292,27 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		{
 			name:           "c4-standard-192",
 			machineType:    "c4-standard-192",
-			expVolumeLimit: 127,
+			expVolumeLimit: 128,
 		},
 		{
 			name:           "c4-standard-48",
 			machineType:    "c4-standard-48",
-			expVolumeLimit: 63,
+			expVolumeLimit: 64,
 		},
 		{
 			name:           "c4a-standard-4",
 			machineType:    "c4a-standard-4",
-			expVolumeLimit: 15,
+			expVolumeLimit: 16,
 		},
 		{
 			name:           "n4-standard-16",
 			machineType:    "n4-standard-16",
-			expVolumeLimit: 31,
+			expVolumeLimit: 32,
 		},
 		{
 			name:           "n4-highcpu-4",
 			machineType:    "n4-highcpu-4",
-			expVolumeLimit: 15,
+			expVolumeLimit: 16,
 		},
 		{
 			name:           "invalid gen4 machine type",
@@ -324,6 +345,107 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		if volumeLimit != tc.expVolumeLimit {
 			t.Fatalf("Expected volume limit: %v, got %v, for machine-type: %v",
 				tc.expVolumeLimit, volumeLimit, tc.machineType)
+		}
+
+		t.Logf("Get node info: %v", res)
+	}
+}
+
+// NewFakeKubeClient creates a fake Kubernetes client with predefined nodes.
+func NewFakeKubeClient(nodes []*corev1.Node) kubernetes.Interface {
+	// Convert the list of nodes to a slice of runtime.Object
+	var objects []runtime.Object
+	for _, node := range nodes {
+		objects = append(objects, node)
+	}
+
+	// Create a fake clientset with the predefined objects
+	clientset := fake.NewSimpleClientset(objects...)
+
+	return clientset
+}
+
+func TestNodeGetInfo_Topologies(t *testing.T) {
+	nodeA := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeA,
+			Labels: map[string]string{
+				common.TopologyKeyZone:             testZoneA,
+				common.TopologyLabelKey(testDiskA): "true",
+			},
+		},
+	}
+	nodeB := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeB,
+			Labels: map[string]string{
+				common.TopologyKeyZone:             testZoneB,
+				common.TopologyLabelKey(testDiskB): "true",
+			},
+		},
+	}
+	gceDriver := getTestGCEDriverWithMockKubeClient(t, NewFakeKubeClient([]*corev1.Node{nodeA, nodeB}))
+	ns := gceDriver.ns
+
+	volumeLimit, err := ns.GetVolumeLimits()
+	if err != nil {
+		t.Fatalf("Failed to get volume limits: %v", err)
+	}
+
+	testCases := []struct {
+		name               string
+		node               *corev1.Node
+		enableDiskTopology bool
+		want               *csi.NodeGetInfoResponse
+	}{
+		{
+			name: "success default: zone only",
+			node: nodeB,
+			want: &csi.NodeGetInfoResponse{
+				NodeId:            common.CreateNodeID(ns.MetadataService.GetProject(), testZoneB, testNodeB),
+				MaxVolumesPerNode: volumeLimit,
+				AccessibleTopology: &csi.Topology{
+					Segments: map[string]string{
+						common.TopologyKeyZone: testZoneB,
+						// Note the absence of the Disk Support Label
+					},
+				},
+			},
+		},
+		{
+			name:               "success: disk topology enabled",
+			node:               nodeA,
+			enableDiskTopology: true,
+			want: &csi.NodeGetInfoResponse{
+				NodeId:            common.CreateNodeID(ns.MetadataService.GetProject(), testZoneA, testNodeA),
+				MaxVolumesPerNode: volumeLimit,
+				AccessibleTopology: &csi.Topology{
+					Segments: map[string]string{
+						common.TopologyKeyZone:             testZoneA,
+						common.TopologyLabelKey(testDiskA): "true",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Test case: %s", tc.name)
+
+		ns.EnableDiskTopology = tc.enableDiskTopology
+		metadataservice.SetZone(tc.node.Labels[common.TopologyKeyZone])
+		metadataservice.SetName(tc.node.Name)
+
+		res, err := ns.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if res == nil {
+			t.Fatalf("Expected non-nil response, got nil")
+		}
+
+		if diff := cmp.Diff(tc.want, res, cmpopts.IgnoreUnexported(csi.NodeGetInfoResponse{}, csi.Topology{})); diff != "" {
+			t.Errorf("Unexpected NodeGetInfoResponse (-want +got):\n%s", diff)
 		}
 
 		t.Logf("Get node info: %v", res)

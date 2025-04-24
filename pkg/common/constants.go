@@ -18,11 +18,8 @@ package common
 
 const (
 	// Keys for Topology. This key will be shared amongst drivers from GCP
-	TopologyKeyZone = "topology.gke.io/zone"
-
-	// DiskTypeKeyPrefix is the prefix for the disk type label key used as part
-	// of the Disk Topology feature.
-	DiskTypeKeyPrefix = "disk-type.gke.io"
+	TopologyKeyPrefix = "topology.gke.io"
+	TopologyKeyZone   = TopologyKeyPrefix + "/zone"
 
 	// VolumeAttributes for Partition
 	VolumeAttributePartition = "partition"
@@ -67,10 +64,10 @@ var Gen4MachineHyperdiskAttachLimitMap = []struct {
 	max   int64
 	value int64
 }{
-	{max: 4, value: 15},
-	{max: 8, value: 23},
-	{max: 16, value: 31},
-	{max: 32, value: 49},
-	{max: 64, value: 63},
-	{max: 1024, value: 127},
+	{max: 4, value: 16},
+	{max: 8, value: 24},
+	{max: 16, value: 32},
+	{max: 32, value: 48},
+	{max: 64, value: 64},
+	{max: 1024, value: 128},
 }
