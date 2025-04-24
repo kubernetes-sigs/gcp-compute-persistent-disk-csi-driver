@@ -2681,15 +2681,6 @@ type AdvancedMachineFeatures struct {
 	// EnableUefiNetworking: Whether to enable UEFI networking for instance
 	// creation.
 	EnableUefiNetworking bool `json:"enableUefiNetworking,omitempty"`
-	// PerformanceMonitoringUnit: Type of Performance Monitoring Unit requested on
-	// instance.
-	//
-	// Possible values:
-	//   "ARCHITECTURAL" - Architecturally defined non-LLC events.
-	//   "ENHANCED" - Most documented core/L2 and LLC events.
-	//   "PERFORMANCE_MONITORING_UNIT_UNSPECIFIED"
-	//   "STANDARD" - Most documented core/L2 events.
-	PerformanceMonitoringUnit string `json:"performanceMonitoringUnit,omitempty"`
 	// ThreadsPerCore: The number of threads per physical core. To disable
 	// simultaneous multithreading (SMT) set this to 1. If unset, the maximum
 	// number of threads supported per core by the underlying processor is assumed.
@@ -20569,11 +20560,10 @@ type InstanceProperties struct {
 	// Labels: Labels to apply to instances that are created from these properties.
 	Labels map[string]string `json:"labels,omitempty"`
 	// MachineType: The machine type to use for instances that are created from
-	// these properties. This field only accepts a machine type name, for example
-	// `n2-standard-4`. If you use the machine type full or partial URL, for
-	// example
-	// `projects/my-l7ilb-project/zones/us-central1-a/machineTypes/n2-standard-4`,
-	// the request will result in an `INTERNAL_ERROR`.
+	// these properties. This field only accept machine types name. e.g.
+	// n2-standard-4 and does not accept machine type full or partial url. e.g.
+	// projects/my-l7ilb-project/zones/us-central1-a/machineTypes/n2-standard-4
+	// will throw INTERNAL_ERROR.
 	MachineType string `json:"machineType,omitempty"`
 	// Metadata: The metadata key/value pairs to assign to instances that are
 	// created from these properties. These pairs can consist of custom metadata or
@@ -39440,15 +39430,10 @@ type Route struct {
 	// NextHopIlb: The URL to a forwarding rule of type
 	// loadBalancingScheme=INTERNAL that should handle matching packets or the IP
 	// address of the forwarding Rule. For example, the following are all valid
-	// URLs: -
+	// URLs: - 10.128.0.56 -
 	// https://www.googleapis.com/compute/v1/projects/project/regions/region
 	// /forwardingRules/forwardingRule -
-	// regions/region/forwardingRules/forwardingRule If an IP address is provided,
-	// must specify an IPv4 address in dot-decimal notation or an IPv6 address in
-	// RFC 4291 format. For example, the following are all valid IP addresses: -
-	// 10.128.0.56 - 2001:db8::2d9:51:0:0 - 2001:db8:0:0:2d9:51:0:0 IPv6 addresses
-	// will be displayed using RFC 5952 compressed format (e.g.
-	// 2001:db8::2d9:51:0:0). Should never be an IPv4-mapped IPv6 address.
+	// regions/region/forwardingRules/forwardingRule
 	NextHopIlb string `json:"nextHopIlb,omitempty"`
 	// NextHopInstance: The URL to an instance that should handle matching packets.
 	// You can specify this as a full or partial URL. For example:
@@ -40877,12 +40862,12 @@ type RouterNatRule struct {
 	// Match: CEL expression that specifies the match condition that egress traffic
 	// from a VM is evaluated against. If it evaluates to true, the corresponding
 	// `action` is enforced. The following examples are valid match expressions for
-	// public NAT: `inIpRange(destination.ip, '1.1.0.0/16') ||
-	// inIpRange(destination.ip, '2.2.0.0/16')` `destination.ip == '1.1.0.1' ||
-	// destination.ip == '8.8.8.8'` The following example is a valid match
-	// expression for private NAT: `nexthop.hub ==
+	// public NAT: "inIpRange(destination.ip, '1.1.0.0/16') ||
+	// inIpRange(destination.ip, '2.2.0.0/16')" "destination.ip == '1.1.0.1' ||
+	// destination.ip == '8.8.8.8'" The following example is a valid match
+	// expression for private NAT: "nexthop.hub ==
 	// '//networkconnectivity.googleapis.com/projects/my-project/locations/global/hu
-	// bs/hub-1'`
+	// bs/hub-1'"
 	Match string `json:"match,omitempty"`
 	// RuleNumber: An integer uniquely identifying a rule in the list. The rule
 	// number must be a positive value between 0 and 65000, and must be unique
@@ -40985,17 +40970,9 @@ func (s *RouterNatSubnetworkToNat) MarshalJSON() ([]byte, error) {
 }
 
 type RouterStatus struct {
-	// BestRoutes: A list of the best dynamic routes for this Cloud Router's
-	// Virtual Private Cloud (VPC) network in the same region as this Cloud Router.
-	// Lists all of the best routes per prefix that are programmed into this
-	// region's VPC data plane. When global dynamic routing mode is turned on in
-	// the VPC network, this list can include cross-region dynamic routes from
-	// Cloud Routers in other regions.
+	// BestRoutes: Best routes for this router's network.
 	BestRoutes []*Route `json:"bestRoutes,omitempty"`
-	// BestRoutesForRouter: A list of the best BGP routes learned by this Cloud
-	// Router. It is possible that routes listed might not be programmed into the
-	// data plane, if the Google Cloud control plane finds a more optimal route for
-	// a prefix than a route learned by this Cloud Router.
+	// BestRoutesForRouter: Best routes learned by this router.
 	BestRoutesForRouter []*Route                     `json:"bestRoutesForRouter,omitempty"`
 	BgpPeerStatus       []*RouterStatusBgpPeerStatus `json:"bgpPeerStatus,omitempty"`
 	NatStatus           []*RouterStatusNatStatus     `json:"natStatus,omitempty"`
@@ -47206,9 +47183,7 @@ type StoragePool struct {
 	// pool disks' exclusive use.
 	//   "UNSPECIFIED"
 	PerformanceProvisioningType string `json:"performanceProvisioningType,omitempty"`
-	// PoolProvisionedCapacityGb: Size, in GiB, of the storage pool. For more
-	// information about the size limits, see
-	// https://cloud.google.com/compute/docs/disks/storage-pools.
+	// PoolProvisionedCapacityGb: Size, in GiB, of the storage pool.
 	PoolProvisionedCapacityGb int64 `json:"poolProvisionedCapacityGb,omitempty,string"`
 	// PoolProvisionedIops: Provisioned IOPS of the storage pool. Only relevant if
 	// the storage pool type is hyperdisk-balanced.
@@ -47805,10 +47780,8 @@ type StoragePoolResourceStatus struct {
 	// bytes written to the disks in the pool, in contrast to the capacity of those
 	// disks.
 	PoolUsedCapacityBytes int64 `json:"poolUsedCapacityBytes,omitempty,string"`
-	// PoolUsedIops: [Output Only] Sum of all the disks' provisioned IOPS, minus
-	// some amount that is allowed per disk that is not counted towards pool's IOPS
-	// capacity. For more information, see
-	// https://cloud.google.com/compute/docs/disks/storage-pools.
+	// PoolUsedIops: Sum of all the disks' provisioned IOPS, minus some amount that
+	// is allowed per disk that is not counted towards pool's IOPS capacity.
 	PoolUsedIops int64 `json:"poolUsedIops,omitempty,string"`
 	// PoolUsedThroughput: [Output Only] Sum of all the disks' provisioned
 	// throughput in MB/s.
@@ -56569,10 +56542,8 @@ type WeightedBackendService struct {
 	// routeAction) . The selection of a backend service is determined only for new
 	// traffic. Once a user's request has been directed to a backend service,
 	// subsequent requests are sent to the same backend service as determined by
-	// the backend service's session affinity policy. Don't configure session
-	// affinity if you're using weighted traffic splitting. If you do, the weighted
-	// traffic splitting configuration takes precedence. The value must be from 0
-	// to 1000.
+	// the backend service's session affinity policy. The value must be from 0 to
+	// 1000.
 	Weight int64 `json:"weight,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "BackendService") to
 	// unconditionally include in API requests. By default, fields with empty or
