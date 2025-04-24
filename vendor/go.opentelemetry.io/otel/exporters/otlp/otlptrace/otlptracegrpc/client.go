@@ -294,7 +294,7 @@ func (c *client) MarshalLog() interface{} {
 		Type     string
 		Endpoint string
 	}{
-		Type:     "otlptracegrpc",
+		Type:     "otlphttpgrpc",
 		Endpoint: c.endpoint,
 	}
 }

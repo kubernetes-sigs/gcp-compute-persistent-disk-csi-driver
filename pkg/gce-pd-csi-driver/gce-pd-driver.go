@@ -157,6 +157,8 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		deviceInUseErrors:        newDeviceErrMap(args.DeviceInUseTimeout),
 		EnableDataCache:          args.EnableDataCache,
 		DataCacheEnabledNodePool: args.DataCacheEnabledNodePool,
+		KubeClient:               args.KubeClient,
+		EnableDiskTopology:       args.EnableDiskTopology,
 	}
 }
 
@@ -175,6 +177,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		provisionableDisksConfig:    provisionableDisksConfig,
 		enableHdHA:                  enableHdHA,
 		EnableDiskTopology:          args.EnableDiskTopology,
+		LabelVerifier:               args.LabelVerifier,
 	}
 }
 
