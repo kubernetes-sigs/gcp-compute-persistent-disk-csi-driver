@@ -491,7 +491,6 @@ func createVg(volumeGroupName string, raidedLocalSsds string) error {
 
 func reduceVolumeGroup(volumeGroupName string, force bool) {
 	if !checkVgExists(volumeGroupName) {
-		klog.V(2).Infof("Volume group %v not found, no further action needed", volumeGroupName)
 		return
 	}
 	args := []string{
