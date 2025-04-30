@@ -33,3 +33,16 @@ const (
 	// Label that is set on a disk when it is used by a 'multi-zone' VolumeHandle
 	MultiZoneLabel = "goog-gke-multi-zone"
 )
+
+// doc https://cloud.google.com/compute/docs/disks/hyperdisks#max-total-disks-per-vm
+var Gen4MachineHyperdiskAttachLimitMap = []struct {
+	max   int64
+	value int64
+}{
+	{max: 4, value: 15},
+	{max: 8, value: 23},
+	{max: 16, value: 31},
+	{max: 32, value: 49},
+	{max: 64, value: 63},
+	{max: 1024, value: 127},
+}

@@ -696,3 +696,17 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 
 	return limiter
 }
+
+func IsHyperdisk(diskType string) bool {
+	return strings.HasPrefix(diskType, "hyperdisk-")
+}
+
+// MapNumber is a function to map input cpu number to the Hyperdisk attach limit
+func MapNumber(num int64) int64 {
+	for _, r := range Gen4MachineHyperdiskAttachLimitMap {
+		if num <= r.max {
+			return r.value
+		}
+	}
+	return 0
+}
