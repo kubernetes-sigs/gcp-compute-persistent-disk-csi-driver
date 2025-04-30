@@ -144,10 +144,7 @@ spec:
             - "--endpoint=unix:/csi/csi.sock"
             - "--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme"
             - "--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml"
-            # - "--enable-data-cache"
-            - "--enable-data-cache=true"
-            - "--run-node-service=false"
-            - "--run-controller-service=true"
+            - --enable-data-cache
           command:
             - /gce-pd-csi-driver
           env:

@@ -50,6 +50,6 @@ metadata:
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
   # pdImagePlaceholder in test/k8s-integration/main.go is updated automatically with the newTag
-  newName: gcr.io/samhalim-joonix/gcp-compute-persistent-disk-csi-driver
-  newTag: "datacache_sam"
+  newName: registry.k8s.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver
+  newTag: "v1.17.2"
 ---
