@@ -139,10 +139,7 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
-            # - "--enable-data-cache"
-            - "--enable-data-cache=true"
-            - "--run-node-service=false"
-            - "--run-controller-service=true"
+            - --enable-data-cache
           env:
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: "/etc/cloud-sa/cloud-sa.json"
