@@ -491,7 +491,6 @@ func createVg(volumeGroupName string, raidedLocalSsds string) error {
 
 func reduceVolumeGroup(volumeGroupName string, force bool) {
 	if !checkVgExists(volumeGroupName) {
-		klog.V(2).Infof("Volume group %v not found, no further action needed", volumeGroupName)
 		return
 	}
 	args := []string{
@@ -646,7 +645,7 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 		case err := <-watcher.Errors:
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)
 		// watch for events
-		case event := <-watcher.Events:
+		case <-watcher.Events:
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			args := []string{
@@ -658,7 +657,6 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 				klog.Errorf("Error updating volume group's metadata: %v", err)
 			}
 			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
-			klog.V(6).Infof("disk attach/detach event %#v\n", event)
 		}
 	}
 }
