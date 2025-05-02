@@ -31,6 +31,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
@@ -101,7 +103,12 @@ const (
 	// doc https://cloud.google.com/compute/docs/memory-optimized-machines#x4_disks
 	x4HyperdiskLimit int64 = 39
 	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a4-disks
-	a4HyperdiskLimit     int64 = 127
+	a4HyperdiskLimit int64 = 127
+	// doc https://cloud.google.com/compute/docs/storage-optimized-machines#z3_disks
+	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a3-disks
+	gen3HyperdiskLimit int64 = 31
+	// doc https://cloud.google.com/compute/docs/compute-optimized-machines#h3_disks
+	h3HyperdiskLimit     int64 = 7 // Use limit for Hyperdisk Balanced
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
 	fsTypeExt3                 = "ext3"
@@ -571,7 +578,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
-	volumeLimits, err := ns.GetVolumeLimits()
+	volumeLimits, err := ns.GetVolumeLimits(ctx)
 	if err != nil {
 		klog.Errorf("GetVolumeLimits failed: %v. The error is ignored so that the driver can register", err.Error())
 		// No error should be returned from NodeGetInfo, otherwise the driver will not register
@@ -733,7 +740,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 	}, nil
 }
 
-func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
+func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
 	machineType := ns.MetadataService.GetMachineType()
 
@@ -743,6 +750,22 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 			return volumeLimitSmall, nil
 		}
 	}
+
+	// Get attach limit override from label
+	attachLimitOverride, err := GetAttachLimitsOverrideFromNodeLabel(ctx, ns.MetadataService.GetName())
+	if err == nil && attachLimitOverride > 0 && attachLimitOverride < 128 {
+		return attachLimitOverride, nil
+	} else {
+		// If there is an error or the range is not valid, still proceed to get defaults for the machine type
+		if err != nil {
+			klog.Warningf("using default value due to err getting node-restriction.kubernetes.io/gke-volume-attach-limit-override: %v", err)
+		}
+		if attachLimitOverride != 0 {
+			klog.Warningf("using default value due to invalid node-restriction.kubernetes.io/gke-volume-attach-limit-override: %d", attachLimitOverride)
+		}
+	}
+
+	// Process gen4 machine attach limits
 	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-"}
 	for _, gen4Prefix := range gen4MachineTypesPrefix {
 		if strings.HasPrefix(machineType, gen4Prefix) {
@@ -766,5 +789,59 @@ func (ns *GCENodeServer) GetVolumeLimits() (int64, error) {
 		}
 	}
 
+	// Process gen3 machine attach limits
+	gen3MachineTypesPrefix := []string{"c3-", "c3d-"}
+	for _, gen3Prefix := range gen3MachineTypesPrefix {
+		if strings.HasPrefix(machineType, gen3Prefix) {
+			cpus, err := common.ExtractCPUFromMachineType(machineType)
+			if err != nil {
+				return volumeLimitSmall, err
+			}
+			if cpus <= 8 || strings.Contains(machineType, "metal") {
+				return volumeLimitSmall, nil
+			}
+			return gen3HyperdiskLimit, nil
+
+		}
+		if strings.HasPrefix(machineType, "z3-") {
+			return gen3HyperdiskLimit, nil
+		}
+		if strings.HasPrefix(machineType, "h3-") {
+			return h3HyperdiskLimit, nil
+		}
+		if strings.HasPrefix(machineType, "a3-") {
+			if machineType == "a3-ultragpu-8g" {
+				return volumeLimitBig, nil
+			} else {
+				return gen3HyperdiskLimit, nil
+			}
+		}
+
+	}
+
 	return volumeLimitBig, nil
+}
+
+func GetAttachLimitsOverrideFromNodeLabel(ctx context.Context, nodeName string) (int64, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return 0, err
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return 0, err
+	}
+	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
+	if err != nil {
+		return 0, err
+	}
+	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeRestrictionLabelPrefix, common.AttachLimitOverrideLabel)]; found {
+		attachLimitOverrideForNode, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("error getting attach limit override from node label: %v", err)
+		}
+		klog.V(4).Infof("attach limit override for the node: %v", attachLimitOverrideForNode)
+		return attachLimitOverrideForNode, nil
+	}
+	return 0, nil
 }
