@@ -1,1 +1,1 @@
-See [CHANGELOG/README.md](./CHANGELOG/README.md).
+See the [Releases page](https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/releases) for notes on each tagged release.
