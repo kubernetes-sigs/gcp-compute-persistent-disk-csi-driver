@@ -2149,3 +2149,47 @@ func TestGetMinIopsThroughput(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractCPUFromMachineType(t *testing.T) {
+	testcases := []struct {
+		name         string
+		input        string
+		expectOutput int64
+		expectErr    bool
+	}{
+		{
+			name:         "c3-highmem-176",
+			input:        "c3-highmem-176",
+			expectOutput: 176,
+		},
+		{
+			name:         "c3-standard-8-lssd",
+			input:        "c3-standard-8-lssd",
+			expectOutput: 8,
+		},
+		{
+			name:         "c3-standard-192-metal",
+			input:        "c3-standard-192-metal",
+			expectOutput: 192,
+		},
+		{
+			name:         "invalid input",
+			input:        "something-not-valid",
+			expectOutput: 0,
+			expectErr:    true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ExtractCPUFromMachineType(tc.input)
+			if output != tc.expectOutput {
+				t.Errorf("ExtractCPUFromMachineType: got %v, want %v", output, tc.expectOutput)
+			}
+
+			if gotErr := err != nil; gotErr != tc.expectErr {
+				t.Fatalf("ExtractCPUFromMachineType(%+v) = %v; expectedErr: %v", tc.input, err, tc.expectErr)
+			}
+		})
+	}
+}
