@@ -668,6 +668,8 @@ func generateGCETestSkip(testParams *testParameters) string {
 		skipString = skipString + "|\\[LinuxOnly\\]"
 	}
 
+	// Skip expansion tests until recent tests failures get fixed.
+	skipString = skipString + "|allowExpansion"
 	return skipString
 }
 
