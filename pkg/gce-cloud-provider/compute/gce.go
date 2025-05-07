@@ -22,13 +22,16 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2/google"
 	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
+	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute/tenancy"
 
 	"cloud.google.com/go/compute/metadata"
 	rscmgr "cloud.google.com/go/resourcemanager/apiv3"
@@ -66,6 +69,9 @@ const (
 	// globalComputeParentPathFmt is the string format for the full path of global compute resource.
 	globalComputeParentPathFmt = "//compute.googleapis.com/projects/%s/global/%s/%d"
 
+	// tenantAuthenticationPathFmt is the string format for the full URL needed to generate an access token for tenants
+	tenantAuthenticationPathFmt = "https://preprod-gkeauth.sandbox.googleapis.com/v1/projects/%s/locations/%s/tenants/%s:generateTenantToken"
+
 	// gcpTagsRequestRateLimit is the tag request rate limit per second.
 	gcpTagsRequestRateLimit = 8
 
@@ -81,7 +87,8 @@ var (
 	// snapshotsType is the resource type of compute snapshots.
 	snapshotsType ResourceType = "snapshots"
 	// imagesType is the resource type of compute images.
-	imagesType ResourceType = "images"
+	imagesType         ResourceType = "images"
+	tenantServiceMutex sync.Mutex
 )
 
 // CloudProvider only supports GCE v1/beta Disk APIs. See
@@ -101,6 +108,9 @@ type CloudProvider struct {
 	tagsRateLimiter *rate.Limiter
 
 	listInstancesConfig ListInstancesConfig
+
+	TenantInformer   tenancy.TenantsInformer
+	tenantServiceMap map[string]*compute.Service
 
 	enableHdHA bool
 }
@@ -133,7 +143,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig, multiTenancyEnabled bool) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -162,10 +172,10 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("Failed getting Project and Zone: %w", err)
+		return nil, fmt.Errorf("failed getting Project and Zone: %w", err)
 	}
 
-	return &CloudProvider{
+	cp := &CloudProvider{
 		service:             svc,
 		betaService:         betasvc,
 		tokenSource:         tokenSource,
@@ -177,8 +187,68 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		// GCP has a rate limit of 600 requests per minute, restricting
 		// here to 8 requests per second.
 		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
-	}, nil
+	}
 
+	if multiTenancyEnabled {
+		// Setup informant for tenant CR to automatically create tenant specific clients with tenant identities
+		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
+		}
+		cp.TenantInformer = ti
+		cp.tenantServiceMap = map[string]*compute.Service{}
+
+		cp.TenantInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				// Handle tenant creation
+				klog.Infof("Tenant %s created", obj)
+
+				tenantMeta, err := tenancy.GetMetadataFromTenantCR(obj)
+				if err != nil {
+					klog.Errorf("error while extracting tenant metadata: %v", err)
+				}
+
+				tenantServiceMutex.Lock()
+				defer tenantServiceMutex.Unlock()
+
+				if _, ok := cp.tenantServiceMap[tenantMeta.ProjectNumber]; ok {
+					klog.Infof("tenant GCE client already exists, skipping GCE client instantiation for tenant(%s) with project number(%s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
+					return
+				}
+
+				tenantTokenUrl := fmt.Sprintf(tenantAuthenticationPathFmt, tenantMeta.ProjectNumber, configFile.Global.Zone, tenantMeta.TenantName)
+				tokenSource := NewAltTokenSource(tenantTokenUrl, "")
+
+				testToken, err := tokenSource.Token()
+				if err != nil {
+					klog.Errorf("error fetching initial token during test: %v", err.Error())
+				}
+				klog.Infof("Token type: %v", testToken.TokenType)
+				klog.Infof("Token access token: %v", testToken.AccessToken)
+				klog.Infof("%+v", testToken)
+
+				svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+				if err != nil {
+					klog.Errorf("error while creating compute service with tenant identity: %v", err)
+					return
+				}
+				cp.tenantServiceMap[tenantMeta.ProjectNumber] = svc
+			},
+			UpdateFunc: func(oldObj, newObj any) {},
+			DeleteFunc: func(obj any) {
+				klog.Infof("Tenant %s deleted", obj)
+				tenantMeta, err := tenancy.GetMetadataFromTenantCR(obj)
+				if err != nil {
+					klog.Errorf("error while extracting teantn metadata: %v", err)
+				}
+				tenantServiceMutex.Lock()
+				defer tenantServiceMutex.Unlock()
+				delete(cp.tenantServiceMap, tenantMeta.ProjectNumber)
+			},
+		})
+	}
+
+	return cp, nil
 }
 
 func generateTokenSource(ctx context.Context, configFile *ConfigFile) (oauth2.TokenSource, error) {
