@@ -117,7 +117,7 @@ type GCECompute interface {
 	// Regional Disk Methods
 	GetReplicaZoneURI(project string, zone string) string
 	// Instance Methods
-	GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*computev1.Instance, error)
+	GetInstanceOrError(ctx context.Context, project, instanceZone, instanceName string) (*computev1.Instance, error)
 	// Zone Methods
 	ListZones(ctx context.Context, region string) ([]string, error)
 	ListSnapshots(ctx context.Context, filter string) ([]*computev1.Snapshot, string, error)
@@ -160,40 +160,67 @@ func (cloud *CloudProvider) listDisksInternal(ctx context.Context, fields []goog
 	if err != nil {
 		return nil, "", err
 	}
-	items := []*computev1.Disk{}
+	disks := []*computev1.Disk{}
 
-	// listing out regional disks in the region
-	rlCall := cloud.service.RegionDisks.List(cloud.project, region)
+	// listing out regional disks in the region for each project
+	for p, s := range cloud.tenantServiceMap {
+		klog.Infof("Getting regional disks for project: %s", p)
+		rDisks, err := listRegionalDisksForProject(s, p, region, fields, filter)
+		if err != nil {
+			return nil, "", err
+		}
+		disks = append(disks, rDisks...)
+	}
+
+	// listing out zonal disks in all zones of the region for each project
+	for p, s := range cloud.tenantServiceMap {
+		klog.Infof("Getting zonal disks for project: %s", p)
+		zDisks, err := listZonalDisksForProject(s, p, zones, fields, filter)
+		if err != nil {
+			return nil, "", err
+		}
+		disks = append(disks, zDisks...)
+	}
+
+	return disks, "", nil
+}
+
+func listRegionalDisksForProject(service *computev1.Service, project string, region string, fields []googleapi.Field, filter string) ([]*computev1.Disk, error) {
+	items := []*computev1.Disk{}
+	rlCall := service.RegionDisks.List(project, region)
 	rlCall.Fields(fields...)
 	rlCall.Filter(filter)
 	nextPageToken := "pageToken"
 	for nextPageToken != "" {
 		rDiskList, err := rlCall.Do()
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		items = append(items, rDiskList.Items...)
 		nextPageToken = rDiskList.NextPageToken
 		rlCall.PageToken(nextPageToken)
 	}
+	return items, nil
+}
 
-	// listing out zonal disks in all zones of the region
+func listZonalDisksForProject(service *computev1.Service, project string, zones []string, fields []googleapi.Field, filter string) ([]*computev1.Disk, error) {
+	items := []*computev1.Disk{}
 	for _, zone := range zones {
-		lCall := cloud.service.Disks.List(cloud.project, zone)
+		lCall := service.Disks.List(project, zone)
 		lCall.Fields(fields...)
 		lCall.Filter(filter)
 		nextPageToken := "pageToken"
 		for nextPageToken != "" {
 			diskList, err := lCall.Do()
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
 			items = append(items, diskList.Items...)
 			nextPageToken = diskList.NextPageToken
 			lCall.PageToken(nextPageToken)
 		}
 	}
-	return items, "", nil
+	return items, nil
 }
 
 // ListInstances lists instances based on maxEntries and pageToken for the project and region
@@ -210,8 +237,22 @@ func (cloud *CloudProvider) ListInstances(ctx context.Context, fields []googleap
 	}
 	items := []*computev1.Instance{}
 
+	for p, s := range cloud.tenantServiceMap {
+		instances, err := cloud.listInstancesForProject(s, p, zones, fields)
+		if err != nil {
+			return nil, "", err
+		}
+		items = append(items, instances...)
+	}
+
+	return items, "", nil
+}
+
+func (cloud *CloudProvider) listInstancesForProject(service *computev1.Service, project string, zones []string, fields []googleapi.Field) ([]*computev1.Instance, error) {
+	items := []*computev1.Instance{}
+
 	for _, zone := range zones {
-		lCall := cloud.service.Instances.List(cloud.project, zone)
+		lCall := service.Instances.List(project, zone)
 		for _, filter := range cloud.listInstancesConfig.Filters {
 			lCall = lCall.Filter(filter)
 		}
@@ -220,15 +261,14 @@ func (cloud *CloudProvider) ListInstances(ctx context.Context, fields []googleap
 		for nextPageToken != "" {
 			instancesList, err := lCall.Do()
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
 			items = append(items, instancesList.Items...)
 			nextPageToken = instancesList.NextPageToken
 			lCall.PageToken(nextPageToken)
 		}
 	}
-
-	return items, "", nil
+	return items, nil
 }
 
 // RepairUnderspecifiedVolumeKey will query the cloud provider and check each zone for the disk specified
@@ -857,7 +897,11 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 		ForceAttach: forceAttach,
 	}
 
-	op, err := cloud.service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).ForceAttach(forceAttach).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.Instances.AttachDisk(project, instanceZone, instanceName, attachedDiskV1).Context(ctx).ForceAttach(forceAttach).Do()
 	if err != nil {
 		return fmt.Errorf("failed cloud service attach disk call: %w", err)
 	}
@@ -872,7 +916,11 @@ func (cloud *CloudProvider) AttachDisk(ctx context.Context, project string, volK
 
 func (cloud *CloudProvider) DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error {
 	klog.V(5).Infof("Detaching disk %v from %v", deviceName, instanceName)
-	op, err := cloud.service.Instances.DetachDisk(project, instanceZone, instanceName, deviceName).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.Instances.DetachDisk(project, instanceZone, instanceName, deviceName).Context(ctx).Do()
 	if err != nil {
 		return err
 	}
@@ -1041,7 +1089,7 @@ func (cloud *CloudProvider) waitForAttachOnInstance(ctx context.Context, project
 	start := time.Now()
 	return wait.ExponentialBackoff(AttachDiskBackoff, func() (bool, error) {
 		klog.V(6).Infof("Polling instances.get for attach of disk %v to instance %v to complete for %v", volKey.Name, instanceName, time.Since(start))
-		instance, err := cloud.GetInstanceOrError(ctx, instanceZone, instanceName)
+		instance, err := cloud.GetInstanceOrError(ctx, project, instanceZone, instanceName)
 		if err != nil {
 			return false, fmt.Errorf("GetInstance failed to get instance: %w", err)
 		}
@@ -1145,10 +1193,13 @@ func opIsDone(op *computev1.Operation) (bool, error) {
 	return true, nil
 }
 
-func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*computev1.Instance, error) {
+func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, project, instanceZone, instanceName string) (*computev1.Instance, error) {
 	klog.V(5).Infof("Getting instance %v from zone %v", instanceName, instanceZone)
-	project := cloud.project
-	instance, err := cloud.service.Instances.Get(project, instanceZone, instanceName).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	instance, err := service.Instances.Get(project, instanceZone, instanceName).Do()
 	if err != nil {
 		return nil, err
 	}
