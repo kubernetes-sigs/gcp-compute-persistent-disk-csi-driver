@@ -378,7 +378,7 @@ func (cloud *FakeCloudProvider) InsertInstance(instance *computev1.Instance, ins
 	return
 }
 
-func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, instanceZone, instanceName string) (*computev1.Instance, error) {
+func (cloud *FakeCloudProvider) GetInstanceOrError(ctx context.Context, project, instanceZone, instanceName string) (*computev1.Instance, error) {
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
 		return nil, notFoundError()

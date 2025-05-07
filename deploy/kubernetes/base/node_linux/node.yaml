@@ -47,6 +47,7 @@ spec:
             - "--endpoint=unix:/csi/csi.sock"
             - "--run-controller-service=false"
             - "--enable-data-cache"
+            - "--enable-multitenancy"
             - "--node-name=$(KUBE_NODE_NAME)"
           securityContext:
             privileged: true
