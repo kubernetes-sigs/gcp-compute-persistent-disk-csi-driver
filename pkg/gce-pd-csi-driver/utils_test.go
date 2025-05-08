@@ -18,11 +18,13 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -855,5 +857,26 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 		if am != tc.want {
 			t.Errorf("want %s, got %s", tc.want, am)
 		}
+	}
+}
+
+func TestLogGRPC(t *testing.T) {
+	info := &grpc.UnaryServerInfo{
+		FullMethod: "foo",
+	}
+
+	req := struct {
+		Secrets map[string]string
+	}{map[string]string{
+		"password": "pass",
+	}}
+
+	handler := func(ctx context.Context, req any) (any, error) {
+		return nil, nil
+	}
+
+	_, err := logGRPC(nil, req, info, handler)
+	if err != nil {
+		t.Fatalf("logGRPC returns error %v", err)
 	}
 }
