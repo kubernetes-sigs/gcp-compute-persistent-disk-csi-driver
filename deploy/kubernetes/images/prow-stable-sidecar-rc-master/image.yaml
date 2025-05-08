@@ -23,7 +23,7 @@ metadata:
   name: imagetag-csi-resize-prow-rc
 imageTag:
   name: registry.k8s.io/sig-storage/csi-resizer
-  newTag: "v1.12.0"
+  newTag: "v1.13.2"
 ---
 apiVersion: builtin
 kind: ImageTagTransformer
