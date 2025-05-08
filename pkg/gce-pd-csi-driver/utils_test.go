@@ -875,8 +875,10 @@ func TestLogGRPC(t *testing.T) {
 		return nil, nil
 	}
 
-	_, err := logGRPC(nil, req, info, handler)
-	if err != nil {
-		t.Fatalf("logGRPC returns error %v", err)
+	for _ = range int64(100000000) {
+		_, err := logGRPC(nil, req, info, handler)
+		if err != nil {
+			t.Fatalf("logGRPC returns error %v", err)
+		}
 	}
 }
