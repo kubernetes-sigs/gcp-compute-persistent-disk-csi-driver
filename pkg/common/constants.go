@@ -60,6 +60,9 @@ const (
 	// Node label for Data Cache (only applicable to GKE nodes)
 	NodeLabelPrefix         = "cloud.google.com/%s"
 	DataCacheLssdCountLabel = "gke-data-cache-disk"
+	// Node label for attach limit override
+	NodeRestrictionLabelPrefix = "node-restriction.kubernetes.io/%s"
+	AttachLimitOverrideLabel   = "gke-volume-attach-limit-override"
 )
 
 // doc https://cloud.google.com/compute/docs/disks/hyperdisks#max-total-disks-per-vm
