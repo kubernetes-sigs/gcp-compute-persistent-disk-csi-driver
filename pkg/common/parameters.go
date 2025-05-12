@@ -36,6 +36,7 @@ const (
 	ParameterAvailabilityClass                = "availability-class"
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
+	ParameterKeyUseAllowedDiskTopology        = "use-allowed-disk-topology"
 
 	// Parameters for Data Cache
 	ParameterKeyDataCacheSize               = "data-cache-size"
@@ -132,6 +133,9 @@ type DiskParameters struct {
 	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
 	// Default: READ_WRITE_SINGLE
 	AccessMode string
+	// Values {}
+	// Default: false
+	UseAllowedDiskTopology bool
 }
 
 func (dp *DiskParameters) IsRegional() bool {
@@ -160,6 +164,7 @@ type ParameterProcessor struct {
 	EnableStoragePools bool
 	EnableMultiZone    bool
 	EnableHdHA         bool
+	EnableDiskTopology bool
 }
 
 type ModifyVolumeParameters struct {
@@ -319,6 +324,17 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if v != "" {
 				p.AccessMode = v
 			}
+		case ParameterKeyUseAllowedDiskTopology:
+			if !pp.EnableDiskTopology {
+				return p, d, fmt.Errorf("parameters contains invalid option %q when disk topology is not enabled", ParameterKeyUseAllowedDiskTopology)
+			}
+
+			paramUseAllowedDiskTopology, err := ConvertStringToBool(v)
+			if err != nil {
+				return p, d, fmt.Errorf("failed to convert %s parameter with value %q to bool: %w", ParameterKeyUseAllowedDiskTopology, v, err)
+			}
+
+			p.UseAllowedDiskTopology = paramUseAllowedDiskTopology
 		default:
 			return p, d, fmt.Errorf("parameters contains invalid option %q", k)
 		}

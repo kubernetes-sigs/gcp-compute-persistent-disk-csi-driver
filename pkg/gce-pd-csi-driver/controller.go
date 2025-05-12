@@ -1339,6 +1339,7 @@ func (gceCS *GCEControllerServer) parameterProcessor() *common.ParameterProcesso
 		EnableStoragePools: gceCS.enableStoragePools,
 		EnableMultiZone:    gceCS.multiZoneVolumeHandleConfig.Enable,
 		EnableHdHA:         gceCS.enableHdHA,
+		EnableDiskTopology: gceCS.EnableDiskTopology,
 	}
 }
 
@@ -2418,7 +2419,11 @@ func (gceCS *GCEControllerServer) generateCreateVolumeResponseWithVolumeId(disk 
 			},
 		}
 
-		if gceCS.EnableDiskTopology {
+		// The addition of the disk type label requires both the feature to be
+		// enabled on the PDCSI binary via the `--disk-topology=true` flag AND
+		// the StorageClass to have the `use-allowed-disk-topology` parameter
+		// set to `true`.
+		if gceCS.EnableDiskTopology && params.UseAllowedDiskTopology {
 			top.Segments[common.DiskTypeLabelKey(params.DiskType)] = "true"
 		}
 
