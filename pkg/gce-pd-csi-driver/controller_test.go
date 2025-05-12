@@ -1349,13 +1349,43 @@ func TestCreateVolumeArguments(t *testing.T) {
 		},
 		// Disk Topology Enabled tests
 		{
-			name: "success with disk topology enabled",
+			name: "success with disk topology enabled and StorageClass useAllowedDiskTopology false",
 			req: &csi.CreateVolumeRequest{
 				Name:               "test-name",
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         stdParams,
+				Parameters: mergeParameters(
+					stdParams,
+					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "false"},
+				),
 			},
+			enableDiskTopology: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							common.TopologyKeyZone: zone,
+							// Disk not type not included since useAllowedDiskTopology is false
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success with disk topology enabled and StorageClass useAllowedDiskTopology true",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: mergeParameters(
+					stdParams,
+					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "true"},
+				),
+			},
+			enableDiskTopology: true,
 			expVol: &csi.Volume{
 				CapacityBytes: common.GbToBytes(20),
 				VolumeId:      testVolumeID,
@@ -1370,46 +1400,46 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-			enableDiskTopology: true,
 		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
-		t.Logf("test case: %s", tc.name)
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup new driver each time so no interference
+			args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
+			gceDriver := initGCEDriver(t, nil, args)
+			gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
-		// Setup new driver each time so no interference
-		args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
-		gceDriver := initGCEDriver(t, nil, args)
-		gceDriver.cs.enableStoragePools = tc.enableStoragePools
-
-		// Start Test
-		resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
-		if err != nil {
-			serverError, ok := status.FromError(err)
-			if !ok {
-				t.Fatalf("Could not get error status code from err: %v", serverError)
+			// Start Test
+			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)
+			if err != nil {
+				serverError, ok := status.FromError(err)
+				if !ok {
+					t.Fatalf("Could not get error status code from err: %v", serverError)
+				}
+				if serverError.Code() != tc.expErrCode {
+					t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+				}
+				return
 			}
-			if serverError.Code() != tc.expErrCode {
-				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
+
+			t.Logf("ErrorCode: %v", err)
+			if tc.expErrCode != codes.OK {
+				t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
 			}
-			continue
-		}
-		t.Logf("ErroCode: %v", err)
-		if tc.expErrCode != codes.OK {
-			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
-		}
 
-		// Make sure responses match
-		vol := resp.GetVolume()
-		if vol == nil {
-			// If one is nil but not both
-			t.Fatalf("Expected volume %v, got nil volume", tc.expVol)
-		}
+			// Make sure responses match
+			vol := resp.GetVolume()
+			if vol == nil {
+				// If one is nil but not both
+				t.Fatalf("Expected volume %v, got nil volume", tc.expVol)
+			}
 
-		if diff := cmp.Diff(vol, tc.expVol, protocmp.Transform()); diff != "" {
-			t.Errorf("unexpected diff (-vol, +expVol): \n%s", diff)
-		}
+			if diff := cmp.Diff(vol, tc.expVol, protocmp.Transform()); diff != "" {
+				t.Errorf("unexpected diff (-vol, +expVol): \n%s", diff)
+			}
+		})
 	}
 }
 
@@ -5817,4 +5847,15 @@ func googleapiErrContainsReason(err *googleapi.Error, reason string) bool {
 		}
 	}
 	return false
+}
+
+func mergeParameters(a map[string]string, b map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for k, v := range a {
+		merged[k] = v
+	}
+	for k, v := range b {
+		merged[k] = v
+	}
+	return merged
 }
