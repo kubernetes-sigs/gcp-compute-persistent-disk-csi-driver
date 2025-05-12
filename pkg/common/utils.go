@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -770,6 +771,25 @@ func MapNumber(num int64) int64 {
 		}
 	}
 	return 0
+}
+
+func ExtractCPUFromMachineType(input string) (int64, error) {
+	// Regex to find the number at the end of the string,
+	// it allows optional -lssd suffix.
+	re := regexp.MustCompile(`(\d+)(?:-lssd|-metal)?$`)
+
+	match := re.FindStringSubmatch(input)
+	if len(match) < 2 {
+		return 0, fmt.Errorf("no number found at the end of the input string: %s", input)
+	}
+
+	numberStr := match[1]
+	number, err := strconv.ParseInt(numberStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert string '%s' to integer: %w", numberStr, err)
+	}
+
+	return number, nil
 }
 
 func DiskTypeLabelKey(diskType string) string {
