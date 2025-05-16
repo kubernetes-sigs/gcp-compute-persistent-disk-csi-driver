@@ -15,6 +15,7 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -51,6 +52,7 @@ type GCENodeServer struct {
 	MetadataService          metadataservice.MetadataService
 	EnableDataCache          bool
 	DataCacheEnabledNodePool bool
+	SysfsPath                string
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
@@ -87,6 +89,9 @@ type NodeServerArgs struct {
 	EnableDataCache bool
 
 	DataCacheEnabledNodePool bool
+
+	// SysfsPath defaults to "/sys", except if it's a unit test.
+	SysfsPath string
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -112,12 +117,17 @@ const (
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
 	fsTypeExt3                 = "ext3"
+	fsTypeBtrfs                = "btrfs"
 
 	readAheadKBMountFlagRegexPattern = "^read_ahead_kb=(.+)$"
+	btrfsReclaimDataRegexPattern     = "^btrfs-allocation-data-bg_reclaim_threshold=(\\d{1,2})$"     // 0-99 are valid, incl. 00
+	btrfsReclaimMetadataRegexPattern = "^btrfs-allocation-metadata-bg_reclaim_threshold=(\\d{1,2})$" // ditto ^
 )
 
 var (
 	readAheadKBMountFlagRegex = regexp.MustCompile(readAheadKBMountFlagRegexPattern)
+	btrfsReclaimDataRegex     = regexp.MustCompile(btrfsReclaimDataRegexPattern)
+	btrfsReclaimMetadataRegex = regexp.MustCompile(btrfsReclaimMetadataRegexPattern)
 )
 
 func getDefaultFsType() string {
@@ -390,6 +400,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// Part 3: Mount device to stagingTargetPath
 	fstype := getDefaultFsType()
 
+	var btrfsReclaimData, btrfsReclaimMetadata string
 	shouldUpdateReadAhead := false
 	var readAheadKB int64
 	options := []string{}
@@ -402,6 +413,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		readAheadKB, shouldUpdateReadAhead, err = extractReadAheadKBMountFlag(mnt.MountFlags)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "failure parsing mount flags: %v", err.Error())
+		}
+
+		if mnt.FsType == fsTypeBtrfs {
+			btrfsReclaimData, btrfsReclaimMetadata = extractBtrfsReclaimFlags(mnt.MountFlags)
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
@@ -454,8 +469,62 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	}
 
+	// Part 6: if configured, write sysfs values
+	if !readonly {
+		sysfs := map[string]string{}
+		if btrfsReclaimData != "" {
+			sysfs["allocation/data/bg_reclaim_threshold"] = btrfsReclaimData
+		}
+		if btrfsReclaimMetadata != "" {
+			sysfs["allocation/metadata/bg_reclaim_threshold"] = btrfsReclaimMetadata
+		}
+
+		if len(sysfs) > 0 {
+			args := []string{"--match-tag", "UUID", "--output", "value", stagingTargetPath}
+			cmd := ns.Mounter.Exec.Command("blkid", args...)
+			var stderr bytes.Buffer
+			cmd.SetStderr(&stderr)
+			klog.V(4).Infof(
+				"running %q for volume %s",
+				strings.Join(append([]string{"blkid"}, args...), " "),
+				volumeID,
+			)
+			uuid, err := cmd.Output()
+			if err != nil {
+				klog.Errorf("blkid failed for %s. stderr:\n%s", volumeID, stderr.String())
+				return nil, status.Errorf(codes.Internal, "blkid failed: %v", err)
+			}
+			uuid = bytes.TrimRight(uuid, "\n")
+
+			for key, value := range sysfs {
+				path := fmt.Sprintf("%s/fs/btrfs/%s/%s", ns.SysfsPath, uuid, key)
+				if err := writeSysfs(path, value); err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+				klog.V(4).Infof("NodeStageVolume set %s %s=%s", volumeID, key, value)
+			}
+		}
+	}
+
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
+}
+
+func writeSysfs(path, value string) (_err error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_err = errors.Join(_err, f.Close())
+	}()
+
+	if _, err := f.Write([]byte(value)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (ns *GCENodeServer) updateReadAhead(devicePath string, readAheadKB int64) error {
@@ -472,6 +541,18 @@ func (ns *GCENodeServer) updateReadAhead(devicePath string, readAheadKB int64) e
 	}
 
 	return nil
+}
+
+func extractBtrfsReclaimFlags(mountFlags []string) (string, string) {
+	var reclaimData, reclaimMetadata string
+	for _, mountFlag := range mountFlags {
+		if got := btrfsReclaimDataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
+			reclaimData = got[1]
+		} else if got := btrfsReclaimMetadataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
+			reclaimMetadata = got[1]
+		}
+	}
+	return reclaimData, reclaimMetadata
 }
 
 func extractReadAheadKBMountFlag(mountFlags []string) (int64, bool, error) {

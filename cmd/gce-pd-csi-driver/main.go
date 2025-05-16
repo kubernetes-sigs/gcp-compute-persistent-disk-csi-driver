@@ -265,6 +265,7 @@ func handle() {
 			DeviceInUseTimeout:       *deviceInUseTimeout,
 			EnableDataCache:          *enableDataCacheFlag,
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
+			SysfsPath:                "/sys",
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 

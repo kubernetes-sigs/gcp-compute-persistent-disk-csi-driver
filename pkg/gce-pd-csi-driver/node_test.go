@@ -537,18 +537,34 @@ func TestNodeStageVolume(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
+	btrfsUUID := "00000000-0000-0000-0000-000000000001"
+	btrfsPrefix := fmt.Sprintf("%s/sys/fs/btrfs/%s/allocation", tempDir, btrfsUUID)
+
+	for _, suffix := range []string{"data", "metadata"} {
+		dir := btrfsPrefix + "/" + suffix
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("Failed to set up fake sysfs dir %q: %v", dir, err)
+		}
+		fname := dir + "/bg_reclaim_threshold"
+		if err := os.WriteFile(fname, []byte("0\n"), 0644); err != nil {
+			t.Fatalf("write %q: %v", fname, err)
+		}
+	}
+
 	testCases := []struct {
-		name               string
-		req                *csi.NodeStageVolumeRequest
-		deviceSize         int
-		blockExtSize       int
-		readonlyBit        string
-		expResize          bool
-		expReadAheadUpdate bool
-		expReadAheadKB     string
-		readAheadSectors   string
-		sectorSizeInBytes  int
-		expErrCode         codes.Code
+		name                 string
+		req                  *csi.NodeStageVolumeRequest
+		deviceSize           int
+		blockExtSize         int
+		readonlyBit          string
+		expResize            bool
+		expReadAheadUpdate   bool
+		expReadAheadKB       string
+		readAheadSectors     string
+		btrfsReclaimData     string
+		btrfsReclaimMetadata string
+		sectorSizeInBytes    int
+		expErrCode           codes.Code
 	}{
 		{
 			name: "Valid request, no resize because block and filesystem sizes match",
@@ -597,6 +613,76 @@ func TestNodeStageVolume(t *testing.T) {
 			blockExtSize: 1,
 			readonlyBit:  "0",
 			expResize:    false,
+		},
+		{
+			name: "btrfs-allocation-data-bg_reclaim_threshold is ignored on non-btrfs",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType:     "ext4",
+							MountFlags: []string{"btrfs-allocation-data-bg_reclaim_threshold=90"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			deviceSize:       1,
+			blockExtSize:     1,
+			readonlyBit:      "0",
+			btrfsReclaimData: "0",
+		},
+		{
+			name: "Valid request, set btrfs-allocation-data-bg_reclaim_threshold=90",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType:     "btrfs",
+							MountFlags: []string{"btrfs-allocation-data-bg_reclaim_threshold=90"},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			deviceSize:       1,
+			blockExtSize:     1,
+			readonlyBit:      "0",
+			btrfsReclaimData: "90",
+		},
+		{
+			name: "Valid request, set btrfs-allocation-{,meta}data-bg_reclaim_threshold",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "btrfs",
+							MountFlags: []string{
+								"btrfs-allocation-data-bg_reclaim_threshold=90",
+								"btrfs-allocation-metadata-bg_reclaim_threshold=91",
+							},
+						},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			},
+			deviceSize:           1,
+			blockExtSize:         1,
+			readonlyBit:          "0",
+			btrfsReclaimData:     "90",
+			btrfsReclaimMetadata: "91",
 		},
 		{
 			name: "Valid request, update readahead",
@@ -730,6 +816,7 @@ func TestNodeStageVolume(t *testing.T) {
 		t.Logf("Test case: %s", tc.name)
 		resizeCalled := false
 		readAheadUpdateCalled := false
+		blkidCalled := false
 		actionList := []testingexec.FakeCommandAction{
 			makeFakeCmd(
 				&testingexec.FakeCmd{
@@ -853,9 +940,26 @@ func TestNodeStageVolume(t *testing.T) {
 				),
 			}...)
 		}
+		if tc.btrfsReclaimData != "" || tc.btrfsReclaimMetadata != "" {
+			actionList = append(actionList, []testingexec.FakeCommandAction{
+				makeFakeCmd(
+					&testingexec.FakeCmd{
+						OutputScript: []testingexec.FakeAction{
+							func() ([]byte, []byte, error) {
+								blkidCalled = true
+								return []byte(btrfsUUID + "\n"), nil, nil
+							},
+						},
+					},
+					"blkid",
+					[]string{"--match-tag", "UUID", "--output", "value", stagingPath}...,
+				),
+			}...)
+		}
 		mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
 		gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
 		ns := gceDriver.ns
+		ns.SysfsPath = tempDir + "/sys"
 		_, err := ns.NodeStageVolume(context.Background(), tc.req)
 		if err != nil {
 			serverError, ok := status.FromError(err)
@@ -881,6 +985,30 @@ func TestNodeStageVolume(t *testing.T) {
 		}
 		if tc.expReadAheadUpdate == false && readAheadUpdateCalled == true {
 			t.Fatalf("Test updated read ahead, but it was not expected.")
+		}
+		if tc.btrfsReclaimData == "" && tc.btrfsReclaimMetadata == "" && blkidCalled {
+			t.Fatalf("blkid was called, but was not expected.")
+		}
+
+		if tc.btrfsReclaimData != "" {
+			fname := btrfsPrefix + "/data/bg_reclaim_threshold"
+			got, err := os.ReadFile(fname)
+			if err != nil {
+				t.Fatalf("read %q: %v", fname, err)
+			}
+			if s := strings.TrimSpace(string(got)); s != tc.btrfsReclaimData {
+				t.Fatalf("%q: expected %q, got %q", fname, tc.btrfsReclaimData, s)
+			}
+		}
+		if tc.btrfsReclaimMetadata != "" {
+			fname := btrfsPrefix + "/metadata/bg_reclaim_threshold"
+			got, err := os.ReadFile(fname)
+			if err != nil {
+				t.Fatalf("read %q: %v", fname, err)
+			}
+			if s := strings.TrimSpace(string(got)); s != tc.btrfsReclaimMetadata {
+				t.Fatalf("%q: expected %q, got %q", fname, tc.btrfsReclaimMetadata, s)
+			}
 		}
 	}
 }

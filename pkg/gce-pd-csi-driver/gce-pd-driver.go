@@ -157,6 +157,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		deviceInUseErrors:        newDeviceErrMap(args.DeviceInUseTimeout),
 		EnableDataCache:          args.EnableDataCache,
 		DataCacheEnabledNodePool: args.DataCacheEnabledNodePool,
+		SysfsPath:                args.SysfsPath,
 	}
 }
 
