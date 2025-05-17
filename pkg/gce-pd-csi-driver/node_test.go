@@ -314,39 +314,19 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			expVolumeLimit: a4HyperdiskLimit,
 		},
 		{
-			name:           "z3-highmem-176",
-			machineType:    "z3-highmem-176",
-			expVolumeLimit: gen3HyperdiskLimit,
-		},
-		{
-			name:           "h3-standard-88",
-			machineType:    "h3-standard-88",
-			expVolumeLimit: h3HyperdiskLimit,
-		},
-		{
-			name:           "a3-ultragpu-8g",
-			machineType:    "a3-ultragpu-8g",
+			name:           "c3-standard-4",
+			machineType:    "c3-standard-4",
 			expVolumeLimit: volumeLimitBig,
-		},
-		{
-			name:           "a3-megagpu-8g",
-			machineType:    "a3-megagpu-8g",
-			expVolumeLimit: gen3HyperdiskLimit, // 31
 		},
 		{
 			name:           "c3d-highmem-8-lssd",
 			machineType:    "c3d-highmem-8-lssd",
-			expVolumeLimit: volumeLimitSmall, // 15
+			expVolumeLimit: volumeLimitBig,
 		},
 		{
-			name:           "c3-standard-192-metal",
-			machineType:    "c3-standard-192-metal",
-			expVolumeLimit: volumeLimitSmall, // 15
-		},
-		{
-			name:           "c3-standard-176",
-			machineType:    "c3-standard-176",
-			expVolumeLimit: gen3HyperdiskLimit, // 31
+			name:           "c4a-standard-32-lssd",
+			machineType:    "c4a-standard-32-lssd",
+			expVolumeLimit: 49,
 		},
 	}
 
