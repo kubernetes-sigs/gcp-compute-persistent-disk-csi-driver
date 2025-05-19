@@ -103,12 +103,7 @@ const (
 	// doc https://cloud.google.com/compute/docs/memory-optimized-machines#x4_disks
 	x4HyperdiskLimit int64 = 39
 	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a4-disks
-	a4HyperdiskLimit int64 = 127
-	// doc https://cloud.google.com/compute/docs/storage-optimized-machines#z3_disks
-	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a3-disks
-	gen3HyperdiskLimit int64 = 31
-	// doc https://cloud.google.com/compute/docs/compute-optimized-machines#h3_disks
-	h3HyperdiskLimit     int64 = 7 // Use limit for Hyperdisk Balanced
+	a4HyperdiskLimit     int64 = 127
 	defaultLinuxFsType         = "ext4"
 	defaultWindowsFsType       = "ntfs"
 	fsTypeExt3                 = "ext3"
@@ -781,36 +776,6 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 		if strings.HasPrefix(machineType, "a4-") {
 			return a4HyperdiskLimit, nil
 		}
-	}
-
-	// Process gen3 machine attach limits
-	gen3MachineTypesPrefix := []string{"c3-", "c3d-"}
-	for _, gen3Prefix := range gen3MachineTypesPrefix {
-		if strings.HasPrefix(machineType, gen3Prefix) {
-			cpus, err := common.ExtractCPUFromMachineType(machineType)
-			if err != nil {
-				return volumeLimitSmall, err
-			}
-			if cpus <= 8 || strings.Contains(machineType, "metal") {
-				return volumeLimitSmall, nil
-			}
-			return gen3HyperdiskLimit, nil
-
-		}
-		if strings.HasPrefix(machineType, "z3-") {
-			return gen3HyperdiskLimit, nil
-		}
-		if strings.HasPrefix(machineType, "h3-") {
-			return h3HyperdiskLimit, nil
-		}
-		if strings.HasPrefix(machineType, "a3-") {
-			if machineType == "a3-ultragpu-8g" {
-				return volumeLimitBig, nil
-			} else {
-				return gen3HyperdiskLimit, nil
-			}
-		}
-
 	}
 
 	return volumeLimitBig, nil
