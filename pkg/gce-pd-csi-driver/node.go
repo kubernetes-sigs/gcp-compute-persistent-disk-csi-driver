@@ -656,7 +656,9 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 
 	volumeLimits, err := ns.GetVolumeLimits(ctx)
 	if err != nil {
-		klog.Errorf("GetVolumeLimits failed: %v", err.Error())
+		klog.Errorf("GetVolumeLimits failed: %v. The error is ignored so that the driver can register", err.Error())
+		// No error should be returned from NodeGetInfo, otherwise the driver will not register
+		err = nil
 	}
 
 	resp := &csi.NodeGetInfoResponse{
@@ -843,13 +845,17 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-"}
 	for _, gen4Prefix := range gen4MachineTypesPrefix {
 		if strings.HasPrefix(machineType, gen4Prefix) {
-			cpuString := machineType[strings.LastIndex(machineType, "-")+1:]
-			cpus, err := strconv.ParseInt(cpuString, 10, 64)
-			if err != nil {
-				return volumeLimitSmall, fmt.Errorf("invalid cpuString %s for machine type: %v", cpuString, machineType)
+			machineTypeSlice := strings.Split(machineType, "-")
+			if len(machineTypeSlice) > 2 {
+				cpuString := machineTypeSlice[2]
+				cpus, err := strconv.ParseInt(cpuString, 10, 64)
+				if err != nil {
+					return volumeLimitBig, fmt.Errorf("invalid cpuString %s for machine type: %v", cpuString, machineType)
+				}
+				return common.MapNumber(cpus), nil
+			} else {
+				return volumeLimitBig, fmt.Errorf("unconventional machine type: %v", machineType)
 			}
-			return common.MapNumber(cpus), nil
-
 		}
 		if strings.HasPrefix(machineType, "x4-") {
 			return x4HyperdiskLimit, nil
