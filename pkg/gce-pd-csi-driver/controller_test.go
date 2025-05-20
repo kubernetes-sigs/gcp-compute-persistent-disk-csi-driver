@@ -41,7 +41,6 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	clock "k8s.io/utils/clock/testing"
-	"k8s.io/utils/strings/slices"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -5016,7 +5015,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 		if err == nil && tc.expErr {
 			t.Errorf("got no error, but expected error")
 		}
-		if !slices.Equal(gotZones, tc.expZones) {
+		if !zonesEqual(gotZones, tc.expZones) {
 			t.Errorf("Expected zones: %v, but got: %v", tc.expZones, gotZones)
 		}
 	}
@@ -5026,8 +5025,12 @@ func zonesEqual(gotZones, expectedZones []string) bool {
 	if len(gotZones) != len(expectedZones) {
 		return false
 	}
-	for i := 0; i < len(gotZones); i++ {
-		if gotZones[i] != expectedZones[i] {
+	gotSet := make(map[string]bool)
+	for _, zone := range gotZones {
+		gotSet[zone] = true
+	}
+	for _, zone := range expectedZones {
+		if !gotSet[zone] {
 			return false
 		}
 	}
