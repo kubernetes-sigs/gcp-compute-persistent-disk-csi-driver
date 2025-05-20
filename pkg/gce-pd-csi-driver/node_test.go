@@ -277,14 +277,30 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			expVolumeLimit: 31,
 		},
 		{
+			name:           "n4-micro", // This type does not exist, but testing edge cases
+			machineType:    "n4-micro",
+			expVolumeLimit: volumeLimitBig,
+			expectError:    true,
+		},
+		{
 			name:           "n4-highcpu-4",
 			machineType:    "n4-highcpu-4",
 			expVolumeLimit: 15,
 		},
 		{
+			name:           "n4-custom-8-12345-ext",
+			machineType:    "n4-custom-8-12345-ext",
+			expVolumeLimit: 23,
+		},
+		{
+			name:           "n4-custom-16-12345",
+			machineType:    "n4-custom-16-12345",
+			expVolumeLimit: 31,
+		},
+		{
 			name:           "invalid gen4 machine type",
 			machineType:    "n4-highcpu-4xyz",
-			expVolumeLimit: volumeLimitSmall,
+			expVolumeLimit: volumeLimitBig,
 			expectError:    true,
 		},
 		{
