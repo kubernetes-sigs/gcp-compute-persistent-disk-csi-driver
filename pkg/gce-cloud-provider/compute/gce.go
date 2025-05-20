@@ -210,7 +210,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 				defer tenantServiceMutex.Unlock()
 
 				if _, ok := cp.tenantServiceMap[tenantMeta.ProjectNumber]; ok {
-					klog.Infof("tenant GCE client already exists, skipping GCE client instantiation for tenant(%s) with project number(%s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
+					klog.Infof("Tenant GCE client already exists, skipping GCE client instantiation for tenant(%s) with project number(%s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
 					return
 				}
 
@@ -223,8 +223,6 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 				if err != nil {
 					klog.Errorf("error during tenant token generation: %v", err.Error())
 				}
-				klog.Infof("Compute endpoint in add func: %s", computeEndpoint)
-				klog.Infof("Compute environment in add func: %s", computeEnvironment)
 
 				svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
 				if err != nil {
