@@ -61,7 +61,7 @@ var (
 		Help:           "Node server file system mounting errors",
 		StabilityLevel: metrics.ALPHA,
 	},
-		[]string{"error_type"},
+		[]string{"driver_name", "files_system_format", "error_type"},
 	)
 )
 
@@ -115,10 +115,10 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
 }
 
-func (mm *MetricsManager) RecordMountErrorMetric(err error) {
+func (mm *MetricsManager) RecordMountErrorMetric(fs_format string, err error) {
 	mntErr := &mount.MountError{}
 	if errors.As(err, mntErr) {
-		mountErrorMetric.WithLabelValues(string(mntErr.Type)).Inc()
+		mountErrorMetric.WithLabelValues(pdcsiDriverName, fs_format, string(mntErr.Type)).Inc()
 	}
 
 	klog.Infof("Recorded mount error type: %q", mntErr.Type)

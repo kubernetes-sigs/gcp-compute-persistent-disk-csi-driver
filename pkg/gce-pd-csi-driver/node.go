@@ -449,7 +449,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 
 		if ns.metricsManager != nil {
-			ns.metricsManager.RecordMountErrorMetric(err)
+			ns.metricsManager.RecordMountErrorMetric(fstype, err)
 		}
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to format and mount device from (%q) to (%q) with fstype (%q) and options (%q): %v",
