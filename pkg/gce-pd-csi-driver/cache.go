@@ -617,7 +617,7 @@ func InitializeDataCacheNode(nodeId string) error {
 	return nil
 }
 
-func StartWatcher(nodeName string) {
+func StartWatcher(ctx context.Context, nodeName string) {
 	dirToWatch := "/dev/"
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -632,7 +632,7 @@ func StartWatcher(nodeName string) {
 	}
 	errorCh := make(chan error, 1)
 	// Handle the error received from the watcher goroutine
-	go watchDiskDetaches(watcher, nodeName, errorCh)
+	go watchDiskDetaches(ctx, watcher, nodeName, errorCh)
 
 	select {
 	case err := <-errorCh:
@@ -640,9 +640,12 @@ func StartWatcher(nodeName string) {
 	}
 }
 
-func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan error) error {
+func watchDiskDetaches(ctx context.Context, watcher *fsnotify.Watcher, nodeName string, errorCh chan error) error {
 	for {
 		select {
+		case <-ctx.Done():
+			klog.Infof("Context done, stopping watcher")
+			return nil
 		// watch for errors
 		case err := <-watcher.Errors:
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)
