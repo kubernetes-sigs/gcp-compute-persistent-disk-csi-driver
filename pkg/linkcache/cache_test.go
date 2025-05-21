@@ -4,7 +4,11 @@ import (
 	"os"
 	"testing"
 	"testing/fstest"
+
+	"github.com/google/go-cmp/cmp"
 )
+
+var allowUnexportedLinkCache = cmp.AllowUnexported(linkCache{}, linkCacheEntry{})
 
 const (
 	// Test disk names in /dev/disk/by-id format
@@ -49,7 +53,7 @@ func TestListAndUpdate(t *testing.T) {
 	tests := []struct {
 		name          string
 		setupFS       func(*mockFS)
-		expectedLinks map[string]string
+		expectedCache *linkCache
 		expectError   bool
 	}{
 		{
@@ -62,9 +66,11 @@ func TestListAndUpdate(t *testing.T) {
 				m.symlinks[gcpPersistentDiskID] = devicePathSDA
 				m.symlinks[gcpPVCID] = devicePathSDB
 			},
-			expectedLinks: map[string]string{
-				gcpPersistentDiskID: devicePathSDA,
-				gcpPVCID:            devicePathSDB,
+			expectedCache: &linkCache{
+				devices: map[string]linkCacheEntry{
+					gcpPersistentDiskID: {path: devicePathSDA, brokenSymlink: false},
+					gcpPVCID:            {path: devicePathSDB, brokenSymlink: false},
+				},
 			},
 			expectError: false,
 		},
@@ -74,8 +80,10 @@ func TestListAndUpdate(t *testing.T) {
 				m.MapFS[gcpPersistentDiskID] = &fstest.MapFile{}
 				// No symlink target for gcpPersistentDiskID
 			},
-			expectedLinks: map[string]string{},
-			expectError:   true,
+			expectedCache: &linkCache{
+				devices: map[string]linkCacheEntry{},
+			},
+			expectError: true,
 		},
 		{
 			name: "partition files ignored",
@@ -85,8 +93,10 @@ func TestListAndUpdate(t *testing.T) {
 				m.symlinks[gcpPersistentDiskID] = devicePathSDA
 				m.symlinks[gcpPersistentDiskPartitionID] = devicePathSDA + "1"
 			},
-			expectedLinks: map[string]string{
-				gcpPersistentDiskID: devicePathSDA,
+			expectedCache: &linkCache{
+				devices: map[string]linkCacheEntry{
+					gcpPersistentDiskID: {path: devicePathSDA, brokenSymlink: false},
+				},
 			},
 			expectError: false,
 		},
@@ -111,129 +121,65 @@ func TestListAndUpdate(t *testing.T) {
 				}
 			}
 
-			// Verify the cache contents
-			for symlink, expectedTarget := range tt.expectedLinks {
-				entry, exists := cache.links.devices[symlink]
-				if !exists {
-					t.Errorf("symlink %s should exist in cache", symlink)
-					continue
-				}
-				if entry.path != expectedTarget {
-					t.Errorf("symlink %s should point to %s, got %s", symlink, expectedTarget, entry.path)
-				}
-				if entry.brokenSymlink {
-					t.Errorf("symlink %s should not be marked as broken", symlink)
-				}
+			// Compare the entire cache state
+			if diff := cmp.Diff(tt.expectedCache, cache.links, allowUnexportedLinkCache); diff != "" {
+				t.Errorf("linkCache mismatch (-expected +got):\n%s", diff)
 			}
 		})
 	}
 }
 
-func TestListAndUpdateWithChanges(t *testing.T) {
-	mock := newMockFS()
-	cache := NewListingCache(0, ".")
-	cache.fs = mock
-
-	// Initial state: one disk with a valid symlink
-	mock.MapFS[gcpPersistentDiskID] = &fstest.MapFile{}
-	mock.symlinks[gcpPersistentDiskID] = devicePathSDA
-
-	// First listAndUpdate should add the disk to cache
-	err := cache.listAndUpdate()
-	if err != nil {
-		t.Fatalf("unexpected error in first listAndUpdate: %v", err)
+func TestLinkCache(t *testing.T) {
+	tests := []struct {
+		name       string
+		setupCache func(*linkCache)
+		expected   *linkCache
+	}{
+		{
+			name: "AddOrUpdateDevice",
+			setupCache: func(lc *linkCache) {
+				lc.AddOrUpdateDevice("symlink1", "/dev/sda")
+				lc.AddOrUpdateDevice("symlink2", "/dev/sdb")
+			},
+			expected: &linkCache{
+				devices: map[string]linkCacheEntry{
+					"symlink1": {path: "/dev/sda", brokenSymlink: false},
+					"symlink2": {path: "/dev/sdb", brokenSymlink: false},
+				},
+			},
+		},
+		{
+			name: "BrokenSymlink",
+			setupCache: func(lc *linkCache) {
+				lc.AddOrUpdateDevice("symlink1", "/dev/sda")
+				lc.BrokenSymlink("symlink1")
+			},
+			expected: &linkCache{
+				devices: map[string]linkCacheEntry{
+					"symlink1": {path: "/dev/sda", brokenSymlink: true},
+				},
+			},
+		},
+		{
+			name: "RemoveDevice",
+			setupCache: func(lc *linkCache) {
+				lc.AddOrUpdateDevice("symlink1", "/dev/sda")
+				lc.RemoveDevice("symlink1")
+			},
+			expected: &linkCache{
+				devices: map[string]linkCacheEntry{},
+			},
+		},
 	}
 
-	// Verify initial state
-	entry, exists := cache.links.devices[gcpPersistentDiskID]
-	if !exists {
-		t.Fatal("gcpPersistentDiskID should exist in cache after first listAndUpdate")
-	}
-	if entry.path != devicePathSDA {
-		t.Errorf("gcpPersistentDiskID should point to %s, got %s", devicePathSDA, entry.path)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := newLinkCache()
+			tt.setupCache(cache)
 
-	// Add a new disk and update the symlink target
-	mock.MapFS[gcpPVCID] = &fstest.MapFile{}
-	mock.symlinks[gcpPVCID] = devicePathSDB
-	mock.symlinks[gcpPersistentDiskID] = devicePathSDB // Update existing disk's target
-
-	// Second listAndUpdate should update the cache
-	err = cache.listAndUpdate()
-	if err != nil {
-		t.Fatalf("unexpected error in second listAndUpdate: %v", err)
-	}
-
-	// Verify both disks are in cache with correct paths
-	entry, exists = cache.links.devices[gcpPersistentDiskID]
-	if !exists {
-		t.Fatal("gcpPersistentDiskID should still exist in cache")
-	}
-	if entry.path != devicePathSDB {
-		t.Errorf("gcpPersistentDiskID should now point to %s, got %s", devicePathSDB, entry.path)
-	}
-
-	entry, exists = cache.links.devices[gcpPVCID]
-	if !exists {
-		t.Fatal("gcpPVCID should exist in cache after second listAndUpdate")
-	}
-	if entry.path != devicePathSDB {
-		t.Errorf("gcpPVCID should point to %s, got %s", devicePathSDB, entry.path)
-	}
-
-	// Break the symlink for gcpPersistentDiskID but keep the file
-	delete(mock.symlinks, gcpPersistentDiskID)
-
-	// Third listAndUpdate should mark the disk as broken but keep its last known value
-	err = cache.listAndUpdate()
-	if err == nil {
-		t.Error("expected error for broken symlink")
-	}
-
-	// Verify gcpPersistentDiskID is marked as broken but maintains its last known value
-	entry, exists = cache.links.devices[gcpPersistentDiskID]
-	if !exists {
-		t.Fatal("gcpPersistentDiskID should still exist in cache")
-	}
-	if entry.path != devicePathSDB {
-		t.Errorf("gcpPersistentDiskID should maintain its last known value %s, got %s", devicePathSDB, entry.path)
-	}
-	if !entry.brokenSymlink {
-		t.Error("gcpPersistentDiskID should be marked as broken")
-	}
-
-	// Verify gcpPVCID is still valid
-	entry, exists = cache.links.devices[gcpPVCID]
-	if !exists {
-		t.Fatal("gcpPVCID should still exist in cache")
-	}
-	if entry.path != devicePathSDB {
-		t.Errorf("gcpPVCID should still point to %s, got %s", devicePathSDB, entry.path)
-	}
-	if entry.brokenSymlink {
-		t.Error("gcpPVCID should not be marked as broken")
-	}
-
-	// Remove one disk
-	delete(mock.MapFS, gcpPersistentDiskID)
-	delete(mock.symlinks, gcpPersistentDiskID)
-
-	// Fourth listAndUpdate should remove the deleted disk
-	err = cache.listAndUpdate()
-	if err != nil {
-		t.Fatalf("unexpected error in fourth listAndUpdate: %v", err)
-	}
-
-	// Verify only gcpPVCID remains
-	if _, exists := cache.links.devices[gcpPersistentDiskID]; exists {
-		t.Error("gcpPersistentDiskID should be removed from cache")
-	}
-
-	entry, exists = cache.links.devices[gcpPVCID]
-	if !exists {
-		t.Fatal("gcpPVCID should still exist in cache")
-	}
-	if entry.path != devicePathSDB {
-		t.Errorf("gcpPVCID should still point to %s, got %s", devicePathSDB, entry.path)
+			if diff := cmp.Diff(tt.expected, cache, allowUnexportedLinkCache); diff != "" {
+				t.Errorf("linkCache mismatch (-expected +got):\n%s", diff)
+			}
+		})
 	}
 }
