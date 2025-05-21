@@ -54,6 +54,15 @@ func NewListingCache(period time.Duration, dir string) *ListingCache {
 	}
 }
 
+func NewMockListingCache(period time.Duration, dir string) *ListingCache {
+	return &ListingCache{
+		period: period,
+		dir:    dir,
+		links:  newLinkCache(),
+		fs:     &mockFS{},
+	}
+}
+
 // Run starts the cache's background loop. The filesystem is listed and the cache
 // updated according to the frequency specified by the period. It will run until
 // the context is cancelled.
