@@ -15,10 +15,10 @@ import (
 var partitionNameRegex = regexp.MustCompile(`-part[0-9]+$`)
 
 // ListingCache polls the filesystem at the specified directory once per
-// periodand checks each non-directory entry for a symlink.  The results are
-// cached.  Changes to the cache are logged, as well as the full contents of the
-// cache.  The cache's Run() method is expected to be called in a goroutine.
-// Its cancellation is controlled via the context argument.
+// period and checks each non-directory entry for a symlink. The results are
+// cached. Changes to the cache are logged, as well as the full contents of the
+// cache. The cache's Run() method is expected to be called in a goroutine. Its
+// cancellation is controlled via the context argument.
 type ListingCache struct {
 	period time.Duration
 	dir    string
@@ -33,9 +33,9 @@ func NewListingCache(period time.Duration, dir string) *ListingCache {
 	}
 }
 
-// Run starts the cache's background loop.  The filesystem is listed and the
-// cache updated according to the frequency specified by the period. It will run
-// until the context is cancelled.
+// Run starts the cache's background loop. The filesystem is listed and the cache
+// updated according to the frequency specified by the period. It will run until
+// the context is cancelled.
 func (l *ListingCache) Run(ctx context.Context) {
 	// Start the loop that runs every minute
 	ticker := time.NewTicker(l.period)
