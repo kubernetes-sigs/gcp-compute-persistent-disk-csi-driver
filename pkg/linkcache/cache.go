@@ -170,7 +170,10 @@ func (d *linkCache) BrokenSymlink(symlink string) {
 }
 
 func (d *linkCache) RemoveDevice(symlink string) {
-	delete(d.devices, symlink)
+	if entry, ok := d.devices[symlink]; ok {
+		klog.Infof("Removing device %s with path %s from cache, brokenSymlink: %t", symlink, entry.path, entry.brokenSymlink)
+		delete(d.devices, symlink)
+	}
 }
 
 func (d *linkCache) DeviceIDs() []string {
