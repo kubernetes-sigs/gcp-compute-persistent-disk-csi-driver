@@ -83,6 +83,7 @@ func TestListAndUpdate(t *testing.T) {
 				m.MapFS[gcpPersistentDiskPartitionID] = &fstest.MapFile{}
 				m.MapFS[gcpPersistentDiskID] = &fstest.MapFile{}
 				m.symlinks[gcpPersistentDiskID] = devicePathSDA
+				m.symlinks[gcpPersistentDiskPartitionID] = devicePathSDA + "1"
 			},
 			expectedLinks: map[string]string{
 				gcpPersistentDiskID: devicePathSDA,
