@@ -3,9 +3,11 @@ package linkcache
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +15,23 @@ import (
 )
 
 var partitionNameRegex = regexp.MustCompile(`-part[0-9]+$`)
+
+// fsInterface defines the filesystem operations needed by ListingCache
+type fsInterface interface {
+	ReadDir(name string) ([]os.DirEntry, error)
+	EvalSymlinks(path string) (string, error)
+}
+
+// realFS implements fsInterface using the real filesystem
+type realFS struct{}
+
+func (f *realFS) ReadDir(name string) ([]os.DirEntry, error) {
+	return os.ReadDir(name)
+}
+
+func (f *realFS) EvalSymlinks(path string) (string, error) {
+	return filepath.EvalSymlinks(path)
+}
 
 // ListingCache polls the filesystem at the specified directory once per
 // period and checks each non-directory entry for a symlink. The results are
@@ -23,6 +42,7 @@ type ListingCache struct {
 	period time.Duration
 	dir    string
 	links  *linkCache
+	fs     fsInterface
 }
 
 func NewListingCache(period time.Duration, dir string) *ListingCache {
@@ -30,6 +50,7 @@ func NewListingCache(period time.Duration, dir string) *ListingCache {
 		period: period,
 		dir:    dir,
 		links:  newLinkCache(),
+		fs:     &realFS{},
 	}
 }
 
@@ -67,7 +88,7 @@ func (l *ListingCache) Run(ctx context.Context) {
 func (l *ListingCache) listAndUpdate() error {
 	visited := make(map[string]struct{})
 
-	entries, err := os.ReadDir(l.dir)
+	entries, err := l.fs.ReadDir(l.dir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", l.dir, err)
 	}
@@ -90,7 +111,7 @@ func (l *ListingCache) listAndUpdate() error {
 		// Otherwise, a broken symlink will lead us to remove it from the cache.
 		visited[diskByIdPath] = struct{}{}
 
-		realFSPath, err := filepath.EvalSymlinks(diskByIdPath)
+		realFSPath, err := l.fs.EvalSymlinks(diskByIdPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to evaluate symlink for %s: %w", diskByIdPath, err))
 			l.links.BrokenSymlink(diskByIdPath)
@@ -153,11 +174,7 @@ func (d *linkCache) RemoveDevice(symlink string) {
 }
 
 func (d *linkCache) DeviceIDs() []string {
-	ids := make([]string, 0, len(d.devices))
-	for id := range d.devices {
-		ids = append(ids, id)
-	}
-	return ids
+	return slices.Collect(maps.Keys(d.devices))
 }
 
 func (d *linkCache) String() string {
