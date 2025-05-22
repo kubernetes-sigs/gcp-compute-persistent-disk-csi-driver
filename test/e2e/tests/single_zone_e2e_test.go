@@ -283,6 +283,41 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			Expect(err).To(BeNil(), "Could not find disk in correct zone")
 		}
 	})
+
+	It("Should create a volume with allowed disk topology and confirm disk support label", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+		params := map[string]string{
+			"type": hdbDiskType,
+			// Required to enable the disk topology feature.
+			"use-allowed-disk-topology": "true",
+		}
+
+		topReq := &csi.TopologyRequirement{
+			Requisite: []*csi.Topology{
+				{
+					Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+				},
+			},
+		}
+
+		volume, err := testContext.Client.CreateVolume(volName, params, defaultSizeGb, topReq, nil)
+		Expect(err).To(BeNil(), "Failed to create volume")
+		defer func() {
+			err = testContext.Client.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "Failed to delete volume")
+		}()
+
+		// Confirm that the topologies include a disk support label
+		Expect(volume.AccessibleTopology).ToNot(BeEmpty(), "Volume should have accessible topologies")
+		Expect(volume.AccessibleTopology).To(HaveLen(1), "Expected exactly one accessible topology") // Zonal clusters have a single Topology.
+		segments := volume.AccessibleTopology[0].Segments
+		Expect(segments).To(HaveKeyWithValue(common.TopologyKeyZone, "us-central1-c"), "Topology should include zone segment with value 'us-central1-c'")
+		Expect(segments).To(HaveKeyWithValue(common.DiskTypeLabelKey(hdbDiskType), "true"), "Topology should include disk type label with value 'true'")
+	})
+
 	// TODO(hime): Enable this test once all release branches contain the fix from PR#1708.
 	// It("Should return InvalidArgument when disk size exceeds limit", func() {
 	// 	// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
