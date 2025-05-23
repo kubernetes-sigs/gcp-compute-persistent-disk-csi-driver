@@ -116,10 +116,12 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 }
 
 func (mm *MetricsManager) RecordMountErrorMetric(fs_format string, err error) {
+	errType := "OK"
 	mntErr := &mount.MountError{}
 	if errors.As(err, mntErr) {
-		mountErrorMetric.WithLabelValues(pdcsiDriverName, fs_format, string(mntErr.Type)).Inc()
+		errType = string(mntErr.Type)
 	}
+	mountErrorMetric.WithLabelValues(pdcsiDriverName, fs_format, errType).Inc()
 
 	klog.Infof("Recorded mount error type: %q", mntErr.Type)
 }
