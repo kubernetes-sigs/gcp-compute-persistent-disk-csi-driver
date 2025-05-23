@@ -99,13 +99,11 @@ func (l *ListingCache) listAndUpdate() error {
 			continue
 		}
 
-		// TODO(juliankatz): To have certainty this works for all edge cases, we
-		// need to test this with a manually partitioned disk.
+		diskByIdPath := filepath.Join(l.dir, entry.Name())
+
 		if partitionNameRegex.MatchString(entry.Name()) {
 			continue
 		}
-
-		diskByIdPath := filepath.Join(l.dir, entry.Name())
 
 		// Add the device to the map regardless of successful symlink eval.
 		// Otherwise, a broken symlink will lead us to remove it from the cache.
@@ -153,6 +151,14 @@ func newLinkCache() *linkCache {
 }
 
 func (d *linkCache) AddOrUpdateDevice(symlink, realPath string) {
+	// Ignore partitions, which are noise as far as our logging is concerned.
+	// Expression: -part[0-9]+$
+	if partitionNameRegex.MatchString(symlink) {
+		// TODO(juliankatz): To have certainty this works for all edge cases, we
+		// need to test this with a manually partitioned disk.
+		return
+	}
+
 	prevEntry, exists := d.devices[symlink]
 	if !exists || prevEntry.path != realPath {
 		klog.Infof("Symlink updated for link %s, previous value: %s, new value: %s", symlink, prevEntry.path, realPath)
