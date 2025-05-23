@@ -58,6 +58,8 @@ func NewListingCache(period time.Duration, dir string) *ListingCache {
 // updated according to the frequency specified by the period. It will run until
 // the context is cancelled.
 func (l *ListingCache) Run(ctx context.Context) {
+	klog.Infof("Starting symlink cache watcher for directory %s with period %s", l.dir, l.period)
+
 	// Start the loop that runs every minute
 	ticker := time.NewTicker(l.period)
 	defer ticker.Stop()
@@ -150,6 +152,9 @@ func newLinkCache() *linkCache {
 	}
 }
 
+// AddOrUpdateDevice adds a new device or updates an existing device in the cache.
+// It ignores partition symlinks as they are considered noise for logging purposes.
+// If the symlink already exists and the real path has changed, it logs the update.
 func (d *linkCache) AddOrUpdateDevice(symlink, realPath string) {
 	// Ignore partitions, which are noise as far as our logging is concerned.
 	// Expression: -part[0-9]+$
