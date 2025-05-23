@@ -170,6 +170,20 @@ func TestLinkCache(t *testing.T) {
 				devices: map[string]linkCacheEntry{},
 			},
 		},
+		{
+			name: "PartitionIgnored",
+			setupCache: func(lc *linkCache) {
+				lc.AddOrUpdateDevice(gcpPersistentDiskPartitionID, devicePathSDA+"1")
+				lc.AddOrUpdateDevice(gcpPersistentDiskID, devicePathSDA)
+				lc.AddOrUpdateDevice(gcpPVCID, devicePathSDB)
+			},
+			expected: &linkCache{
+				devices: map[string]linkCacheEntry{
+					gcpPersistentDiskID: {path: devicePathSDA, brokenSymlink: false},
+					gcpPVCID:            {path: devicePathSDB, brokenSymlink: false},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
