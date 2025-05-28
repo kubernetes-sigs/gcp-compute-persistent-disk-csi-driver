@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -326,12 +328,14 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 		case ParameterKeyUseAllowedDiskTopology:
 			if !pp.EnableDiskTopology {
-				return p, d, fmt.Errorf("parameters contains invalid option %q when disk topology is not enabled", ParameterKeyUseAllowedDiskTopology)
+				klog.Warningf("parameters contains invalid option %q when disk topology is not enabled", ParameterKeyUseAllowedDiskTopology)
+				continue
 			}
 
 			paramUseAllowedDiskTopology, err := ConvertStringToBool(v)
 			if err != nil {
-				return p, d, fmt.Errorf("failed to convert %s parameter with value %q to bool: %w", ParameterKeyUseAllowedDiskTopology, v, err)
+				klog.Warningf("failed to convert %s parameter with value %q to bool: %v", ParameterKeyUseAllowedDiskTopology, v, err)
+				continue
 			}
 
 			p.UseAllowedDiskTopology = paramUseAllowedDiskTopology

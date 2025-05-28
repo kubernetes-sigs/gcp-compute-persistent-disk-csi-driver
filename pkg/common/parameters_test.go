@@ -467,15 +467,37 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
-			name:       "useAllowedDiskTopology specified, disk topology feature disabled",
-			parameters: map[string]string{ParameterKeyUseAllowedDiskTopology: "foo-bar"},
-			expectErr:  true,
+			// Disk topology feature shouldn't cause parameter parsing to fail, even when misconfigured.
+			name: "useAllowedDiskTopology specified, disk topology feature disabled",
+			parameters: map[string]string{
+				ParameterKeyUseAllowedDiskTopology: "true", // Correct type: boolean string.
+			},
+			labels: map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
+			},
 		},
 		{
+			// Disk topology feature shouldn't cause parameter parsing to fail, even when misconfigured.
 			name:               "useAllowedDiskTopology specified, wrong type",
-			parameters:         map[string]string{ParameterKeyUseAllowedDiskTopology: "123"},
 			enableDiskTopology: true,
-			expectErr:          true,
+			parameters: map[string]string{
+				ParameterKeyUseAllowedDiskTopology: "123", // Incorrect type: number.
+			},
+			labels: map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
+			},
 		},
 		{
 			name:               "useAllowedDiskTopology specified as valid true boolean",
