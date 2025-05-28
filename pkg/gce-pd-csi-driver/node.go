@@ -32,14 +32,14 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
 )
@@ -77,6 +77,9 @@ type GCENodeServer struct {
 	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedNodeServer
+
+	// A cache of the device paths for the volumes that are attached to the node.
+	DeviceCache *linkcache.DeviceCache
 }
 
 type NodeServerArgs struct {
@@ -92,6 +95,8 @@ type NodeServerArgs struct {
 
 	// SysfsPath defaults to "/sys", except if it's a unit test.
 	SysfsPath string
+
+	DeviceCache *linkcache.DeviceCache
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -501,6 +506,11 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	}
 
+	err = ns.DeviceCache.AddVolume(volumeID)
+	if err != nil {
+		klog.Warningf("Error adding volume %s to cache: %v", volumeID, err)
+	}
+
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -614,6 +624,9 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 			return nil, status.Errorf(codes.DataLoss, "Failed to cleanup cache for volume %s: %v", volumeID, err)
 		}
 	}
+
+	ns.DeviceCache.RemoveVolume(volumeID)
+
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -869,15 +882,7 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 }
 
 func GetAttachLimitsOverrideFromNodeLabel(ctx context.Context, nodeName string) (int64, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return 0, err
-	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return 0, err
-	}
-	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
+	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
