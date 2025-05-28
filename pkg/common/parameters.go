@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -36,6 +38,7 @@ const (
 	ParameterAvailabilityClass                = "availability-class"
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
+	ParameterKeyUseAllowedDiskTopology        = "use-allowed-disk-topology"
 
 	// Parameters for Data Cache
 	ParameterKeyDataCacheSize               = "data-cache-size"
@@ -132,6 +135,9 @@ type DiskParameters struct {
 	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
 	// Default: READ_WRITE_SINGLE
 	AccessMode string
+	// Values {}
+	// Default: false
+	UseAllowedDiskTopology bool
 }
 
 func (dp *DiskParameters) IsRegional() bool {
@@ -160,6 +166,7 @@ type ParameterProcessor struct {
 	EnableStoragePools bool
 	EnableMultiZone    bool
 	EnableHdHA         bool
+	EnableDiskTopology bool
 }
 
 type ModifyVolumeParameters struct {
@@ -319,6 +326,19 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if v != "" {
 				p.AccessMode = v
 			}
+		case ParameterKeyUseAllowedDiskTopology:
+			if !pp.EnableDiskTopology {
+				klog.Warningf("parameters contains invalid option %q when disk topology is not enabled", ParameterKeyUseAllowedDiskTopology)
+				continue
+			}
+
+			paramUseAllowedDiskTopology, err := ConvertStringToBool(v)
+			if err != nil {
+				klog.Warningf("failed to convert %s parameter with value %q to bool: %v", ParameterKeyUseAllowedDiskTopology, v, err)
+				continue
+			}
+
+			p.UseAllowedDiskTopology = paramUseAllowedDiskTopology
 		default:
 			return p, d, fmt.Errorf("parameters contains invalid option %q", k)
 		}

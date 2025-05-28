@@ -71,6 +71,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--allow-hdha-provisioning",
 		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
+		"--disk-topology=true",
 	}
 
 	extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", utilcommon.TestNode))

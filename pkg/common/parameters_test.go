@@ -32,6 +32,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		enableDataCache       bool
 		enableMultiZone       bool
 		enableHdHA            bool
+		enableDiskTopology    bool
 		extraTags             map[string]string
 		expectParams          DiskParameters
 		expectDataCacheParams DataCacheParameters
@@ -42,12 +43,13 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			parameters: map[string]string{},
 			labels:     map[string]string{},
 			expectParams: DiskParameters{
-				DiskType:             "pd-standard",
-				ReplicationType:      "none",
-				DiskEncryptionKMSKey: "",
-				Tags:                 map[string]string{},
-				Labels:               map[string]string{},
-				ResourceTags:         map[string]string{},
+				DiskType:               "pd-standard",
+				ReplicationType:        "none",
+				DiskEncryptionKMSKey:   "",
+				Tags:                   map[string]string{},
+				Labels:                 map[string]string{},
+				ResourceTags:           map[string]string{},
+				UseAllowedDiskTopology: false,
 			},
 		},
 		{
@@ -464,6 +466,53 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				Labels:          map[string]string{},
 			},
 		},
+		{
+			// Disk topology feature shouldn't cause parameter parsing to fail, even when misconfigured.
+			name: "useAllowedDiskTopology specified, disk topology feature disabled",
+			parameters: map[string]string{
+				ParameterKeyUseAllowedDiskTopology: "true", // Correct type: boolean string.
+			},
+			labels: map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
+			},
+		},
+		{
+			// Disk topology feature shouldn't cause parameter parsing to fail, even when misconfigured.
+			name:               "useAllowedDiskTopology specified, wrong type",
+			enableDiskTopology: true,
+			parameters: map[string]string{
+				ParameterKeyUseAllowedDiskTopology: "123", // Incorrect type: number.
+			},
+			labels: map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels:               map[string]string{},
+				ResourceTags:         map[string]string{},
+			},
+		},
+		{
+			name:               "useAllowedDiskTopology specified as valid true boolean",
+			parameters:         map[string]string{ParameterKeyUseAllowedDiskTopology: "true"},
+			enableDiskTopology: true,
+			expectParams: DiskParameters{
+				DiskType:               "pd-standard",
+				ReplicationType:        "none",
+				DiskEncryptionKMSKey:   "",
+				Tags:                   map[string]string{},
+				Labels:                 map[string]string{},
+				ResourceTags:           map[string]string{},
+				UseAllowedDiskTopology: true,
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -473,6 +522,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				EnableStoragePools: tc.enableStoragePools,
 				EnableMultiZone:    tc.enableMultiZone,
 				EnableHdHA:         tc.enableHdHA,
+				EnableDiskTopology: tc.enableDiskTopology,
 			}
 			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.enableDataCache, tc.extraTags)
 			if gotErr := err != nil; gotErr != tc.expectErr {
