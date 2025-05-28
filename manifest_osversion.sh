@@ -4,7 +4,7 @@ set -o xtrace
 
 # The following is a workaround for issue https://github.com/moby/moby/issues/41417
 # to manually inserver os.version information into docker manifest file
-# TODO: once docker manifest annotation for os.versions is availabler for the installed docker here,
+# TODO: once docker manifest annotation for os.versions is available for the installed docker here,
 # replace the following with annotation approach. https://github.com/docker/cli/pull/2578
 
 export DOCKER_CLI_EXPERIMENTAL=enabled
@@ -14,7 +14,7 @@ IFS=', ' read -r -a imagetags <<< "$WINDOWS_IMAGE_TAGS"
 IFS=', ' read -r -a baseimages <<< "$WINDOWS_BASE_IMAGES"
 MANIFEST_TAG=${STAGINGIMAGE}:${STAGINGVERSION}
 
-# translate from image tag to docker manifest foler format
+# translate from image tag to docker manifest folder format
 # e.g., gcr.io_k8s-staging-csi_gce-pd-windows-v2
 manifest_folder=$(echo "${MANIFEST_TAG}" | sed "s|/|_|g" | sed "s/:/-/")
 echo ${manifest_folder}
