@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -267,6 +268,25 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 			return fmt.Errorf("failed to update kubernetes e2e cluster on gke: %v", err.Error())
 		}
 	}
+
+	out, err := exec.Command("gcloud", "container", "clusters", "describe", *gkeTestClusterName, locationArg, locationVal)
+	if err != nil {
+		return fmt.Errorf("failed to list cluster: %v %s", err, out)
+	}
+	scanner := bufio.newScanner(strings.NewReader(out))
+	printedHash := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "id: ") {
+			klog.Infof("%s %s", *gkeTestClusterName, locationVal)
+			klog.Infof("%s", line)
+			printedHash = true
+			break
+		}
+	}
+	if !printedHash {
+		return fmt.Errorf("failed to find cluster hash in cluster describe: %s", out)
+	}	
 
 	return nil
 }
