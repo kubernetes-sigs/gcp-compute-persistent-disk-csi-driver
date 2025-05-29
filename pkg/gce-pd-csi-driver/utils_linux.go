@@ -75,7 +75,12 @@ func (ns *GCENodeServer) formatAndMount(source, target, fstype string, options [
 			}
 		}()
 	}
-	return m.FormatAndMount(source, target, fstype, options)
+
+	err := m.FormatAndMount(source, target, fstype, options)
+	if ns.metricsManager != nil {
+		ns.metricsManager.RecordMountErrorMetric(fstype, err)
+	}
+	return err
 }
 
 func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {

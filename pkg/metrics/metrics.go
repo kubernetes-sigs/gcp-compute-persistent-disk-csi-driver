@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
+	"k8s.io/mount-utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -53,6 +54,15 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"driver_name", "method_name", "grpc_status_code", "disk_type", "enable_confidential_storage", "enable_storage_pools"})
+
+	mountErrorMetric = metrics.NewCounterVec(&metrics.CounterOpts{
+		Subsystem:      "node",
+		Name:           "mount_errors",
+		Help:           "Node server file system mounting errors",
+		StabilityLevel: metrics.ALPHA,
+	},
+		[]string{"driver_name", "file_system_format", "error_type"},
+	)
 )
 
 type MetricsManager struct {
@@ -78,6 +88,10 @@ func (mm *MetricsManager) RegisterPDCSIMetric() {
 	mm.registry.MustRegister(pdcsiOperationErrorsMetric)
 }
 
+func (mm *MetricsManager) RegisterMountMetric() {
+	mm.registry.MustRegister(mountErrorMetric)
+}
+
 func (mm *MetricsManager) recordComponentVersionMetric() error {
 	v := getEnvVar(envGKEPDCSIVersion)
 	if v == "" {
@@ -99,6 +113,16 @@ func (mm *MetricsManager) RecordOperationErrorMetrics(
 	errCode := errorCodeLabelValue(operationErr)
 	pdcsiOperationErrorsMetric.WithLabelValues(pdcsiDriverName, fullMethodName, errCode, diskType, enableConfidentialStorage, enableStoragePools).Inc()
 	klog.Infof("Recorded PDCSI operation error code: %q", errCode)
+}
+
+func (mm *MetricsManager) RecordMountErrorMetric(fs_format string, err error) {
+	errType := mountErrorType(err)
+	mountErrorMetric.WithLabelValues(pdcsiDriverName, fs_format, errType).Inc()
+	klog.Infof("Recorded mount error type: %q", errType)
+}
+
+func (mm *MetricsManager) EmmitProcessStartTime() error {
+	return metrics.RegisterProcessStartTime(mm.registry.Register)
 }
 
 func (mm *MetricsManager) EmitGKEComponentVersion() error {
@@ -168,4 +192,17 @@ func errorCodeLabelValue(operationErr error) string {
 		err = common.CodeForError(operationErr).String()
 	}
 	return err
+}
+
+func mountErrorType(err error) string {
+	if err == nil {
+		return "OK"
+	}
+
+	mntErr := &mount.MountError{}
+	if !errors.As(err, mntErr) {
+		return "UnknownError"
+	}
+
+	return string(mntErr.Type)
 }
