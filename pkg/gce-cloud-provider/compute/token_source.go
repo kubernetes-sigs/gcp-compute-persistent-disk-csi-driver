@@ -93,7 +93,7 @@ func NewAltTokenSource(tokenURL, tokenBody string) oauth2.TokenSource {
 	return oauth2.ReuseTokenSource(nil, a)
 }
 
-func NewTenantTokenSource(tenantMeta tenancy.Metadata, region, existingTokenURL, existingTokenBody string) (oauth2.TokenSource, error) {
+func NewTenantTokenSource(tenantMeta *tenancy.Metadata, region, existingTokenURL, existingTokenBody string) (oauth2.TokenSource, error) {
 	tenantTokenUrl, err := getTenantTokenURL(tenantMeta, existingTokenURL)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func NewTenantTokenSource(tenantMeta tenancy.Metadata, region, existingTokenURL,
 	return NewAltTokenSource(tenantTokenUrl, tenantTokenBody), nil
 }
 
-func getTenantTokenURL(tenantMeta tenancy.Metadata, existingTokenURL string) (string, error) {
+func getTenantTokenURL(tenantMeta *tenancy.Metadata, existingTokenURL string) (string, error) {
 	location := extractLocationFromTokenURL(existingTokenURL)
 	if location == "" {
 		return "", fmt.Errorf("could not extract location from existing token URL: %s", existingTokenURL)
@@ -136,7 +136,7 @@ func extractLocationFromTokenURL(tokenURL string) string {
 	return ""
 }
 
-func getTenantTokenBody(tenantMeta tenancy.Metadata, existingTokenBody string) (string, error) {
+func getTenantTokenBody(tenantMeta *tenancy.Metadata, existingTokenBody string) (string, error) {
 	// Check if the token body is a quoted JSON string
 	// Quoted example: "{\"projectNumber\":12345,\"clusterId\":\"example-cluster\"}"
 	// Non-quoted example: {"projectNumber":12345,"clusterId":"example-cluster"}
