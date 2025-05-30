@@ -29,7 +29,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
-	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute/tenancy"
 
@@ -38,6 +37,7 @@ import (
 	"golang.org/x/oauth2"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
+	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
@@ -156,6 +156,13 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
+	// token, err := tokenSource.Token()
+	// if err != nil {
+	// 	klog.Errorf("error getting initial token.: %v", err)
+	// } else {
+	// 	klog.Infof("test token success: %+v", token)
+	// }
+
 	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
 	if err != nil {
 		return nil, err
@@ -184,65 +191,55 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		listInstancesConfig: listInstancesConfig,
 		// GCP has a rate limit of 600 requests per minute, restricting
 		// here to 8 requests per second.
-		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
+		tagsRateLimiter:  common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
+		tenantServiceMap: make(map[string]*compute.Service),
 	}
 
 	if multiTenancyEnabled {
 		klog.Info("Setting up multitenancy")
-		// Setup informant for tenant CR to automatically create tenant specific clients with tenant identities
 		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
 		}
 		cp.TenantInformer = ti
-		cp.tenantServiceMap = map[string]*compute.Service{}
-		cp.TenantInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj any) {
-				// Handle tenant creation
-				klog.Infof("Tenant %s created", obj)
+		addTenantCallback := func(tenantMeta *tenancy.Metadata, projectZone string) (*computev1.Service, error) {
+			klog.Infof("Executing AddFunc callback for tenant: %s (Project: %s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
 
-				tenantMeta, err := tenancy.GetMetadataFromTenantCR(obj)
-				if err != nil {
-					klog.Errorf("error while extracting tenant metadata: %v", err)
-				}
+			region, err := common.GetRegionFromZones([]string{zone})
+			if err != nil {
+				klog.Errorf("Error getting region from zone(%s) for tenant %s: %v", zone, tenantMeta.TenantName, err)
+				return nil, fmt.Errorf("error getting region from zone(%s): %w", zone, err)
+			}
 
-				tenantServiceMutex.Lock()
-				defer tenantServiceMutex.Unlock()
+			tenantTokenSource, err := NewTenantTokenSource(tenantMeta, region, configFile.Global.TokenURL, configFile.Global.TokenBody)
+			if err != nil {
+				klog.Errorf("Error during tenant token source generation for %s: %v", tenantMeta.TenantName, err.Error())
+				return nil, fmt.Errorf("error during tenant token source generation: %w", err)
+			}
 
-				if _, ok := cp.tenantServiceMap[tenantMeta.ProjectNumber]; ok {
-					klog.Infof("Tenant GCE client already exists, skipping GCE client instantiation for tenant(%s) with project number(%s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
-					return
-				}
+			tenantComputeService, err := createCloudService(ctx, vendorVersion, tenantTokenSource, computeEndpoint, computeEnvironment)
+			if err != nil {
+				klog.Errorf("Error while creating compute service with tenant identity for %s: %v", tenantMeta.TenantName, err)
+				return nil, fmt.Errorf("error while creating compute service with tenant identity: %w", err)
+			}
+			klog.Infof("Successfully created compute service for tenant %s (Project: %s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
+			return tenantComputeService, nil
+		}
 
-				region, err := common.GetRegionFromZones([]string{zone})
-				if err != nil {
-					klog.Errorf("error getting region from zone(%s): %v", zone, err)
-					return
-				}
-				tokenSource, err := NewTenantTokenSource(tenantMeta, region, configFile.Global.TokenURL, configFile.Global.TokenBody)
-				if err != nil {
-					klog.Errorf("error during tenant token generation: %v", err.Error())
-				}
+		lifecycleHandler := tenancy.TenantLifecycleHandler{
+			AddFunc: addTenantCallback,
+		}
 
-				svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
-				if err != nil {
-					klog.Errorf("error while creating compute service with tenant identity: %v", err)
-					return
-				}
-				cp.tenantServiceMap[tenantMeta.ProjectNumber] = svc
-			},
-			UpdateFunc: func(oldObj, newObj any) {},
-			DeleteFunc: func(obj any) {
-				klog.Infof("Tenant %s deleted", obj)
-				tenantMeta, err := tenancy.GetMetadataFromTenantCR(obj)
-				if err != nil {
-					klog.Errorf("error while extracting teantn metadata: %v", err)
-				}
-				tenantServiceMutex.Lock()
-				defer tenantServiceMutex.Unlock()
-				delete(cp.tenantServiceMap, tenantMeta.ProjectNumber)
-			},
-		})
+		err = tenancy.RegisterTenantEventHandlers(
+			cp.TenantInformer,
+			lifecycleHandler,
+			zone,
+			cp.tenantServiceMap,
+			&tenantServiceMutex,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to register tenant event handlers: %w", err)
+		}
 	}
 
 	return cp, nil
