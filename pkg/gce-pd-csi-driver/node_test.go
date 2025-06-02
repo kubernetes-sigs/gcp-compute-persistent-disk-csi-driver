@@ -335,6 +335,11 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "c3d-highmem-8-lssd",
 			expVolumeLimit: volumeLimitBig,
 		},
+		{
+			name:           "c4a-standard-32-lssd",
+			machineType:    "c4a-standard-32-lssd",
+			expVolumeLimit: 49,
+		},
 	}
 
 	for _, tc := range testCases {
