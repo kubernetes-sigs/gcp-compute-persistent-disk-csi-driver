@@ -42,13 +42,12 @@ var defaultResyncPeriod = 10 * time.Minute
 // tenancy.gke.io/tenants objects.
 //
 // After creating a new TenantsInformer, you must call Run() to start it.
-func NewTenantsInformer(isMultiTenantCluster bool) (TenantsInformer, error) {
+func NewTenantsInformer(isMultiTenantCluster bool, kubeConfig *rest.Config) (TenantsInformer, error) {
 	if !isMultiTenantCluster {
 		return NewNoopTenantsInformer(), nil
 	}
 
-	kc := GetKubeConfig()
-	dynamicClient, err := newDynamicClientForConfig(kc)
+	dynamicClient, err := newDynamicClientForConfig(kubeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dynamic client for CRD: %w", err)
 	}

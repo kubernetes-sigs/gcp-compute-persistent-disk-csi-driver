@@ -156,13 +156,6 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	// token, err := tokenSource.Token()
-	// if err != nil {
-	// 	klog.Errorf("error getting initial token.: %v", err)
-	// } else {
-	// 	klog.Infof("test token success: %+v", token)
-	// }
-
 	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
 	if err != nil {
 		return nil, err
@@ -197,7 +190,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	if multiTenancyEnabled {
 		klog.Info("Setting up multitenancy")
-		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled)
+		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, tenancy.GetKubeConfig())
 		if err != nil {
 			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
 		}
