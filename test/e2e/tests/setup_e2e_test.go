@@ -51,6 +51,9 @@ var (
 	cloudtopHost              = flag.Bool("cloudtop-host", false, "The local host is cloudtop, a kind of googler machine with special requirements to access GCP")
 	extraDriverFlags          = flag.String("extra-driver-flags", "", "Extra flags to pass to the driver")
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
+	// Multi-writer is only supported on M3, C3, and N4
+	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
+	hdMachineType = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on")
 
 	testContexts        = []*remote.TestContext{}
 	computeService      *compute.Service
