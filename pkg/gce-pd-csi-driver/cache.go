@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
+	fsnotify "github.com/fsnotify/fsnotify"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -547,22 +548,7 @@ func isCachingSetup(mainLvName string) (error, bool) {
 func fetchChunkSizeKiB(cacheSize string) (string, error) {
 	var chunkSize float64
 
-	cacheSizeInt, err := common.ConvertGiStringToInt64(cacheSize)
-	if err != nil {
-		return "0", err
-	}
-	// Chunksize should be divisible by 32Kib so we need (chunksize/32*1024)*32*1024
-	chunkSize = (float64(cacheSizeInt) * GiB) / float64(maxAllowedChunks)
-	chunkSize = math.Round(chunkSize/(32*KiB)) * (32 * KiB)
-	chunkSize = math.Min(math.Max(chunkSize, minChunkSize), maxChunkSize) / KiB
-	// default chunk size unit KiB
-	return strconv.FormatInt(int64(chunkSize), 10) + "KiB", nil
-}
-
-func fetchChunkSizeKiB(cacheSize string) (string, error) {
-	var chunkSize float64
-
-	cacheSizeInt, err := common.ConvertGiStringToInt64(cacheSize)
+	cacheSizeInt, err := strconv.ParseInt(cacheSize, 10, 64)
 	if err != nil {
 		return "0", err
 	}

@@ -13,22 +13,22 @@ func TestFetchChunkSizeKiB(t *testing.T) {
 	}{
 		{
 			name:         "chunk size is in the allowed range",
-			cacheSize:    "500Gi",
+			cacheSize:    "500",
 			expChunkSize: "512KiB", //range defined in fetchChunkSizeKiB
 		},
 		{
 			name:         "chunk size is set to the range ceil",
-			cacheSize:    "30000000Gi",
+			cacheSize:    "30000000",
 			expChunkSize: "1048576KiB", //range defined in fetchChunkSizeKiB - max 1GiB
 		},
 		{
 			name:         "chunk size is set to the allowed range floor",
-			cacheSize:    "10Gi",
+			cacheSize:    "100",
 			expChunkSize: "160KiB", //range defined in fetchChunkSizeKiB - min 160 KiB
 		},
 		{
 			name:         "cacheSize set to KiB also sets the chunk size to range floor",
-			cacheSize:    "100Ki",
+			cacheSize:    "1",
 			expChunkSize: "160KiB", //range defined in fetchChunkSizeKiB - min 160 KiB
 		},
 		{
