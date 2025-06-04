@@ -162,9 +162,15 @@ func (cloud *CloudProvider) listDisksInternal(ctx context.Context, fields []goog
 	}
 	disks := []*computev1.Disk{}
 
-	// listing out regional disks in the region for each project
+	klog.Infof("Getting regional disks for project: %s", cloud.project)
+	rDisks, err := listRegionalDisksForProject(cloud.service, cloud.project, region, fields, filter)
+	if err != nil {
+		return nil, "", err
+	}
+	disks = append(disks, rDisks...)
+	// listing out regional disks in the region for each tenant project
 	for p, s := range cloud.tenantServiceMap {
-		klog.Infof("Getting regional disks for project: %s", p)
+		klog.Infof("Getting regional disks for tenant project: %s", p)
 		rDisks, err := listRegionalDisksForProject(s, p, region, fields, filter)
 		if err != nil {
 			return nil, "", err
@@ -172,9 +178,15 @@ func (cloud *CloudProvider) listDisksInternal(ctx context.Context, fields []goog
 		disks = append(disks, rDisks...)
 	}
 
-	// listing out zonal disks in all zones of the region for each project
+	klog.Infof("Getting zonal disks for project: %s", cloud.project)
+	zDisks, err := listZonalDisksForProject(cloud.service, cloud.project, zones, fields, filter)
+	if err != nil {
+		return nil, "", err
+	}
+	disks = append(disks, zDisks...)
+	// listing out zonal disks in all zones of the region for each tenant project
 	for p, s := range cloud.tenantServiceMap {
-		klog.Infof("Getting zonal disks for project: %s", p)
+		klog.Infof("Getting zonal disks for tenant project: %s", p)
 		zDisks, err := listZonalDisksForProject(s, p, zones, fields, filter)
 		if err != nil {
 			return nil, "", err

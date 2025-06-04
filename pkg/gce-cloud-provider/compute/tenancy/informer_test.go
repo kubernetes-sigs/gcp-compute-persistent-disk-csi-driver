@@ -18,7 +18,7 @@ func TestNewTenantsInformer_MultiTenantCluster(t *testing.T) {
 	newDynamicClientForConfig = func(*rest.Config) (dynamic.Interface, error) {
 		return dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()), nil
 	}
-	informer, err := NewTenantsInformer(true)
+	informer, err := NewTenantsInformer(true, &rest.Config{})
 	if err != nil {
 		t.Fatalf("NewTenantsInformer(true, &rest.Config{}, 1h) failed: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestNewTenantsInformer_SingleTenantCluster(t *testing.T) {
 	newDynamicClientForConfig = func(*rest.Config) (dynamic.Interface, error) {
 		return dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()), nil
 	}
-	informer, err := NewTenantsInformer(false)
+	informer, err := NewTenantsInformer(false, &rest.Config{})
 	if err != nil {
 		t.Fatalf("NewTenantsInformer(false, &rest.Config{}, 1h) failed: %v", err)
 	}
