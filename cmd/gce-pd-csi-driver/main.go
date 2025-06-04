@@ -370,7 +370,7 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 	return availableLssds[:lssdCount], nil
 }
 
-func setupDataCache(ctx context.Context, nodeName string) error {
+func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 	isAlreadyRaided, err := driver.IsRaided()
 	if err != nil {
 		klog.V(4).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
@@ -398,6 +398,11 @@ func setupDataCache(ctx context.Context, nodeName string) error {
 	klog.V(4).Infof("Raiding local ssds to setup Data Cache: %v", lssdNames)
 	if err := driver.RaidLocalSsds(lssdNames); err != nil {
 		return fmt.Errorf("Failed to Raid local SSDs, unable to setup Data Cache, got error %v", err)
+	}
+
+	// Initializing data cache node (VG checks w/ raided lssd)
+	if err := driver.InitializeDataCacheNode(nodeId); err != nil {
+		return err
 	}
 
 	klog.V(4).Infof("LSSD caching is setup for the Data Cache enabled node %s", nodeName)
