@@ -547,7 +547,7 @@ func (gceCS *GCEControllerServer) getZonesWithDiskNameAndType(ctx context.Contex
 	return zones, nil
 }
 
-func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Context, volKey *meta.Key, disk *gce.CloudDisk, readonly bool) error {
+func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Context, project string, volKey *meta.Key, disk *gce.CloudDisk, readonly bool) error {
 	if !slices.Contains(disksWithModifiableAccessMode, disk.GetPDType()) {
 		// If this isn't a disk that has access mode (eg: Hyperdisk ML), return
 		// So far, HyperdiskML is the only disk type that allows the disk type to be modified.
@@ -557,7 +557,7 @@ func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Contex
 		// Only update the access mode if we're converting from ReadWrite to ReadOnly
 		return nil
 	}
-	project := gceCS.CloudProvider.GetDefaultProject()
+
 	if disk.GetAccessMode() == common.GCEReadOnlyManyAccessMode {
 		// If the access mode is already readonly, return
 		return nil
@@ -1162,7 +1162,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		}
 		return nil, common.LoggedError("Failed to getDisk: ", err), disk
 	}
-	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
+	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, project, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			return nil, status.Errorf(codes.NotFound, "Could not find instance %v: %v", nodeID, err.Error()), disk
@@ -1195,7 +1195,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		klog.V(4).Infof("ControllerPublishVolume succeeded for disk %v to instance %v, already attached.", volKey, nodeID)
 		return pubVolResp, nil, disk
 	}
-	if err := gceCS.updateAccessModeIfNecessary(ctx, volKey, disk, readOnly); err != nil {
+	if err := gceCS.updateAccessModeIfNecessary(ctx, project, volKey, disk, readOnly); err != nil {
 		return nil, common.LoggedError("Failed to update access mode: ", err), disk
 	}
 	instanceZone, instanceName, err = common.NodeIDToZoneAndName(nodeID)
@@ -1302,7 +1302,7 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	}
 	defer gceCS.volumeLocks.Release(lockingVolumeID)
 	diskToUnpublish, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
-	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, instanceZone, instanceName)
+	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, project, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
 			// Node not existing on GCE means that disk has been detached

@@ -5528,7 +5528,7 @@ func TestControllerPublishBackoff(t *testing.T) {
 			}
 
 			if tc.forceAttach {
-				instance, err := driver.cs.CloudProvider.GetInstanceOrError(context.Background(), zone, node)
+				instance, err := driver.cs.CloudProvider.GetInstanceOrError(context.Background(), project, zone, node)
 				if err != nil {
 					t.Fatalf("%s instance not found: %v", node, err)
 				}
