@@ -276,6 +276,12 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, 1*time.Minute, *nodeName)
+		if err != nil {
+			klog.Fatalf("Failed to create device cache: %v", err.Error())
+		}
+		go deviceCache.Run(ctx)
+
 		// TODO(2042): Move more of the constructor args into this struct
 		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
@@ -284,6 +290,7 @@ func handle() {
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 			SysfsPath:                "/sys",
 			MetricsManager:           metricsManager,
+			DeviceCache:              deviceCache,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
@@ -302,8 +309,9 @@ func handle() {
 			}
 		}
 
-		go linkcache.NewListingCache(1*time.Minute, "/dev/disk/by-id/").Run(ctx)
 	}
+
+	klog.Infof("NOT BLOCKED")
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
