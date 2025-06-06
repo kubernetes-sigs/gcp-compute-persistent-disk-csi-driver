@@ -44,9 +44,14 @@ metadata:
   name: imagetag-gcepd-driver
 imageTag:
   name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+<<<<<<< HEAD
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
   newName: us-central1-docker.pkg.dev/enginakdemir-gke-dev/csi-dev/gcp-compute-persistent-disk-csi-driver
+=======
+  # pdImagePlaceholder in test/k8s-integration/main.go is updated automatically with the newTag
+  newName: us-central1-docker.pkg.dev/juliankatz-joonix/csi-dev/gcp-compute-persistent-disk-csi-driver
+>>>>>>> 264b82ed (New implementation that is hooked into nodestage/unstage.  Just linux)
   newTag: "latest"
 ---
 
