@@ -21,10 +21,27 @@ func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName s
 		return nil, fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	return newDeviceCacheForNode(ctx, period, node)
+	return newDeviceCacheForNode(period, node), nil
 }
 
-func newDeviceCacheForNode(ctx context.Context, period time.Duration, node *v1.Node) (*DeviceCache, error) {
+func TestDeviceCache(period time.Duration, node *v1.Node) *DeviceCache {
+	return newDeviceCacheForNode(period, node)
+}
+
+func TestNodeWithVolumes(volumes []string) *v1.Node {
+	volumesInUse := make([]v1.UniqueVolumeName, len(volumes))
+	for i, volume := range volumes {
+		volumesInUse[i] = v1.UniqueVolumeName("kubernetes.io/csi/pd.csi.storage.gke.io^" + volume)
+	}
+
+	return &v1.Node{
+		Status: v1.NodeStatus{
+			VolumesInUse: volumesInUse,
+		},
+	}
+}
+
+func newDeviceCacheForNode(period time.Duration, node *v1.Node) *DeviceCache {
 	deviceCache := &DeviceCache{
 		volumes: make(map[string]deviceMapping),
 		period:  period,
@@ -35,11 +52,23 @@ func newDeviceCacheForNode(ctx context.Context, period time.Duration, node *v1.N
 	// of the string (after the last "/") and call AddVolume for that
 	for _, volume := range node.Status.VolumesInUse {
 		klog.Infof("Adding volume %s to cache", string(volume))
-		volumeID := strings.Split(string(volume), "^")[1]
-		deviceCache.AddVolume(volumeID)
+		vID, err := pvNameFromVolumeID(string(volume))
+		if err != nil {
+			klog.Warningf("failure to retrieve name, skipping volume %q: %v", string(volume), err)
+			continue
+		}
+		deviceCache.AddVolume(vID)
 	}
 
-	return deviceCache, nil
+	return deviceCache
+}
+
+func pvNameFromVolumeID(volumeID string) (string, error) {
+	tokens := strings.Split(volumeID, "^")
+	if len(tokens) != 2 {
+		return "", fmt.Errorf("invalid volume ID, split on `^` returns %d tokens, expected 2", len(tokens))
+	}
+	return tokens[1], nil
 }
 
 // Run since it needs an infinite loop to keep itself up to date
