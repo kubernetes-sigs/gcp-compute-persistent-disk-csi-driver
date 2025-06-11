@@ -80,7 +80,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir)
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
@@ -174,7 +174,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 
 		// Volume should be attached/formatted/mounted/unmounted/detached
-		err = testAttachWriteReadDetach(volume.VolumeId, volName, instance, client, false /* readOnly */)
+		err = testAttachWriteReadDetach(volume.VolumeId, volName, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 		// Resize controller
@@ -203,7 +203,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir)
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
@@ -295,7 +295,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Stage Disk
 		stageDir := filepath.Join("/tmp/", volName, "stage")
-		err = client.NodeStageBlockVolume(volume.VolumeId, stageDir)
+		err = client.NodeStageBlockVolume(volume.VolumeId, stageDir, false /* setupDataCache */)
 		Expect(err).To(BeNil(), "Node Stage volume failed")
 
 		defer func() {
