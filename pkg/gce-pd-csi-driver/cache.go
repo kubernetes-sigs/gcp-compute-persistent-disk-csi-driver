@@ -618,17 +618,23 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)
 		// watch for events
 		case <-watcher.Events:
+			vgName := getVolumeGroupName(nodeName)
+			if !checkVgExists(vgName) {
+				// If the volume group doesn't exist, there's nothing to update.
+				// Continue to the next event.
+				continue
+			}
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			args := []string{
 				"--updatemetadata",
-				getVolumeGroupName(nodeName),
+				vgName,
 			}
 			_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
 			if err != nil {
 				klog.Errorf("Error updating volume group's metadata: %v", err)
 			}
-			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
+			reduceVolumeGroup(vgName, true)
 		}
 	}
 }
