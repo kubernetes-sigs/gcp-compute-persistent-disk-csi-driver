@@ -245,7 +245,7 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
-		isDataCacheEnabledNodePool, err := isDataCacheEnabledNodePool(ctx, *nodeName)
+		isDataCacheEnabledNodePool, err := driver.IsDataCacheEnabledNodePool(ctx, *nodeName, *enableDataCacheFlag)
 		if err != nil {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
@@ -349,17 +349,6 @@ func urlFlag(target **url.URL, name string, usage string) {
 		klog.Errorf("Error parsing endpoint compute endpoint %v", err)
 		return err
 	})
-}
-
-func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
-	if !*enableDataCacheFlag {
-		return false, nil
-	}
-	if len(nodeName) > 0 && nodeName != common.TestNode { // disregard logic below when E2E testing.
-		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
-		return dataCacheLSSDCount != 0, err
-	}
-	return true, nil
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
