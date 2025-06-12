@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -29,12 +30,14 @@ import (
 	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute/tenancy"
 
 	"cloud.google.com/go/compute/metadata"
 	rscmgr "cloud.google.com/go/resourcemanager/apiv3"
 	"golang.org/x/oauth2"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
+	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
@@ -81,7 +84,8 @@ var (
 	// snapshotsType is the resource type of compute snapshots.
 	snapshotsType ResourceType = "snapshots"
 	// imagesType is the resource type of compute images.
-	imagesType ResourceType = "images"
+	imagesType         ResourceType = "images"
+	tenantServiceMutex sync.Mutex
 )
 
 // CloudProvider only supports GCE v1/beta Disk APIs. See
@@ -101,6 +105,10 @@ type CloudProvider struct {
 	tagsRateLimiter *rate.Limiter
 
 	listInstancesConfig ListInstancesConfig
+
+	TenantInformer tenancy.TenantsInformer
+	// tenantServiceMap maintains Compute Services for the default project as well as any tenant projects for any tenant-aware GCE operations
+	tenantServiceMap map[string]*compute.Service
 
 	enableHdHA bool
 }
@@ -133,7 +141,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig, multiTenancyEnabled bool) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -162,10 +170,10 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("Failed getting Project and Zone: %w", err)
+		return nil, fmt.Errorf("failed getting Project and Zone: %w", err)
 	}
 
-	return &CloudProvider{
+	cp := &CloudProvider{
 		service:             svc,
 		betaService:         betasvc,
 		tokenSource:         tokenSource,
@@ -176,9 +184,58 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		listInstancesConfig: listInstancesConfig,
 		// GCP has a rate limit of 600 requests per minute, restricting
 		// here to 8 requests per second.
-		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
-	}, nil
+		tagsRateLimiter:  common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
+		tenantServiceMap: make(map[string]*compute.Service),
+	}
 
+	if multiTenancyEnabled {
+		klog.Info("Setting up multitenancy")
+		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, tenancy.GetKubeConfig())
+		if err != nil {
+			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
+		}
+		cp.TenantInformer = ti
+		addTenantCallback := func(tenantMeta *tenancy.Metadata, projectZone string) (*computev1.Service, error) {
+			klog.Infof("Executing AddFunc callback for tenant: %s (Project: %s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
+
+			region, err := common.GetRegionFromZones([]string{zone})
+			if err != nil {
+				klog.Errorf("Error getting region from zone(%s) for tenant %s: %v", zone, tenantMeta.TenantName, err)
+				return nil, fmt.Errorf("error getting region from zone(%s): %w", zone, err)
+			}
+
+			tenantTokenSource, err := NewTenantTokenSource(tenantMeta, region, configFile.Global.TokenURL, configFile.Global.TokenBody)
+			if err != nil {
+				klog.Errorf("Error during tenant token source generation for %s: %v", tenantMeta.TenantName, err.Error())
+				return nil, fmt.Errorf("error during tenant token source generation: %w", err)
+			}
+
+			tenantComputeService, err := createCloudService(ctx, vendorVersion, tenantTokenSource, computeEndpoint, computeEnvironment)
+			if err != nil {
+				klog.Errorf("Error while creating compute service with tenant identity for %s: %v", tenantMeta.TenantName, err)
+				return nil, fmt.Errorf("error while creating compute service with tenant identity: %w", err)
+			}
+			klog.Infof("Successfully created compute service for tenant %s (Project: %s)", tenantMeta.TenantName, tenantMeta.ProjectNumber)
+			return tenantComputeService, nil
+		}
+
+		lifecycleHandler := tenancy.TenantLifecycleHandler{
+			AddFunc: addTenantCallback,
+		}
+
+		err = tenancy.RegisterTenantEventHandlers(
+			cp.TenantInformer,
+			lifecycleHandler,
+			zone,
+			cp.tenantServiceMap,
+			&tenantServiceMutex,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to register tenant event handlers: %w", err)
+		}
+	}
+
+	return cp, nil
 }
 
 func generateTokenSource(ctx context.Context, configFile *ConfigFile) (oauth2.TokenSource, error) {

@@ -76,6 +76,7 @@ var (
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
 	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with Data Cache configuration")
+	enableMultitenancyFlag      = flag.Bool("enable-multitenancy", false, "If set to true, the CSI Driver will support running on multitenant GKE clusters")
 	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
@@ -232,9 +233,15 @@ func handle() {
 	// Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
-		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment, waitForAttachConfig, listInstancesConfig)
+		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment, waitForAttachConfig, listInstancesConfig, *enableMultitenancyFlag)
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
+		}
+
+		if *enableMultitenancyFlag {
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go cloudProvider.TenantInformer.Run(ctx.Done())
 		}
 
 		initialBackoffDuration := time.Duration(*errorBackoffInitialDurationMs) * time.Millisecond
