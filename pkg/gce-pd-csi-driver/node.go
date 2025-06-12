@@ -613,7 +613,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 
 	// The NodeUnstageVolume does not have any volume or publish context, we need to get the info from LVM locally
 	// Check if cache group cache-{volumeID} exist in LVM
-	if ns.EnableDataCache {
+	if ns.EnableDataCache && ns.DataCacheEnabledNodePool {
 		nodeId := ns.MetadataService.GetName()
 		err := cleanupCache(volumeID, nodeId)
 		if err != nil {
