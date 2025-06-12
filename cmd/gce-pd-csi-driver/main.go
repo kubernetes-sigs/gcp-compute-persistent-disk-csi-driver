@@ -382,7 +382,7 @@ func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, err
 		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
 		return dataCacheLSSDCount != 0, err
 	}
-	return true, nil
+	return false, nil
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
