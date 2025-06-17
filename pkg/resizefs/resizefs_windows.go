@@ -21,6 +21,7 @@ package resizefs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	volumeapiv1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
 	volumeapiv1beta1 "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1beta1"
@@ -72,6 +73,11 @@ func (resizefs *resizeFs) resizeV1(devicePath string, deviceMountPath string) (b
 	}
 	_, err = proxy.VolumeClient.ResizeVolume(context.Background(), request)
 	if err != nil {
+		// Check if this is the Windows error indicating partition is already at correct size
+		if strings.Contains(err.Error(), "The size of the extent is less than the minimum of 1MB") {
+			klog.V(3).Infof("Partition is already at target size (extent difference < 1MB), treating as success: %v", err)
+			return false, nil // Return false to indicate no resize was needed, but no error
+		}
 		return false, err
 	}
 	return true, nil
@@ -97,6 +103,11 @@ func (resizefs *resizeFs) resizeV1Beta(devicePath string, deviceMountPath string
 	}
 	_, err = proxy.VolumeClient.ResizeVolume(context.Background(), request)
 	if err != nil {
+		// Check if this is the Windows error indicating partition is already at correct size
+		if strings.Contains(err.Error(), "The size of the extent is less than the minimum of 1MB") {
+			klog.V(3).Infof("Partition is already at target size (extent difference < 1MB), treating as success: %v", err)
+			return false, nil // Return false to indicate no resize was needed, but no error
+		}
 		return false, err
 	}
 	return true, nil
