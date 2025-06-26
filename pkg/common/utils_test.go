@@ -805,9 +805,15 @@ func TestSnapshotStorageLocations(t *testing.T) {
 			false,
 		},
 		{
+			"valid region in large continent",
+			"europe-west12",
+			[]string{"europe-west12"},
+			false,
+		},
+		{
 			// Zones are not valid bucket/snapshot locations.
 			"single zone",
-			"us-east1a",
+			"us-east1-a",
 			[]string{},
 			true,
 		},
