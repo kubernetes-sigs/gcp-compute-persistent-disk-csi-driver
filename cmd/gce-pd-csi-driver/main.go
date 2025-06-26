@@ -34,6 +34,7 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -275,6 +276,12 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, 1*time.Minute, *nodeName)
+		if err != nil {
+			klog.Fatalf("Failed to create device cache: %v", err.Error())
+		}
+		go deviceCache.Run(ctx)
+
 		// TODO(2042): Move more of the constructor args into this struct
 		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
@@ -283,6 +290,7 @@ func handle() {
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 			SysfsPath:                "/sys",
 			MetricsManager:           metricsManager,
+			DeviceCache:              deviceCache,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
@@ -297,10 +305,13 @@ func handle() {
 				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 					klog.Errorf("Data Cache setup failed: %v", err)
 				}
-				go driver.StartWatcher(*nodeName)
+				go driver.StartWatcher(ctx, *nodeName)
 			}
 		}
+
 	}
+
+	klog.Infof("NOT BLOCKED")
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
