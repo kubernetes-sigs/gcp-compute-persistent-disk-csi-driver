@@ -18,12 +18,16 @@ package mountmanager
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1"
@@ -37,6 +41,16 @@ import (
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 )
+
+// GoogleCloudDisk represents a disk from Google Cloud metadata
+type GoogleCloudDisk struct {
+	DeviceName              string `json:"deviceName"`
+	Index                   int    `json:"index"`
+	Interface               string `json:"interface"`
+	Mode                    string `json:"mode"`
+	NvmeNamespaceIdentifier uint64 `json:"nvmeNamespaceIdentifier"`
+	Type                    string `json:"type"`
+}
 
 // CSIProxyMounterV1 is the mounter implementation that uses the v1 API
 type CSIProxyMounterV1 struct {
@@ -182,6 +196,197 @@ func (mounter *CSIProxyMounterV1) Unmount(target string) error {
 }
 
 func (mounter *CSIProxyMounterV1) GetDiskNumber(deviceName string, partition string, volumeKey string) (string, error) {
+	// First, get Google Cloud metadata to find the nvmeNamespaceIdentifier for this device
+	googleDisks, err := mounter.getGoogleCloudDisks()
+	if err != nil {
+		klog.V(4).Infof("Failed to get Google Cloud metadata, falling back to legacy method: %v", err)
+		return mounter.getDiskNumberLegacy(deviceName)
+	}
+
+	// Find the nvmeNamespaceIdentifier for the given deviceName
+	var targetNamespaceId uint64
+	var diskInterface string
+	found := false
+	for _, disk := range googleDisks {
+		if disk.DeviceName == deviceName {
+			targetNamespaceId = disk.NvmeNamespaceIdentifier
+			diskInterface = disk.Interface
+			found = true
+			klog.V(4).Infof("Found target namespace ID %d for device %s with interface %s", targetNamespaceId, deviceName, diskInterface)
+			break
+		}
+	}
+
+	if !found {
+		klog.V(4).Infof("Device %s not found in Google Cloud metadata, falling back to legacy method", deviceName)
+		return mounter.getDiskNumberLegacy(deviceName)
+	}
+
+	// Check if device is NVME - if not, use legacy method
+	if diskInterface != "NVME" {
+		klog.V(4).Infof("Device %s is %s interface (not NVME), falling back to legacy method", deviceName, diskInterface)
+		return mounter.getDiskNumberLegacy(deviceName)
+	}
+
+	// Get Windows disk information
+	listRequest := &diskapi.ListDiskIDsRequest{}
+	diskIDsResponse, err := mounter.DiskClient.ListDiskIDs(context.Background(), listRequest)
+	if err != nil {
+		return "", err
+	}
+	diskIDsMap := diskIDsResponse.GetDiskIDs()
+
+	// Iterate through Windows disks and convert EUI to decimal for matching
+	for diskNum, diskInfo := range diskIDsMap {
+		klog.V(4).Infof("found disk number %d, disk info %v", diskNum, diskInfo)
+
+		// Check if this disk has an EUI identifier
+		euiValue := mounter.extractEUIFromDiskInfo(diskInfo)
+		if euiValue == "" {
+			continue
+		}
+
+		// Convert EUI hex to decimal
+		decimalValue, err := mounter.convertEUIToDecimal(euiValue)
+		if err != nil {
+			klog.V(4).Infof("Failed to convert EUI %s to decimal: %v", euiValue, err)
+			continue
+		}
+
+		klog.V(4).Infof("Disk %d: EUI %s converts to decimal %d", diskNum, euiValue, decimalValue)
+
+		// Check if this matches our target namespace identifier
+		if decimalValue == targetNamespaceId {
+			klog.V(4).Infof("Found matching disk: Windows disk %d matches Google namespace ID %d", diskNum, targetNamespaceId)
+			return strconv.FormatUint(uint64(diskNum), 10), nil
+		}
+	}
+
+	// Final fallback: if NVME matching failed, try legacy method
+	klog.V(4).Infof("Could not find NVME match for device %s with namespace ID %d, falling back to legacy method", deviceName, targetNamespaceId)
+	return mounter.getDiskNumberLegacy(deviceName)
+}
+
+// Helper function to extract EUI from disk info (v1 API format)
+func (mounter *CSIProxyMounterV1) extractEUIFromDiskInfo(diskInfo *diskapi.DiskIDs) string {
+	klog.V(4).Infof("extractEUIFromDiskInfo called for disk with Page83=%s, SerialNumber=%s", diskInfo.Page83, diskInfo.SerialNumber)
+
+	// Check if Page83 contains an EUI format
+	if diskInfo.Page83 != "" && strings.HasPrefix(diskInfo.Page83, "eui.") {
+		klog.V(4).Infof("Found EUI in Page83: %s", diskInfo.Page83)
+		return diskInfo.Page83
+	}
+
+	// For NVMe disks, check SerialNumber field and convert to EUI format
+	if diskInfo.SerialNumber != "" {
+		klog.V(4).Infof("Attempting to convert serial number %s to EUI", diskInfo.SerialNumber)
+		// Convert serial number format like "10CC_9636_B6E3_CE3B_0000_0000_0000_0000." to EUI format
+		eui := mounter.convertSerialToEUI(diskInfo.SerialNumber)
+		if eui != "" {
+			klog.V(4).Infof("Successfully converted serial number %s to EUI %s", diskInfo.SerialNumber, eui)
+			return eui
+		} else {
+			klog.V(4).Infof("Failed to convert serial number %s to EUI", diskInfo.SerialNumber)
+		}
+	} else {
+		klog.V(4).Infof("No serial number found for disk")
+	}
+
+	klog.V(4).Infof("No EUI found for disk")
+	return ""
+}
+
+// Helper function to convert serial number to EUI format
+func (mounter *CSIProxyMounterV1) convertSerialToEUI(serialNumber string) string {
+	klog.V(4).Infof("convertSerialToEUI: input=%s", serialNumber)
+
+	// Remove trailing period and underscores from serial number
+	// Format: "10CC_9636_B6E3_CE3B_0000_0000_0000_0000." -> "10CC9636B6E3CE3B0000000000000000"
+	cleaned := strings.TrimSuffix(serialNumber, ".")
+	cleaned = strings.ReplaceAll(cleaned, "_", "")
+	klog.V(4).Infof("convertSerialToEUI: cleaned=%s, length=%d", cleaned, len(cleaned))
+
+	// Validate that it's a valid hex string of expected length
+	if len(cleaned) != 32 {
+		klog.V(4).Infof("convertSerialToEUI: invalid length %d, expected 32", len(cleaned))
+		return ""
+	}
+
+	// Check if it's valid hex (just test parsing the first 16 chars to avoid overflow)
+	if _, err := strconv.ParseUint(cleaned[:16], 16, 64); err != nil {
+		klog.V(4).Infof("convertSerialToEUI: invalid hex in first 16 chars: %v", err)
+		return ""
+	}
+
+	// Return in EUI format
+	result := "eui." + cleaned
+	klog.V(4).Infof("convertSerialToEUI: result=%s", result)
+	return result
+}
+
+// Helper function to convert EUI hex to decimal
+func (mounter *CSIProxyMounterV1) convertEUIToDecimal(euiValue string) (uint64, error) {
+	// Extract hex part from EUI (first 16 characters after "eui.")
+	if !strings.HasPrefix(euiValue, "eui.") {
+		return 0, fmt.Errorf("invalid EUI format: %s", euiValue)
+	}
+
+	hexPart := strings.TrimPrefix(euiValue, "eui.")
+	if len(hexPart) < 16 {
+		return 0, fmt.Errorf("EUI hex part too short: %s", hexPart)
+	}
+
+	// Take first 16 hex characters
+	hexPart = hexPart[:16]
+
+	// Convert to decimal
+	decimalValue, err := strconv.ParseUint(hexPart, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse hex %s: %v", hexPart, err)
+	}
+
+	return decimalValue, nil
+}
+
+// Helper function to get Google Cloud metadata
+func (mounter *CSIProxyMounterV1) getGoogleCloudDisks() ([]GoogleCloudDisk, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", "http://metadata.google.internal/computeMetadata/v1/instance/disks/?recursive=true", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("Metadata-Flavor", "Google")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call metadata service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metadata service returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var disks []GoogleCloudDisk
+	if err := json.Unmarshal(body, &disks); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
+	}
+
+	klog.V(4).Infof("Retrieved %d disks from Google Cloud metadata", len(disks))
+	return disks, nil
+}
+
+// Legacy method for backward compatibility
+func (mounter *CSIProxyMounterV1) getDiskNumberLegacy(deviceName string) (string, error) {
 	listRequest := &diskapi.ListDiskIDsRequest{}
 	diskIDsResponse, err := mounter.DiskClient.ListDiskIDs(context.Background(), listRequest)
 	if err != nil {
