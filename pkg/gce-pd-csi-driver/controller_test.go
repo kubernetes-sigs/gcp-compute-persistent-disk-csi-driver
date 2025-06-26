@@ -265,24 +265,6 @@ func TestCreateSnapshotArguments(t *testing.T) {
 				ReadyToUse:     false,
 			},
 		},
-		{
-			name: "fail to create snapshot for HdHA multi-writer",
-			req: &csi.CreateSnapshotRequest{
-				Name:           name,
-				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
-			},
-			seedDisks: []*gce.CloudDisk{
-				gce.CloudDiskFromV1(&compute.Disk{
-					Name:       name,
-					SelfLink:   fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:       common.DiskTypeHdHA,
-					AccessMode: common.GCEReadWriteManyAccessMode,
-					Region:     "country-region",
-				}),
-			},
-			expErrCode: codes.InvalidArgument,
-		},
 	}
 
 	for _, tc := range testCases {

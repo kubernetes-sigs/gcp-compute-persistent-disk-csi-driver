@@ -1620,9 +1620,6 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 		}
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
 	}
-	if common.IsHyperdisk(disk.GetPDType()) && disk.GetAccessMode() == common.GCEReadWriteManyAccessMode {
-		return nil, status.Errorf(codes.InvalidArgument, "Cannot create snapshot for disk type %s with access mode %s", common.DiskTypeHdHA, common.GCEReadWriteManyAccessMode)
-	}
 
 	snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)
 	if err != nil {
