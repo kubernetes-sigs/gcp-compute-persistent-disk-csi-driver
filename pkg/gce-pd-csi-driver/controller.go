@@ -1668,6 +1668,16 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 			if gce.IsGCEError(err, "notFound") {
 				return nil, status.Errorf(codes.NotFound, "Could not find volume with ID %v: %v", volKey.String(), err.Error())
 			}
+
+			// Identified as incorrect error handling
+			if gce.IsSnapshotAlreadyExistsError(err) {
+				return nil, status.Errorf(codes.AlreadyExists, "Snapshot already exists: %v", err.Error())
+			}
+
+			// Identified as incorrect error handling
+			if gce.IsGCPOrgViolationError(err) {
+				return nil, status.Errorf(codes.FailedPrecondition, "Violates GCP org policy: %v", err.Error())
+			}
 			return nil, common.LoggedError("Failed to create snapshot: ", err)
 		}
 	}
