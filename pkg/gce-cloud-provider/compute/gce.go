@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"sync"
 	"time"
@@ -440,4 +441,28 @@ func IsGCENotFoundError(err error) bool {
 // invalid reason
 func IsGCEInvalidError(err error) bool {
 	return IsGCEError(err, "invalid")
+}
+
+// ErrorContainsRegex checks if the error message contains a specific regex pattern.
+func ErrorContainsRegex(err error, regexPattern string) bool {
+	if err == nil {
+		return false
+	}
+	re, compileErr := regexp.Compile(regexPattern)
+	if compileErr != nil {
+		fmt.Printf("Error compiling regex '%s': %v\n", regexPattern, compileErr)
+		return false
+	}
+	errorMessage := err.Error()
+	return re.MatchString(errorMessage)
+}
+
+// IsSnapshotAlreadyExistsError checks if the error is a snapshot already exists error.
+func IsSnapshotAlreadyExistsError(err error) bool {
+	return ErrorContainsRegex(err, "The resource '[^']+' already exists")
+}
+
+// IsGCPOrgViolationError checks if the error is a GCP organization policy violation error.
+func IsGCPOrgViolationError(err error) bool {
+	return ErrorContainsRegex(err, "violates constraint constraints/gcp.")
 }

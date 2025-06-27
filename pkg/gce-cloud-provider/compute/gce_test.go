@@ -30,6 +30,8 @@ import (
 
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type mockTokenSource struct{}
@@ -97,6 +99,114 @@ func TestIsGCEError(t *testing.T) {
 		isGCEError := IsGCEError(tc.inputErr, tc.reason)
 		if tc.expIsGCEError != isGCEError {
 			t.Fatalf("Got isGCEError '%t', expected '%t'", isGCEError, tc.expIsGCEError)
+		}
+	}
+}
+
+func TestErrorContainsRegex(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		regex          string
+		expectedResult bool
+	}{
+		{
+			name:           "regex found in error message",
+			inputErr:       errors.New("The resource 'my-resource' already exists"),
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: true,
+		},
+		{
+			name:           "wrapped valid error message",
+			inputErr:       status.Errorf(codes.AlreadyExists, "Snapshot already exists: %v", errors.New("The resource 'my-resource' already exists")),
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: true,
+		},
+		{
+			name:           "regex not found in error message",
+			inputErr:       errors.New("The resource 'my-resource' does not exist"),
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: false,
+		},
+		{
+			name:           "empty",
+			inputErr:       errors.New("  "),
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: false,
+		},
+		{
+			name:           "empty 2",
+			inputErr:       errors.New(""),
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: false,
+		},
+		{
+			name:           "nil",
+			inputErr:       nil,
+			regex:          "The resource '[^']+' already exists",
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := ErrorContainsRegex(tc.inputErr, tc.regex)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
+func TestErrorIsGCPViolationRegex(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is gcp org violation error",
+			inputErr:       errors.New("Your api request violates constraint constraints/gcp.resourceLocations"),
+			expectedResult: true,
+		},
+		{
+			name:           "is not gcp org violation error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsGCPOrgViolationError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
+func TestErrorIsSnapshotExistsError(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is gcp org violation error",
+			inputErr:       errors.New("Your api request violates constraint constraints/gcp.resourceLocations"),
+			expectedResult: true,
+		},
+		{
+			name:           "is not gcp org violation error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsGCPOrgViolationError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
 		}
 	}
 }
