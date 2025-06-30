@@ -848,7 +848,7 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	}
 
 	// Process gen4 machine attach limits
-	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-"}
+	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-", "c4d-"}
 	for _, gen4Prefix := range gen4MachineTypesPrefix {
 		if strings.HasPrefix(machineType, gen4Prefix) {
 			machineTypeSlice := strings.Split(machineType, "-")
