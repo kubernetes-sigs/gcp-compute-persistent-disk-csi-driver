@@ -228,9 +228,13 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
+		isDataCacheEnabledNodePool, err := isDataCacheEnabledNodePool(ctx, *nodeName)
+		if err != nil {
+			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
+		}
 		nsArgs := driver.NodeServerArgs{
 			EnableDataCache:          *enableDataCacheFlag,
-			DataCacheEnabledNodePool: isDataCacheEnabledNodePool(ctx, *nodeName),
+			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 		if *maxConcurrentFormatAndMount > 0 {
@@ -328,14 +332,17 @@ func urlFlag(target **url.URL, name string, usage string) {
 	})
 }
 
-func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) bool {
+func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
+	if !*enableDataCacheFlag {
+		return false, nil
+	}
 	if nodeName != common.TestNode { // disregard logic below when E2E testing.
 		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
-		if err != nil || dataCacheLSSDCount == 0 {
-			return false
-		}
+		return dataCacheLSSDCount != 0, err
+	} else if nodeName == common.TestNode {
+		return true, nil
 	}
-	return true
+	return false, nil
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
