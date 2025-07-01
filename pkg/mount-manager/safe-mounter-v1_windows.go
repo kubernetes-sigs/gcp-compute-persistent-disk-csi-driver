@@ -185,7 +185,7 @@ func (mounter *CSIProxyMounterV1) Unmount(target string) error {
 
 func (mounter *CSIProxyMounterV1) GetDiskNumber(deviceName string, partition string, volumeKey string) (string, error) {
 	// First, get Google Cloud metadata to find the nvmeNamespaceIdentifier for this device
-	googleDisks, err := AttachedDisks()
+	googleDisks, err := attachedDisks()
 	if err != nil {
 		klog.V(4).Infof("Failed to get Google Cloud metadata, falling back to legacy method: %v", err)
 		return mounter.getDiskNumberLegacy(deviceName)
@@ -337,13 +337,13 @@ func (mounter *CSIProxyMounterV1) convertEUIToDecimal(euiValue string) (uint64, 
 }
 
 // Helper function to get Google Cloud metadata
-func (mounter *CSIProxyMounterV1) getGoogleCloudDisks() ([]GoogleCloudDisk, error) {
+func (mounter *CSIProxyMounterV1) getGoogleCloudDisks() ([]googleCloudDisk, error) {
 	disksResp, err := metadata.GetWithContext(context.Background(), "instance/disks/?recursive=true")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disks using metadata package: %v", err)
 	}
 
-	var disks []GoogleCloudDisk
+	var disks []googleCloudDisk
 	if err := json.Unmarshal([]byte(disksResp), &disks); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
 	}

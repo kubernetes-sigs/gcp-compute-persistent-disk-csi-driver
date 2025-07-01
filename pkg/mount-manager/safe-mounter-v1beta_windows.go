@@ -200,7 +200,7 @@ func (mounter *CSIProxyMounterV1Beta) Unmount(target string) error {
 
 func (mounter *CSIProxyMounterV1Beta) GetDiskNumber(deviceName string, partition string, volumeKey string) (string, error) {
 	// First, get Google Cloud metadata to find the nvmeNamespaceIdentifier for this device
-	googleDisks, err := AttachedDisks()
+	googleDisks, err := attachedDisks()
 	if err != nil {
 		klog.V(4).Infof("Failed to get Google Cloud metadata, falling back to legacy method: %v", err)
 		return mounter.getDiskNumberLegacy(deviceName)

@@ -87,7 +87,7 @@ func NewSafeMounter(int, time.Duration) (*mount.SafeFormatAndMount, error) {
 	return nil, err
 }
 
-type GoogleCloudDisk struct {
+type googleCloudDisk struct {
 	DeviceName              string `json:"deviceName"`
 	Index                   int    `json:"index"`
 	Interface               string `json:"interface"`
@@ -96,15 +96,15 @@ type GoogleCloudDisk struct {
 	Type                    string `json:"type"`
 }
 
-// AttachedDisks returns the list of disks attached to the instance from which
+// attachedDisks returns the list of disks attached to the instance from which
 // the metadata server is called.
-func AttachedDisks() ([]GoogleCloudDisk, error) {
+func attachedDisks() ([]googleCloudDisk, error) {
 	disksResp, err := metadata.GetWithContext(context.Background(), "instance/disks/?recursive=true")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disks using metadata package: %v", err)
 	}
 
-	var disks []GoogleCloudDisk
+	var disks []googleCloudDisk
 	if err := json.Unmarshal([]byte(disksResp), &disks); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
