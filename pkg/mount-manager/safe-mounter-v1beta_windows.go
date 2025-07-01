@@ -21,14 +21,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"cloud.google.com/go/compute/metadata"
 	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1beta2"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1beta2"
 
@@ -202,7 +200,7 @@ func (mounter *CSIProxyMounterV1Beta) Unmount(target string) error {
 
 func (mounter *CSIProxyMounterV1Beta) GetDiskNumber(deviceName string, partition string, volumeKey string) (string, error) {
 	// First, get Google Cloud metadata to find the nvmeNamespaceIdentifier for this device
-	googleDisks, err := mounter.getGoogleCloudDisks()
+	googleDisks, err := AttachedDisks()
 	if err != nil {
 		klog.V(4).Infof("Failed to get Google Cloud metadata, falling back to legacy method: %v", err)
 		return mounter.getDiskNumberLegacy(deviceName)
@@ -358,34 +356,13 @@ func (mounter *CSIProxyMounterV1Beta) convertEUIToDecimal(euiValue string) (uint
 
 // Helper function to get Google Cloud metadata
 func (mounter *CSIProxyMounterV1Beta) getGoogleCloudDisks() ([]GoogleCloudDiskBeta, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", "http://metadata.google.internal/computeMetadata/v1/instance/disks/?recursive=true", nil)
+	disksResponse, err := metadata.GetWithContext(context.Background(), "instance/disks/?recursive=true")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Metadata-Flavor", "Google")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call metadata service: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata service returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to get disks using metadata package: %v", err)
 	}
 
 	var disks []GoogleCloudDiskBeta
-	if err := json.Unmarshal(body, &disks); err != nil {
+	if err := json.Unmarshal([]byte(disksResponse), &disks); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 

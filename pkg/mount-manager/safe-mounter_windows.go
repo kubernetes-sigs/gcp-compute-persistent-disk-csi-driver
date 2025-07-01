@@ -17,8 +17,12 @@ limitations under the License.
 package mountmanager
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"cloud.google.com/go/compute/metadata"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
@@ -81,4 +85,30 @@ func NewSafeMounter(int, time.Duration) (*mount.SafeFormatAndMount, error) {
 	}
 	klog.V(4).Infof("failed to connect to csi-proxy v1beta with error=%v", err.Error())
 	return nil, err
+}
+
+type GoogleCloudDisk struct {
+	DeviceName              string `json:"deviceName"`
+	Index                   int    `json:"index"`
+	Interface               string `json:"interface"`
+	Mode                    string `json:"mode"`
+	NvmeNamespaceIdentifier uint64 `json:"nvmeNamespaceIdentifier"`
+	Type                    string `json:"type"`
+}
+
+// AttachedDisks returns the list of disks attached to the instance from which
+// the metadata server is called.
+func AttachedDisks() ([]GoogleCloudDisk, error) {
+	disksResp, err := metadata.GetWithContext(context.Background(), "instance/disks/?recursive=true")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get disks using metadata package: %v", err)
+	}
+
+	var disks []GoogleCloudDisk
+	if err := json.Unmarshal([]byte(disksResp), &disks); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
+	}
+
+	klog.V(4).Infof("Retrieved %d disks from Google Cloud metadata", len(disks))
+	return disks, nil
 }

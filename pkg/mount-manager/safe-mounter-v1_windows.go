@@ -21,13 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	diskapi "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1"
 	diskclient "github.com/kubernetes-csi/csi-proxy/client/groups/disk/v1"
@@ -38,19 +35,10 @@ import (
 	volumeapi "github.com/kubernetes-csi/csi-proxy/client/api/volume/v1"
 	volumeclient "github.com/kubernetes-csi/csi-proxy/client/groups/volume/v1"
 
+	"cloud.google.com/go/compute/metadata"
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 )
-
-// GoogleCloudDisk represents a disk from Google Cloud metadata
-type GoogleCloudDisk struct {
-	DeviceName              string `json:"deviceName"`
-	Index                   int    `json:"index"`
-	Interface               string `json:"interface"`
-	Mode                    string `json:"mode"`
-	NvmeNamespaceIdentifier uint64 `json:"nvmeNamespaceIdentifier"`
-	Type                    string `json:"type"`
-}
 
 // CSIProxyMounterV1 is the mounter implementation that uses the v1 API
 type CSIProxyMounterV1 struct {
@@ -197,7 +185,7 @@ func (mounter *CSIProxyMounterV1) Unmount(target string) error {
 
 func (mounter *CSIProxyMounterV1) GetDiskNumber(deviceName string, partition string, volumeKey string) (string, error) {
 	// First, get Google Cloud metadata to find the nvmeNamespaceIdentifier for this device
-	googleDisks, err := mounter.getGoogleCloudDisks()
+	googleDisks, err := AttachedDisks()
 	if err != nil {
 		klog.V(4).Infof("Failed to get Google Cloud metadata, falling back to legacy method: %v", err)
 		return mounter.getDiskNumberLegacy(deviceName)
@@ -350,34 +338,13 @@ func (mounter *CSIProxyMounterV1) convertEUIToDecimal(euiValue string) (uint64, 
 
 // Helper function to get Google Cloud metadata
 func (mounter *CSIProxyMounterV1) getGoogleCloudDisks() ([]GoogleCloudDisk, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", "http://metadata.google.internal/computeMetadata/v1/instance/disks/?recursive=true", nil)
+	disksResp, err := metadata.GetWithContext(context.Background(), "instance/disks/?recursive=true")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Metadata-Flavor", "Google")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call metadata service: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata service returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to get disks using metadata package: %v", err)
 	}
 
 	var disks []GoogleCloudDisk
-	if err := json.Unmarshal(body, &disks); err != nil {
+	if err := json.Unmarshal([]byte(disksResp), &disks); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 
