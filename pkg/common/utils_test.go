@@ -1044,6 +1044,108 @@ func TestConvertMiStringToInt64(t *testing.T) {
 	}
 }
 
+func TestConvertGiStringToInt64(t *testing.T) {
+	tests := []struct {
+		desc        string
+		inputStr    string
+		expInt64    int64
+		expectError bool
+	}{
+		{
+			desc:        "valid number string",
+			inputStr:    "10000",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round Ki to GiB",
+			inputStr:    "1000000Ki",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round k to GiB",
+			inputStr:    "1000000k",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round Mi to GiB",
+			inputStr:    "1000Mi",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round M to GiB",
+			inputStr:    "1000M",
+			expInt64:    1,
+			expectError: false,
+		},
+		{
+			desc:        "round G to GiB",
+			inputStr:    "1000G",
+			expInt64:    932,
+			expectError: false,
+		},
+		{
+			desc:        "round Gi to GiB - most common case",
+			inputStr:    "1234Gi",
+			expInt64:    1234,
+			expectError: false,
+		},
+		{
+			desc:        "round decimal to GiB",
+			inputStr:    "1.2Gi",
+			expInt64:    2,
+			expectError: false,
+		},
+		{
+			desc:        "round big value to GiB",
+			inputStr:    "8191Pi",
+			expInt64:    8588886016,
+			expectError: false,
+		},
+		{
+			desc:        "invalid empty string",
+			inputStr:    "",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid KiB string",
+			inputStr:    "10KiB",
+			expInt64:    10000,
+			expectError: true,
+		},
+		{
+			desc:        "invalid GB string",
+			inputStr:    "10GB",
+			expInt64:    0,
+			expectError: true,
+		},
+		{
+			desc:        "invalid string",
+			inputStr:    "ew%65",
+			expInt64:    0,
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			actualInt64, err := ConvertGiStringToInt64(tc.inputStr)
+			if err != nil && !tc.expectError {
+				t.Errorf("Got error %v converting string to int64 %s; expect no error", err, tc.inputStr)
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("Got no error converting string to int64 %s; expect an error", tc.inputStr)
+			}
+			if err == nil && actualInt64 != tc.expInt64 {
+				t.Errorf("Got %d for converting string to int64; expect %d", actualInt64, tc.expInt64)
+			}
+		})
+	}
+}
+
 func TestConvertStringToBool(t *testing.T) {
 	tests := []struct {
 		desc        string
@@ -1655,6 +1757,106 @@ func TestUnorderedSlicesEqual(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStringInSlice(t *testing.T) {
+	testCases := []struct {
+		name            string
+		inputStr        string
+		inputSlice      []string
+		expectedInSlice bool
+	}{
+		{
+			name:            "string is in the slice",
+			inputStr:        "in slice",
+			inputSlice:      []string{"in slice", "other string"},
+			expectedInSlice: true,
+		},
+		{
+			name:       "string is NOT in the slice",
+			inputStr:   "not in slice",
+			inputSlice: []string{"other string"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		actualResult := StringInSlice(tc.inputStr, tc.inputSlice)
+		if actualResult != tc.expectedInSlice {
+			t.Errorf("Expect value is %v but got  %v. inputStr is %s, inputSlice is %v", tc.expectedInSlice, actualResult, tc.inputStr, tc.inputSlice)
+		}
+	}
+}
+
+func TestValidateDataCacheMode(t *testing.T) {
+	testCases := []struct {
+		name        string
+		inputStr    string
+		expectError bool
+	}{
+		{
+			name:     "valid input - writethrough",
+			inputStr: "writethrough",
+		},
+		{
+			name:     "valid input - writeback",
+			inputStr: "writeback",
+		},
+		{
+			name:        "invalid input",
+			inputStr:    "write-back not valid",
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		err := ValidateDataCacheMode(tc.inputStr)
+		if err != nil && !tc.expectError {
+			t.Errorf("Got error %v  validate data cache mode %s; expect no error", err, tc.inputStr)
+		}
+
+		if err == nil && tc.expectError {
+			t.Errorf("Got no error validate data cache mode %s; expect an error", tc.inputStr)
+		}
+	}
+
+}
+
+func TestValidateNonNegativeInt(t *testing.T) {
+	testCases := []struct {
+		name        string
+		cacheSize   int64
+		expectError bool
+	}{
+		{
+			name:      "valid input - positive cache size",
+			cacheSize: 100000,
+		},
+		{
+			name:        "invalid input - cachesize 0",
+			cacheSize:   0,
+			expectError: true,
+		},
+		{
+			name:        "invalid input - negative cache size",
+			cacheSize:   -100,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("test case: %s", tc.name)
+		err := ValidateNonNegativeInt(tc.cacheSize)
+		if err != nil && !tc.expectError {
+			t.Errorf("Got error %v  validate data cache mode %d; expect no error", err, tc.cacheSize)
+		}
+
+		if err == nil && tc.expectError {
+			t.Errorf("Got no error validate data cache mode %d; expect an error", tc.cacheSize)
+		}
+	}
+
 }
 
 func TestParseZoneFromURI(t *testing.T) {

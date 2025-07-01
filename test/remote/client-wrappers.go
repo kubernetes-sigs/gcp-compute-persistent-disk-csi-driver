@@ -52,6 +52,14 @@ var (
 	}
 )
 
+const (
+	// Keys in the volume context.
+	contextForceAttach = "force-attach"
+
+	defaultLocalSsdCacheSize = "200Gi"
+	defaultDataCacheMode     = common.DataCacheModeWriteThrough
+)
+
 type CsiClient struct {
 	conn       *grpc.ClientConn
 	idClient   csipb.IdentityClient
@@ -179,19 +187,25 @@ func (c *CsiClient) ControllerUnpublishVolume(volId, nodeId string) error {
 	return err
 }
 
-func (c *CsiClient) NodeStageExt4Volume(volId, stageDir string) error {
-	return c.NodeStageVolume(volId, stageDir, stdVolCap)
+func (c *CsiClient) NodeStageExt4Volume(volId, stageDir string, setupDataCache bool) error {
+	return c.NodeStageVolume(volId, stageDir, stdVolCap, setupDataCache)
 }
 
-func (c *CsiClient) NodeStageBlockVolume(volId, stageDir string) error {
-	return c.NodeStageVolume(volId, stageDir, blockVolCap)
+func (c *CsiClient) NodeStageBlockVolume(volId, stageDir string, setupDataCache bool) error {
+	return c.NodeStageVolume(volId, stageDir, blockVolCap, setupDataCache)
 }
 
-func (c *CsiClient) NodeStageVolume(volId, stageDir string, volumeCap *csipb.VolumeCapability) error {
+func (c *CsiClient) NodeStageVolume(volId string, stageDir string, volumeCap *csipb.VolumeCapability, setupDataCache bool) error {
+	publishContext := map[string]string{}
+	if setupDataCache {
+		publishContext[common.ContextDataCacheSize] = defaultLocalSsdCacheSize
+		publishContext[common.ContextDataCacheMode] = defaultDataCacheMode
+	}
 	nodeStageReq := &csipb.NodeStageVolumeRequest{
 		VolumeId:          volId,
 		StagingTargetPath: stageDir,
 		VolumeCapability:  volumeCap,
+		PublishContext:    publishContext,
 	}
 	_, err := c.nodeClient.NodeStageVolume(context.Background(), nodeStageReq)
 	return err
