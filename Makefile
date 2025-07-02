@@ -23,8 +23,8 @@ DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
 
-BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/servercore:ltsc2019
-BASE_IMAGE_LTSC2022=mcr.microsoft.com/windows/servercore:ltsc2022
+BASE_IMAGE_LTSC2019=mcr.microsoft.com/windows/nanoserver:ltsc2019
+BASE_IMAGE_LTSC2022=mcr.microsoft.com/windows/nanoserver:ltsc2022
 
 # Both arrays MUST be index aligned.
 WINDOWS_IMAGE_TAGS=ltsc2019
