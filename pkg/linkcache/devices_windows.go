@@ -4,14 +4,13 @@ package linkcache
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
 )
 
 func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string) (*DeviceCache, error) {
-	klog.Warningf("NewDeviceCacheForNode is not implemented for Windows")
+	klog.Infof("NewDeviceCacheForNode is not implemented for Windows")
 	return nil, nil
 }
 
@@ -20,7 +19,8 @@ func (d *DeviceCache) Run(ctx context.Context) {
 }
 
 func (d *DeviceCache) AddVolume(volumeID string) error {
-	return fmt.Errorf("AddVolume is not implemented for Windows")
+	klog.Infof("AddVolume is not implemented for Windows")
+	return nil
 }
 
 func (d *DeviceCache) RemoveVolume(volumeID string) {
