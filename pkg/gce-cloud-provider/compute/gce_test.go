@@ -101,6 +101,60 @@ func TestIsGCEError(t *testing.T) {
 	}
 }
 
+func TestErrorIsGCPViolationRegex(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is gcp org violation error",
+			inputErr:       errors.New("Your api request violates constraint constraints/gcp.resourceLocations"),
+			expectedResult: true,
+		},
+		{
+			name:           "is not gcp org violation error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsGCPOrgViolationError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
+func TestErrorIsSnapshotExistsError(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is ss error",
+			inputErr:       errors.New("The resource projects/dcme-pre-opt-mdp-rmp-00/global/snapshots/snapshot-3c208602-d815-40ae-a61e-3259e3bd29ca already exists, alreadyExists"),
+			expectedResult: true,
+		},
+		{
+			name:           "is not ss already exists error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsSnapshotAlreadyExistsError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
 func TestGetComputeVersion(t *testing.T) {
 	testCases := []struct {
 		name               string
