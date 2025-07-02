@@ -278,7 +278,7 @@ func handle() {
 
 		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, 1*time.Minute, *nodeName)
 		if err != nil {
-			klog.Fatalf("Failed to create device cache: %v", err.Error())
+			klog.Warningf("Failed to create device cache: %v", err.Error())
 		}
 		go deviceCache.Run(ctx)
 
@@ -310,8 +310,6 @@ func handle() {
 		}
 
 	}
-
-	klog.Infof("NOT BLOCKED")
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
