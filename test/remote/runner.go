@@ -29,7 +29,7 @@ import (
 func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd string) (int, error) {
 
 	// Create the temp staging directory
-	klog.V(4).Infof("Staging test binaries on %q", i.cfg.Name)
+	klog.Infof("Staging test binaries on %q", i.cfg.Name)
 
 	// Do not sudo here, so that we can use scp to copy test archive to the directdory.
 	if output, err := i.SSHNoSudo("mkdir", remoteWorkspace); err != nil {
@@ -49,7 +49,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 		fmt.Sprintf("cd %s", remoteWorkspace),
 		fmt.Sprintf("tar -xzvf ./%s", archiveName),
 	)
-	klog.V(4).Infof("Extracting tar on %q", i.cfg.Name)
+	klog.Infof("Extracting tar on %q", i.cfg.Name)
 	// Do not use sudo here, because `sudo tar -x` will recover the file ownership inside the tar ball, but
 	// we want the extracted files to be owned by the current user.
 	if output, err := i.SSHNoSudo("sh", "-c", cmd); err != nil {
@@ -57,7 +57,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 		return -1, fmt.Errorf("failed to extract test archive: %v, output: %q", err.Error(), output)
 	}
 
-	klog.V(4).Infof("Starting driver on %q", i.cfg.Name)
+	klog.Infof("Starting driver on %q", i.cfg.Name)
 	// When the process is killed the driver should close the TCP endpoint, then we want to download the logs
 	output, err := i.SSH(driverRunCmd)
 	if err != nil {
