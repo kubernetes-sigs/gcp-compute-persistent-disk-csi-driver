@@ -73,7 +73,7 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 	archiveName := fmt.Sprintf("e2e_driver_binaries_%s.tar.gz", uuid.NewUUID())
 	archivePath, err := CreateDriverArchive(archiveName, instance.cfg.Architecture, config.PkgPath, config.BinPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create driver archive: %v", err.Error())
 	}
 	defer func() {
 		err = os.Remove(archivePath)
@@ -92,7 +92,7 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 	// Upload archive to instance and run binaries
 	driverPID, err := instance.UploadAndRun(archivePath, config.WorkspaceDir, config.RunDriverCmd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to upload and run driver: %v", err.Error())
 	}
 
 	// Create an SSH tunnel from port to port
