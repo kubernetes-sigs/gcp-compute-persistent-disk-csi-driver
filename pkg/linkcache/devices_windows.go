@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string) (*DeviceCache, error) {
-	return nil, fmt.Errorf("NewDeviceCacheForNode is not implemented for Windows")
+	klog.Warningf("NewDeviceCacheForNode is not implemented for Windows")
+	return nil, nil
 }
 
 func (d *DeviceCache) Run(ctx context.Context) {
