@@ -279,8 +279,9 @@ func handle() {
 		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, 1*time.Minute, *nodeName)
 		if err != nil {
 			klog.Warningf("Failed to create device cache: %v", err.Error())
+		} else {
+			go deviceCache.Run(ctx)
 		}
-		go deviceCache.Run(ctx)
 
 		// TODO(2042): Move more of the constructor args into this struct
 		nsArgs := &driver.NodeServerArgs{
