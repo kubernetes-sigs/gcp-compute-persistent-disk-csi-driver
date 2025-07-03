@@ -33,6 +33,7 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
@@ -77,6 +78,7 @@ func TestSanity(t *testing.T) {
 		EnableDeviceInUseCheck: true,
 		DeviceInUseTimeout:     0,
 		EnableDataCache:        enableDataCache,
+		DeviceCache:            linkcache.TestDeviceCache(1*time.Minute, linkcache.TestNodeWithVolumes([]string{})),
 	}
 
 	// Initialize GCE Driver
