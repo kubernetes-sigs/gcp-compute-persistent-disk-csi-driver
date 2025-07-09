@@ -65,15 +65,42 @@ const (
 	AttachLimitOverrideLabel   = "gke-volume-attach-limit-override"
 )
 
-// doc https://cloud.google.com/compute/docs/disks/hyperdisks#max-total-disks-per-vm
-var Gen4MachineHyperdiskAttachLimitMap = []struct {
+// doc https://cloud.google.com/compute/docs/general-purpose-machines
+// MachineHyperdiskLimit represents the mapping between max vCPUs and hyperdisk (balanced) attach limit
+type MachineHyperdiskLimit struct {
 	max   int64
 	value int64
-}{
+}
+
+// C4 Machine Types - Hyperdisk Balanced Limits
+var C4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{max: 2, value: 7},
 	{max: 4, value: 15},
-	{max: 8, value: 23},
-	{max: 16, value: 31},
-	{max: 32, value: 49},
-	{max: 64, value: 63},
-	{max: 1024, value: 127},
+	{max: 24, value: 31},
+	{max: 48, value: 63},
+	{max: 96, value: 127},
+}
+
+// C4D Machine Types - Hyperdisk Balanced Limits
+var C4DMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{max: 2, value: 3},
+	{max: 4, value: 7},
+	{max: 8, value: 15},
+	{max: 96, value: 31},
+	{max: 192, value: 63},
+	{max: 384, value: 127},
+}
+
+// N4 Machine Types - Hyperdisk Balanced Limits
+var N4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{max: 8, value: 15},
+	{max: 80, value: 31},
+}
+
+// C4A Machine Types - Hyperdisk Balanced Limits
+var C4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{max: 2, value: 7},
+	{max: 8, value: 15},
+	{max: 48, value: 31},
+	{max: 72, value: 63},
 }

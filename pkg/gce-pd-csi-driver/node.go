@@ -858,17 +858,19 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 				if err != nil {
 					return volumeLimitBig, fmt.Errorf("invalid cpuString %s for machine type: %v", cpuString, machineType)
 				}
-				return common.MapNumber(cpus), nil
+				// Extract the machine type prefix (e.g., "c4", "c4a", "n4")
+				prefix := strings.TrimSuffix(gen4Prefix, "-")
+				return common.GetHyperdiskAttachLimit(prefix, cpus), nil
 			} else {
 				return volumeLimitBig, fmt.Errorf("unconventional machine type: %v", machineType)
 			}
 		}
-		if strings.HasPrefix(machineType, "x4-") {
-			return x4HyperdiskLimit, nil
-		}
-		if strings.HasPrefix(machineType, "a4-") {
-			return a4HyperdiskLimit, nil
-		}
+	}
+	if strings.HasPrefix(machineType, "x4-") {
+		return x4HyperdiskLimit, nil
+	}
+	if strings.HasPrefix(machineType, "a4-") {
+		return a4HyperdiskLimit, nil
 	}
 
 	return volumeLimitBig, nil
