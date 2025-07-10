@@ -279,6 +279,11 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			expVolumeLimit: 63,
 		},
 		{
+			name:           "c4-standard-2",
+			machineType:    "c4-standard-2",
+			expVolumeLimit: 7,
+		},
+		{
 			name:           "c4a-standard-4",
 			machineType:    "c4a-standard-4",
 			expVolumeLimit: 15,
@@ -302,7 +307,7 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		{
 			name:           "n4-custom-8-12345-ext",
 			machineType:    "n4-custom-8-12345-ext",
-			expVolumeLimit: 23,
+			expVolumeLimit: 15,
 		},
 		{
 			name:           "n4-custom-16-12345",
@@ -338,12 +343,12 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		{
 			name:           "c4a-standard-32-lssd",
 			machineType:    "c4a-standard-32-lssd",
-			expVolumeLimit: 49,
+			expVolumeLimit: 31,
 		},
 		{
 			name:           "c4d-standard-32",
 			machineType:    "c4d-standard-32",
-			expVolumeLimit: 49,
+			expVolumeLimit: 31,
 		},
 	}
 
