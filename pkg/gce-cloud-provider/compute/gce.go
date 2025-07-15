@@ -79,8 +79,9 @@ const (
 )
 
 var (
-	ssAlreadyExistsRegex = regexp.MustCompile("The resource [^']+ already exists")
-	gcpViolationRegex    = regexp.MustCompile("violates constraint constraints/gcp.")
+	ssAlreadyExistsRegex          = regexp.MustCompile("The resource [^']+ already exists")
+	gcpErrorCodeRegex             = regexp.MustCompile(`Error (\d+)`)
+	orgPolicyConstraintErrorCodes = []string{"400", "412"}
 )
 
 // ResourceType indicates the type of a compute resource.
@@ -455,5 +456,13 @@ func IsSnapshotAlreadyExistsError(err error) bool {
 
 // IsGCPOrgViolationError checks if the error is a GCP organization policy violation error.
 func IsGCPOrgViolationError(err error) bool {
-	return gcpViolationRegex.MatchString(err.Error())
+	matches := gcpErrorCodeRegex.FindStringSubmatch(err.Error())
+	if len(matches) > 1 {
+		errorCode := matches[1]
+		if slices.Contains(orgPolicyConstraintErrorCodes, errorCode) {
+			return true
+		}
+	}
+
+	return false
 }
