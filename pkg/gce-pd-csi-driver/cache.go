@@ -7,10 +7,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	fsnotify "github.com/fsnotify/fsnotify"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -42,7 +47,7 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 		return "", fmt.Errorf("Error getting RAIDed device path for Data Cache %v, output:%v", err, string(info))
 	}
 	infoString := strings.TrimSpace(string(info))
-	infoSlice := strings.Split(infoString, " ")
+	infoSlice := strings.Fields(infoString)
 
 	// We want to get the second element in the array (sample: ARRAY /dev/md126 metadata=1.2 name=csi-driver-data-cache UUID=*),
 	//  which is the path to the RAIDed device
@@ -162,7 +167,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 	err, isCached := isCachingSetup(mainLvName)
 	if err != nil {
-		klog.Errorf("faild to check if caching ius setup for LV, continuing to setup caching.")
+		klog.Errorf("failed to check if caching is setup for LV, continuing to setup caching.")
 	}
 	cacheLvName := getLvName(cacheSuffix, volumeId)
 	if isCached {
@@ -199,6 +204,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			}
 			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 			if err != nil {
+				if strings.Contains(err.Error(), "insufficient free space") {
+					return mainDevicePath, status.Error(codes.InvalidArgument, fmt.Sprintf("Error setting up cache: %v", err.Error()))
+				}
 				return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
 			}
 		}
@@ -215,7 +223,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			req.GetPublishContext()[common.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
-			chunkSize, // default unit is KiB
+			chunkSize,
 			"--force",
 			"-y",
 		}
@@ -250,8 +258,6 @@ func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx con
 
 func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
 	cfg, err := rest.InClusterConfig()
-	// We want to capture API errors with node label fetching, so return -1
-	// in those cases instead of 0.
 	if err != nil {
 		return 0, err
 	}
@@ -259,9 +265,8 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 	if err != nil {
 		return 0, err
 	}
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
 	if err != nil {
-		// We could retry, but this error will also crashloop the driver which may be as good a way to retry as any.
 		return 0, err
 	}
 	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
@@ -272,8 +277,31 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 		klog.V(4).Infof("Number of local SSDs requested for Data Cache: %v", dataCacheCount)
 		return dataCacheCount, nil
 	}
-	// This will be returned for a non-Data-Cache node pool
 	return 0, nil
+}
+
+func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string) (*v1.Node, error) {
+	var nodeObj *v1.Node
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Steps:    5,
+	}
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			klog.Warningf("Error getting node %s: %v, retrying...\n", nodeName, err)
+			return false, nil
+		}
+		nodeObj = node
+		klog.V(4).Infof("Successfully retrieved node info %s\n", nodeName)
+		return true, nil
+	})
+
+	if err != nil {
+		klog.Errorf("Failed to get node %s after retries: %v\n", nodeName, err)
+	}
+	return nodeObj, err
 }
 
 func FetchRaidedLssdCountForDatacache() (int, error) {
@@ -342,7 +370,7 @@ func FetchAllLssds() ([]string, error) {
 	for _, ssd := range infoList {
 		ssd = strings.TrimSpace(ssd)
 		if strings.HasPrefix(ssd, "/dev/nvme") {
-			ssdDetails := strings.Split(ssd, " ")
+			ssdDetails := strings.Fields(ssd)
 			lssd := re.MatchString(ssdDetails[1])
 			if lssd {
 				diskList = append(diskList, strings.TrimSpace(ssdDetails[0]))
@@ -355,7 +383,7 @@ func FetchAllLssds() ([]string, error) {
 	return diskList, nil
 }
 
-func FetchLSSDsWihtEmptyMountPoint() ([]string, error) {
+func FetchLSSDsWithEmptyMountPoint() ([]string, error) {
 	info, err := common.RunCommand("grep", []string{"-E", `^\S+\s*$`} /* pipeCmdArg */, "lsblk", []string{"-o", "NAME,MOUNTPOINT", "-pdn"}...)
 	if err != nil {
 		return nil, fmt.Errorf("Error while fetching disks with no mount point: %v; err:%v", info, err)
@@ -376,6 +404,7 @@ func checkVgExists(volumeGroupName string) bool {
 		return false
 	}
 	// Check if the required volume group already exists
+	klog.Infof("check vg exists output: %v, volumeGroupName: %v", string(info), volumeGroupName)
 	return strings.Contains(string(info), volumeGroupName)
 }
 
@@ -462,7 +491,6 @@ func createVg(volumeGroupName string, raidedLocalSsds string) error {
 
 func reduceVolumeGroup(volumeGroupName string, force bool) {
 	if !checkVgExists(volumeGroupName) {
-		klog.V(2).Infof("Volume group %v not found, no further action needed", volumeGroupName)
 		return
 	}
 	args := []string{
@@ -618,23 +646,17 @@ func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan 
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)
 		// watch for events
 		case <-watcher.Events:
-			vgName := getVolumeGroupName(nodeName)
-			if !checkVgExists(vgName) {
-				// If the volume group doesn't exist, there's nothing to update.
-				// Continue to the next event.
-				continue
-			}
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
 			args := []string{
 				"--updatemetadata",
-				vgName,
+				getVolumeGroupName(nodeName),
 			}
 			_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
 			if err != nil {
 				klog.Errorf("Error updating volume group's metadata: %v", err)
 			}
-			reduceVolumeGroup(vgName, true)
+			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
 		}
 	}
 }

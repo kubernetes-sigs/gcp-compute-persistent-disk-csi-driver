@@ -333,7 +333,7 @@ func urlFlag(target **url.URL, name string, usage string) {
 }
 
 func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
-	if !*enableDataCacheFlag {
+	if !*enableDataCacheFlag || nodeName == "" {
 		return false, nil
 	}
 	if nodeName != common.TestNode { // disregard logic below when E2E testing.
@@ -356,7 +356,7 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 		return nil, fmt.Errorf("Error listing RAIDed LSSDs %v", err)
 	}
 
-	LSSDsWithEmptyMountPoint, err := driver.FetchLSSDsWihtEmptyMountPoint()
+	LSSDsWithEmptyMountPoint, err := driver.FetchLSSDsWithEmptyMountPoint()
 	if err != nil {
 		return nil, fmt.Errorf("Error listing LSSDs with empty mountpoint: %v", err)
 	}
