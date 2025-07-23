@@ -333,16 +333,14 @@ func urlFlag(target **url.URL, name string, usage string) {
 }
 
 func isDataCacheEnabledNodePool(ctx context.Context, nodeName string) (bool, error) {
-	if !*enableDataCacheFlag || nodeName == "" {
+	if !*enableDataCacheFlag {
 		return false, nil
 	}
-	if nodeName != common.TestNode { // disregard logic below when E2E testing.
+	if len(nodeName) > 0 && nodeName != common.TestNode { // disregard logic below when E2E testing.
 		dataCacheLSSDCount, err := driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
 		return dataCacheLSSDCount != 0, err
-	} else if nodeName == common.TestNode {
-		return true, nil
 	}
-	return false, nil
+	return true, nil
 }
 
 func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
