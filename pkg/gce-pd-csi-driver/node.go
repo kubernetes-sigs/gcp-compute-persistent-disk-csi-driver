@@ -113,11 +113,13 @@ const (
 	// doc https://cloud.google.com/compute/docs/memory-optimized-machines#x4_disks
 	x4HyperdiskLimit int64 = 39
 	// doc https://cloud.google.com/compute/docs/accelerator-optimized-machines#a4-disks
-	a4HyperdiskLimit     int64 = 127
-	defaultLinuxFsType         = "ext4"
-	defaultWindowsFsType       = "ntfs"
-	fsTypeExt3                 = "ext3"
-	fsTypeBtrfs                = "btrfs"
+	a4HyperdiskLimit       int64 = 127
+	a4xMetalHyperdiskLimit int64 = 31
+	c3MetalHyperdiskLimit  int64 = 15
+	defaultLinuxFsType           = "ext4"
+	defaultWindowsFsType         = "ntfs"
+	fsTypeExt3                   = "ext3"
+	fsTypeBtrfs                  = "btrfs"
 
 	readAheadKBMountFlagRegexPattern = "^read_ahead_kb=(.+)$"
 	btrfsReclaimDataRegexPattern     = "^btrfs-allocation-data-bg_reclaim_threshold=(\\d{1,2})$"     // 0-99 are valid, incl. 00
@@ -847,7 +849,7 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 		}
 	}
 
-	// Process gen4 machine attach limits
+	// Process gen4 machine attach limits which include vCPUs in the machine type
 	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-", "c4d-"}
 	for _, gen4Prefix := range gen4MachineTypesPrefix {
 		if strings.HasPrefix(machineType, gen4Prefix) {
@@ -866,11 +868,31 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 			}
 		}
 	}
+	// Process gen4 A4X machine attach limits, which have a -1g/-2g/-4g/metal suffix
+	if strings.HasPrefix(machineType, "a4x-") {
+		machineTypeSlice := strings.Split(machineType, "-")
+		if len(machineTypeSlice) < 3 {
+			return volumeLimitBig, fmt.Errorf("unconventional machine type: %v", machineType)
+		}
+		gpuString := machineTypeSlice[2]
+		if gpuString == "metal" {
+			return a4xMetalHyperdiskLimit, nil
+		}
+		gpuString = gpuString[0 : len(gpuString)-1] // Remove the 'g' suffix
+		gpus, err := strconv.ParseInt(gpuString, 10, 64)
+		if err != nil {
+			return volumeLimitBig, fmt.Errorf("invalid gpuString %s for machine type: %v", gpuString, machineType)
+		}
+		return common.GetHyperdiskAttachLimit("a4x", gpus), nil
+	}
 	if strings.HasPrefix(machineType, "x4-") {
 		return x4HyperdiskLimit, nil
 	}
 	if strings.HasPrefix(machineType, "a4-") {
 		return a4HyperdiskLimit, nil
+	}
+	if strings.HasPrefix(machineType, "c3-") && strings.HasSuffix(machineType, "-metal") {
+		return c3MetalHyperdiskLimit, nil
 	}
 
 	return volumeLimitBig, nil
