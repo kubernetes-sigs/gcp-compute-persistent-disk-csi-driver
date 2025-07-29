@@ -350,6 +350,81 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "c4d-standard-32",
 			expVolumeLimit: 31,
 		},
+		{
+			name:           "c3-highcpu-192-metal",
+			machineType:    "c3-highcpu-192-metal",
+			expVolumeLimit: c3MetalHyperdiskLimit,
+		},
+		{
+			name:           "c3-standard-192-metal",
+			machineType:    "c3-standard-192-metal",
+			expVolumeLimit: c3MetalHyperdiskLimit,
+		},
+		{
+			name:           "c3-highmem-192-metal",
+			machineType:    "c3-highmem-192-metal",
+			expVolumeLimit: c3MetalHyperdiskLimit,
+		},
+		{
+			name:           "a4x-highgpu-1g",
+			machineType:    "a4x-highgpu-1g",
+			expVolumeLimit: 63,
+		},
+		{
+			name:           "a4x-highgpu-2g",
+			machineType:    "a4x-highgpu-2g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-highgpu-2g-nolssd",
+			machineType:    "a4x-highgpu-2g-nolssd",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-highgpu-4g",
+			machineType:    "a4x-highgpu-4g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-highgpu-8g",
+			machineType:    "a4x-highgpu-8g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-highgpu-metal",
+			machineType:    "a4x-highgpu-metal",
+			expVolumeLimit: a4xMetalHyperdiskLimit,
+		},
+		{
+			name:           "a4x-max-metal",
+			machineType:    "a4x-max-metal",
+			expVolumeLimit: a4xMetalHyperdiskLimit,
+		},
+		{
+			name:           "a4x-max-1g",
+			machineType:    "a4x-max-1g",
+			expVolumeLimit: 63,
+		},
+		{
+			name:           "a4x-max-highgpu-2g",
+			machineType:    "a4x-max-2g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-max-4g",
+			machineType:    "a4x-max-4g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-max-8g", // -8g does not exist, testing edge case
+			machineType:    "a4x-max-8g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-medgpu-nolssd", // does not exist, testing edge case
+			machineType:    "a4x-medgpu-nolssd",
+			expVolumeLimit: volumeLimitBig,
+		},
 	}
 
 	for _, tc := range testCases {

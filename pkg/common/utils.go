@@ -775,6 +775,8 @@ func GetHyperdiskAttachLimit(machineTypePrefix string, vCPUs int64) int64 {
 		limitMap = N4MachineHyperdiskAttachLimitMap
 	case "c4a":
 		limitMap = C4AMachineHyperdiskAttachLimitMap
+	case "a4x":
+		limitMap = A4XMachineHyperdiskAttachLimitMap
 	default:
 		// Fallback to the most conservative Gen4 map for unknown types
 		return MapNumber(vCPUs, C4DMachineHyperdiskAttachLimitMap)

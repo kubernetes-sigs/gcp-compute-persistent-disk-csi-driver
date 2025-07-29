@@ -104,3 +104,9 @@ var C4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
 	{max: 48, value: 31},
 	{max: 72, value: 63},
 }
+
+// A4X Machine Types - Hyperdisk Balanced Limits. The max here is actually the GPU count (not CPU, like the others).
+var A4XMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{max: 1, value: 63},
+	{max: 2, value: 127},
+}
