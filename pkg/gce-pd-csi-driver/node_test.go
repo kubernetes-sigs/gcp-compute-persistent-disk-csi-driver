@@ -415,6 +415,16 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			machineType:    "a4x-max-4g",
 			expVolumeLimit: 127,
 		},
+		{
+			name:           "a4x-max-8g", // -8g does not exist, testing edge case
+			machineType:    "a4x-max-8g",
+			expVolumeLimit: 127,
+		},
+		{
+			name:           "a4x-medgpu-nolssd", // does not exist, testing edge case
+			machineType:    "a4x-medgpu-nolssd",
+			expVolumeLimit: volumeLimitBig,
+		},
 	}
 
 	for _, tc := range testCases {
