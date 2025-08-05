@@ -537,9 +537,11 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	}
 
-	err = ns.DeviceCache.AddVolume(volumeID)
-	if err != nil {
-		klog.Warningf("Error adding volume %s to cache: %v", volumeID, err)
+	if ns.DeviceCache != nil {
+		err = ns.DeviceCache.AddVolume(volumeID)
+		if err != nil {
+			klog.Warningf("Error adding volume %s to cache: %v", volumeID, err)
+		}
 	}
 
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
@@ -661,7 +663,9 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		}
 	}
 
-	ns.DeviceCache.RemoveVolume(volumeID)
+	if ns.DeviceCache != nil {
+		ns.DeviceCache.RemoveVolume(volumeID)
+	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
