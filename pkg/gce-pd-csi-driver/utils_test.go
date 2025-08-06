@@ -18,8 +18,10 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
@@ -854,6 +856,57 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 		}
 		if am != tc.want {
 			t.Errorf("want %s, got %s", tc.want, am)
+		}
+	}
+}
+
+func TestIsDataCacheEnabledNodePool(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		nodeName             string
+		wantDataCacheEnabled bool
+		dataCacheFlag        bool
+		wantErr              bool
+	}{
+		{
+			// Valid nod ename tries to fetch the data cache count from node labels resulting in an error
+			name:                 "node name is provided",
+			nodeName:             "gke-node-some-name",
+			dataCacheFlag:        true,
+			wantDataCacheEnabled: true,
+			wantErr:              true,
+		},
+		{
+			name:                 "no node name provided",
+			nodeName:             "",
+			dataCacheFlag:        true,
+			wantDataCacheEnabled: false,
+		},
+		{
+			name:                 "test node",
+			nodeName:             common.TestNode,
+			dataCacheFlag:        true,
+			wantDataCacheEnabled: true,
+		},
+		{
+			name:                 "node name provided but data cache feature disabled",
+			nodeName:             "",
+			dataCacheFlag:        false,
+			wantDataCacheEnabled: false,
+		},
+	} {
+		t.Logf("Running test: %v", tc.name)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		gotDataCacheEnabled, err := IsDataCacheEnabledNodePool(ctx, tc.nodeName, tc.dataCacheFlag)
+		if err != nil {
+			if !tc.wantErr {
+				t.Errorf("unexpected error, got %v", err)
+			}
+			continue
+		}
+		if gotDataCacheEnabled != tc.wantDataCacheEnabled {
+			t.Errorf("want %t, got %t", tc.wantDataCacheEnabled, gotDataCacheEnabled)
 		}
 	}
 }
