@@ -47,7 +47,7 @@ const (
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
 	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{
-		DeviceCache: linkcache.TestDeviceCache(1*time.Minute, linkcache.TestNodeWithVolumes([]string{defaultVolumeID})),
+		DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{defaultVolumeID})),
 	})
 }
 
@@ -193,7 +193,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 
 			mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
 			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter, &NodeServerArgs{
-				DeviceCache: linkcache.TestDeviceCache(1*time.Minute, linkcache.TestNodeWithVolumes([]string{tc.volumeID})),
+				DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{tc.volumeID})),
 			})
 			ns := gceDriver.ns
 
@@ -1252,7 +1252,7 @@ func TestNodeStageVolume(t *testing.T) {
 			}
 			mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList, ExactOrder: true})
 			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter, &NodeServerArgs{
-				DeviceCache: linkcache.TestDeviceCache(1*time.Minute, linkcache.TestNodeWithVolumes([]string{volumeID})),
+				DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{volumeID})),
 			})
 			ns := gceDriver.ns
 			ns.SysfsPath = tempDir + "/sys"

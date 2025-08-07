@@ -98,6 +98,8 @@ var (
 
 	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a disk-type.gke.io/[disk-type] topology label when the StorageClass has the use-allowed-disk-topology parameter set to true. That topology label is included in the Topologies returned in CreateVolumeResponse. This flag is disabled by default.")
 
+	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
+
 	version string
 )
 
@@ -276,7 +278,7 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
-		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, 1*time.Minute, *nodeName)
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils)
 		if err != nil {
 			klog.Warningf("Failed to create device cache: %v", err.Error())
 		} else {

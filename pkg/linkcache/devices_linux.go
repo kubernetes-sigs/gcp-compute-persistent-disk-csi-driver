@@ -10,25 +10,26 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 )
 
 const byIdDir = "/dev/disk/by-id"
 
-func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string) (*DeviceCache, error) {
+func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string, driverName string, deviceUtils deviceutils.DeviceUtils) (*DeviceCache, error) {
 	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	return newDeviceCacheForNode(period, node), nil
+	return newDeviceCacheForNode(period, node, driverName, deviceUtils), nil
 }
 
-func TestDeviceCache(period time.Duration, node *v1.Node) *DeviceCache {
-	return newDeviceCacheForNode(period, node)
+func NewTestDeviceCache(period time.Duration, node *v1.Node) *DeviceCache {
+	return newDeviceCacheForNode(period, node, "pd.csi.storage.gke.io", deviceutils.NewDeviceUtils())
 }
 
-func TestNodeWithVolumes(volumes []string) *v1.Node {
+func NewTestNodeWithVolumes(volumes []string) *v1.Node {
 	volumesInUse := make([]v1.UniqueVolumeName, len(volumes))
 	for i, volume := range volumes {
 		volumesInUse[i] = v1.UniqueVolumeName("kubernetes.io/csi/pd.csi.storage.gke.io^" + volume)
@@ -41,34 +42,35 @@ func TestNodeWithVolumes(volumes []string) *v1.Node {
 	}
 }
 
-func newDeviceCacheForNode(period time.Duration, node *v1.Node) *DeviceCache {
+func newDeviceCacheForNode(period time.Duration, node *v1.Node, driverName string, deviceUtils deviceutils.DeviceUtils) *DeviceCache {
 	deviceCache := &DeviceCache{
-		volumes: make(map[string]deviceMapping),
-		period:  period,
-		dir:     byIdDir,
+		symlinks:    make(map[string]deviceMapping),
+		period:      period,
+		deviceUtils: deviceUtils,
+		dir:         byIdDir,
 	}
 
 	// Look at the status.volumesInUse field.  For each, take the last section
-	// of the string (after the last "/") and call AddVolume for that
+	// of the string (after the last "/") and call AddVolume for that.
+	// The expected format of the volume name is "kubernetes.io/csi/pd.csi.storage.gke.io^<volume-id>"
 	for _, volume := range node.Status.VolumesInUse {
-		klog.Infof("Adding volume %s to cache", string(volume))
-		vID, err := pvNameFromVolumeID(string(volume))
-		if err != nil {
-			klog.Warningf("failure to retrieve name, skipping volume %q: %v", string(volume), err)
+		volumeName := string(volume)
+		tokens := strings.Split(volumeName, "^")
+		if len(tokens) != 2 {
+			klog.V(5).Infof("Skipping volume %q because splitting volumeName on `^` returns %d tokens, expected 2", volumeName, len(tokens))
 			continue
 		}
-		deviceCache.AddVolume(vID)
+
+		// The first token is of the form "kubernetes.io/csi/<driver-name>" or just "<driver-name>".
+		// We should check if it contains the driver name we are interested in.
+		if !strings.Contains(tokens[0], driverName) {
+			continue
+		}
+		klog.Infof("Adding volume %s to cache", string(volume))
+		deviceCache.AddVolume(tokens[1])
 	}
 
 	return deviceCache
-}
-
-func pvNameFromVolumeID(volumeID string) (string, error) {
-	tokens := strings.Split(volumeID, "^")
-	if len(tokens) != 2 {
-		return "", fmt.Errorf("invalid volume ID, split on `^` returns %d tokens, expected 2", len(tokens))
-	}
-	return tokens[1], nil
 }
 
 // Run since it needs an infinite loop to keep itself up to date
@@ -87,7 +89,7 @@ func (d *DeviceCache) Run(ctx context.Context) {
 		case <-ticker.C:
 			d.listAndUpdate()
 
-			klog.Infof("Cache contents: %+v", d.volumes)
+			klog.Infof("Cache contents: %+v", d.symlinks)
 		}
 	}
 }
@@ -106,21 +108,32 @@ func (d *DeviceCache) AddVolume(volumeID string) error {
 		return fmt.Errorf("error getting device name: %w", err)
 	}
 
-	// Look at the dir for a symlink that matches the pvName
-	symlink := filepath.Join(d.dir, "google-"+deviceName)
-	klog.Infof("Looking for symlink %s", symlink)
-
-	realPath, err := filepath.EvalSymlinks(symlink)
-	if err != nil {
-		klog.Warningf("Error evaluating symlink for volume %s: %v", volumeID, err)
-		return nil
+	symlinks := d.deviceUtils.GetDiskByIdPaths(deviceName, "")
+	if len(symlinks) == 0 {
+		return fmt.Errorf("no symlink paths found for volume %s", volumeID)
 	}
 
-	klog.Infof("Found real path %s for volume %s", realPath, volumeID)
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
-	d.volumes[volumeID] = deviceMapping{
-		symlink:  symlink,
-		realPath: realPath,
+	// We may have multiple symlinks for a given device, we should add all of them.
+	for _, symlink := range symlinks {
+		realPath, err := filepath.EvalSymlinks(symlink)
+		if err != nil {
+			// This is not an error, as the symlink may not have been created yet.
+			// Leave real_path empty; the periodic check will update it.
+			klog.V(5).Infof("Could not evaluate symlink %s, will retry: %v", symlink, err)
+			realPath = ""
+		} else {
+			klog.Infof("Found real path %s for volume %s", realPath, volumeID)
+		}
+		// The key is the symlink path. The value contains the evaluated
+		// real path and the original volumeID for better logging.
+		d.symlinks[symlink] = deviceMapping{
+			volumeID: volumeID,
+			realPath: realPath,
+		}
+		klog.V(4).Infof("Added volume %s to cache with symlink %s", volumeID, symlink)
 	}
 
 	return nil
@@ -129,25 +142,31 @@ func (d *DeviceCache) AddVolume(volumeID string) error {
 // Remove the volume from the cache.
 func (d *DeviceCache) RemoveVolume(volumeID string) {
 	klog.Infof("Removing volume %s from cache", volumeID)
-	delete(d.volumes, volumeID)
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	for symlink, device := range d.symlinks {
+		if device.volumeID == volumeID {
+			delete(d.symlinks, symlink)
+		}
+	}
 }
 
 func (d *DeviceCache) listAndUpdate() {
-	for volumeID, device := range d.volumes {
+	for symlink, device := range d.symlinks {
 		// Evaluate the symlink
-		realPath, err := filepath.EvalSymlinks(device.symlink)
+		realPath, err := filepath.EvalSymlinks(symlink)
 		if err != nil {
-			klog.Warningf("Error evaluating symlink for volume %s: %v", volumeID, err)
+			klog.Warningf("Error evaluating symlink for volume %s: %v", device.volumeID, err)
 			continue
 		}
 
 		// Check if the realPath has changed
 		if realPath != device.realPath {
-			klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", volumeID, device.symlink, device.realPath, realPath)
+			klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
 
 			// Update the cache with the new realPath
 			device.realPath = realPath
-			d.volumes[volumeID] = device
+			d.symlinks[symlink] = device
 		}
 	}
 }
