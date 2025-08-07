@@ -78,7 +78,7 @@ func TestSanity(t *testing.T) {
 		EnableDeviceInUseCheck: true,
 		DeviceInUseTimeout:     0,
 		EnableDataCache:        enableDataCache,
-		DeviceCache:            linkcache.TestDeviceCache(1*time.Minute, linkcache.TestNodeWithVolumes([]string{})),
+		DeviceCache:            linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{})),
 	}
 
 	// Initialize GCE Driver

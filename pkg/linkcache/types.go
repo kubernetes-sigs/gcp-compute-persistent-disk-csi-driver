@@ -1,15 +1,22 @@
 package linkcache
 
-import "time"
+import (
+	"sync"
+	"time"
+
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
+)
 
 type deviceMapping struct {
-	symlink  string
+	volumeID string
 	realPath string
 }
 
 type DeviceCache struct {
-	volumes map[string]deviceMapping
-	period  time.Duration
+	mutex    sync.Mutex
+	symlinks map[string]deviceMapping
+	period   time.Duration
 	// dir is the directory to look for device symlinks
-	dir string
+	dir         string
+	deviceUtils deviceutils.DeviceUtils
 }
