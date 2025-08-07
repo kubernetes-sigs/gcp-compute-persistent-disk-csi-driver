@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 )
 
-func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string) (*DeviceCache, error) {
+func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string, driverName string, deviceUtils deviceutils.DeviceUtils) (*DeviceCache, error) {
 	klog.Infof("NewDeviceCacheForNode is not implemented for Windows")
 	return nil, nil
 }
