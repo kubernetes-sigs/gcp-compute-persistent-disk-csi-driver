@@ -639,6 +639,8 @@ func generateGCETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
 	// Skip mount options test until we fix the invalid mount options for xfs.
 	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
+	// Skip VolumeAttributesClass tests while it's a beta feature.
+	skipString = skipString + "|\\[Feature:VolumeAttributesClass\\]"
 
 	v := apimachineryversion.MustParseSemantic(testParams.clusterVersion)
 
@@ -745,6 +747,8 @@ func generateGKETestSkip(testParams *testParameters) string {
 
 	// Skip mount options test until we fix the invalid mount options for xfs.
 	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
+	// Skip VolumeAttributesClass tests while it's a beta feature.
+	skipString = skipString + "|\\[Feature:VolumeAttributesClass\\]"
 
 	// Skip rwop test when node version is less than 1.32.  Test was added only
 	// in 1.32 and above, see tags in

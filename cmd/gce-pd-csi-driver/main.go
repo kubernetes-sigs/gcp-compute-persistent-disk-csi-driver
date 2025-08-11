@@ -57,10 +57,10 @@ var (
 	attachDiskBackoffJitter   = flag.Float64("attach-disk-backoff-jitter", 0.0, "Jitter for attachDisk backoff")
 	attachDiskBackoffSteps    = flag.Int("attach-disk-backoff-steps", 24, "Steps for attachDisk backoff")
 	attachDiskBackoffCap      = flag.Duration("attach-disk-backoff-cap", 0, "Cap for attachDisk backoff")
-	waitForOpBackoffDuration  = flag.Duration("wait-op-backoff-duration", 3*time.Second, "Duration for wait for operation backoff")
+	waitForOpBackoffDuration  = flag.Duration("wait-op-backoff-duration", 2*time.Minute, "Duration for wait for operation backoff")
 	waitForOpBackoffFactor    = flag.Float64("wait-op-backoff-factor", 0.0, "Factor for wait for operation backoff")
 	waitForOpBackoffJitter    = flag.Float64("wait-op-backoff-jitter", 0.0, "Jitter for wait for operation backoff")
-	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 100, "Steps for wait for operation backoff")
+	waitForOpBackoffSteps     = flag.Int("wait-op-backoff-steps", 3, "Steps for wait for operation backoff")
 	waitForOpBackoffCap       = flag.Duration("wait-op-backoff-cap", 0, "Cap for wait for operation backoff")
 
 	enableDeviceInUseCheck = flag.Bool("enable-device-in-use-check-on-node-unstage", true, "If set to true, block NodeUnstageVolume requests until the specified device is not in use")
