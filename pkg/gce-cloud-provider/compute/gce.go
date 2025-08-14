@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"sync"
 	"time"
@@ -75,6 +76,12 @@ const (
 	// gcpTagsRequestTokenBucketSize is the burst/token bucket size used
 	// for limiting API requests.
 	gcpTagsRequestTokenBucketSize = 8
+)
+
+var (
+	ssAlreadyExistsRegex          = regexp.MustCompile("The resource [^']+ already exists")
+	gcpErrorCodeRegex             = regexp.MustCompile(`Error (\d+)`)
+	orgPolicyConstraintErrorCodes = []string{"400", "412"}
 )
 
 // ResourceType indicates the type of a compute resource.
@@ -440,4 +447,22 @@ func IsGCENotFoundError(err error) bool {
 // invalid reason
 func IsGCEInvalidError(err error) bool {
 	return IsGCEError(err, "invalid")
+}
+
+// IsSnapshotAlreadyExistsError checks if the error is a snapshot already exists error.
+func IsSnapshotAlreadyExistsError(err error) bool {
+	return ssAlreadyExistsRegex.MatchString(err.Error())
+}
+
+// IsGCPOrgViolationError checks if the error is a GCP organization policy violation error.
+func IsGCPOrgViolationError(err error) bool {
+	matches := gcpErrorCodeRegex.FindStringSubmatch(err.Error())
+	if len(matches) > 1 {
+		errorCode := matches[1]
+		if slices.Contains(orgPolicyConstraintErrorCodes, errorCode) {
+			return true
+		}
+	}
+
+	return false
 }
