@@ -306,16 +306,18 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	var options []string
 
 	for _, opt := range mntFlags {
+		// The flags below are special flags that aren't
+		// passed directly as an options to the mount command.
 		if readAheadKBMountFlagRegex.FindString(opt) != "" {
-			// The read_ahead_kb flag is a special flag that isn't
-			// passed directly as an option to the mount command.
 			continue
 		}
-
 		if btrfsReclaimDataRegex.FindString(opt) != "" {
 			continue
 		}
 		if btrfsReclaimMetadataRegex.FindString(opt) != "" {
+			continue
+		}
+		if btrfsReadAheadKBRegex.FindString(opt) != "" {
 			continue
 		}
 

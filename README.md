@@ -98,12 +98,13 @@ Controller-level and node-level deployments will both have priorityClassName set
 As noted in [GCP PD documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/gce-pd-csi-driver), `ext4` and `xfs` are officially supported. `btrfs` support is experimental:
 - As of writing, Ubuntu VM images support btrfs, but [COS does not](https://cloud.google.com/container-optimized-os/docs/concepts/supported-filesystems).
 
-`btrfs` filesystem accepts two "special" mount options:
+`btrfs` filesystem accepts the following "special" mount options and the sysfs paths they target:
 
-- `btrfs-data-bg_reclaim_threshold`
-- `btrfs-metadata-bg_reclaim_threshold`
+- `btrfs-data-bg_reclaim_threshold`: `/sys/fs/btrfs/FS-UUID/allocation/data/bg_reclaim_threshold`.
+- `btrfs-metadata-bg_reclaim_thresho: `/sys/fs/btrfs/FS-UUID/allocation/metadata/bg_reclaim_threshold`.
+- `btrfs-bdi-read_ahead_kb`: `/sys/fs/btrfs/FS-UUID/bdi/read_ahead_kb`.
 
-Which writes to `/sys/fs/btrfs/FS-UUID/allocation/{,meta}data/bg_reclaim_threshold`, as documented [in btrfs docs](https://btrfs.readthedocs.io/en/latest/ch-sysfs.html#uuid-allocations-data-metadata-system).
+See more in the [in btrfs docs](https://btrfs.readthedocs.io/en/latest/ch-sysfs.html#uuid-allocations-data-metadata-system).
 
 ## Further Documentation
 

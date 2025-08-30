@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -625,17 +626,24 @@ func TestNodeStageVolume(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	stagingPath := filepath.Join(tempDir, defaultStagingPath)
 
-	btrfsUUID := "00000000-0000-0000-0000-000000000001"
-	btrfsPrefix := fmt.Sprintf("%s/sys/fs/btrfs/%s/allocation", tempDir, btrfsUUID)
+	var (
+		btrfsUUID     = "00000000-0000-0000-0000-000000000001"
+		btrfsPrefix   = fmt.Sprintf("%s/sys/fs/btrfs/%s", tempDir, btrfsUUID)
+		btrfsFixtures = map[string]string{
+			"allocation/data/bg_reclaim_threshold":     "0\n",
+			"allocation/metadata/bg_reclaim_threshold": "0\n",
+			"bdi/read_ahead_kb":                        "4096\n",
+		}
+	)
 
-	for _, suffix := range []string{"data", "metadata"} {
-		dir := btrfsPrefix + "/" + suffix
+	for fname, contents := range btrfsFixtures {
+		fullPath := btrfsPrefix + "/" + fname
+		dir := path.Dir(fullPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to set up fake sysfs dir %q: %v", dir, err)
 		}
-		fname := dir + "/bg_reclaim_threshold"
-		if err := os.WriteFile(fname, []byte("0\n"), 0644); err != nil {
-			t.Fatalf("write %q: %v", fname, err)
+		if err := os.WriteFile(fullPath, []byte(contents), 0644); err != nil {
+			t.Fatalf("write %q: %v", fullPath, err)
 		}
 	}
 
@@ -653,6 +661,7 @@ func TestNodeStageVolume(t *testing.T) {
 		readAheadSectors     string
 		btrfsReclaimData     string
 		btrfsReclaimMetadata string
+		btrfsReadAheadKb     string
 		sectorSizeInBytes    int
 		expErrCode           codes.Code
 	}{
@@ -907,7 +916,7 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid request, set btrfs-allocation-{,meta}data-bg_reclaim_threshold",
+			name: "Valid request, set btrfs props",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
@@ -918,6 +927,7 @@ func TestNodeStageVolume(t *testing.T) {
 							MountFlags: []string{
 								"btrfs-allocation-data-bg_reclaim_threshold=90",
 								"btrfs-allocation-metadata-bg_reclaim_threshold=91",
+								"btrfs-bdi-read_ahead_kb=128",
 							},
 						},
 					},
@@ -931,6 +941,7 @@ func TestNodeStageVolume(t *testing.T) {
 			readonlyBit:          "0",
 			btrfsReclaimData:     "90",
 			btrfsReclaimMetadata: "91",
+			btrfsReadAheadKb:     "128",
 			expCommandList: []fakeCmd{
 				{
 					cmd:    "blkid",
@@ -1256,29 +1267,29 @@ func TestNodeStageVolume(t *testing.T) {
 			if tc.expReadAheadUpdate == false && readAheadUpdateCalled == true {
 				t.Fatalf("Test updated read ahead, but it was not expected.")
 			}
-			if tc.btrfsReclaimData == "" && tc.btrfsReclaimMetadata == "" && blkidCalled {
+			if tc.btrfsReclaimData == "" && tc.btrfsReclaimMetadata == "" && tc.btrfsReadAheadKb == "" && blkidCalled {
 				t.Fatalf("blkid was called, but was not expected.")
 			}
 
-			if tc.btrfsReclaimData != "" {
-				fname := btrfsPrefix + "/data/bg_reclaim_threshold"
-				got, err := os.ReadFile(fname)
-				if err != nil {
-					t.Fatalf("read %q: %v", fname, err)
-				}
-				if s := strings.TrimSpace(string(got)); s != tc.btrfsReclaimData {
-					t.Fatalf("%q: expected %q, got %q", fname, tc.btrfsReclaimData, s)
-				}
+			btrfsProps := map[string]string{
+				"/allocation/data/bg_reclaim_threshold":     tc.btrfsReclaimData,
+				"/allocation/metadata/bg_reclaim_threshold": tc.btrfsReclaimMetadata,
+				"/bdi/read_ahead_kb":                        tc.btrfsReadAheadKb,
 			}
-			if tc.btrfsReclaimMetadata != "" {
-				fname := btrfsPrefix + "/metadata/bg_reclaim_threshold"
-				got, err := os.ReadFile(fname)
+
+			for fname, prop := range btrfsProps {
+				if prop == "" {
+					continue
+				}
+
+				got, err := os.ReadFile(btrfsPrefix + fname)
 				if err != nil {
-					t.Fatalf("read %q: %v", fname, err)
+					t.Fatalf("read %q: %v", btrfsPrefix+fname, err)
 				}
-				if s := strings.TrimSpace(string(got)); s != tc.btrfsReclaimMetadata {
-					t.Fatalf("%q: expected %q, got %q", fname, tc.btrfsReclaimMetadata, s)
+				if s := strings.TrimSpace(string(got)); s != prop {
+					t.Fatalf("%q: expected %q, got %q", btrfsPrefix+fname, prop, s)
 				}
+
 			}
 		})
 	}
