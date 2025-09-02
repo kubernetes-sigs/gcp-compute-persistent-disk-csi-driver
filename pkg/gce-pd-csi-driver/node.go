@@ -124,12 +124,14 @@ const (
 	readAheadKBMountFlagRegexPattern = "^read_ahead_kb=(.+)$"
 	btrfsReclaimDataRegexPattern     = "^btrfs-allocation-data-bg_reclaim_threshold=(\\d{1,2})$"     // 0-99 are valid, incl. 00
 	btrfsReclaimMetadataRegexPattern = "^btrfs-allocation-metadata-bg_reclaim_threshold=(\\d{1,2})$" // ditto ^
+	btrfsReadAheadKBRegexPattern     = "^btrfs-bdi-read_ahead_kb=(\\d+)$"
 )
 
 var (
 	readAheadKBMountFlagRegex = regexp.MustCompile(readAheadKBMountFlagRegexPattern)
 	btrfsReclaimDataRegex     = regexp.MustCompile(btrfsReclaimDataRegexPattern)
 	btrfsReclaimMetadataRegex = regexp.MustCompile(btrfsReclaimMetadataRegexPattern)
+	btrfsReadAheadKBRegex     = regexp.MustCompile(btrfsReadAheadKBRegexPattern)
 )
 
 func getDefaultFsType() string {
@@ -402,7 +404,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// Part 3: Mount device to stagingTargetPath
 	fstype := getDefaultFsType()
 
-	var btrfsReclaimData, btrfsReclaimMetadata string
+	var btrfsReclaimData, btrfsReclaimMetadata, btrfsReadAheadKb string
 	shouldUpdateReadAhead := false
 	var readAheadKB int64
 	options := []string{}
@@ -418,7 +420,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 
 		if mnt.FsType == fsTypeBtrfs {
-			btrfsReclaimData, btrfsReclaimMetadata = extractBtrfsReclaimFlags(mnt.MountFlags)
+			btrfsReclaimData, btrfsReclaimMetadata, btrfsReadAheadKb = extractBtrfsFlags(mnt.MountFlags)
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
@@ -465,47 +467,52 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	}
 
-	// Part 5: Update read_ahead
+	// Part 5: Update read_ahead for the block device
 	if shouldUpdateReadAhead {
 		if err := ns.updateReadAhead(devicePath, readAheadKB); err != nil {
 			return nil, status.Errorf(codes.Internal, "failure updating readahead for %s to %dKB: %v", devicePath, readAheadKB, err.Error())
 		}
 	}
 
-	// Part 6: if configured, write sysfs values
+	btrfsSysfs := map[string]string{}
+
+	if btrfsReadAheadKb != "" {
+		btrfsSysfs["bdi/read_ahead_kb"] = btrfsReadAheadKb
+	}
+
 	if !readonly {
-		sysfs := map[string]string{}
 		if btrfsReclaimData != "" {
-			sysfs["allocation/data/bg_reclaim_threshold"] = btrfsReclaimData
+			btrfsSysfs["allocation/data/bg_reclaim_threshold"] = btrfsReclaimData
 		}
 		if btrfsReclaimMetadata != "" {
-			sysfs["allocation/metadata/bg_reclaim_threshold"] = btrfsReclaimMetadata
+			btrfsSysfs["allocation/metadata/bg_reclaim_threshold"] = btrfsReclaimMetadata
 		}
+	}
 
-		if len(sysfs) > 0 {
-			args := []string{"--match-tag", "UUID", "--output", "value", stagingTargetPath}
-			cmd := ns.Mounter.Exec.Command("blkid", args...)
-			var stderr bytes.Buffer
-			cmd.SetStderr(&stderr)
-			klog.V(4).Infof(
-				"running %q for volume %s",
-				strings.Join(append([]string{"blkid"}, args...), " "),
-				volumeID,
-			)
-			uuid, err := cmd.Output()
-			if err != nil {
-				klog.Errorf("blkid failed for %s. stderr:\n%s", volumeID, stderr.String())
-				return nil, status.Errorf(codes.Internal, "blkid failed: %v", err)
-			}
-			uuid = bytes.TrimRight(uuid, "\n")
+	// Part 6: if configured, write sysfs values
+	if len(btrfsSysfs) > 0 {
+		args := []string{"--match-tag", "UUID", "--output", "value", stagingTargetPath}
+		cmd := ns.Mounter.Exec.Command("blkid", args...)
+		var stderr bytes.Buffer
+		cmd.SetStderr(&stderr)
+		klog.V(4).Infof(
+			"running %q for volume %s",
+			strings.Join(append([]string{"blkid"}, args...), " "),
+			volumeID,
+		)
+		uuid, err := cmd.Output()
+		if err != nil {
+			klog.Errorf("blkid failed for %s. stderr:\n%s", volumeID, stderr.String())
+			return nil, status.Errorf(codes.Internal, "blkid failed: %v", err)
+		}
+		uuid = bytes.TrimRight(uuid, "\n")
 
-			for key, value := range sysfs {
-				path := fmt.Sprintf("%s/fs/btrfs/%s/%s", ns.SysfsPath, uuid, key)
-				if err := writeSysfs(path, value); err != nil {
-					return nil, status.Error(codes.Internal, err.Error())
-				}
-				klog.V(4).Infof("NodeStageVolume set %s %s=%s", volumeID, key, value)
+		for key, value := range btrfsSysfs {
+			path := fmt.Sprintf("%s/fs/btrfs/%s/%s", ns.SysfsPath, uuid, key)
+			if err := writeSysfs(path, value); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
 			}
+			klog.V(4).Infof("NodeStageVolume set %s %s=%s", volumeID, key, value)
 		}
 	}
 
@@ -526,7 +533,6 @@ func writeSysfs(path, value string) (_err error) {
 	if _, err := f.Write([]byte(value)); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -546,16 +552,18 @@ func (ns *GCENodeServer) updateReadAhead(devicePath string, readAheadKB int64) e
 	return nil
 }
 
-func extractBtrfsReclaimFlags(mountFlags []string) (string, string) {
-	var reclaimData, reclaimMetadata string
+func extractBtrfsFlags(mountFlags []string) (string, string, string) {
+	var reclaimData, reclaimMetadata, readAheadKb string
 	for _, mountFlag := range mountFlags {
 		if got := btrfsReclaimDataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
 			reclaimData = got[1]
 		} else if got := btrfsReclaimMetadataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
 			reclaimMetadata = got[1]
+		} else if got := btrfsReadAheadKBRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
+			readAheadKb = got[1]
 		}
 	}
-	return reclaimData, reclaimMetadata
+	return reclaimData, reclaimMetadata, readAheadKb
 }
 
 func extractReadAheadKBMountFlag(mountFlags []string) (int64, bool, error) {
