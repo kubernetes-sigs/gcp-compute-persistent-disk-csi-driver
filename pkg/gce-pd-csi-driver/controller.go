@@ -97,7 +97,6 @@ type GCEControllerServer struct {
 	// of preferred/requisite topology, this list is used instead of
 	// the passed in requisite topology.
 	// The main use case of this field is to support Regional Persistent Disk
-	// provisioning in GKE Autopilot, where a GKE cluster to
 	// be scaled down to 1 zone.
 	fallbackRequisiteZones []string
 
