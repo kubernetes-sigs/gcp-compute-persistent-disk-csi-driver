@@ -121,18 +121,30 @@ const (
 	fsTypeExt3                   = "ext3"
 	fsTypeBtrfs                  = "btrfs"
 
-	readAheadKBMountFlagRegexPattern = "^read_ahead_kb=(.+)$"
-	btrfsReclaimDataRegexPattern     = "^btrfs-allocation-data-bg_reclaim_threshold=(\\d{1,2})$"     // 0-99 are valid, incl. 00
-	btrfsReclaimMetadataRegexPattern = "^btrfs-allocation-metadata-bg_reclaim_threshold=(\\d{1,2})$" // ditto ^
-	btrfsReadAheadKBRegexPattern     = "^btrfs-bdi-read_ahead_kb=(\\d+)$"
+	readAheadKBMountFlagRegexPattern        = "^read_ahead_kb=(.+)$"
+	btrfsReclaimDataRegexPattern            = "^btrfs-allocation-data-bg_reclaim_threshold=(\\d{1,2})$"     // 0-99 are valid, incl. 00
+	btrfsReclaimMetadataRegexPattern        = "^btrfs-allocation-metadata-bg_reclaim_threshold=(\\d{1,2})$" // ditto ^
+	btrfsDynamicReclaimDataRegexPattern     = "^btrfs-allocation-data-dynamic_reclaim=(0|1)$"               // boolean in kernel, so accepting 0 or 1
+	btrfsDynamicReclaimMetadataRegexPattern = "^btrfs-allocation-metadata-dynamic_reclaim=(0|1)$"           // ditto ^
+	btrfsReadAheadKBRegexPattern            = "^btrfs-bdi-read_ahead_kb=(\\d+)$"
 )
 
 var (
-	readAheadKBMountFlagRegex = regexp.MustCompile(readAheadKBMountFlagRegexPattern)
-	btrfsReclaimDataRegex     = regexp.MustCompile(btrfsReclaimDataRegexPattern)
-	btrfsReclaimMetadataRegex = regexp.MustCompile(btrfsReclaimMetadataRegexPattern)
-	btrfsReadAheadKBRegex     = regexp.MustCompile(btrfsReadAheadKBRegexPattern)
+	readAheadKBMountFlagRegex        = regexp.MustCompile(readAheadKBMountFlagRegexPattern)
+	btrfsReclaimDataRegex            = regexp.MustCompile(btrfsReclaimDataRegexPattern)
+	btrfsReclaimMetadataRegex        = regexp.MustCompile(btrfsReclaimMetadataRegexPattern)
+	btrfsDynamicReclaimDataRegex     = regexp.MustCompile(btrfsDynamicReclaimDataRegexPattern)
+	btrfsDynamicReclaimMetadataRegex = regexp.MustCompile(btrfsDynamicReclaimMetadataRegexPattern)
+	btrfsReadAheadKBRegex            = regexp.MustCompile(btrfsReadAheadKBRegexPattern)
 )
+
+type btrfsFlags struct {
+	reclaimData,
+	reclaimMetadata,
+	dynamicReclaimData,
+	dynamicReclaimMetadata,
+	readAheadKb string
+}
 
 func getDefaultFsType() string {
 	if runtime.GOOS == "windows" {
@@ -404,7 +416,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// Part 3: Mount device to stagingTargetPath
 	fstype := getDefaultFsType()
 
-	var btrfsReclaimData, btrfsReclaimMetadata, btrfsReadAheadKb string
+	var btrfsFlags btrfsFlags
 	shouldUpdateReadAhead := false
 	var readAheadKB int64
 	options := []string{}
@@ -420,7 +432,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 
 		if mnt.FsType == fsTypeBtrfs {
-			btrfsReclaimData, btrfsReclaimMetadata, btrfsReadAheadKb = extractBtrfsFlags(mnt.MountFlags)
+			btrfsFlags = extractBtrfsFlags(mnt.MountFlags)
 		}
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
@@ -476,16 +488,22 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	btrfsSysfs := map[string]string{}
 
-	if btrfsReadAheadKb != "" {
-		btrfsSysfs["bdi/read_ahead_kb"] = btrfsReadAheadKb
+	if btrfsFlags.readAheadKb != "" {
+		btrfsSysfs["bdi/read_ahead_kb"] = btrfsFlags.readAheadKb
 	}
 
 	if !readonly {
-		if btrfsReclaimData != "" {
-			btrfsSysfs["allocation/data/bg_reclaim_threshold"] = btrfsReclaimData
+		if btrfsFlags.reclaimData != "" {
+			btrfsSysfs["allocation/data/bg_reclaim_threshold"] = btrfsFlags.reclaimData
 		}
-		if btrfsReclaimMetadata != "" {
-			btrfsSysfs["allocation/metadata/bg_reclaim_threshold"] = btrfsReclaimMetadata
+		if btrfsFlags.reclaimMetadata != "" {
+			btrfsSysfs["allocation/metadata/bg_reclaim_threshold"] = btrfsFlags.reclaimMetadata
+		}
+		if btrfsFlags.dynamicReclaimData != "" {
+			btrfsSysfs["allocation/data/dynamic_reclaim"] = btrfsFlags.dynamicReclaimData
+		}
+		if btrfsFlags.dynamicReclaimMetadata != "" {
+			btrfsSysfs["allocation/metadata/dynamic_reclaim"] = btrfsFlags.dynamicReclaimMetadata
 		}
 	}
 
@@ -552,18 +570,22 @@ func (ns *GCENodeServer) updateReadAhead(devicePath string, readAheadKB int64) e
 	return nil
 }
 
-func extractBtrfsFlags(mountFlags []string) (string, string, string) {
-	var reclaimData, reclaimMetadata, readAheadKb string
+func extractBtrfsFlags(mountFlags []string) btrfsFlags {
+	var flags btrfsFlags
 	for _, mountFlag := range mountFlags {
 		if got := btrfsReclaimDataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
-			reclaimData = got[1]
+			flags.reclaimData = got[1]
 		} else if got := btrfsReclaimMetadataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
-			reclaimMetadata = got[1]
+			flags.reclaimMetadata = got[1]
 		} else if got := btrfsReadAheadKBRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
-			readAheadKb = got[1]
+			flags.readAheadKb = got[1]
+		} else if got := btrfsDynamicReclaimDataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
+			flags.dynamicReclaimData = got[1]
+		} else if got := btrfsDynamicReclaimMetadataRegex.FindStringSubmatch(mountFlag); len(got) == 2 {
+			flags.dynamicReclaimMetadata = got[1]
 		}
 	}
-	return reclaimData, reclaimMetadata, readAheadKb
+	return flags
 }
 
 func extractReadAheadKBMountFlag(mountFlags []string) (int64, bool, error) {
