@@ -100,8 +100,10 @@ As noted in [GCP PD documentation](https://cloud.google.com/kubernetes-engine/do
 
 `btrfs` filesystem accepts the following "special" mount options and the sysfs paths they target:
 
-- `btrfs-data-bg_reclaim_threshold`: `/sys/fs/btrfs/FS-UUID/allocation/data/bg_reclaim_threshold`.
-- `btrfs-metadata-bg_reclaim_thresho: `/sys/fs/btrfs/FS-UUID/allocation/metadata/bg_reclaim_threshold`.
+- `btrfs-data-bg_reclaim_threshold`: `/sys/fs/btrfs/FS-UUID/allocation/data/bg_reclaim_threshold`. Supported on Linux v5.19+.
+- `btrfs-metadata-bg_reclaim_thresho: `/sys/fs/btrfs/FS-UUID/allocation/metadata/bg_reclaim_threshold`. Supported on Linux v5.19+.
+- `btrfs-data-dynamic_reclaim`: `/sys/fs/btrfs/FS-UUID/allocation/data/dynamic_reclaim`. Supported on Linux v6.11+.
+- `btrfs-metadata-bg_reclaim_thresho: `/sys/fs/btrfs/FS-UUID/allocation/metadata/bg_reclaim_threshold`. Supported on Linux v6.11+.
 - `btrfs-bdi-read_ahead_kb`: `/sys/fs/btrfs/FS-UUID/bdi/read_ahead_kb`.
 
 See more in the [in btrfs docs](https://btrfs.readthedocs.io/en/latest/ch-sysfs.html#uuid-allocations-data-metadata-system).
