@@ -105,6 +105,7 @@ As noted in [GCP PD documentation](https://cloud.google.com/kubernetes-engine/do
 | `btrfs-allocation-data-bg_reclaim_threshold`     | `/sys/fs/btrfs/FS-UUID/allocation/data/bg_reclaim_threshold`      | 0–99 (percent) | 0 (disabled)            | Linux v5.19+ | Triggers background reclaim for DATA block groups when usage drops to the threshold. |
 | `btrfs-allocation-metadata-bg_reclaim_threshold` | `/sys/fs/btrfs/FS-UUID/allocation/metadata/bg_reclaim_threshold`  | 0–99 (percent) | 0 (disabled)            | Linux v5.19+ | Same as above, for METADATA block groups. |
 | `btrfs-allocation-data-dynamic_reclaim`          | `/sys/fs/btrfs/FS-UUID/allocation/data/dynamic_reclaim`           | `0` or `1`     | 0 (off)                 | Linux v6.11+ | Heuristic reclaim that addresses [some concerns](https://web.git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f5ff64ccf7bb7274ed66b0d835b2f6ae10af5d7a) of `bg_reclaim_threshold`. |
+| `btrfs-allocation-metadata-dynamic_reclaim`      | `/sys/fs/btrfs/FS-UUID/allocation/metadata/dynamic_reclaim`       | `0` or `1`     | 0 (off)                 | Linux v6.11+ | Same as above, for METADATA block groups. |
 | `btrfs-bdi-read_ahead_kb`                        | `/sys/fs/btrfs/FS-UUID/bdi/read_ahead_kb`                         | integer kB ≥ 0 | kernel/device dependent | Linux v5.9+  | Per-BDI readahead. Powers of two are commonly used. |
 
 See more in the [in btrfs docs](https://btrfs.readthedocs.io/en/latest/ch-sysfs.html#uuid-allocations-data-metadata-system).
