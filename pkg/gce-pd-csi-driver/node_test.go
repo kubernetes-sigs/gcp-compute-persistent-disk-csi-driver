@@ -631,7 +631,9 @@ func TestNodeStageVolume(t *testing.T) {
 		btrfsPrefix   = fmt.Sprintf("%s/sys/fs/btrfs/%s", tempDir, btrfsUUID)
 		btrfsFixtures = map[string]string{
 			"allocation/data/bg_reclaim_threshold":     "0\n",
+			"allocation/data/dynamic_reclaim":          "0\n",
 			"allocation/metadata/bg_reclaim_threshold": "0\n",
+			"allocation/metadata/dynamic_reclaim":      "0\n",
 			"bdi/read_ahead_kb":                        "4096\n",
 		}
 	)
@@ -648,22 +650,24 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                 string
-		req                  *csi.NodeStageVolumeRequest
-		deviceSize           int
-		blockExtSize         int
-		readonlyBit          string
-		expResize            bool
-		expReadAheadUpdate   bool
-		expReadAheadKB       string
-		expReadOnlyRemount   bool
-		expCommandList       []fakeCmd
-		readAheadSectors     string
-		btrfsReclaimData     string
-		btrfsReclaimMetadata string
-		btrfsReadAheadKb     string
-		sectorSizeInBytes    int
-		expErrCode           codes.Code
+		name                        string
+		req                         *csi.NodeStageVolumeRequest
+		deviceSize                  int
+		blockExtSize                int
+		readonlyBit                 string
+		expResize                   bool
+		expReadAheadUpdate          bool
+		expReadAheadKB              string
+		expReadOnlyRemount          bool
+		expCommandList              []fakeCmd
+		readAheadSectors            string
+		btrfsReclaimData            string
+		btrfsReclaimMetadata        string
+		btrfsDynamicReclaimData     string
+		btrfsDynamicReclaimMetadata string
+		btrfsReadAheadKb            string
+		sectorSizeInBytes           int
+		expErrCode                  codes.Code
 	}{
 		{
 			name: "Valid request, resize even though block and filesystem sizes match",
@@ -927,6 +931,8 @@ func TestNodeStageVolume(t *testing.T) {
 							MountFlags: []string{
 								"btrfs-allocation-data-bg_reclaim_threshold=90",
 								"btrfs-allocation-metadata-bg_reclaim_threshold=91",
+								"btrfs-allocation-data-dynamic_reclaim=1",
+								"btrfs-allocation-metadata-dynamic_reclaim=1",
 								"btrfs-bdi-read_ahead_kb=128",
 							},
 						},
@@ -936,12 +942,14 @@ func TestNodeStageVolume(t *testing.T) {
 					},
 				},
 			},
-			deviceSize:           1,
-			blockExtSize:         1,
-			readonlyBit:          "0",
-			btrfsReclaimData:     "90",
-			btrfsReclaimMetadata: "91",
-			btrfsReadAheadKb:     "128",
+			deviceSize:                  1,
+			blockExtSize:                1,
+			readonlyBit:                 "0",
+			btrfsReclaimData:            "90",
+			btrfsReclaimMetadata:        "91",
+			btrfsDynamicReclaimData:     "1",
+			btrfsDynamicReclaimMetadata: "1",
+			btrfsReadAheadKb:            "128",
 			expCommandList: []fakeCmd{
 				{
 					cmd:    "blkid",
@@ -1267,13 +1275,17 @@ func TestNodeStageVolume(t *testing.T) {
 			if tc.expReadAheadUpdate == false && readAheadUpdateCalled == true {
 				t.Fatalf("Test updated read ahead, but it was not expected.")
 			}
-			if tc.btrfsReclaimData == "" && tc.btrfsReclaimMetadata == "" && tc.btrfsReadAheadKb == "" && blkidCalled {
+			if tc.btrfsReclaimData == "" && tc.btrfsReclaimMetadata == "" &&
+				tc.btrfsDynamicReclaimData == "" && tc.btrfsDynamicReclaimMetadata == "" &&
+				tc.btrfsReadAheadKb == "" && blkidCalled {
 				t.Fatalf("blkid was called, but was not expected.")
 			}
 
 			btrfsProps := map[string]string{
 				"/allocation/data/bg_reclaim_threshold":     tc.btrfsReclaimData,
 				"/allocation/metadata/bg_reclaim_threshold": tc.btrfsReclaimMetadata,
+				"/allocation/data/dynamic_reclaim":          tc.btrfsDynamicReclaimData,
+				"/allocation/metadata/dynamic_reclaim":      tc.btrfsDynamicReclaimMetadata,
 				"/bdi/read_ahead_kb":                        tc.btrfsReadAheadKb,
 			}
 

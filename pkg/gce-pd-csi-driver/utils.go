@@ -317,6 +317,12 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		if btrfsReclaimMetadataRegex.FindString(opt) != "" {
 			continue
 		}
+		if btrfsDynamicReclaimDataRegex.FindString(opt) != "" {
+			continue
+		}
+		if btrfsDynamicReclaimMetadataRegex.FindString(opt) != "" {
+			continue
+		}
 		if btrfsReadAheadKBRegex.FindString(opt) != "" {
 			continue
 		}
