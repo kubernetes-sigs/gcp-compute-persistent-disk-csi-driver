@@ -9,7 +9,7 @@ parameters:
   provisioned-throughput-on-create: "150Mi"
 volumeBindingMode: WaitForFirstConsumer
 ---
-apiVersion: storage.k8s.io/v1beta1
+apiVersion: storage.k8s.io/v1
 kind: VolumeAttributesClass
 metadata:
   name: silver
@@ -18,7 +18,7 @@ parameters:
   iops: "3000"
   throughput: "150Mi"
 ---
-apiVersion: storage.k8s.io/v1beta1
+apiVersion: storage.k8s.io/v1
 kind: VolumeAttributesClass
 metadata:
   name: gold
@@ -46,14 +46,14 @@ metadata:
   name: nginx
 spec:
   volumes:
-  - name: vol
-    persistentVolumeClaim:
-      claimName: test-pvc
+    - name: vol
+      persistentVolumeClaim:
+        claimName: test-pvc
   containers:
-  - name: nginx
-    image: nginx:1.14.2
-    ports:
-    - containerPort: 80
-    volumeMounts:
-    - mountPath: "/vol"
-      name: vol
+    - name: nginx
+      image: nginx:1.14.2
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - mountPath: "/vol"
+          name: vol

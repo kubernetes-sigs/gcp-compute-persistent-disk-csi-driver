@@ -32,12 +32,11 @@ spec:
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--timeout=250s"
             - "--extra-create-metadata"
-          # - "--run-controller-service=false"  # disable the controller service of the CSI driver
-          # - "--run-node-service=false"        # disable the node service of the CSI driver
+            # - "--run-controller-service=false"  # disable the controller service of the CSI driver
+            # - "--run-node-service=false"        # disable the node service of the CSI driver
             - "--leader-election"
             - "--default-fstype=ext4"
             - "--controller-publish-readonly=true"
-            - "--feature-gates=VolumeAttributesClass=true"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
@@ -96,7 +95,6 @@ spec:
             - "--leader-election"
             - "--leader-election-namespace=$(PDCSI_NAMESPACE)"
             - "--handle-volume-inuse-error=false"
-            - "--feature-gates=VolumeAttributesClass=true"
           env:
             - name: PDCSI_NAMESPACE
               valueFrom:
