@@ -46,14 +46,14 @@ metadata:
   name: nginx
 spec:
   volumes:
-    - name: vol
-      persistentVolumeClaim:
-        claimName: test-pvc
+  - name: vol
+    persistentVolumeClaim:
+      claimName: test-pvc
   containers:
-    - name: nginx
-      image: nginx:1.14.2
-      ports:
-        - containerPort: 80
-      volumeMounts:
-        - mountPath: "/vol"
-          name: vol
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+      - containerPort: 80
+    volumeMounts:
+      - mountPath: "/vol"
+        name: vol
