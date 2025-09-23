@@ -573,6 +573,7 @@ func isCachingSetup(mainLvName string) (error, bool) {
 	return nil, false
 }
 
+// cacheSize is always in GiB
 func fetchChunkSizeKiB(cacheSize string) (string, error) {
 	var chunkSize float64
 
