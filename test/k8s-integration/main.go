@@ -639,8 +639,6 @@ func generateGCETestSkip(testParams *testParameters) string {
 	skipString := "\\[Disruptive\\]|\\[Serial\\]"
 	// Skip mount options test until we fix the invalid mount options for xfs.
 	skipString = skipString + "|csi-gcepd-sc-xfs.*provisioning.should.provision.storage.with.mount.options"
-	// Skip VolumeAttributesClass tests while it's a beta feature.
-	skipString = skipString + "|\\[Feature:VolumeAttributesClass\\]"
 
 	v := apimachineryversion.MustParseSemantic(testParams.clusterVersion)
 
