@@ -573,9 +573,11 @@ func isCachingSetup(mainLvName string) (error, bool) {
 	return nil, false
 }
 
+// cacheSize is always in GiB
 func fetchChunkSizeKiB(cacheSize string) (string, error) {
 	var chunkSize float64
 
+	cacheSize = strings.TrimSuffix(cacheSize, "GiB")
 	cacheSizeInt, err := strconv.ParseInt(cacheSize, 10, 64)
 	if err != nil {
 		return "0", err
@@ -691,10 +693,8 @@ func addRaidedLSSDToVg(vgName, lssdPath string) error {
 
 func fetchPvSizeGiB() (string, error) {
 	args := []string{
-		"--select",
-		"-o",
+		"-o", "pv_name,pv_size",
 		"--noheadings",
-		"pv_size",
 		"--units=b",
 	}
 	// RAIDed device is always registered with its /dev/md127 equivalent in VG so cannot check it directly based on the RAIDed LSSD path which could be /dev/md/csi-driver-data-cache
