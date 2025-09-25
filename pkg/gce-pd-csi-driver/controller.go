@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	neturl "net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1113,7 +1114,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	volumeCapability := req.GetVolumeCapability()
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
-		PublishContext: nil,
+		PublishContext: map[string]string{},
 	}
 
 	// Set data cache publish context
@@ -1162,6 +1163,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		}
 		return nil, common.LoggedError("Failed to getDisk: ", err), disk
 	}
+	pubVolResp.PublishContext[common.ContextDiskSizeGB] = strconv.FormatInt(disk.GetSizeGb(), 10)
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, project, instanceZone, instanceName)
 	if err != nil {
 		if gce.IsGCENotFoundError(err) {
