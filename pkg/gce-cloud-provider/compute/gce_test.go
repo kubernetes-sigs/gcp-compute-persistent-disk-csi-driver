@@ -101,6 +101,70 @@ func TestIsGCEError(t *testing.T) {
 	}
 }
 
+func TestErrorIsGCPViolationRegex(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is gcp org violation error, error code 400",
+			inputErr:       errors.New("Failed to scale up: googleapi: Error 400: 'us-central1' violates constraint '`constraints/gcp.resourceLocations`' on the resource 'projects/test-project/locations/us-central1/clusters/test-cluster/nodePools/test-node-pool'"),
+			expectedResult: true,
+		},
+		{
+			name:           "is gcp org violation error, error code 412",
+			inputErr:       errors.New("createSnapshot for content [snapcontent-xyz]: error occurred in createSnapshotWrapper: failed to take snapshot of the volume projects/test-project/regions/europe-west3/disks/pvc-test: \"rpc error: code = Internal desc = Failed to create snapshot: googleapi: Error 412: Location EU violates constraint constraints/gcp.resourceLocations on the resource projects/test-project/global/snapshots/snapshot-xyz., conditionNotMet\""),
+			expectedResult: true,
+		},
+		{
+			name:           "is not gcp org violation, error doesn't match",
+			inputErr:       errors.New("createSnapshot for content [snapcontent-xyz]: error occurred in createSnapshotWrapper: failed to take snapshot of the volume projects/test-project/regions/europe-west3/disks/pvc-test: \"rpc error: code = Internal desc = Failed to create snapshot: googleapi: Error 500: Location EU violates constraint constraints/gcp.resourceLocations on the resource projects/test-project/global/snapshots/snapshot-xyz., conditionNotMet\""),
+			expectedResult: false,
+		},
+		{
+			name:           "is not gcp org violation error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsGCPOrgViolationError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
+func TestErrorIsSnapshotExistsError(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputErr       error
+		expectedResult bool
+	}{
+		{
+			name:           "is snapshot already exists error",
+			inputErr:       errors.New("The resource projects/test-project/global/snapshots/snapshot-xyz already exists, alreadyExists"),
+			expectedResult: true,
+		},
+		{
+			name:           "is not snapshot already exists error",
+			inputErr:       errors.New("Some incorrect error message"),
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Logf("Running test: %v", tc.name)
+		result := IsSnapshotAlreadyExistsError(tc.inputErr)
+		if tc.expectedResult != result {
+			t.Fatalf("Got '%t', expected '%t'", result, tc.expectedResult)
+		}
+	}
+}
+
 func TestGetComputeVersion(t *testing.T) {
 	testCases := []struct {
 		name               string
