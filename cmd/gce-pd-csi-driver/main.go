@@ -100,6 +100,8 @@ var (
 
 	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
 
+	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
+
 	version string
 )
 
@@ -251,7 +253,8 @@ func handle() {
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
 		// TODO(2042): Move more of the constructor args into this struct
 		args := &driver.GCEControllerServerArgs{
-			EnableDiskTopology: *diskTopology,
+			EnableDiskTopology:       *diskTopology,
+			EnableDiskSizeValidation: *enableDiskSizeValidation,
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)

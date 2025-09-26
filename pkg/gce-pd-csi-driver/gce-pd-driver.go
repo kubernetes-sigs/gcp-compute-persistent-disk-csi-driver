@@ -178,6 +178,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		provisionableDisksConfig:    provisionableDisksConfig,
 		enableHdHA:                  enableHdHA,
 		EnableDiskTopology:          args.EnableDiskTopology,
+		EnableDiskSizeValidation:    args.EnableDiskSizeValidation,
 	}
 }
 
