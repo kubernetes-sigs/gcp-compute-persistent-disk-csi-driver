@@ -97,6 +97,8 @@ var (
 
 	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a disk-type.gke.io/[disk-type] topology label when the StorageClass has the use-allowed-disk-topology parameter set to true. That topology label is included in the Topologies returned in CreateVolumeResponse. This flag is disabled by default.")
 
+	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
+
 	version string
 )
 
@@ -248,7 +250,8 @@ func handle() {
 		maxBackoffDuration := time.Duration(*errorBackoffMaxDurationMs) * time.Millisecond
 		// TODO(2042): Move more of the constructor args into this struct
 		args := &driver.GCEControllerServerArgs{
-			EnableDiskTopology: *diskTopology,
+			EnableDiskTopology:       *diskTopology,
+			EnableDiskSizeValidation: *enableDiskSizeValidation,
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)

@@ -48,6 +48,7 @@ const (
 
 	ContextDataCacheSize = "data-cache-size"
 	ContextDataCacheMode = "data-cache-mode"
+	ContextDiskSizeGB    = "disk-size"
 
 	// Keys in the publish context
 	ContexLocalSsdCacheSize = "local-ssd-cache-size"

@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	neturl "net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,11 +122,13 @@ type GCEControllerServer struct {
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedControllerServer
 
-	EnableDiskTopology bool
+	EnableDiskTopology       bool
+	EnableDiskSizeValidation bool
 }
 
 type GCEControllerServerArgs struct {
-	EnableDiskTopology bool
+	EnableDiskTopology       bool
+	EnableDiskSizeValidation bool
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -1113,7 +1116,7 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	volumeCapability := req.GetVolumeCapability()
 
 	pubVolResp := &csi.ControllerPublishVolumeResponse{
-		PublishContext: nil,
+		PublishContext: map[string]string{},
 	}
 
 	// Set data cache publish context
@@ -1161,6 +1164,9 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 			return nil, status.Errorf(codes.NotFound, "Could not find disk %v: %v", volKey.String(), err.Error()), disk
 		}
 		return nil, common.LoggedError("Failed to getDisk: ", err), disk
+	}
+	if gceCS.EnableDiskSizeValidation && pubVolResp.GetPublishContext() != nil {
+		pubVolResp.PublishContext[common.ContextDiskSizeGB] = strconv.FormatInt(disk.GetSizeGb(), 10)
 	}
 	instance, err := gceCS.CloudProvider.GetInstanceOrError(ctx, project, instanceZone, instanceName)
 	if err != nil {
