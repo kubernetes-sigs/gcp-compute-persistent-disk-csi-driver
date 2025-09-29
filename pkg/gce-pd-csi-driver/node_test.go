@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
@@ -1124,6 +1125,41 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 		},
 		{
+			name: "Valid request with disk size check",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  stdVolCap,
+				PublishContext:    map[string]string{common.ContextDiskSizeGB: "1"},
+			},
+			deviceSize:   1,
+			blockExtSize: 1,
+			readonlyBit:  "1",
+			expResize:    false,
+			expCommandList: []fakeCmd{
+				{
+					cmd:    "blockdev",
+					args:   "--getsize64 /dev/disk/fake-path",
+					stdout: "%v",
+				},
+				{
+					cmd:    "blkid",
+					args:   "-p -s TYPE -s PTTYPE -o export /dev/disk/fake-path",
+					stdout: "DEVNAME=/dev/sdb\nTYPE=%v",
+				},
+				{
+					cmd:    "fsck",
+					args:   "-a /dev/disk/fake-path",
+					stdout: "",
+				},
+				{
+					cmd:    "blockdev",
+					args:   "--getro /dev/disk/fake-path",
+					stdout: "%v",
+				},
+			},
+		},
+		{
 			name: "Invalid request (Bad Access Mode)",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
@@ -1201,6 +1237,24 @@ func TestNodeStageVolume(t *testing.T) {
 				},
 			},
 			expErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Invalid request, block size mismatch",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  stdVolCap,
+				PublishContext:    map[string]string{common.ContextDiskSizeGB: "10"},
+			},
+			deviceSize: 5,
+			expErrCode: codes.Internal,
+			expCommandList: []fakeCmd{
+				{
+					cmd:    "blockdev",
+					args:   "--getsize64 /dev/disk/fake-path",
+					stdout: "%v",
+				},
+			},
 		},
 	}
 	for _, tc := range testCases {

@@ -449,6 +449,17 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
 	}
 
+	// If a disk size is provided in the publish context, ensure it matches the actual device size.
+	if expectedSize := req.GetPublishContext()[common.ContextDiskSizeGB]; expectedSize != "" {
+		actualSize, err := getBlockSizeBytes(devicePath, ns.Mounter)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get block size for '%s': %v", devicePath, err.Error()))
+		}
+		if expectedSize != strconv.FormatInt(actualSize, 10) {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("expected block size %q, got %q", expectedSize, strconv.FormatInt(actualSize, 10)))
+		}
+	}
+
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked

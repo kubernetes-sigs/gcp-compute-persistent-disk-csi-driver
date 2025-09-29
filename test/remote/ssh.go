@@ -22,7 +22,9 @@ import (
 	"os/exec"
 	"os/user"
 	"strings"
+	"time"
 
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 )
 
@@ -88,8 +90,14 @@ func (i *InstanceInfo) SSHNoSudo(cmd ...string) (string, error) {
 }
 
 // SSHCheckAlive just pings the server quickly to check whether it is reachable by SSH
-func (i *InstanceInfo) SSHCheckAlive() (string, error) {
-	return runSSHCommand("ssh", []string{i.GetSSHTarget(), "-o", "ConnectTimeout=10", "--", "echo"}...)
+func (i *InstanceInfo) SSHCheckAlive() error {
+	return wait.Poll(5*time.Second, time.Minute, func() (bool, error) {
+		out, err := runSSHCommand("ssh", []string{i.GetSSHTarget(), "-o", "ConnectTimeout=10", "--", "echo"}...)
+		if err != nil {
+			klog.V(2).Infof("ssh error, retrying: %v, %s", err, out)
+		}
+		return err == nil, nil
+	})
 }
 
 // runSSHCommand executes the ssh or scp command, adding the flag provided --ssh-options
