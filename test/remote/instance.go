@@ -248,9 +248,9 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 			i.externalIP = externalIP
 		}
 
-		if sshOut, err := i.SSHCheckAlive(); err != nil {
+		if err := i.SSHCheckAlive(); err != nil {
 			err = fmt.Errorf("Instance %v in state RUNNING but not available by SSH: %v", i.cfg.Name, err.Error())
-			klog.Warningf("SSH encountered an error: %v, output: %v", err, sshOut)
+			klog.Warningf("SSH encountered an error: %v", err)
 			return false, nil
 		}
 		klog.V(4).Infof("Instance %v in state RUNNING and available by SSH", i.cfg.Name)
