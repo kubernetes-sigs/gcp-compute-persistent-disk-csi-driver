@@ -235,7 +235,7 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		}
 
 		if i.cfg.CloudtopHost {
-			output, err := exec.Command("gcloud", "compute", "ssh", i.cfg.Name, "--zone", i.cfg.Zone, "--project", i.cfg.Project, "--", "-o", "ProxyCommand=corp-ssh-helper %h %p", "--", "echo").CombinedOutput()
+			output, err := exec.Command("gcloud", "compute", "ssh", i.cfg.Name, "--zone", i.cfg.Zone, "--project", i.cfg.Project).CombinedOutput()
 			if err != nil {
 				klog.Errorf("Failed to bootstrap ssh (%v): %s", err, string(output))
 				return false, nil
@@ -257,9 +257,8 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		return true, nil
 	})
 
-	// If instance didn't reach running state in time, return with error now.
 	if err != nil {
-		return err
+		return fmt.Errorf("instance %v did not reach running state in time: %v", i.cfg.Name, err.Error())
 	}
 
 	// Instance reached running state in time, make sure that cloud-init is complete

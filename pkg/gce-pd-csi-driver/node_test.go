@@ -34,6 +34,7 @@ import (
 	"k8s.io/mount-utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
 
@@ -44,11 +45,13 @@ const (
 )
 
 func getTestGCEDriver(t *testing.T) *GCEDriver {
-	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
+	return getCustomTestGCEDriver(t, mountmanager.NewFakeSafeMounter(), deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{
+		DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{defaultVolumeID})),
+	})
 }
 
-func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount) *GCEDriver {
-	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), &NodeServerArgs{})
+func getTestGCEDriverWithCustomMounter(t *testing.T, mounter *mount.SafeFormatAndMount, args *NodeServerArgs) *GCEDriver {
+	return getCustomTestGCEDriver(t, mounter, deviceutils.NewFakeDeviceUtils(false), metadataservice.NewFakeService(), args)
 }
 
 func getCustomTestGCEDriver(t *testing.T, mounter *mount.SafeFormatAndMount, deviceUtils deviceutils.DeviceUtils, metaService metadataservice.MetadataService, args *NodeServerArgs) *GCEDriver {
@@ -188,7 +191,9 @@ func TestNodeGetVolumeStats(t *testing.T) {
 			}
 
 			mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList})
-			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
+			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter, &NodeServerArgs{
+				DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{tc.volumeID})),
+			})
 			ns := gceDriver.ns
 
 			req := &csi.NodeGetVolumeStatsRequest{
@@ -1227,7 +1232,9 @@ func TestNodeStageVolume(t *testing.T) {
 				))
 			}
 			mounter := mountmanager.NewFakeSafeMounterWithCustomExec(&testingexec.FakeExec{CommandScript: actionList, ExactOrder: true})
-			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter)
+			gceDriver := getTestGCEDriverWithCustomMounter(t, mounter, &NodeServerArgs{
+				DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{volumeID})),
+			})
 			ns := gceDriver.ns
 			ns.SysfsPath = tempDir + "/sys"
 			_, err := ns.NodeStageVolume(context.Background(), tc.req)
