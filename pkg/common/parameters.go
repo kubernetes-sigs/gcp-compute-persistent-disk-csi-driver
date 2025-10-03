@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 )
 
 const (
@@ -192,7 +193,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 	// Set data cache mode default
 	d := DataCacheParameters{}
 	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
-		d.DataCacheMode = DataCacheModeWriteThrough
+		d.DataCacheMode = constants.DataCacheModeWriteThrough
 	}
 
 	for k, v := range extraVolumeLabels {
@@ -320,7 +321,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 
 			p.MultiZoneProvisioning = paramEnableMultiZoneProvisioning
 			if paramEnableMultiZoneProvisioning {
-				p.Labels[MultiZoneLabel] = "true"
+				p.Labels[constants.MultiZoneLabel] = "true"
 			}
 		case ParameterAccessMode:
 			if v != "" {

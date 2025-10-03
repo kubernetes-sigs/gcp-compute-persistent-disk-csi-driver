@@ -41,6 +41,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 )
 
 const (
@@ -292,7 +293,7 @@ func (cloud *CloudProvider) listInstancesForProject(service *computev1.Service, 
 // by the volume key and return a volume key with a correct zone
 func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
 	klog.V(5).Infof("Repairing potentially underspecified volume key %v", volumeKey)
-	if project == common.UnspecifiedValue {
+	if project == constants.UnspecifiedValue {
 		project = cloud.project
 	}
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
@@ -302,7 +303,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 	switch volumeKey.Type() {
 	case meta.Zonal:
 		foundZone := ""
-		if volumeKey.Zone == common.UnspecifiedValue {
+		if volumeKey.Zone == constants.UnspecifiedValue {
 			// list all zones, try to get disk in each zone
 			zones, err := cloud.ListZones(ctx, region)
 			if err != nil {
@@ -334,7 +335,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 		}
 		return project, volumeKey, nil
 	case meta.Regional:
-		if volumeKey.Region == common.UnspecifiedValue {
+		if volumeKey.Region == constants.UnspecifiedValue {
 			volumeKey.Region = region
 		}
 		return project, volumeKey, nil
@@ -468,8 +469,8 @@ func validAccessMode(want, got string) bool {
 		return true
 	}
 	switch want {
-	case common.GCEReadOnlyManyAccessMode, common.GCEReadWriteOnceAccessMode:
-		return got == common.GCEReadWriteManyAccessMode
+	case constants.GCEReadOnlyManyAccessMode, constants.GCEReadWriteOnceAccessMode:
+		return got == constants.GCEReadWriteManyAccessMode
 	// For RWX, no other access mode is valid.
 	default:
 		return false

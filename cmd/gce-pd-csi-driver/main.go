@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
@@ -437,8 +438,8 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 		return nil
 	}
 
-	lssdCount := common.LocalSSDCountForDataCache
-	if nodeName != common.TestNode {
+	lssdCount := constants.LocalSSDCountForDataCache
+	if nodeName != constants.TestNode {
 		var err error
 		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
 		if err != nil {

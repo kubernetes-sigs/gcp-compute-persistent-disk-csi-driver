@@ -44,6 +44,7 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
@@ -70,7 +71,7 @@ var (
 	}
 	stdTopology = []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 	}
 
@@ -723,7 +724,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone"},
 						},
 					},
 				},
@@ -734,7 +735,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone"},
 					},
 				},
 			},
@@ -749,24 +750,24 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 						},
 					},
 				},
@@ -777,7 +778,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},
@@ -792,7 +793,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{"ooblezoners": "topology-zone", common.TopologyKeyZone: "top-zone"},
+							Segments: map[string]string{"ooblezoners": "topology-zone", constants.TopologyKeyZone: "top-zone"},
 						},
 					},
 				},
@@ -827,10 +828,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 						},
 					},
 				},
@@ -841,10 +842,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 					},
 				},
 			},
@@ -861,12 +862,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 				},
@@ -889,10 +890,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 				},
 			},
@@ -908,10 +909,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 						},
 					},
 				},
@@ -922,10 +923,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 					},
 				},
 			},
@@ -942,12 +943,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 				},
@@ -970,10 +971,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 				},
 			},
@@ -1120,12 +1121,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1137,7 +1138,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -1152,12 +1153,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1175,12 +1176,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1349,7 +1350,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							common.TopologyKeyZone: zone,
+							constants.TopologyKeyZone: zone,
 							// Disk not type not included since useAllowedDiskTopology is false
 						},
 					},
@@ -1375,7 +1376,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							common.TopologyKeyZone: zone,
+							constants.TopologyKeyZone: zone,
 							// Disk type is added as topology segment.
 							common.DiskTypeLabelKey(stdDiskType): "true",
 						},
@@ -1463,12 +1464,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1535,18 +1536,18 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 				},
@@ -1575,18 +1576,18 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 				},
@@ -1615,15 +1616,15 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -1652,15 +1653,15 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -1725,12 +1726,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1766,12 +1767,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1800,7 +1801,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				t.Errorf("Got error extracting snapshot parameters: %v", err)
 			}
 			if snapshotParams.SnapshotType == common.DiskSnapshotType {
-				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, common.MultiZoneValue), name, snapshotParams)
+				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, constants.MultiZoneValue), name, snapshotParams)
 			} else {
 				t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
 			}
@@ -1825,7 +1826,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		topologies := make([]*csi.Topology, 0, len(tc.expZones))
 		for _, zone := range tc.expZones {
 			topologies = append(topologies, &csi.Topology{
-				Segments: map[string]string{common.TopologyKeyZone: zone},
+				Segments: map[string]string{constants.TopologyKeyZone: zone},
 			})
 		}
 
@@ -1847,7 +1848,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		klog.Warningf("Got accessible topology: %v", vol.GetAccessibleTopology())
 
 		sortTopologies := func(t1, t2 *csi.Topology) bool {
-			return t1.Segments[common.TopologyKeyZone] < t2.Segments[common.TopologyKeyZone]
+			return t1.Segments[constants.TopologyKeyZone] < t2.Segments[constants.TopologyKeyZone]
 		}
 
 		// Custom comparers to compare two volumes
@@ -1897,8 +1898,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
-			if disk.GetLabels()[common.MultiZoneLabel] != "true" {
-				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, common.MultiZoneLabel, disk.GetLabels())
+			if disk.GetLabels()[constants.MultiZoneLabel] != "true" {
+				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, constants.MultiZoneLabel, disk.GetLabels())
 			}
 		}
 	}
@@ -1970,7 +1971,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					common.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
-			expAccessMode: common.GCEReadWriteManyAccessMode,
+			expAccessMode: constants.GCEReadWriteManyAccessMode,
 		},
 		{
 			name: "success non-multi-writer Hyperdisk",
@@ -1990,7 +1991,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					common.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
-			expAccessMode: common.GCEReadWriteOnceAccessMode,
+			expAccessMode: constants.GCEReadWriteOnceAccessMode,
 		},
 		{
 			name: "failure unsupported access mode for Hyperdisk",
@@ -2137,18 +2138,18 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2184,18 +2185,18 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2288,7 +2289,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2321,7 +2322,7 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2545,12 +2546,12 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2581,12 +2582,12 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2964,12 +2965,12 @@ func TestListVolumeResponse(t *testing.T) {
 				{
 					Name:     fmt.Sprintf("%s-pv-1", zone1),
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone1, "pv-1"),
-					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+					Labels:   map[string]string{constants.MultiZoneLabel: "true"},
 				},
 				{
 					Name:     fmt.Sprintf("%s-pv-1", zone2),
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone2, "pv-1"),
-					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+					Labels:   map[string]string{constants.MultiZoneLabel: "true"},
 				},
 			},
 			instances: []compute.Instance{
@@ -3291,31 +3292,31 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	}
 	requisiteTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
 	requisiteAllRegionZonesTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: "country-region-fakethirdzone"},
+			Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakethirdzone"},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
 	prefTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
@@ -3354,7 +3355,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3375,17 +3376,17 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3409,7 +3410,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3458,7 +3459,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3478,10 +3479,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3501,20 +3502,20 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3537,10 +3538,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3563,10 +3564,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3586,10 +3587,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3609,20 +3610,20 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3645,10 +3646,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3671,10 +3672,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3694,10 +3695,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone2"},
 					},
 				},
 			},
@@ -3755,10 +3756,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone2"},
 					},
 				},
 			},
@@ -3918,7 +3919,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 
 func sortTopologies(in []*csi.Topology) {
 	sort.Slice(in, func(i, j int) bool {
-		return in[i].Segments[common.TopologyKeyZone] < in[j].Segments[common.TopologyKeyZone]
+		return in[i].Segments[constants.TopologyKeyZone] < in[j].Segments[constants.TopologyKeyZone]
 	})
 }
 
@@ -3937,13 +3938,13 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 				},
 			},
 		},
@@ -3958,7 +3959,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateVolume did not expect error, but got %v", err)
 		}
-		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[common.TopologyKeyZone]
+		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[constants.TopologyKeyZone]
 		if !ok {
 			t.Fatalf("Could not find topology zone in response")
 		}
@@ -4062,7 +4063,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 				createZonalCloudDiskWithZone(name, zone),
 			},
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, constants.MultiZoneValue, name),
 			},
 		},
 		{
@@ -4072,7 +4073,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 				createZonalCloudDiskWithZone(name, secondZone),
 			},
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, constants.MultiZoneValue, name),
 			},
 		},
 	}
@@ -4341,7 +4342,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: normal",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -4350,10 +4351,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: multiple topologies",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone", "test-zone2"}...),
@@ -4362,10 +4363,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 				{
 					Segments: map[string]string{"fake-key": "fake-value"},
@@ -4377,10 +4378,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: duplicate",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -4394,10 +4395,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key inside",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 			},
 			expErr: true,
@@ -4521,24 +4522,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4550,24 +4551,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4580,16 +4581,16 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{},
@@ -4603,30 +4604,30 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone5"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone5"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone6"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone6"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4638,27 +4639,27 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-d"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-east1-a"},
 					},
 				},
 			},
@@ -4671,27 +4672,27 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-d"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-east1-a"},
 					},
 				},
 			},
@@ -4704,24 +4705,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 			},
@@ -4734,24 +4735,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 			},
@@ -4764,18 +4765,18 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4789,15 +4790,15 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-b"},
 					},
 				},
 			},
@@ -4815,7 +4816,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					// This only has one, so we can test that a second is pulled from
 					// fallbackRequisiteZones.
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -4829,12 +4830,12 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -4847,24 +4848,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4876,12 +4877,12 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4894,24 +4895,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4924,24 +4925,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4954,24 +4955,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4984,13 +4985,13 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -5002,13 +5003,13 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},

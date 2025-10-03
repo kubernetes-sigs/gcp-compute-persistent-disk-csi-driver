@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -57,7 +58,7 @@ const (
 	contextForceAttach = "force-attach"
 
 	defaultLocalSsdCacheSize = "200"
-	defaultDataCacheMode     = common.DataCacheModeWriteThrough
+	defaultDataCacheMode     = constants.DataCacheModeWriteThrough
 )
 
 type CsiClient struct {
@@ -198,8 +199,8 @@ func (c *CsiClient) NodeStageBlockVolume(volId, stageDir string, setupDataCache 
 func (c *CsiClient) NodeStageVolume(volId string, stageDir string, volumeCap *csipb.VolumeCapability, setupDataCache bool) error {
 	publishContext := map[string]string{}
 	if setupDataCache {
-		publishContext[common.ContextDataCacheSize] = defaultLocalSsdCacheSize
-		publishContext[common.ContextDataCacheMode] = defaultDataCacheMode
+		publishContext[constants.ContextDataCacheSize] = defaultLocalSsdCacheSize
+		publishContext[constants.ContextDataCacheMode] = defaultDataCacheMode
 	}
 	nodeStageReq := &csipb.NodeStageVolumeRequest{
 		VolumeId:          volId,

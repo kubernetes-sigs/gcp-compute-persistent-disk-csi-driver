@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 )
 
@@ -169,7 +170,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
-		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
+		cacheSize := req.GetPublishContext()[constants.ContextDataCacheSize]
 		maxChunkSizeStr := strconv.FormatInt(int64(maxChunkSize/KiB), 10)
 		var chunkSize string
 		cachePvSize, err := fetchPvSizeGiB()
@@ -215,7 +216,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--zero",
 			"y",
 			"--cachemode",
-			req.GetPublishContext()[common.ContextDataCacheMode],
+			req.GetPublishContext()[constants.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
 			chunkSize,
@@ -257,7 +258,7 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 		return 0, err
 	}
 
-	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
+	if val, found := node.GetLabels()[fmt.Sprintf(constants.NodeLabelPrefix, constants.DataCacheLssdCountLabel)]; found {
 		dataCacheCount, err := strconv.Atoi(val)
 		if err != nil {
 			return 0, fmt.Errorf("Error getting Data Cache's LSSD count from node label: %v", err)

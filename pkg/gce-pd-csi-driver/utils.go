@@ -27,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
 )
 
 const (
@@ -37,9 +38,9 @@ var (
 	ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
 
 	csiAccessModeToHyperdiskMode = map[csi.VolumeCapability_AccessMode_Mode]string{
-		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:      common.GCEReadWriteOnceAccessMode,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  common.GCEReadOnlyManyAccessMode,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: common.GCEReadWriteManyAccessMode,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:      constants.GCEReadWriteOnceAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  constants.GCEReadOnlyManyAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: constants.GCEReadWriteManyAccessMode,
 	}
 
 	supportedMultiAttachAccessModes = map[csi.VolumeCapability_AccessMode_Mode]bool{
@@ -352,7 +353,7 @@ func IsDataCacheEnabledNodePool(ctx context.Context, nodeName string, enableData
 	if !enableDataCacheFlag {
 		return false, nil
 	}
-	if nodeName == common.TestNode { // disregard logic below when E2E testing.
+	if nodeName == constants.TestNode { // disregard logic below when E2E testing.
 		return true, nil
 	}
 	if len(nodeName) > 0 {

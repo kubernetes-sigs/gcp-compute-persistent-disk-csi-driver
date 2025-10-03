@@ -22,10 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-const (
-	VolumeOperationAlreadyExistsFmt = "An operation with the given Volume ID %s already exists"
-)
-
 // VolumeLocks implements a map with atomic operations. It stores a set of all volume IDs
 // with an ongoing operation.
 type VolumeLocks struct {
