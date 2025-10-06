@@ -22,6 +22,7 @@ import (
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 func TestValidateDiskParameters(t *testing.T) {
@@ -175,51 +176,51 @@ func TestValidateExistingDisk(t *testing.T) {
 		},
 		{
 			name:       "valid hyperdisk with same access mode config",
-			accessMode: common.GCEReadWriteManyAccessMode,
+			accessMode: constants.GCEReadWriteManyAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadWriteManyAccessMode,
+				AccessMode: constants.GCEReadWriteManyAccessMode,
 			},
 			diskType: hyperdisk,
 		},
 		{
 			name:       "valid hyperdisk with compatible access mode config - ROX can use RWX",
-			accessMode: common.GCEReadOnlyManyAccessMode,
+			accessMode: constants.GCEReadOnlyManyAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadWriteManyAccessMode,
+				AccessMode: constants.GCEReadWriteManyAccessMode,
 			},
 			diskType: hyperdisk,
 		},
 		{
 			name:       "valid hyperdisk with compatible access mode config - RWO can use RWX",
-			accessMode: common.GCEReadWriteOnceAccessMode,
+			accessMode: constants.GCEReadWriteOnceAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadWriteManyAccessMode,
+				AccessMode: constants.GCEReadWriteManyAccessMode,
 			},
 			diskType: hyperdisk,
 		},
 		{
 			name:       "invalid hyperdisk with incompatible access mode config - ROX cannot use RWO",
-			accessMode: common.GCEReadOnlyManyAccessMode,
+			accessMode: constants.GCEReadOnlyManyAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadWriteOnceAccessMode,
+				AccessMode: constants.GCEReadWriteOnceAccessMode,
 			},
 			diskType: hyperdisk,
 			wantErr:  true,
 		},
 		{
 			name:       "invalid hyperdisk with incompatible access mode config - RWO cannot use ROX",
-			accessMode: common.GCEReadWriteOnceAccessMode,
+			accessMode: constants.GCEReadWriteOnceAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadOnlyManyAccessMode,
+				AccessMode: constants.GCEReadOnlyManyAccessMode,
 			},
 			diskType: hyperdisk,
 			wantErr:  true,
 		},
 		{
 			name:       "invalid hyperdisk with incompatible access mode config - RWX cannot use ROX",
-			accessMode: common.GCEReadWriteManyAccessMode,
+			accessMode: constants.GCEReadWriteManyAccessMode,
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadOnlyManyAccessMode,
+				AccessMode: constants.GCEReadOnlyManyAccessMode,
 			},
 			diskType: hyperdisk,
 			wantErr:  true,
@@ -228,7 +229,7 @@ func TestValidateExistingDisk(t *testing.T) {
 			name:       "invalid access mode",
 			accessMode: "RANDOM_ERROR",
 			disk: &computebeta.Disk{
-				AccessMode: common.GCEReadOnlyManyAccessMode,
+				AccessMode: constants.GCEReadOnlyManyAccessMode,
 			},
 			diskType: hyperdisk,
 			wantErr:  true,

@@ -26,6 +26,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 var (
@@ -491,15 +492,15 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -531,18 +532,18 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -574,18 +575,18 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -643,12 +644,12 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -677,7 +678,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					Requisite: []*csi.Topology{{}},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -699,12 +700,12 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -726,18 +727,18 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -821,7 +822,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadOnlyManyAccessMode,
+			want: constants.GCEReadOnlyManyAccessMode,
 		},
 		{
 			name: "success getting RWO",
@@ -832,7 +833,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadWriteOnceAccessMode,
+			want: constants.GCEReadWriteOnceAccessMode,
 		},
 		{
 			name: "success getting RWX",
@@ -843,7 +844,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadWriteManyAccessMode,
+			want: constants.GCEReadWriteManyAccessMode,
 		},
 	} {
 		t.Logf("Running test: %v", tc.name)
@@ -884,7 +885,7 @@ func TestIsDataCacheEnabledNodePool(t *testing.T) {
 		},
 		{
 			name:                 "test node",
-			nodeName:             common.TestNode,
+			nodeName:             constants.TestNode,
 			dataCacheFlag:        true,
 			wantDataCacheEnabled: true,
 		},

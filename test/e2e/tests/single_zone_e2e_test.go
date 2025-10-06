@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
@@ -268,7 +269,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			topReq := &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			}
@@ -298,7 +299,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		topReq := &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+					Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 				},
 			},
 		}
@@ -314,7 +315,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(volume.AccessibleTopology).ToNot(BeEmpty(), "Volume should have accessible topologies")
 		Expect(volume.AccessibleTopology).To(HaveLen(1), "Expected exactly one accessible topology") // Zonal clusters have a single Topology.
 		segments := volume.AccessibleTopology[0].Segments
-		Expect(segments).To(HaveKeyWithValue(common.TopologyKeyZone, "us-central1-c"), "Topology should include zone segment with value 'us-central1-c'")
+		Expect(segments).To(HaveKeyWithValue(constants.TopologyKeyZone, "us-central1-c"), "Topology should include zone segment with value 'us-central1-c'")
 		Expect(segments).To(HaveKeyWithValue(common.DiskTypeLabelKey(hdbDiskType), "true"), "Topology should include disk type label with value 'true'")
 	})
 
@@ -331,7 +332,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	// 		topReq := &csi.TopologyRequirement{
 	// 			Requisite: []*csi.Topology{
 	// 				{
-	// 					Segments: map[string]string{common.TopologyKeyZone: zone},
+	// 					Segments: map[string]string{constants.TopologyKeyZone: zone},
 	// 				},
 	// 			},
 	// 		}
@@ -689,7 +690,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			topology := &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{constants.TopologyKeyZone: z},
 					},
 				},
 			}
@@ -1206,7 +1207,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{constants.TopologyKeyZone: z},
 					},
 				},
 			},
@@ -1686,7 +1687,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 			if cfg.hasMultiZoneLabel {
 				labelsMap := map[string]string{
-					common.MultiZoneLabel: "true",
+					constants.MultiZoneLabel: "true",
 				}
 				disk, err := computeService.Disks.Get(p, z, volName).Do()
 				Expect(err).To(BeNil(), "Could not get disk")
@@ -1828,7 +1829,7 @@ func createAndValidateZonalDisk(client *remote.CsiClient, project, zone string, 
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zone},
+					Segments: map[string]string{constants.TopologyKeyZone: zone},
 				},
 			},
 		}, nil)
@@ -1867,7 +1868,7 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 		&csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zone},
+					Segments: map[string]string{constants.TopologyKeyZone: zone},
 				},
 			},
 		},

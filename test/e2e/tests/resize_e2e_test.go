@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 )
@@ -42,7 +43,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{constants.TopologyKeyZone: z},
 					},
 				},
 			}, nil)
@@ -149,7 +150,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{constants.TopologyKeyZone: z},
 					},
 				},
 			}, nil)
@@ -256,7 +257,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: z},
+						Segments: map[string]string{constants.TopologyKeyZone: z},
 					},
 				},
 			}, nil)

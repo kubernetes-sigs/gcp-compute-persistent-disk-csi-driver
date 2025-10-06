@@ -33,7 +33,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
@@ -1130,7 +1130,7 @@ func TestNodeStageVolume(t *testing.T) {
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
-				PublishContext:    map[string]string{common.ContextDiskSizeGB: "1"},
+				PublishContext:    map[string]string{constants.ContextDiskSizeGB: "1"},
 			},
 			deviceSize:   1,
 			blockExtSize: 1,
@@ -1244,7 +1244,7 @@ func TestNodeStageVolume(t *testing.T) {
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
-				PublishContext:    map[string]string{common.ContextDiskSizeGB: "10"},
+				PublishContext:    map[string]string{constants.ContextDiskSizeGB: "10"},
 			},
 			deviceSize: 5,
 			expErrCode: codes.Internal,

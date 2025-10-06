@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package constants
 
 const (
 	// Keys for Topology. This key will be shared amongst drivers from GCP
@@ -28,6 +28,9 @@ const (
 	VolumeAttributePartition = "partition"
 
 	UnspecifiedValue = "UNSPECIFIED"
+
+	// VolumeOperationAlreadyExistsFmt is the error message format for when a volume operation already exists
+	VolumeOperationAlreadyExistsFmt = "An operation with the given Volume ID %s already exists"
 
 	// Keyword indicating a 'multi-zone' volumeHandle. Replaces "zones" in the volumeHandle:
 	// eg: projects/{project}/zones/multi-zone/disks/{name} vs.
@@ -69,45 +72,45 @@ const (
 // doc https://cloud.google.com/compute/docs/general-purpose-machines
 // MachineHyperdiskLimit represents the mapping between max vCPUs and hyperdisk (balanced) attach limit
 type MachineHyperdiskLimit struct {
-	max   int64
-	value int64
+	Max   int64
+	Value int64
 }
 
 // C4 Machine Types - Hyperdisk Balanced Limits
 var C4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
-	{max: 2, value: 7},
-	{max: 4, value: 15},
-	{max: 24, value: 31},
-	{max: 48, value: 63},
-	{max: 96, value: 127},
+	{Max: 2, Value: 7},
+	{Max: 4, Value: 15},
+	{Max: 24, Value: 31},
+	{Max: 48, Value: 63},
+	{Max: 96, Value: 127},
 }
 
 // C4D Machine Types - Hyperdisk Balanced Limits
 var C4DMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
-	{max: 2, value: 3},
-	{max: 4, value: 7},
-	{max: 8, value: 15},
-	{max: 96, value: 31},
-	{max: 192, value: 63},
-	{max: 384, value: 127},
+	{Max: 2, Value: 3},
+	{Max: 4, Value: 7},
+	{Max: 8, Value: 15},
+	{Max: 96, Value: 31},
+	{Max: 192, Value: 63},
+	{Max: 384, Value: 127},
 }
 
 // N4 Machine Types - Hyperdisk Balanced Limits
 var N4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
-	{max: 8, value: 15},
-	{max: 80, value: 31},
+	{Max: 8, Value: 15},
+	{Max: 80, Value: 31},
 }
 
 // C4A Machine Types - Hyperdisk Balanced Limits
 var C4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
-	{max: 2, value: 7},
-	{max: 8, value: 15},
-	{max: 48, value: 31},
-	{max: 72, value: 63},
+	{Max: 2, Value: 7},
+	{Max: 8, Value: 15},
+	{Max: 48, Value: 31},
+	{Max: 72, Value: 63},
 }
 
 // A4X Machine Types - Hyperdisk Balanced Limits. The max here is actually the GPU count (not CPU, like the others).
 var A4XMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
-	{max: 1, value: 63},
-	{max: 2, value: 127},
+	{Max: 1, Value: 63},
+	{Max: 2, Value: 127},
 }

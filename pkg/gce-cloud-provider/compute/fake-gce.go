@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -102,12 +103,12 @@ func (cloud *FakeCloudProvider) GetDefaultZone() string {
 }
 
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
-	if project == common.UnspecifiedValue {
+	if project == constants.UnspecifiedValue {
 		project = cloud.project
 	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
-		if volumeKey.Zone != common.UnspecifiedValue {
+		if volumeKey.Zone != constants.UnspecifiedValue {
 			return project, volumeKey, nil
 		}
 		for diskVolKey, d := range cloud.disks {
@@ -118,7 +119,7 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 		}
 		return "", nil, notFoundError()
 	case meta.Regional:
-		if volumeKey.Region != common.UnspecifiedValue {
+		if volumeKey.Region != constants.UnspecifiedValue {
 			return project, volumeKey, nil
 		}
 		r, err := common.GetRegionFromZones([]string{cloud.zone})

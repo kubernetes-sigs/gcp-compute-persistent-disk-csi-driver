@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 const (
@@ -110,7 +111,7 @@ var (
 		http.StatusConflict:        codes.FailedPrecondition,
 	}
 
-	validDataCacheMode = []string{DataCacheModeWriteBack, DataCacheModeWriteThrough}
+	validDataCacheMode = []string{constants.DataCacheModeWriteBack, constants.DataCacheModeWriteThrough}
 
 	// Regular expressions for validating parent_id, key and value of a resource tag.
 	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
@@ -165,9 +166,9 @@ func KeyToVolumeID(volKey *meta.Key, project string) (string, error) {
 
 func GenerateUnderspecifiedVolumeID(diskName string, isZonal bool) string {
 	if isZonal {
-		return fmt.Sprintf(volIDZonalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
+		return fmt.Sprintf(volIDZonalFmt, constants.UnspecifiedValue, constants.UnspecifiedValue, diskName)
 	}
-	return fmt.Sprintf(volIDRegionalFmt, UnspecifiedValue, UnspecifiedValue, diskName)
+	return fmt.Sprintf(volIDRegionalFmt, constants.UnspecifiedValue, constants.UnspecifiedValue, diskName)
 }
 
 func SnapshotIDToProjectKey(id string) (string, string, string, error) {
@@ -705,7 +706,7 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	if splitId[volIDToplogyKey] != "zones" {
 		return "", fmt.Errorf("expected id to be zonal. Got: %s", volumeId)
 	}
-	splitId[volIDToplogyValue] = MultiZoneValue
+	splitId[volIDToplogyValue] = constants.MultiZoneValue
 	return strings.Join(splitId, "/"), nil
 }
 
@@ -764,43 +765,43 @@ func ShortString(s string) string {
 
 // GetHyperdiskAttachLimit returns the hyperdisk attach limit based on machine type prefix and vCPUs
 func GetHyperdiskAttachLimit(machineTypePrefix string, vCPUs int64) int64 {
-	var limitMap []MachineHyperdiskLimit
+	var limitMap []constants.MachineHyperdiskLimit
 
 	switch machineTypePrefix {
 	case "c4":
-		limitMap = C4MachineHyperdiskAttachLimitMap
+		limitMap = constants.C4MachineHyperdiskAttachLimitMap
 	case "c4d":
-		limitMap = C4DMachineHyperdiskAttachLimitMap
+		limitMap = constants.C4DMachineHyperdiskAttachLimitMap
 	case "n4":
-		limitMap = N4MachineHyperdiskAttachLimitMap
+		limitMap = constants.N4MachineHyperdiskAttachLimitMap
 	case "c4a":
-		limitMap = C4AMachineHyperdiskAttachLimitMap
+		limitMap = constants.C4AMachineHyperdiskAttachLimitMap
 	case "a4x":
-		limitMap = A4XMachineHyperdiskAttachLimitMap
+		limitMap = constants.A4XMachineHyperdiskAttachLimitMap
 	default:
 		// Fallback to the most conservative Gen4 map for unknown types
-		return MapNumber(vCPUs, C4DMachineHyperdiskAttachLimitMap)
+		return MapNumber(vCPUs, constants.C4DMachineHyperdiskAttachLimitMap)
 	}
 
 	return MapNumber(vCPUs, limitMap)
 }
 
 // mapNumber maps the vCPUs to the appropriate hyperdisk limit
-func MapNumber(vCPUs int64, limitMap []MachineHyperdiskLimit) int64 {
+func MapNumber(vCPUs int64, limitMap []constants.MachineHyperdiskLimit) int64 {
 	for _, limit := range limitMap {
-		if vCPUs <= limit.max {
-			return limit.value
+		if vCPUs <= limit.Max {
+			return limit.Value
 		}
 	}
 	// Return the last value if vCPUs exceeds all max values
 	if len(limitMap) > 0 {
-		return limitMap[len(limitMap)-1].value
+		return limitMap[len(limitMap)-1].Value
 	}
 	return 15
 }
 
 func DiskTypeLabelKey(diskType string) string {
-	return fmt.Sprintf("%s/%s", DiskTypeKeyPrefix, diskType)
+	return fmt.Sprintf("%s/%s", constants.DiskTypeKeyPrefix, diskType)
 }
 
 // IsUpdateIopsThroughputValuesAllowed checks if a disk type is hyperdisk,
