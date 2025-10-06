@@ -349,6 +349,7 @@ func handle() error {
 
 	// If using kubetest and test version is set, then download and build Kubernetes to run K8s tests
 	// Otherwise, either kube version is set (which implies GCE) or a local K8s dir is being used.
+	// Fake commit
 	if !*useKubeTest2 && len(*testVersion) != 0 && *testVersion != *kubeVersion {
 		testParams.k8sSourceDir = filepath.Join(testParams.testParentDir, "kubernetes")
 		// Overlay the Kubernetes source
