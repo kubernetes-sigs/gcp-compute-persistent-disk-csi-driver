@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -67,7 +68,7 @@ var (
 		RequiredBytes: common.GbToBytes(20),
 	}
 	stdParams = map[string]string{
-		common.ParameterKeyType: stdDiskType,
+		parameters.ParameterKeyType: stdDiskType,
 	}
 	stdTopology = []*csi.Topology{
 		{
@@ -109,7 +110,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -127,7 +128,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2", parameters.ParameterKeySnapshotType: "images"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -189,7 +190,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: "bad-region"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: "bad-region"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -231,13 +232,13 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2", parameters.ParameterKeySnapshotType: "images"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.DiskTypeHdHA,
+					Type:     parameters.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -248,13 +249,13 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.DiskTypeHdHA,
+					Type:     parameters.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -538,7 +539,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 			createReq := &csi.CreateSnapshotRequest{
 				Name:           nameID,
 				SourceVolumeId: volumeID,
-				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskSnapshotType},
+				Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskSnapshotType},
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -552,7 +553,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 			createReq := &csi.CreateSnapshotRequest{
 				Name:           nameID,
 				SourceVolumeId: volumeID,
-				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskImageType},
+				Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskImageType},
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -824,7 +825,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               name,
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyReplicationType: replicationTypeRegionalPD},
+				Parameters:         map[string]string{parameters.ParameterKeyReplicationType: replicationTypeRegionalPD},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
@@ -857,7 +858,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+					parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -881,7 +882,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+					parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
 			},
 			expVol: &csi.Volume{
@@ -905,7 +906,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               name,
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyType: common.DiskTypeHdHA},
+				Parameters:         map[string]string{parameters.ParameterKeyType: parameters.DiskTypeHdHA},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
@@ -938,7 +939,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.DiskTypeHdHA,
+					parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -962,7 +963,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.DiskTypeHdHA,
+					parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 				},
 			},
 			expVol: &csi.Volume{
@@ -1026,7 +1027,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
+					parameters.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
 				},
 			},
 			expVol: &csi.Volume{
@@ -1298,7 +1299,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expErrCode: codes.InvalidArgument,
@@ -1319,7 +1320,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-ml",
+					parameters.ParameterKeyType: "hyperdisk-ml",
 				},
 			},
 			expVol: &csi.Volume{
@@ -1339,7 +1340,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeCapabilities: stdVolCaps,
 				Parameters: mergeParameters(
 					stdParams,
-					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "false"},
+					map[string]string{parameters.ParameterKeyUseAllowedDiskTopology: "false"},
 				),
 			},
 			enableDiskTopology: true,
@@ -1365,7 +1366,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeCapabilities: stdVolCaps,
 				Parameters: mergeParameters(
 					stdParams,
-					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "true"},
+					map[string]string{parameters.ParameterKeyUseAllowedDiskTopology: "true"},
 				),
 			},
 			enableDiskTopology: true,
@@ -1451,8 +1452,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1492,8 +1493,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1523,8 +1524,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1570,8 +1571,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -1610,8 +1611,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -1647,8 +1648,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-balanced",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-balanced",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -1684,8 +1685,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1713,8 +1714,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1761,8 +1762,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -1796,11 +1797,11 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		gceDriver.cs.fallbackRequisiteZones = tc.fallbackZones
 
 		if tc.req.VolumeContentSource.GetType() != nil {
-			snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+			snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 			if err != nil {
 				t.Errorf("Got error extracting snapshot parameters: %v", err)
 			}
-			if snapshotParams.SnapshotType == common.DiskSnapshotType {
+			if snapshotParams.SnapshotType == parameters.DiskSnapshotType {
 				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, constants.MultiZoneValue), name, snapshotParams)
 			} else {
 				t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
@@ -1928,7 +1929,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "pd-balanced",
+					parameters.ParameterKeyType: "pd-balanced",
 				},
 			},
 			expMultiWriter: false,
@@ -1948,7 +1949,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "pd-balanced",
+					parameters.ParameterKeyType: "pd-balanced",
 				},
 			},
 			expMultiWriter: true,
@@ -1968,7 +1969,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expAccessMode: constants.GCEReadWriteManyAccessMode,
@@ -1988,7 +1989,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expAccessMode: constants.GCEReadWriteOnceAccessMode,
@@ -2008,7 +2009,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expErrCode: codes.InvalidArgument,
@@ -2100,7 +2101,7 @@ func (cloud *FakeCloudProviderInsertDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.insertDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params parameters.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	if err, ok := cloud.insertDiskErrors[volKey.String()]; ok {
 		return err
 	}
@@ -2132,8 +2133,8 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -2179,8 +2180,8 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
@@ -2282,9 +2283,9 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
@@ -2315,9 +2316,9 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "pd-ssd",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+					parameters.ParameterKeyType:                          "pd-ssd",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
@@ -2385,7 +2386,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 		name          string
 		req           *csi.ControllerModifyVolumeRequest
 		diskType      string
-		params        *common.DiskParameters
+		params        *parameters.DiskParameters
 		expIops       int64
 		expThroughput int64
 		expErrMessage string
@@ -2397,7 +2398,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "hyperdisk-balanced",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType:                      "hyperdisk-balanced",
 				ProvisionedIOPSOnCreate:       10000,
 				ProvisionedThroughputOnCreate: 500,
@@ -2413,7 +2414,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "0", "throughput": "0Mi"},
 			},
 			diskType: "hyperdisk-balanced",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType:                      "hyperdisk-balanced",
 				ProvisionedIOPSOnCreate:       10000,
 				ProvisionedThroughputOnCreate: 500,
@@ -2429,7 +2430,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "pd-ssd",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType: "pd-ssd",
 			},
 			expIops:       0,
@@ -2503,7 +2504,7 @@ func (cloud *FakeCloudProviderUpdateDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.updateDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderUpdateDiskErr) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *gcecloudprovider.CloudDisk, params common.ModifyVolumeParameters) error {
+func (cloud *FakeCloudProviderUpdateDiskErr) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *gcecloudprovider.CloudDisk, params parameters.ModifyVolumeParameters) error {
 	if err, ok := cloud.updateDiskErrors[volKey.String()]; ok {
 		return err
 	}
@@ -2538,9 +2539,9 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 			createReq: &csi.CreateVolumeRequest{
 				Name: name,
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
 				},
 				VolumeCapabilities: stdVolCaps,
 				AccessibilityRequirements: &csi.TopologyRequirement{
@@ -2574,9 +2575,9 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 			createReq: &csi.CreateVolumeRequest{
 				Name: name,
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
 				},
 				VolumeCapabilities: stdVolCaps,
 				AccessibilityRequirements: &csi.TopologyRequirement{
@@ -3080,14 +3081,14 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			name:            "success with data source of snapshot type",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskSnapshotType,
+			snapshotType:    parameters.DiskSnapshotType,
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskSnapshotType,
+			snapshotType:    parameters.DiskSnapshotType,
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
 		},
@@ -3095,14 +3096,14 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			name:            "success with data source of snapshot type",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskImageType,
+			snapshotType:    parameters.DiskImageType,
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskImageType,
+			snapshotType:    parameters.DiskImageType,
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
 		},
@@ -3114,7 +3115,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
-		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+		snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 		if err != nil {
 			t.Errorf("Got error extracting snapshot parameters: %v", err)
 		}
@@ -3122,12 +3123,12 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Start Test
 		var snapshotID string
 		switch tc.snapshotType {
-		case common.DiskSnapshotType:
+		case parameters.DiskSnapshotType:
 			snapshotID = testSnapshotID
 			if tc.snapshotOnCloud {
 				gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name, snapshotParams)
 			}
-		case common.DiskImageType:
+		case parameters.DiskImageType:
 			snapshotID = testImageID
 			if tc.snapshotOnCloud {
 				gceDriver.cs.CloudProvider.CreateImage(context.Background(), tc.project, tc.volKey, name, snapshotParams)
@@ -3193,7 +3194,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyReplicationType: replicationTypeNone,
 			},
 			cloneIsRegional:              false,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: false},
@@ -3204,7 +3205,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testRegionalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: "", srcIsRegional: true, cloneIsRegional: true},
@@ -3215,7 +3216,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyType: common.DiskTypeHdHA,
+				parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: true},
@@ -3226,7 +3227,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			nilVolumeContentSource: true,
 			requestCapacityRange:   stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: nil,
@@ -3237,7 +3238,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       fmt.Sprintf("projects/%s/disks/%s", project, testSourceVolumeName),
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyReplicationType: replicationTypeNone,
 			},
 			cloneIsRegional:              false,
 			expectedLocationRequirements: nil,
@@ -3283,12 +3284,12 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
 	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
 	zonalParams := map[string]string{
-		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
-		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+		parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeNone,
+		parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	regionalParams := map[string]string{
-		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeRegionalPD,
-		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+		parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
+		parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	requisiteTopology := []*csi.Topology{
 		{
@@ -3422,10 +3423,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			enableStoragePools:   true,
 			reqParameters: map[string]string{
-				common.ParameterKeyType:                 "hyperdisk-balanced",
-				common.ParameterKeyReplicationType:      replicationTypeNone,
-				common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
-				common.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
+				parameters.ParameterKeyType:                 "hyperdisk-balanced",
+				parameters.ParameterKeyReplicationType:      replicationTypeNone,
+				parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+				parameters.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
 			},
 			sourceReqParameters: zonalParams,
 			sourceTopology: &csi.TopologyRequirement{
@@ -3712,7 +3713,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: "different-type",
+				parameters.ParameterKeyType: "different-type",
 			},
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: requisiteTopology,
@@ -3732,8 +3733,8 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
-				common.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
+				parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
 			},
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: requisiteTopology,
@@ -5681,9 +5682,9 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyEnableConfidentialCompute: "true",
-					common.ParameterKeyDiskEncryptionKmsKey:      testDiskEncryptionKmsKey,
-					common.ParameterKeyType:                      "hyperdisk-balanced",
+					parameters.ParameterKeyEnableConfidentialCompute: "true",
+					parameters.ParameterKeyDiskEncryptionKmsKey:      testDiskEncryptionKmsKey,
+					parameters.ParameterKeyType:                      "hyperdisk-balanced",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -5703,8 +5704,8 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyEnableConfidentialCompute: "false",
-					common.ParameterKeyType:                      "hyperdisk-balanced",
+					parameters.ParameterKeyEnableConfidentialCompute: "false",
+					parameters.ParameterKeyType:                      "hyperdisk-balanced",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -5726,11 +5727,11 @@ func TestCreateConfidentialVolume(t *testing.T) {
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			if tc.req.VolumeContentSource.GetType() != nil {
-				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+				snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 				if err != nil {
 					t.Errorf("Got error extracting snapshot parameters: %v", err)
 				}
-				if snapshotParams.SnapshotType == common.DiskSnapshotType {
+				if snapshotParams.SnapshotType == parameters.DiskSnapshotType {
 					fcp.CreateSnapshot(context.Background(), project, tc.volKey, name, snapshotParams)
 				} else {
 					t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
@@ -5753,7 +5754,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
-			val, ok := tc.req.Parameters[common.ParameterKeyEnableConfidentialCompute]
+			val, ok := tc.req.Parameters[parameters.ParameterKeyEnableConfidentialCompute]
 			if ok && val != strconv.FormatBool(createdDisk.GetEnableConfidentialCompute()) {
 				t.Fatalf("Confidential disk parameter does not match with created disk: %v Got error %v", createdDisk.GetEnableConfidentialCompute(), err)
 			}

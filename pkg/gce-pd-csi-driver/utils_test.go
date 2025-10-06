@@ -27,6 +27,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 var (
@@ -332,7 +333,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -358,7 +359,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "pd-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -384,7 +385,7 @@ func TestValidateStoragePools(t *testing.T) {
 			params: common.DiskParameters{
 				DiskType:        "hyperdisk-balanced",
 				ReplicationType: "regional-pd",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -409,7 +410,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -435,7 +436,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -467,7 +468,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -507,7 +508,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -550,7 +551,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -593,7 +594,7 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: common.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -634,7 +635,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 	testCases := []struct {
 		name         string
 		req          *csi.CreateVolumeRequest
-		storagePools []common.StoragePool
+		storagePools []parameters.StoragePool
 		expErr       error
 	}{
 		{
@@ -654,7 +655,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",
@@ -683,7 +684,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",
@@ -710,7 +711,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-b",
@@ -743,7 +744,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",

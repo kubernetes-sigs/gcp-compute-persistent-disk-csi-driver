@@ -4,8 +4,8 @@ import (
 	"context"
 	"strconv"
 
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -35,7 +35,7 @@ func MetadataFromContext(ctx context.Context) *RequestMetadata {
 	return requestMetadata
 }
 
-func UpdateRequestMetadataFromParams(ctx context.Context, params common.DiskParameters) {
+func UpdateRequestMetadataFromParams(ctx context.Context, params parameters.DiskParameters) {
 	metadata := MetadataFromContext(ctx)
 	if metadata != nil {
 		metadata.diskType = params.DiskType

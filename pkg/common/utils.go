@@ -34,9 +34,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
-	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
@@ -91,14 +89,9 @@ const (
 )
 
 var (
-	multiRegionalPattern = regexp.MustCompile(multiRegionalLocationFmt)
-	regionalPattern      = regexp.MustCompile(regionalLocationFmt)
-
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type
 	machineTypeRegex = regexp.MustCompile(machineTypePattern)
-
-	storagePoolFieldsRegex = regexp.MustCompile(`^projects/([^/]+)/zones/([^/]+)/storagePools/([^/]+)$`)
 
 	zoneURIRegex = regexp.MustCompile(zoneURIPattern)
 
@@ -110,13 +103,6 @@ var (
 		http.StatusNotFound:        codes.NotFound,
 		http.StatusConflict:        codes.FailedPrecondition,
 	}
-
-	validDataCacheMode = []string{constants.DataCacheModeWriteBack, constants.DataCacheModeWriteThrough}
-
-	// Regular expressions for validating parent_id, key and value of a resource tag.
-	regexParent = regexp.MustCompile(`(^[1-9][0-9]{0,31}$)|(^[a-z][a-z0-9-]{4,28}[a-z0-9]$)`)
-	regexKey    = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.-]{0,61}[a-zA-Z0-9])?$`)
-	regexValue  = regexp.MustCompile(`^[a-zA-Z0-9]([0-9A-Za-z_.@%=+:,*#&()\[\]{}\-\s]{0,61}[a-zA-Z0-9])?$`)
 
 	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
 )
@@ -232,212 +218,6 @@ func CreateNodeID(project, zone, name string) string {
 
 func CreateZonalVolumeID(project, zone, name string) string {
 	return fmt.Sprintf(volIDZonalFmt, project, zone, name)
-}
-
-// ConvertLabelsStringToMap converts the labels from string to map
-// example: "key1=value1,key2=value2" gets converted into {"key1": "value1", "key2": "value2"}
-// See https://cloud.google.com/compute/docs/labeling-resources#label_format for details.
-func ConvertLabelsStringToMap(labels string) (map[string]string, error) {
-	const labelsDelimiter = ","
-	const labelsKeyValueDelimiter = "="
-
-	labelsMap := make(map[string]string)
-	if labels == "" {
-		return labelsMap, nil
-	}
-
-	regexKey, _ := regexp.Compile(`^\p{Ll}[\p{Ll}0-9_-]{0,62}$`)
-	checkLabelKeyFn := func(key string) error {
-		if !regexKey.MatchString(key) {
-			return fmt.Errorf("label value %q is invalid (should start with lowercase letter / lowercase letter, digit, _ and - chars are allowed / 1-63 characters", key)
-		}
-		return nil
-	}
-
-	regexValue, _ := regexp.Compile(`^[\p{Ll}0-9_-]{0,63}$`)
-	checkLabelValueFn := func(value string) error {
-		if !regexValue.MatchString(value) {
-			return fmt.Errorf("label value %q is invalid (lowercase letter, digit, _ and - chars are allowed / 0-63 characters", value)
-		}
-
-		return nil
-	}
-
-	keyValueStrings := strings.Split(labels, labelsDelimiter)
-	for _, keyValue := range keyValueStrings {
-		keyValue := strings.Split(keyValue, labelsKeyValueDelimiter)
-
-		if len(keyValue) != 2 {
-			return nil, fmt.Errorf("labels %q are invalid, correct format: 'key1=value1,key2=value2'", labels)
-		}
-
-		key := strings.TrimSpace(keyValue[0])
-		if err := checkLabelKeyFn(key); err != nil {
-			return nil, err
-		}
-
-		value := strings.TrimSpace(keyValue[1])
-		if err := checkLabelValueFn(value); err != nil {
-			return nil, err
-		}
-
-		labelsMap[key] = value
-	}
-
-	const maxNumberOfLabels = 64
-	if len(labelsMap) > maxNumberOfLabels {
-		return nil, fmt.Errorf("more than %d labels is not allowed, given: %d", maxNumberOfLabels, len(labelsMap))
-	}
-
-	return labelsMap, nil
-}
-
-// ConvertTagsStringToMap converts the tags from string to Tag slice
-// example: "parent_id1/tag_key1/tag_value1,parent_id2/tag_key2/tag_value2" gets
-// converted into {"parent_id1/tag_key1":"tag_value1", "parent_id2/tag_key2":"tag_value2"}
-// See https://cloud.google.com/resource-manager/docs/tags/tags-overview,
-// https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details
-func ConvertTagsStringToMap(tags string) (map[string]string, error) {
-	const tagsDelimiter = ","
-	const tagsParentIDKeyValueDelimiter = "/"
-
-	tagsMap := make(map[string]string)
-	if tags == "" {
-		return nil, nil
-	}
-
-	checkTagParentIDFn := func(tag, parentID string) error {
-		if !regexParent.MatchString(parentID) {
-			return fmt.Errorf("tag parent_id %q for tag %q is invalid. parent_id can have a maximum of 32 characters and cannot be empty. parent_id can be either OrganizationID or ProjectID. OrganizationID must consist of decimal numbers, and cannot have leading zeroes and ProjectID must be 6 to 30 characters in length, can only contain lowercase letters, numbers, and hyphens, and must start with a letter, and cannot end with a hyphen", parentID, tag)
-		}
-		return nil
-	}
-
-	checkTagKeyFn := func(tag, key string) error {
-		if !regexKey.MatchString(key) {
-			return fmt.Errorf("tag key %q for tag %q is invalid. Tag key can have a maximum of 63 characters and cannot be empty. Tag key must begin and end with an alphanumeric character, and must contain only uppercase, lowercase alphanumeric characters, and the following special characters `._-`", key, tag)
-		}
-		return nil
-	}
-
-	checkTagValueFn := func(tag, value string) error {
-		if !regexValue.MatchString(value) {
-			return fmt.Errorf("tag value %q for tag %q is invalid. Tag value can have a maximum of 63 characters and cannot be empty. Tag value must begin and end with an alphanumeric character, and must contain only uppercase, lowercase alphanumeric characters, and the following special characters `_-.@%%=+:,*#&(){}[]` and spaces", value, tag)
-		}
-
-		return nil
-	}
-
-	checkTagParentIDKey := sets.String{}
-	parentIDkeyValueStrings := strings.Split(tags, tagsDelimiter)
-	for _, parentIDkeyValueString := range parentIDkeyValueStrings {
-		parentIDKeyValue := strings.Split(parentIDkeyValueString, tagsParentIDKeyValueDelimiter)
-
-		if len(parentIDKeyValue) != 3 {
-			return nil, fmt.Errorf("tag %q is invalid, correct format: 'parent_id1/key1/value1,parent_id2/key2/value2'", parentIDkeyValueString)
-		}
-
-		parentID := strings.TrimSpace(parentIDKeyValue[0])
-		if err := checkTagParentIDFn(parentIDkeyValueString, parentID); err != nil {
-			return nil, err
-		}
-
-		key := strings.TrimSpace(parentIDKeyValue[1])
-		if err := checkTagKeyFn(parentIDkeyValueString, key); err != nil {
-			return nil, err
-		}
-
-		value := strings.TrimSpace(parentIDKeyValue[2])
-		if err := checkTagValueFn(parentIDkeyValueString, value); err != nil {
-			return nil, err
-		}
-
-		parentIDKeyStr := fmt.Sprintf("%s/%s", parentID, key)
-		if checkTagParentIDKey.Has(parentIDKeyStr) {
-			return nil, fmt.Errorf("tag parent_id & key combination %q exists more than once", parentIDKeyStr)
-		}
-		checkTagParentIDKey.Insert(parentIDKeyStr)
-
-		tagsMap[parentIDKeyStr] = value
-	}
-
-	// The maximum number of tags allowed per resource is 50. For more details check the following:
-	// https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing#attaching
-	// https://cloud.google.com/resource-manager/docs/limits#tag-limits
-	const maxNumberOfTags = 50
-	if len(tagsMap) > maxNumberOfTags {
-		return nil, fmt.Errorf("more than %d tags is not allowed, given: %d", maxNumberOfTags, len(tagsMap))
-	}
-
-	return tagsMap, nil
-}
-
-// ProcessStorageLocations trims and normalizes storage location to lower letters.
-func ProcessStorageLocations(storageLocations string) ([]string, error) {
-	normalizedLoc := strings.ToLower(strings.TrimSpace(storageLocations))
-	if !multiRegionalPattern.MatchString(normalizedLoc) && !regionalPattern.MatchString(normalizedLoc) {
-		return []string{}, fmt.Errorf("invalid location for snapshot: %q", storageLocations)
-	}
-	return []string{normalizedLoc}, nil
-}
-
-// ValidateSnapshotType validates the type
-func ValidateSnapshotType(snapshotType string) error {
-	switch snapshotType {
-	case DiskSnapshotType, DiskImageType:
-		return nil
-	default:
-		return fmt.Errorf("invalid snapshot type %s", snapshotType)
-	}
-}
-
-// ConvertStringToInt64 converts a string to int64
-func ConvertStringToInt64(str string) (int64, error) {
-	quantity, err := resource.ParseQuantity(str)
-	if err != nil {
-		return -1, err
-	}
-	return volumehelpers.RoundUpToB(quantity)
-}
-
-// ConvertMiStringToInt64 converts a GiB string to int64
-func ConvertMiStringToInt64(str string) (int64, error) {
-	quantity, err := resource.ParseQuantity(str)
-	if err != nil {
-		return -1, err
-	}
-	return volumehelpers.RoundUpToMiB(quantity)
-}
-
-// ConvertGiStringToInt64 converts a GiB string to int64
-func ConvertGiStringToInt64(str string) (int64, error) {
-	quantity, err := resource.ParseQuantity(str)
-	if err != nil {
-		return -1, err
-	}
-	return volumehelpers.RoundUpToGiB(quantity)
-}
-
-// ConvertStringToBool converts a string to a boolean.
-func ConvertStringToBool(str string) (bool, error) {
-	switch strings.ToLower(str) {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	}
-	return false, fmt.Errorf("Unexpected boolean string %s", str)
-}
-
-// ConvertStringToAvailabilityClass converts a string to an availability class string.
-func ConvertStringToAvailabilityClass(str string) (string, error) {
-	switch strings.ToLower(str) {
-	case ParameterNoAvailabilityClass:
-		return ParameterNoAvailabilityClass, nil
-	case ParameterRegionalHardFailoverClass:
-		return ParameterRegionalHardFailoverClass, nil
-	}
-	return "", fmt.Errorf("Unexpected boolean string %s", str)
 }
 
 // ParseMachineType returns an extracted machineType from a URL, or empty if not found.
@@ -614,12 +394,6 @@ func NewCombinedError(msg string, errs []error) error {
 	return LoggedError(msg, errors.Join(errs...))
 }
 
-func isValidDiskEncryptionKmsKey(DiskEncryptionKmsKey string) bool {
-	// Validate key against default kmskey pattern
-	kmsKeyPattern := regexp.MustCompile("projects/[^/]+/locations/([^/]+)/keyRings/[^/]+/cryptoKeys/[^/]+")
-	return kmsKeyPattern.MatchString(DiskEncryptionKmsKey)
-}
-
 func ParseZoneFromURI(zoneURI string) (string, error) {
 	zoneMatch := zoneURIRegex.FindStringSubmatch(zoneURI)
 	if zoneMatch == nil {
@@ -628,65 +402,8 @@ func ParseZoneFromURI(zoneURI string) (string, error) {
 	return zoneMatch[1], nil
 }
 
-// ParseStoragePools returns an error if none of the given storagePools
-// (delimited by a comma) are in the format
-// projects/project/zones/zone/storagePools/storagePool.
-func ParseStoragePools(storagePools string) ([]StoragePool, error) {
-	spSlice := strings.Split(storagePools, ",")
-	parsedStoragePools := []StoragePool{}
-	for _, sp := range spSlice {
-		project, location, spName, err := fieldsFromStoragePoolResourceName(sp)
-		if err != nil {
-			return nil, err
-		}
-		spObj := StoragePool{Project: project, Zone: location, Name: spName, ResourceName: sp}
-		parsedStoragePools = append(parsedStoragePools, spObj)
-
-	}
-	return parsedStoragePools, nil
-}
-
-// fieldsFromResourceName returns the project, zone, and Storage Pool name from the given
-// Storage Pool resource name. The resource name must be in the format
-// projects/project/zones/zone/storagePools/storagePool.
-// All other formats are invalid, and an error will be returned.
-func fieldsFromStoragePoolResourceName(resourceName string) (project, location, spName string, err error) {
-	fieldMatches := storagePoolFieldsRegex.FindStringSubmatch(resourceName)
-	//  Field matches should have 4 strings: [resourceName, project, zone, storagePool]. The first
-	// match is the entire string.
-	if len(fieldMatches) != 4 {
-		err := fmt.Errorf("invalid Storage Pool resource name. Got %s, expected projects/project/zones/zone/storagePools/storagePool", resourceName)
-		return "", "", "", err
-	}
-	project = fieldMatches[1]
-	location = fieldMatches[2]
-	spName = fieldMatches[3]
-	return
-}
-
 // StoragePoolZones returns the unique zones of the given storage pool resource names.
 // Returns an error if multiple storage pools in 1 zone are found.
-func StoragePoolZones(storagePools []StoragePool) ([]string, error) {
-	zonesSet := sets.String{}
-	var zones []string
-	for _, sp := range storagePools {
-		if zonesSet.Has(sp.Zone) {
-			return nil, fmt.Errorf("found multiple storage pools in zone %s. Only one storage pool per zone is allowed", sp.Zone)
-		}
-		zonesSet.Insert(sp.Zone)
-		zones = append(zones, sp.Zone)
-	}
-	return zones, nil
-}
-
-func StoragePoolInZone(storagePools []StoragePool, zone string) *StoragePool {
-	for _, pool := range storagePools {
-		if zone == pool.Zone {
-			return &pool
-		}
-	}
-	return nil
-}
 
 func UnorderedSlicesEqual(slice1 []string, slice2 []string) bool {
 	set1 := sets.NewString(slice1...)
@@ -708,29 +425,6 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	}
 	splitId[volIDToplogyValue] = constants.MultiZoneValue
 	return strings.Join(splitId, "/"), nil
-}
-
-func StringInSlice(s string, list []string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func ValidateDataCacheMode(s string) error {
-	if StringInSlice(s, validDataCacheMode) {
-		return nil
-	}
-	return fmt.Errorf("invalid data-cache-mode %s. Only \"writeback\" and \"writethrough\" is a valid input", s)
-}
-
-func ValidateNonNegativeInt(n int64) error {
-	if n <= 0 {
-		return fmt.Errorf("Input should be set to > 0, got %d", n)
-	}
-	return nil
 }
 
 // NewLimiter returns a token bucket based request rate limiter after initializing

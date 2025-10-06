@@ -28,6 +28,7 @@ import (
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -156,7 +157,7 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	return nil
 }
 
-func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParameters, project string) error {
+func validateStoragePools(req *csi.CreateVolumeRequest, params parameters.DiskParameters, project string) error {
 	storagePoolsEnabled := params.StoragePools != nil
 	if !storagePoolsEnabled || req == nil {
 		return nil
@@ -192,8 +193,8 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParame
 	return nil
 }
 
-func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []common.StoragePool) error {
-	storagePoolZones, err := common.StoragePoolZones(storagePools)
+func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []parameters.StoragePool) error {
+	storagePoolZones, err := parameters.StoragePoolZones(storagePools)
 	if err != nil {
 		return err
 	}
@@ -207,7 +208,7 @@ func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []commo
 	return nil
 }
 
-func validateStoragePoolProjects(project string, storagePools []common.StoragePool) error {
+func validateStoragePoolProjects(project string, storagePools []parameters.StoragePool) error {
 	spProjects := sets.String{}
 	for _, sp := range storagePools {
 		if sp.Project != project {
