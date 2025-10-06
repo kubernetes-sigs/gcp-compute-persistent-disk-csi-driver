@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 const (

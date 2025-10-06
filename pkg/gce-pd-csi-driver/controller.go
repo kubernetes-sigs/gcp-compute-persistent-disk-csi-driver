@@ -39,7 +39,7 @@ import (
 	"k8s.io/utils/strings/slices"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 )

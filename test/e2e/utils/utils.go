@@ -31,7 +31,7 @@ import (
 	boskosclient "sigs.k8s.io/boskos/client"
 	"sigs.k8s.io/boskos/common"
 	utilcommon "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 

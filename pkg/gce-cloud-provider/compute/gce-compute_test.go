@@ -22,7 +22,7 @@ import (
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 func TestValidateDiskParameters(t *testing.T) {
