@@ -460,7 +460,8 @@ func convertStringToAvailabilityClass(str string) (string, error) {
 	return "", fmt.Errorf("Unexpected boolean string %s", str)
 }
 
-// StoragePoolZones returns the zones from the given storage pools.
+// StoragePoolZones returns the unique zones of the given storage pool resource names.
+// Returns an error if multiple storage pools in 1 zone are found.
 func StoragePoolZones(storagePools []StoragePool) ([]string, error) {
 	zonesSet := sets.String{}
 	var zones []string
