@@ -282,6 +282,24 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
+			name:       "confidential compute enabled with valid KMS key",
+			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: validRegionalKmsKey},
+			expectParams: DiskParameters{
+				DiskType:                  "pd-standard",
+				ReplicationType:           "none",
+				DiskEncryptionKMSKey:      validRegionalKmsKey,
+				EnableConfidentialCompute: true,
+				Tags:                      map[string]string{},
+				Labels:                    map[string]string{},
+				ResourceTags:              map[string]string{},
+			},
+		},
+		{
+			name:       "confidential compute enabled with invalid KMS key",
+			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: invalidKmsKey},
+			expectErr:  true,
+		},
+		{
 			name:               "storage pool parameters",
 			enableStoragePools: true,
 			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
