@@ -402,9 +402,6 @@ func ParseZoneFromURI(zoneURI string) (string, error) {
 	return zoneMatch[1], nil
 }
 
-// StoragePoolZones returns the unique zones of the given storage pool resource names.
-// Returns an error if multiple storage pools in 1 zone are found.
-
 func UnorderedSlicesEqual(slice1 []string, slice2 []string) bool {
 	set1 := sets.NewString(slice1...)
 	set2 := sets.NewString(slice2...)

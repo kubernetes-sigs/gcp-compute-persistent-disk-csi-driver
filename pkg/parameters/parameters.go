@@ -449,7 +449,7 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 	return modifyVolumeParams, nil
 }
 
-// ConvertStringToAvailabilityClass converts a string to an availability class string.
+// convertStringToAvailabilityClass converts a string to an availability class string.
 func convertStringToAvailabilityClass(str string) (string, error) {
 	switch strings.ToLower(str) {
 	case ParameterNoAvailabilityClass:
