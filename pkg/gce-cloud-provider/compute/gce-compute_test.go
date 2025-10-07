@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 func TestValidateDiskParameters(t *testing.T) {
@@ -87,7 +88,7 @@ func TestValidateDiskParameters(t *testing.T) {
 			Kind:                   "compute#disk",
 		})
 
-		storageClassParams := common.DiskParameters{
+		storageClassParams := parameters.DiskParameters{
 			DiskType:             "pd-standard",
 			ReplicationType:      "none",
 			DiskEncryptionKMSKey: tc.storageClassKMSKey,
@@ -242,7 +243,7 @@ func TestValidateExistingDisk(t *testing.T) {
 			d.Zone = "zone"
 
 			// Bootstrap params. We don't care about these as they are already tested in previous unit test.
-			params := common.DiskParameters{
+			params := parameters.DiskParameters{
 				DiskType: tc.diskType,
 			}
 

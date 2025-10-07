@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 
@@ -432,7 +433,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
@@ -514,7 +515,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 			// Create Disk
 			diskParams := map[string]string{
-				common.ParameterKeyType: diskType,
+				parameters.ParameterKeyType: diskType,
 			}
 			volName := testNamePrefix + string(uuid.NewUUID())
 
@@ -558,7 +559,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			disk := typeToDisk[diskType]
 			volName := testNamePrefix + string(uuid.NewUUID())
 			params := merge(disk.params, map[string]string{
-				common.ParameterKeyLabels: "key1=value1,key2=value2",
+				parameters.ParameterKeyLabels: "key1=value1,key2=value2",
 			})
 
 			diskSize := defaultSizeGb
@@ -685,7 +686,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			disk := typeToDisk[diskType]
 			volName := testNamePrefix + string(uuid.NewUUID())
 			params := merge(disk.params, map[string]string{
-				common.ParameterKeyDiskEncryptionKmsKey: key.Name,
+				parameters.ParameterKeyDiskEncryptionKmsKey: key.Name,
 			})
 			topology := &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -815,7 +816,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
@@ -1029,9 +1030,9 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			disk := typeToDisk[diskType]
 			volName := testNamePrefix + string(uuid.NewUUID())
 			params := merge(disk.params, map[string]string{
-				common.ParameterKeyPVCName:      "test-pvc",
-				common.ParameterKeyPVCNamespace: "test-pvc-namespace",
-				common.ParameterKeyPVName:       "test-pv-name",
+				parameters.ParameterKeyPVCName:      "test-pvc",
+				parameters.ParameterKeyPVCNamespace: "test-pvc-namespace",
+				parameters.ParameterKeyPVName:       "test-pv-name",
 			})
 			volume, err := controllerClient.CreateVolume(volName, params, diskSize, nil /* topReq */, nil)
 			Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
@@ -1077,10 +1078,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		snapshotLocation := z[:len(z)-2]
 
 		snapshotParams := map[string]string{
-			common.ParameterKeyStorageLocations:          snapshotLocation,
-			common.ParameterKeyVolumeSnapshotName:        "test-volumesnapshot-name",
-			common.ParameterKeyVolumeSnapshotNamespace:   "test-volumesnapshot-namespace",
-			common.ParameterKeyVolumeSnapshotContentName: "test-volumesnapshotcontent-name",
+			parameters.ParameterKeyStorageLocations:          snapshotLocation,
+			parameters.ParameterKeyVolumeSnapshotName:        "test-volumesnapshot-name",
+			parameters.ParameterKeyVolumeSnapshotNamespace:   "test-volumesnapshot-namespace",
+			parameters.ParameterKeyVolumeSnapshotContentName: "test-volumesnapshotcontent-name",
 		}
 		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
 		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
@@ -1138,7 +1139,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
 		testImageFamily := "test-family"
 
-		snapshotParams := map[string]string{common.ParameterKeySnapshotType: common.DiskImageType, common.ParameterKeyImageFamily: testImageFamily}
+		snapshotParams := map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskImageType, parameters.ParameterKeyImageFamily: testImageFamily}
 		snapshotID, err := client.CreateSnapshot(snapshotName, volID, snapshotParams)
 		Expect(err).To(BeNil(), "CreateSnapshot failed with error: %v", err)
 
@@ -1162,7 +1163,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Could not get snapshot from cloud directly")
 		_, snapshotType, _, err := common.SnapshotIDToProjectKey(cleanSelfLink(snapshot.SelfLink))
 		Expect(err).To(BeNil(), "Failed to parse snapshot ID")
-		Expect(snapshotType).To(Equal(common.DiskImageType), "Expected images type in snapshot ID")
+		Expect(snapshotType).To(Equal(parameters.DiskImageType), "Expected images type in snapshot ID")
 
 		snapshots, err := client.ListSnapshots()
 		Expect(err).To(BeNil(), "Could not list snapshots")
@@ -1202,7 +1203,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "none",
+			parameters.ParameterKeyReplicationType: "none",
 		}, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -1258,12 +1259,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create Source Disk
 		srcVolName := testNamePrefix + string(uuid.NewUUID())
 		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
-			common.ParameterKeyReplicationType: "none",
+			parameters.ParameterKeyReplicationType: "none",
 		}, defaultRepdSizeGb, nil, nil)
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, nil,
 			&csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
@@ -1323,12 +1324,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Create Source Disk
 		srcVolName := testNamePrefix + string(uuid.NewUUID())
 		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, nil, nil)
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, nil,
 			&csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
@@ -1862,7 +1863,7 @@ func createAndValidateUniqueZonalMultiWriterDisk(client *remote.CsiClient, proje
 	// Create Disk
 	disk := typeToDisk[diskType]
 
-	disk.params[common.ParameterAccessMode] = "READ_WRITE_MANY"
+	disk.params[parameters.ParameterAccessMode] = "READ_WRITE_MANY"
 	volName := testNamePrefix + string(uuid.NewUUID())
 	volume, err := client.CreateVolumeWithCaps(volName, disk.params, defaultMwSizeGb,
 		&csi.TopologyRequirement{
@@ -1969,7 +1970,7 @@ type disk struct {
 var typeToDisk = map[string]*disk{
 	standardDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType: standardDiskType,
+			parameters.ParameterKeyType: standardDiskType,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(standardDiskType))
@@ -1977,8 +1978,8 @@ var typeToDisk = map[string]*disk{
 	},
 	extremeDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType:                    extremeDiskType,
-			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
+			parameters.ParameterKeyType:                    extremeDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreate,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(extremeDiskType))
@@ -1987,9 +1988,9 @@ var typeToDisk = map[string]*disk{
 	},
 	hdbDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType:                          hdbDiskType,
-			common.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreateHdb,
-			common.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
+			parameters.ParameterKeyType:                          hdbDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreateHdb,
+			parameters.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(hdbDiskType))
@@ -1999,8 +2000,8 @@ var typeToDisk = map[string]*disk{
 	},
 	hdxDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType:                    hdxDiskType,
-			common.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreateHdx,
+			parameters.ParameterKeyType:                    hdxDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate: provisionedIOPSOnCreateHdx,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(hdxDiskType))
@@ -2009,8 +2010,8 @@ var typeToDisk = map[string]*disk{
 	},
 	hdtDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType:                          hdtDiskType,
-			common.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreate,
+			parameters.ParameterKeyType:                          hdtDiskType,
+			parameters.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreate,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(hdtDiskType))
@@ -2019,7 +2020,7 @@ var typeToDisk = map[string]*disk{
 	},
 	ssdDiskType: {
 		params: map[string]string{
-			common.ParameterKeyType: ssdDiskType,
+			parameters.ParameterKeyType: ssdDiskType,
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(ssdDiskType))
@@ -2027,7 +2028,7 @@ var typeToDisk = map[string]*disk{
 	},
 	"hyperdisk-ml": {
 		params: map[string]string{
-			common.ParameterKeyType: "hyperdisk-ml",
+			parameters.ParameterKeyType: "hyperdisk-ml",
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring("hyperdisk-ml"))

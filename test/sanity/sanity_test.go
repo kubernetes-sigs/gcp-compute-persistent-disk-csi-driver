@@ -35,6 +35,7 @@ import (
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 func TestSanity(t *testing.T) {
@@ -128,9 +129,9 @@ func TestSanity(t *testing.T) {
 		IDGen:          newPDIDGenerator(project, zone),
 		TestVolumeSize: common.GbToBytes(200),
 		TestVolumeParameters: map[string]string{
-			common.ParameterKeyType:                          "hyperdisk-balanced",
-			common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
-			common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+			parameters.ParameterKeyType:                          "hyperdisk-balanced",
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+			parameters.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
 		},
 		TestVolumeMutableParameters: map[string]string{"iops": "3013", "throughput": "151"},
 	}

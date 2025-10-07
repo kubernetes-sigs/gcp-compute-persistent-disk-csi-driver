@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -234,8 +235,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Create multi-zone Disk
 		resp, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -356,8 +357,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create multi-zone Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -504,8 +505,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create multi-zone Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{},
 			[]*csi.VolumeCapability{
@@ -648,8 +649,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -751,8 +752,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -867,8 +868,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -977,7 +978,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyType: "hyperdisk-ml",
+			parameters.ParameterKeyType: "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -1067,7 +1068,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1150,8 +1151,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
-			common.ParameterAvailabilityClass:  common.ParameterRegionalHardFailoverClass,
+			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterAvailabilityClass:  parameters.ParameterRegionalHardFailoverClass,
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1268,9 +1269,9 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 		wantIOPs, wantThroughput := int64(7000), int64(250)
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyType:                          common.DiskTypeHdHA,
-			common.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
-			common.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
+			parameters.ParameterKeyType:                          parameters.DiskTypeHdHA,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
+			parameters.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
@@ -1351,8 +1352,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyType:           common.DiskTypeHdHA,
-			common.ParameterAvailabilityClass: common.ParameterRegionalHardFailoverClass,
+			parameters.ParameterKeyType:           parameters.DiskTypeHdHA,
+			parameters.ParameterAvailabilityClass: parameters.ParameterRegionalHardFailoverClass,
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
