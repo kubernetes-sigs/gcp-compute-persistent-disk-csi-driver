@@ -272,7 +272,6 @@ func extractResourceTagsParameter(tagsString string, resourceTags map[string]str
 }
 
 func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumeParameters, error) {
-
 	modifyVolumeParams := ModifyVolumeParameters{}
 
 	for key, value := range parameters {
@@ -293,6 +292,7 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			return ModifyVolumeParameters{}, fmt.Errorf("parameters contain unknown parameter: %s", key)
 		}
 	}
+
 	return modifyVolumeParams, nil
 }
 
@@ -304,13 +304,13 @@ func convertStringToAvailabilityClass(str string) (string, error) {
 	case ParameterRegionalHardFailoverClass:
 		return ParameterRegionalHardFailoverClass, nil
 	}
-	return "", fmt.Errorf("Unexpected boolean string %s", str)
+	return "", fmt.Errorf("unexpected boolean string %s", str)
 }
 
 // StoragePoolZones returns the unique zones of the given storage pool resource names.
 // Returns an error if multiple storage pools in 1 zone are found.
 func StoragePoolZones(storagePools []StoragePool) ([]string, error) {
-	zonesSet := sets.String{}
+	zonesSet := sets.New[string]()
 	var zones []string
 	for _, sp := range storagePools {
 		if zonesSet.Has(sp.Zone) {
