@@ -12,6 +12,9 @@
 #   by setup-project.sh). Ignored if GCE_PD_DRIVER_VERSION == noauth.
 # GCE_PD_DRIVER_VERSION: The kustomize overlay to deploy. See
 # `deploy/kubernetes/overlays` for your choices.
+# NODE_SERVICE_ACCOUNTS: (Optional) Comma-separated list of service accounts
+#   that the CSI driver should be allowed to impersonate. If not specified,
+#   defaults to project-level serviceAccountUser role.
 
 set -o nounset
 set -o errexit
@@ -65,6 +68,23 @@ function check_service_account()
 			MISSING_ROLES=true
 		fi
 	done
+
+	# Check each node service account for serviceAccountUser role
+	if use_scoped_sa_role;
+	then
+		IFS=',' read -ra NODE_SA_ARRAY <<< "${NODE_SERVICE_ACCOUNTS}"
+		for node_sa in "${NODE_SA_ARRAY[@]}";
+		do
+			node_sa=$(echo "${node_sa}" | xargs) # trim whitespace
+			SA_POLICY=$(gcloud iam service-accounts get-iam-policy "${node_sa}" --project="${PROJECT}" --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:${IAM_NAME}")
+			if ! grep -q "${SA_USER_ROLE}" <<< "${SA_POLICY}";
+			then
+				echo "Missing ${SA_USER_ROLE} for: ${node_sa}"
+				MISSING_ROLES=true
+			fi
+		done
+	fi
+
 	if [ "${MISSING_ROLES}" = true ];
 	then
 		echo "Cannot deploy with missing roles in service account, please run setup-project.sh to setup Service Account"
