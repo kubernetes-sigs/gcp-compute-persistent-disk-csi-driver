@@ -29,9 +29,7 @@ import (
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
 // put them into a well defined struct making sure to default unspecified fields.
-// extraVolumeLabels are added as labels; if there are also labels specified in
-// parameters, any matching extraVolumeLabels will be overridden.
-func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string, extraVolumeLabels map[string]string, enableDataCache bool, extraTags map[string]string) (DiskParameters, DataCacheParameters, error) {
+func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string) (DiskParameters, DataCacheParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -43,15 +41,15 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 
 	// Set data cache mode default
 	d := DataCacheParameters{}
-	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
+	if pp.EnableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
 		d.DataCacheMode = constants.DataCacheModeWriteThrough
 	}
 
-	for k, v := range extraVolumeLabels {
+	for k, v := range pp.ExtraVolumeLabels {
 		p.Labels[k] = v
 	}
 
-	for k, v := range extraTags {
+	for k, v := range pp.ExtraTags {
 		p.ResourceTags[k] = v
 	}
 
@@ -64,7 +62,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		case ParameterKeyType:
 			if v != "" {
 				p.DiskType = strings.ToLower(v)
-				if !pp.EnableHdHA && p.DiskType == DiskTypeHdHA {
+				if pp.isHDHADisabled() && p.DiskType == DiskTypeHdHA {
 					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
 				}
 			}
@@ -128,7 +126,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 
 			p.EnableConfidentialCompute = paramEnableConfidentialCompute
 		case ParameterKeyStoragePools:
-			if !pp.EnableStoragePools {
+			if pp.isStoragePoolDisabled() {
 				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyStoragePools)
 			}
 			storagePools, err := ParseStoragePools(v)
@@ -137,8 +135,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 			p.StoragePools = storagePools
 		case ParameterKeyDataCacheSize:
-			if !enableDataCache {
-				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
+			if pp.isDataCacheDisabled() {
+				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", pp.EnableDataCache, ParameterKeyDataCacheSize)
 			}
 
 			paramDataCacheSize, err := convert.ConvertGiStringToInt64(v)
@@ -150,8 +148,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
 		case ParameterKeyDataCacheMode:
-			if !enableDataCache {
-				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheMode)
+			if pp.isDataCacheDisabled() {
+				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", pp.EnableDataCache, ParameterKeyDataCacheMode)
 			}
 			if err := ValidateDataCacheMode(v); err != nil {
 				return p, d, fmt.Errorf("parameters contains invalid option: %s: %w", ParameterKeyDataCacheMode, err)
@@ -162,7 +160,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, err
 			}
 		case ParameterKeyEnableMultiZoneProvisioning:
-			if !pp.EnableMultiZone {
+			if pp.isMultiZoneDisabled() {
 				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyEnableMultiZoneProvisioning)
 			}
 			paramEnableMultiZoneProvisioning, err := convert.ConvertStringToBool(v)
@@ -179,7 +177,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				p.AccessMode = v
 			}
 		case ParameterKeyUseAllowedDiskTopology:
-			if !pp.EnableDiskTopology {
+			if pp.isDiskTopologyDisabled() {
 				klog.Warningf("parameters contains invalid option %q when disk topology is not enabled", ParameterKeyUseAllowedDiskTopology)
 				continue
 			}

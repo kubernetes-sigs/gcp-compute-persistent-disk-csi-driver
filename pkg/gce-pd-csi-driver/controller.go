@@ -320,7 +320,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	var err error
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.enableDataCache, gceCS.Driver.extraTags)
+	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters())
 	metrics.UpdateRequestMetadataFromParams(ctx, params)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
@@ -1349,6 +1349,9 @@ func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProc
 		EnableMultiZone:    gceCS.multiZoneVolumeHandleConfig.Enable,
 		EnableHdHA:         gceCS.enableHdHA,
 		EnableDiskTopology: gceCS.EnableDiskTopology,
+		ExtraVolumeLabels:  gceCS.Driver.extraVolumeLabels,
+		EnableDataCache:    gceCS.enableDataCache,
+		ExtraTags:          gceCS.Driver.extraTags,
 	}
 }
 
@@ -1394,7 +1397,7 @@ func (gceCS *GCEControllerServer) ValidateVolumeCapabilities(ctx context.Context
 	}
 
 	// Validate the disk parameters match the disk we GET
-	params, _, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), gceCS.Driver.extraVolumeLabels, gceCS.enableDataCache, gceCS.Driver.extraTags)
+	params, _, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
 	}

@@ -543,8 +543,11 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				EnableMultiZone:    tc.enableMultiZone,
 				EnableHdHA:         tc.enableHdHA,
 				EnableDiskTopology: tc.enableDiskTopology,
+				ExtraVolumeLabels:  tc.labels,
+				EnableDataCache:    tc.enableDataCache,
+				ExtraTags:          tc.extraTags,
 			}
-			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters, tc.labels, tc.enableDataCache, tc.extraTags)
+			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
