@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
@@ -283,11 +284,11 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		},
 		{
 			name:       "confidential compute enabled with valid KMS key",
-			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: validRegionalKmsKey},
+			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: validKmsKeyRegional},
 			expectParams: DiskParameters{
 				DiskType:                  "pd-standard",
 				ReplicationType:           "none",
-				DiskEncryptionKMSKey:      validRegionalKmsKey,
+				DiskEncryptionKMSKey:      validKmsKeyRegional,
 				EnableConfidentialCompute: true,
 				Tags:                      map[string]string{},
 				Labels:                    map[string]string{},
@@ -554,7 +555,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tc.expectParams, p); diff != "" {
+			if diff := cmp.Diff(tc.expectParams, p, cmpopts.IgnoreUnexported(DiskParameters{})); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 
