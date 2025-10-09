@@ -16,11 +16,21 @@ type DataCacheParameters struct {
 	DataCacheMode string
 }
 
+type diskTypePreference string
+
+const (
+	pdType diskTypePreference = "pdType"
+	hdType diskTypePreference = "hdType"
+)
+
 // DiskParameters contains normalized and defaulted disk parameters
 type DiskParameters struct {
 	// Values: pd-standard, pd-balanced, pd-ssd, or any other PD disk type. Not validated.
 	// Default: pd-standard
-	DiskType string
+	DiskType   string
+	pdType     string
+	hdType     string
+	preference diskTypePreference
 	// Values: "none", regional-pd
 	// Default: "none"
 	ReplicationType string
@@ -42,6 +52,7 @@ type DiskParameters struct {
 	// Values: {bool}
 	// Default: false
 	EnableConfidentialCompute bool
+	// Values: {bool}
 	// Default: false
 	ForceAttach bool
 	// Values: {[]string}
@@ -56,7 +67,7 @@ type DiskParameters struct {
 	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
 	// Default: READ_WRITE_SINGLE
 	AccessMode string
-	// Values {}
+	// Values: {bool}
 	// Default: false
 	UseAllowedDiskTopology bool
 }
@@ -81,6 +92,9 @@ type ParameterProcessor struct {
 	EnableMultiZone    bool
 	EnableHdHA         bool
 	EnableDiskTopology bool
+	ExtraVolumeLabels  map[string]string
+	EnableDataCache    bool
+	ExtraTags          map[string]string
 }
 
 type ModifyVolumeParameters struct {
