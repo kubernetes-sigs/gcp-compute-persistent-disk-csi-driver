@@ -21,170 +21,18 @@ import (
 	"strconv"
 	"strings"
 
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/convert"
 )
 
-const (
-	// Disk Params
-	ParameterAccessMode = "access-mode"
-
-	// Parameters for StorageClass
-	ParameterKeyType                          = "type"
-	ParameterKeyReplicationType               = "replication-type"
-	ParameterKeyDiskEncryptionKmsKey          = "disk-encryption-kms-key"
-	ParameterKeyLabels                        = "labels"
-	ParameterKeyProvisionedIOPSOnCreate       = "provisioned-iops-on-create"
-	ParameterKeyProvisionedThroughputOnCreate = "provisioned-throughput-on-create"
-	ParameterAvailabilityClass                = "availability-class"
-	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
-	ParameterKeyStoragePools                  = "storage-pools"
-	ParameterKeyUseAllowedDiskTopology        = "use-allowed-disk-topology"
-
-	// Parameters for Data Cache
-	ParameterKeyDataCacheSize               = "data-cache-size"
-	ParameterKeyDataCacheMode               = "data-cache-mode"
-	ParameterKeyResourceTags                = "resource-tags"
-	ParameterKeyEnableMultiZoneProvisioning = "enable-multi-zone-provisioning"
-
-	// Parameters for VolumeSnapshotClass
-	ParameterKeyStorageLocations = "storage-locations"
-	ParameterKeySnapshotType     = "snapshot-type"
-	ParameterKeyImageFamily      = "image-family"
-	replicationTypeNone          = "none"
-
-	// Keys for PV and PVC parameters as reported by external-provisioner
-	ParameterKeyPVCName      = "csi.storage.k8s.io/pvc/name"
-	ParameterKeyPVCNamespace = "csi.storage.k8s.io/pvc/namespace"
-	ParameterKeyPVName       = "csi.storage.k8s.io/pv/name"
-
-	// Keys for tags to put in the provisioned disk description
-	tagKeyCreatedForClaimNamespace = "kubernetes.io/created-for/pvc/namespace"
-	tagKeyCreatedForClaimName      = "kubernetes.io/created-for/pvc/name"
-	tagKeyCreatedForVolumeName     = "kubernetes.io/created-for/pv/name"
-	tagKeyCreatedBy                = "storage.gke.io/created-by"
-
-	// Keys for Snapshot and SnapshotContent parameters as reported by external-snapshotter
-	ParameterKeyVolumeSnapshotName        = "csi.storage.k8s.io/volumesnapshot/name"
-	ParameterKeyVolumeSnapshotNamespace   = "csi.storage.k8s.io/volumesnapshot/namespace"
-	ParameterKeyVolumeSnapshotContentName = "csi.storage.k8s.io/volumesnapshotcontent/name"
-
-	// Parameters for AvailabilityClass
-	ParameterNoAvailabilityClass       = "none"
-	ParameterRegionalHardFailoverClass = "regional-hard-failover"
-
-	// Keys for tags to put in the provisioned snapshot description
-	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
-	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
-	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
-
-	// Hyperdisk disk types
-	DiskTypeHdHA = "hyperdisk-balanced-high-availability"
-	DiskTypeHdT  = "hyperdisk-throughput"
-	DiskTypeHdE  = "hyperdisk-extreme"
-	DiskTypeHdML = "hyperdisk-ml"
-
-	// Parameters for VolumeSnapshotClass
-	DiskSnapshotType = "snapshots"
-	DiskImageType    = "images"
-)
-
-type StoragePool struct {
-	Project      string
-	Zone         string
-	Name         string
-	ResourceName string
-}
-
-type DataCacheParameters struct {
-	// Values: {string} in int64 form
-	// Default: ""
-	DataCacheSize string
-	// Values: writethrough, writeback
-	// Default: writethrough
-	DataCacheMode string
-}
-
-// DiskParameters contains normalized and defaulted disk parameters
-type DiskParameters struct {
-	// Values: pd-standard, pd-balanced, pd-ssd, or any other PD disk type. Not validated.
-	// Default: pd-standard
-	DiskType string
-	// Values: "none", regional-pd
-	// Default: "none"
-	ReplicationType string
-	// Values: {string}
-	// Default: ""
-	DiskEncryptionKMSKey string
-	// Values: {map[string]string}
-	// Default: ""
-	Tags map[string]string
-	// Values: {map[string]string}
-	// Default: ""
-	Labels map[string]string
-	// Values: {int64}
-	// Default: none
-	ProvisionedIOPSOnCreate int64
-	// Values: {int64}
-	// Default: none
-	ProvisionedThroughputOnCreate int64
-	// Values: {bool}
-	// Default: false
-	EnableConfidentialCompute bool
-	// Default: false
-	ForceAttach bool
-	// Values: {[]string}
-	// Default: ""
-	StoragePools []StoragePool
-	// Values: {map[string]string}
-	// Default: ""
-	ResourceTags map[string]string
-	// Values: {bool}
-	// Default: false
-	MultiZoneProvisioning bool
-	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
-	// Default: READ_WRITE_SINGLE
-	AccessMode string
-	// Values {}
-	// Default: false
-	UseAllowedDiskTopology bool
-}
-
-func (dp *DiskParameters) IsRegional() bool {
-	return dp.ReplicationType == "regional-pd" || dp.DiskType == DiskTypeHdHA
-}
-
-// SnapshotParameters contains normalized and defaulted parameters for snapshots
-type SnapshotParameters struct {
-	StorageLocations []string
-	SnapshotType     string
-	ImageFamily      string
-	Tags             map[string]string
-	Labels           map[string]string
-	ResourceTags     map[string]string
-}
-
-type ParameterProcessor struct {
-	DriverName         string
-	EnableStoragePools bool
-	EnableMultiZone    bool
-	EnableHdHA         bool
-	EnableDiskTopology bool
-}
-
-type ModifyVolumeParameters struct {
-	IOPS       *int64
-	Throughput *int64
-}
-
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string, extraVolumeLabels map[string]string, enableDataCache bool, extraTags map[string]string) (DiskParameters, DataCacheParameters, error) {
-
+func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string, topologies []*csi.Topology) (DiskParameters, DataCacheParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -196,15 +44,15 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 
 	// Set data cache mode default
 	d := DataCacheParameters{}
-	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
+	if pp.EnableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
 		d.DataCacheMode = constants.DataCacheModeWriteThrough
 	}
 
-	for k, v := range extraVolumeLabels {
+	for k, v := range pp.ExtraVolumeLabels {
 		p.Labels[k] = v
 	}
 
-	for k, v := range extraTags {
+	for k, v := range pp.ExtraTags {
 		p.ResourceTags[k] = v
 	}
 
@@ -219,6 +67,25 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				p.DiskType = strings.ToLower(v)
 				if !pp.EnableHdHA && p.DiskType == DiskTypeHdHA {
 					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
+				}
+			}
+		case ParameterKeyPdType:
+			if v != "" {
+				p.pdType = strings.ToLower(v)
+			}
+		case ParameterKeyHdType:
+			if v != "" {
+				p.hdType = strings.ToLower(v)
+			}
+		case ParameterKeyDiskTypePreference:
+			if v != "" {
+				lowercaseVal := strings.ToLower(v)
+				if lowercaseVal == DiskTypePreferencePd {
+					p.preference = pd
+				} else if lowercaseVal == DiskTypePreferenceHd {
+					p.preference = hd
+				} else {
+					return p, d, fmt.Errorf("parameters contain invalid disk type preference %q", v)
 				}
 			}
 		case ParameterKeyReplicationType:
@@ -275,7 +142,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if paramEnableConfidentialCompute {
 				// DiskEncryptionKmsKey is needed to enable confidentialStorage
 				if val, ok := parameters[ParameterKeyDiskEncryptionKmsKey]; !ok || !isValidDiskEncryptionKmsKey(val) {
-					return p, d, fmt.Errorf("Valid %v is required to enable ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
+					return p, d, fmt.Errorf("valid %v is required to enable ConfidentialStorage", ParameterKeyDiskEncryptionKmsKey)
 				}
 			}
 
@@ -290,8 +157,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 			p.StoragePools = storagePools
 		case ParameterKeyDataCacheSize:
-			if !enableDataCache {
-				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
+			if !pp.EnableDataCache {
+				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", pp.EnableDataCache, ParameterKeyDataCacheSize)
 			}
 
 			paramDataCacheSize, err := convert.ConvertGiStringToInt64(v)
@@ -303,8 +170,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 			d.DataCacheSize = strconv.FormatInt(paramDataCacheSize, 10)
 		case ParameterKeyDataCacheMode:
-			if !enableDataCache {
-				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
+			if !pp.EnableDataCache {
+				return p, d, fmt.Errorf("data caching enabled %v; parameters contains invalid option %q", pp.EnableDataCache, ParameterKeyDataCacheMode)
 			}
 			if err := ValidateDataCacheMode(v); err != nil {
 				return p, d, fmt.Errorf("parameters contains invalid option: %s: %w", ParameterKeyDataCacheMode, err)
@@ -351,7 +218,38 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = pp.DriverName
 	}
+
+	// If either generic volume type is specified, both must be specified.
+	if err := validateGenericVolume(&p); err != nil {
+		return p, d, err
+	}
+
+	// If we are a generic volume select the disk type based on topologies.
+	if p.pdType != "" && p.hdType != "" {
+		selectDiskType(&p, topologies)
+	}
+
+	sanitizeDiskParameters(&p)
 	return p, d, nil
+}
+
+func validateGenericVolume(p *DiskParameters) error {
+	// If neither pdType nor hdType is specified, we aren't a generic volume.
+	if p.pdType == "" && p.hdType == "" {
+		return nil
+	}
+
+	// If either type key is specified, both must be specified.
+	if p.pdType == "" || p.hdType == "" {
+		return fmt.Errorf("if either %q or %q is specified, both must be specified", ParameterKeyPdType, ParameterKeyHdType)
+	}
+
+	// If preference is not specified, set it to hd.
+	if p.preference == "" {
+		p.preference = hd
+	}
+
+	return nil
 }
 
 func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string, extraTags map[string]string) (SnapshotParameters, error) {
@@ -409,6 +307,7 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
 	}
+
 	return p, nil
 }
 
@@ -425,7 +324,6 @@ func extractResourceTagsParameter(tagsString string, resourceTags map[string]str
 }
 
 func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumeParameters, error) {
-
 	modifyVolumeParams := ModifyVolumeParameters{}
 
 	for key, value := range parameters {
@@ -446,6 +344,7 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			return ModifyVolumeParameters{}, fmt.Errorf("parameters contain unknown parameter: %s", key)
 		}
 	}
+
 	return modifyVolumeParams, nil
 }
 
@@ -457,13 +356,13 @@ func convertStringToAvailabilityClass(str string) (string, error) {
 	case ParameterRegionalHardFailoverClass:
 		return ParameterRegionalHardFailoverClass, nil
 	}
-	return "", fmt.Errorf("Unexpected boolean string %s", str)
+	return "", fmt.Errorf("unexpected boolean string %s", str)
 }
 
 // StoragePoolZones returns the unique zones of the given storage pool resource names.
 // Returns an error if multiple storage pools in 1 zone are found.
 func StoragePoolZones(storagePools []StoragePool) ([]string, error) {
-	zonesSet := sets.String{}
+	zonesSet := sets.New[string]()
 	var zones []string
 	for _, sp := range storagePools {
 		if zonesSet.Has(sp.Zone) {

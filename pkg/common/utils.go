@@ -491,8 +491,17 @@ func MapNumber(vCPUs int64, limitMap []constants.MachineHyperdiskLimit) int64 {
 	return 15
 }
 
+// HasDiskTypeLabelKeyPrefix checks if the label key starts with the DiskTypeKeyPrefix.
+func HasDiskTypeLabelKeyPrefix(labelKey string) bool {
+	return strings.HasPrefix(labelKey, constants.DiskTypeKeyPrefix+"/")
+}
+
 func DiskTypeLabelKey(diskType string) string {
 	return fmt.Sprintf("%s/%s", constants.DiskTypeKeyPrefix, diskType)
+}
+
+func DiskTypeFromLabelKey(labelKey string) string {
+	return strings.TrimPrefix(labelKey, constants.DiskTypeKeyPrefix+"/")
 }
 
 // IsUpdateIopsThroughputValuesAllowed checks if a disk type is hyperdisk,
