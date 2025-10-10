@@ -68,6 +68,25 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
 				}
 			}
+		case ParameterKeyPdType:
+			if v != "" {
+				p.pdType = strings.ToLower(v)
+			}
+		case ParameterKeyHdType:
+			if v != "" {
+				p.hdType = strings.ToLower(v)
+			}
+		case ParameterKeyDiskTypePreference:
+			if v != "" {
+				lowercaseVal := strings.ToLower(v)
+				if lowercaseVal == DiskTypePreferencePd {
+					p.preference = pd
+				} else if lowercaseVal == DiskTypePreferenceHd {
+					p.preference = hd
+				} else {
+					return p, d, fmt.Errorf("parameters contain invalid disk type preference %q", v)
+				}
+			}
 		case ParameterKeyReplicationType:
 			if v != "" {
 				p.ReplicationType = strings.ToLower(v)
@@ -198,7 +217,33 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = pp.DriverName
 	}
+
+	// If either generic volume type is specified, both must be specified.
+	if err := validateGenericVolume(&p); err != nil {
+		return p, d, err
+	}
+
+	sanitizeDiskParameters(&p)
 	return p, d, nil
+}
+
+func validateGenericVolume(p *DiskParameters) error {
+	// If neither pdType nor hdType is specified, we aren't a generic volume.
+	if p.pdType == "" && p.hdType == "" {
+		return nil
+	}
+
+	// If either type key is specified, both must be specified.
+	if p.pdType == "" || p.hdType == "" {
+		return fmt.Errorf("if either %q or %q is specified, both must be specified", ParameterKeyPdType, ParameterKeyHdType)
+	}
+
+	// If preference is not specified, set it to hd.
+	if p.preference == "" {
+		p.preference = hd
+	}
+
+	return nil
 }
 
 func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverName string, extraTags map[string]string) (SnapshotParameters, error) {
@@ -256,6 +301,7 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 	if len(p.Tags) > 0 {
 		p.Tags[tagKeyCreatedBy] = driverName
 	}
+
 	return p, nil
 }
 

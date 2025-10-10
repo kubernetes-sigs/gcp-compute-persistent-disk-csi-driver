@@ -66,6 +66,8 @@ type DiskParameters struct {
 	MultiZoneProvisioning bool
 	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
 	// Default: READ_WRITE_SINGLE
+
+	// JULIAN: This is unused in the codebase AFAICT.  is that intentional?  Should this be removed?
 	AccessMode string
 	// Values: {bool}
 	// Default: false

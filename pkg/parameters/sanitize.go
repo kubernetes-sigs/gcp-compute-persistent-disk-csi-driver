@@ -67,7 +67,43 @@ func diskTypeIsPd(diskType string) bool {
 // volume, as parameters will be specified for two different disk types but
 // where those parameters are valid for only one of the types.
 func sanitizeDiskParameters(dp *DiskParameters) {
+	klog.Infof("Sanitizing disk parameters for disk type %s, parameters before: %+v", dp.DiskType, dp)
+	for _, sanitizer := range sanitizers {
+		sanitizer(dp)
+	}
+	klog.Infof("Sanitizing disk parameters for disk type %s, parameters after: %+v", dp.DiskType, dp)
 }
 
 // sanitizer is a function that sanitizes a specific field of the disk parameters based on the DiskType parameter.
 type sanitizer func(dp *DiskParameters)
+
+// sanitizers cover all parameters that are valid for only of PD or HD.
+var sanitizers = map[string]sanitizer{
+	"ReplicationType": func(dp *DiskParameters) {
+		// Replication type supported in PD only
+		if diskTypeIsPd(dp.DiskType) {
+			dp.ReplicationType = replicationTypeNone
+		}
+	},
+	"ProvisionedIOPSOnCreate": func(dp *DiskParameters) {
+		if diskTypeIsPd(dp.DiskType) {
+			dp.ProvisionedIOPSOnCreate = 0
+		}
+	},
+	"ProvisionedThroughputOnCreate": func(dp *DiskParameters) {
+		if diskTypeIsPd(dp.DiskType) {
+			dp.ProvisionedThroughputOnCreate = 0
+		}
+	},
+	// Does ForceAttach need to be sanitized?
+	"StoragePools": func(dp *DiskParameters) {
+		if diskTypeIsPd(dp.DiskType) {
+			dp.StoragePools = nil
+		}
+	},
+	"MultiZoneProvisioning": func(dp *DiskParameters) {
+		if diskTypeIsPd(dp.DiskType) {
+			dp.MultiZoneProvisioning = false
+		}
+	},
+}
