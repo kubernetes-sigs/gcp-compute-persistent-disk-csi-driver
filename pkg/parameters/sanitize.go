@@ -12,7 +12,7 @@ func selectDiskType(dp *DiskParameters, topologies []*csi.Topology) {
 	// Collect disk type labels from the first topology if at least one exists.
 	var supportedDisks []string
 	if len(topologies) > 0 {
-		for key, _ := range topologies[0].Segments {
+		for key := range topologies[0].Segments {
 			diskType := common.DiskTypeFromLabelKey(key)
 			supportedDisks = append(supportedDisks, diskType)
 		}
@@ -20,7 +20,6 @@ func selectDiskType(dp *DiskParameters, topologies []*csi.Topology) {
 
 	selectedDiskType := ""
 	for _, supportedDisk := range supportedDisks {
-
 		// Choose either disk type if it is supported.
 		if supportedDisk == dp.hdType || supportedDisk == dp.pdType {
 
@@ -36,6 +35,15 @@ func selectDiskType(dp *DiskParameters, topologies []*csi.Topology) {
 				selectedDiskType = supportedDisk
 				continue
 			}
+		}
+	}
+
+	// If we found nothing supported, just choose the preference.
+	if selectedDiskType == "" {
+		if dp.preference == pd {
+			selectedDiskType = dp.pdType
+		} else if dp.preference == hd {
+			selectedDiskType = dp.hdType
 		}
 	}
 

@@ -320,7 +320,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	var err error
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
-	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters())
+	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters(), req.GetAccessibilityRequirements().GetPreferred())
 	metrics.UpdateRequestMetadataFromParams(ctx, params)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())

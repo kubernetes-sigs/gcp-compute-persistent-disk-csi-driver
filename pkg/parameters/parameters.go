@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
@@ -31,7 +32,7 @@ import (
 // put them into a well defined struct making sure to default unspecified fields.
 // extraVolumeLabels are added as labels; if there are also labels specified in
 // parameters, any matching extraVolumeLabels will be overridden.
-func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string) (DiskParameters, DataCacheParameters, error) {
+func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]string, topologies []*csi.Topology) (DiskParameters, DataCacheParameters, error) {
 	p := DiskParameters{
 		DiskType:             "pd-standard",           // Default
 		ReplicationType:      replicationTypeNone,     // Default
@@ -221,6 +222,11 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 	// If either generic volume type is specified, both must be specified.
 	if err := validateGenericVolume(&p); err != nil {
 		return p, d, err
+	}
+
+	// If we are a generic volume select the disk type based on topologies.
+	if p.pdType != "" && p.hdType != "" {
+		selectDiskType(&p, topologies)
 	}
 
 	sanitizeDiskParameters(&p)
