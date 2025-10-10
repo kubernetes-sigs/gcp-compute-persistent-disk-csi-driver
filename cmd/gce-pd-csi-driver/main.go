@@ -174,6 +174,7 @@ func handle() {
 				klog.Errorf("Failed to emit process start time: %v", err.Error())
 			}
 			mm.RegisterMountMetric()
+			mm.RegisterUnexpectedDevicePathChangesMetric()
 		}
 		metricsManager = &mm
 	}
@@ -282,7 +283,7 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
-		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils)
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils, metricsManager)
 		if err != nil {
 			klog.Warningf("Failed to create device cache: %v", err.Error())
 		} else {

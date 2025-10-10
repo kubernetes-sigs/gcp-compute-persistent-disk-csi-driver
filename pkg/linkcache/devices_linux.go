@@ -12,21 +12,22 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 )
 
 const byIdDir = "/dev/disk/by-id"
 
-func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string, driverName string, deviceUtils deviceutils.DeviceUtils) (*DeviceCache, error) {
+func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string, driverName string, deviceUtils deviceutils.DeviceUtils, metricsManager *metrics.MetricsManager) (*DeviceCache, error) {
 	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	return newDeviceCacheForNode(period, node, driverName, deviceUtils), nil
+	return newDeviceCacheForNode(period, node, driverName, deviceUtils, metricsManager), nil
 }
 
 func NewTestDeviceCache(period time.Duration, node *v1.Node) *DeviceCache {
-	return newDeviceCacheForNode(period, node, "pd.csi.storage.gke.io", deviceutils.NewDeviceUtils())
+	return newDeviceCacheForNode(period, node, "pd.csi.storage.gke.io", deviceutils.NewDeviceUtils(), nil)
 }
 
 func NewTestNodeWithVolumes(volumes []string) *v1.Node {
@@ -42,12 +43,13 @@ func NewTestNodeWithVolumes(volumes []string) *v1.Node {
 	}
 }
 
-func newDeviceCacheForNode(period time.Duration, node *v1.Node, driverName string, deviceUtils deviceutils.DeviceUtils) *DeviceCache {
+func newDeviceCacheForNode(period time.Duration, node *v1.Node, driverName string, deviceUtils deviceutils.DeviceUtils, metricsManager *metrics.MetricsManager) *DeviceCache {
 	deviceCache := &DeviceCache{
-		symlinks:    make(map[string]deviceMapping),
-		period:      period,
-		deviceUtils: deviceUtils,
-		dir:         byIdDir,
+		symlinks:       make(map[string]deviceMapping),
+		period:         period,
+		deviceUtils:    deviceUtils,
+		dir:            byIdDir,
+		metricsManager: metricsManager,
 	}
 
 	// Look at the status.volumesInUse field.  For each, take the last section
@@ -163,6 +165,9 @@ func (d *DeviceCache) listAndUpdate() {
 		// Check if the realPath has changed
 		if realPath != device.realPath {
 			klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
+			if d.metricsManager != nil {
+				d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
+			}
 
 			// Update the cache with the new realPath
 			device.realPath = realPath
