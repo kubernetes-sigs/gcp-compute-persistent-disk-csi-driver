@@ -63,6 +63,15 @@ var (
 	},
 		[]string{"driver_name", "file_system_format", "error_type"},
 	)
+
+	unexpectedDevicePathChangesMetric = metrics.NewCounterVec(&metrics.CounterOpts{
+		Subsystem:      "node",
+		Name:           "unexpected_device_path_changes",
+		Help:           "Unexpected device path changes",
+		StabilityLevel: metrics.ALPHA,
+	},
+		[]string{"driver_name"},
+	)
 )
 
 type MetricsManager struct {
@@ -92,6 +101,10 @@ func (mm *MetricsManager) RegisterMountMetric() {
 	mm.registry.MustRegister(mountErrorMetric)
 }
 
+func (mm *MetricsManager) RegisterUnexpectedDevicePathChangesMetric() {
+	mm.registry.MustRegister(unexpectedDevicePathChangesMetric)
+}
+
 func (mm *MetricsManager) recordComponentVersionMetric() error {
 	v := getEnvVar(envGKEPDCSIVersion)
 	if v == "" {
@@ -119,6 +132,11 @@ func (mm *MetricsManager) RecordMountErrorMetric(fs_format string, err error) {
 	errType := mountErrorType(err)
 	mountErrorMetric.WithLabelValues(pdcsiDriverName, fs_format, errType).Inc()
 	klog.Infof("Recorded mount error type: %q", errType)
+}
+
+func (mm *MetricsManager) RecordUnexpectedDevicePathChangesMetric() {
+	unexpectedDevicePathChangesMetric.WithLabelValues(pdcsiDriverName).Inc()
+	klog.Infof("Recorded unexpected device path change")
 }
 
 func (mm *MetricsManager) EmmitProcessStartTime() error {
