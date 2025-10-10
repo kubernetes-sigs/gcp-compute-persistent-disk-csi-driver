@@ -32,11 +32,11 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
-
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
@@ -85,6 +85,8 @@ type GCENodeServer struct {
 	metricsManager *metrics.MetricsManager
 	// A cache of the device paths for the volumes that are attached to the node.
 	DeviceCache *linkcache.DeviceCache
+
+	EnableDynamicVolumes bool
 }
 
 type NodeServerArgs struct {
@@ -103,6 +105,8 @@ type NodeServerArgs struct {
 
 	MetricsManager *metrics.MetricsManager
 	DeviceCache    *linkcache.DeviceCache
+
+	EnableDynamicVolumes bool
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -727,9 +731,25 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		Segments: map[string]string{constants.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
+	node, err := k8sclient.GetNodeWithRetry(ctx, ns.MetadataService.GetName())
+	if err != nil {
+		klog.Errorf("Failed to get node %s: %v. The error is ignored so that the driver can register", ns.MetadataService.GetName(), err.Error())
+	}
+
+	if ns.EnableDynamicVolumes {
+		labels, err := ns.getDiskTypeLabels(node)
+		if err != nil {
+			klog.Errorf("Failed to fetch disk type topology labels: %v", err)
+		}
+
+		for k, v := range labels {
+			top.Segments[k] = v
+		}
+	}
+
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
-	volumeLimits, err := ns.GetVolumeLimits(ctx)
+	volumeLimits, err := ns.getVolumeLimits(ctx, node)
 	if err != nil {
 		klog.Errorf("GetVolumeLimits failed: %v. The error is ignored so that the driver can register", err.Error())
 		// No error should be returned from NodeGetInfo, otherwise the driver will not register
@@ -891,7 +911,7 @@ func (ns *GCENodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpa
 	}, nil
 }
 
-func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
+func (ns *GCENodeServer) getVolumeLimits(ctx context.Context, node *corev1.Node) (int64, error) {
 	// Machine-type format: n1-type-CPUS or custom-CPUS-RAM or f1/g1-type
 	machineType := ns.MetadataService.GetMachineType()
 
@@ -903,7 +923,7 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	}
 
 	// Get attach limit override from label
-	attachLimitOverride, err := GetAttachLimitsOverrideFromNodeLabel(ctx, ns.MetadataService.GetName())
+	attachLimitOverride, err := getAttachLimitsOverrideFromNodeLabel(node)
 	if err == nil && attachLimitOverride > 0 && attachLimitOverride < 128 {
 		return attachLimitOverride, nil
 	} else {
@@ -965,11 +985,12 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	return volumeLimitBig, nil
 }
 
-func GetAttachLimitsOverrideFromNodeLabel(ctx context.Context, nodeName string) (int64, error) {
-	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
-	if err != nil {
-		return 0, err
+func getAttachLimitsOverrideFromNodeLabel(node *corev1.Node) (int64, error) {
+	// If then node is nil, return 0 which means there is no override
+	if node == nil {
+		return 0, fmt.Errorf("node is nil")
 	}
+
 	if val, found := node.GetLabels()[fmt.Sprintf(constants.NodeRestrictionLabelPrefix, constants.AttachLimitOverrideLabel)]; found {
 		attachLimitOverrideForNode, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
@@ -979,4 +1000,18 @@ func GetAttachLimitsOverrideFromNodeLabel(ctx context.Context, nodeName string) 
 		return attachLimitOverrideForNode, nil
 	}
 	return 0, nil
+}
+
+func (ns *GCENodeServer) getDiskTypeLabels(node *corev1.Node) (map[string]string, error) {
+	if node == nil {
+		return nil, fmt.Errorf("node is nil")
+	}
+	lbls := make(map[string]string)
+	for k, v := range node.GetLabels() {
+		if common.HasDiskTypeLabelKeyPrefix(k) {
+			lbls[k] = v
+		}
+	}
+
+	return lbls, nil
 }

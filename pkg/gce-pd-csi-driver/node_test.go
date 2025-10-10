@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/testing/protocmp"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/mount-utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
@@ -237,11 +241,11 @@ func TestNodeGetVolumeStats(t *testing.T) {
 func TestNodeGetVolumeLimits(t *testing.T) {
 	gceDriver := getTestGCEDriver(t)
 	ns := gceDriver.ns
-	req := &csi.NodeGetInfoRequest{}
 
 	testCases := []struct {
 		name           string
 		machineType    string
+		node           *corev1.Node
 		expVolumeLimit int64
 		expectError    bool
 	}{
@@ -431,6 +435,43 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			name:           "a4x-medgpu-nolssd", // does not exist, testing edge case
 			machineType:    "a4x-medgpu-nolssd",
 			expVolumeLimit: volumeLimitBig,
+			expectError:    true,
+		},
+		{
+			name:        "attach limit override",
+			machineType: "n1-standard-1",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						fmt.Sprintf(constants.NodeRestrictionLabelPrefix, constants.AttachLimitOverrideLabel): "63",
+					},
+				},
+			},
+			expVolumeLimit: 63,
+		},
+		{
+			name:        "invalid attach limit override",
+			machineType: "n1-standard-1",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						fmt.Sprintf(constants.NodeRestrictionLabelPrefix, constants.AttachLimitOverrideLabel): "invalid",
+					},
+				},
+			},
+			expVolumeLimit: volumeLimitBig,
+		},
+		{
+			name:        "attach limit override out of bounds",
+			machineType: "n1-standard-1",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						fmt.Sprintf(constants.NodeRestrictionLabelPrefix, constants.AttachLimitOverrideLabel): "9999",
+					},
+				},
+			},
+			expVolumeLimit: volumeLimitBig,
 		},
 	}
 
@@ -438,18 +479,15 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 		t.Logf("Test case: %s", tc.name)
 
 		metadataservice.SetMachineType(tc.machineType)
-		res, err := ns.NodeGetInfo(context.Background(), req)
+		volumeLimit, err := ns.getVolumeLimits(context.Background(), tc.node)
 		if err != nil && !tc.expectError {
 			t.Fatalf("Failed to get node info: %v", err)
 		}
 
-		volumeLimit := res.GetMaxVolumesPerNode()
 		if volumeLimit != tc.expVolumeLimit {
 			t.Fatalf("Expected volume limit: %v, got %v, for machine-type: %v",
 				tc.expVolumeLimit, volumeLimit, tc.machineType)
 		}
-
-		t.Logf("Get node info: %v", res)
 	}
 }
 
@@ -1736,4 +1774,120 @@ func TestBlockingFormatAndMount(t *testing.T) {
 	readyToExecute := make(chan chan struct{}, 1)
 	gceDriver := getTestBlockingFormatAndMountGCEDriver(t, readyToExecute)
 	runBlockingFormatAndMount(t, gceDriver, readyToExecute)
+}
+
+func TestGetDiskTypeLabels(t *testing.T) {
+	const (
+		nodeName = "test-node"
+		diskA    = constants.DiskTypeKeyPrefix + "/disk-a"
+		diskB    = constants.DiskTypeKeyPrefix + "/disk-b"
+	)
+
+	testCases := []struct {
+		desc      string
+		node      *corev1.Node
+		want      []string
+		wantError bool
+	}{
+		{
+			desc: "no topology labels",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   nodeName,
+					Labels: map[string]string{"foo": "bar"},
+				},
+			},
+			want: nil,
+		},
+		{
+			desc: "multiple topology labels",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					Labels: map[string]string{
+						diskA: "true",
+						diskB: "true",
+					},
+				},
+			},
+			want: []string{diskA, diskB},
+		},
+		{
+			desc:      "node not found",
+			node:      nil,
+			wantError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			gceDriver := getTestGCEDriverWithCustomMounter(t, mountmanager.NewFakeSafeMounter(), &NodeServerArgs{})
+			ns := gceDriver.ns
+
+			lbls, err := ns.getDiskTypeLabels(tc.node)
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var got []string
+			for key := range lbls {
+				got = append(got, key)
+			}
+			sort.Strings(got)
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Fatalf("unexpected topology labels (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNodeGetInfo(t *testing.T) {
+	const (
+		machineType = "n1-standard-4"
+		zone        = "us-central1-b"
+		name        = "test-node"
+	)
+	tests := []struct {
+		desc string
+		want *csi.NodeGetInfoResponse
+	}{
+		{
+			desc: "success",
+			want: &csi.NodeGetInfoResponse{
+				NodeId:            fmt.Sprintf("projects/test-project/zones/%s/instances/%s", zone, name),
+				MaxVolumesPerNode: volumeLimitBig,
+				AccessibleTopology: &csi.Topology{
+					Segments: map[string]string{
+						constants.TopologyKeyZone: zone,
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			gceDriver := getTestGCEDriver(t)
+			ns := gceDriver.ns
+			req := &csi.NodeGetInfoRequest{}
+			metadataservice.SetMachineType(machineType)
+			metadataservice.SetZone(zone)
+			metadataservice.SetName(node)
+
+			got, err := ns.NodeGetInfo(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Failed to get node info: %v", err)
+			}
+
+			if diff := cmp.Diff(tc.want, got, protocmp.Transform()); diff != "" {
+				t.Fatalf("NodeGetInfo() returned unexpected diff (-want +got):\n%s", diff)
+			}
+		})
+	}
 }

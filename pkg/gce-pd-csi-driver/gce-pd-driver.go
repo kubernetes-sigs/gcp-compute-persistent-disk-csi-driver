@@ -160,6 +160,7 @@ func NewNodeServer(gceDriver *GCEDriver, mounter *mount.SafeFormatAndMount, devi
 		SysfsPath:                args.SysfsPath,
 		metricsManager:           args.MetricsManager,
 		DeviceCache:              args.DeviceCache,
+		EnableDynamicVolumes:     args.EnableDynamicVolumes,
 	}
 }
 

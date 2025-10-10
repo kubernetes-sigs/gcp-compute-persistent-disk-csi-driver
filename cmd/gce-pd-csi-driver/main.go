@@ -99,6 +99,8 @@ var (
 
 	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a disk-type.gke.io/[disk-type] topology label when the StorageClass has the use-allowed-disk-topology parameter set to true. That topology label is included in the Topologies returned in CreateVolumeResponse. This flag is disabled by default.")
 
+	dynamicVolumes = flag.Bool("dynamic-volumes", false, "If set to true, the CSI driver will automatically select a compatible disk type based on the presence of the dynamic-volume parameter and disk types defined in the StorageClass. Disabled by default.")
+
 	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
 
 	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
@@ -257,6 +259,7 @@ func handle() {
 		args := &driver.GCEControllerServerArgs{
 			EnableDiskTopology:       *diskTopology,
 			EnableDiskSizeValidation: *enableDiskSizeValidation,
+			EnableDynamicVolumes:     *dynamicVolumes,
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
@@ -299,6 +302,7 @@ func handle() {
 			SysfsPath:                "/sys",
 			MetricsManager:           metricsManager,
 			DeviceCache:              deviceCache,
+			EnableDynamicVolumes:     *dynamicVolumes,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
