@@ -19,8 +19,8 @@ type DataCacheParameters struct {
 type diskTypePreference string
 
 const (
-	pdType diskTypePreference = "pdType"
-	hdType diskTypePreference = "hdType"
+	pd diskTypePreference = DiskTypePreferencePd
+	hd diskTypePreference = DiskTypePreferenceHd
 )
 
 // DiskParameters contains normalized and defaulted disk parameters
@@ -30,7 +30,7 @@ type DiskParameters struct {
 	DiskType   string
 	pdType     string
 	hdType     string
-	preference diskTypePreference
+	preference diskTypePreference // If user doesn't specify this, set it to hd.
 	// Values: "none", regional-pd
 	// Default: "none"
 	ReplicationType string

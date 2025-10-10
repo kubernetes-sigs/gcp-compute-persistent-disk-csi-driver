@@ -15,6 +15,13 @@ const (
 	ParameterKeyEnableConfidentialCompute     = "enable-confidential-storage"
 	ParameterKeyStoragePools                  = "storage-pools"
 	ParameterKeyUseAllowedDiskTopology        = "use-allowed-disk-topology"
+	ParameterKeyPdType                        = "pd-type"
+	ParameterKeyHdType                        = "hyperdisk-type"
+	ParameterKeyDiskTypePreference            = "disk-type-preference"
+
+	// Keys for disk type preference
+	DiskTypePreferencePd = ParameterKeyPdType
+	DiskTypePreferenceHd = ParameterKeyHdType
 
 	// Parameters for Data Cache
 	ParameterKeyDataCacheSize               = "data-cache-size"

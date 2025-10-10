@@ -495,6 +495,10 @@ func DiskTypeLabelKey(diskType string) string {
 	return fmt.Sprintf("%s/%s", constants.DiskTypeKeyPrefix, diskType)
 }
 
+func DiskTypeFromLabelKey(labelKey string) string {
+	return strings.TrimPrefix(labelKey, constants.DiskTypeKeyPrefix+"/")
+}
+
 // IsUpdateIopsThroughputValuesAllowed checks if a disk type is hyperdisk,
 // which implies that IOPS and throughput values can be updated.
 func IsUpdateIopsThroughputValuesAllowed(disk *computev1.Disk) bool {
