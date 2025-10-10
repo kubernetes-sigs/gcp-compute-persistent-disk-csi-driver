@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
@@ -299,6 +301,16 @@ func handle() {
 			MetricsManager:           metricsManager,
 			DeviceCache:              deviceCache,
 		}
+
+		if *diskTopology {
+			klog.V(2).Infof("Setting up kubeClient")
+			kubeClient, err := instantiateKubeClient()
+			if err != nil {
+				klog.Fatalf("Failed to instantiate Kubernetes client: %v", err)
+			}
+			nsArgs.KubeClient = kubeClient
+			nsArgs.EnableDiskTopology = *diskTopology
+		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
 		if *maxConcurrentFormatAndMount > 0 {
@@ -466,4 +478,16 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 
 	klog.V(4).Infof("LSSD caching is setup for the Data Cache enabled node %s", nodeName)
 	return nil
+}
+
+func instantiateKubeClient() (*kubernetes.Clientset, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create REST Config for k8s client: %w", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create k8s client: %w", err)
+	}
+	return kubeClient, nil
 }
