@@ -36,6 +36,7 @@ versions.
 | Kubernetes Version | PD CSI Driver Version |
 |--------------------|-----------------------|
 | HEAD               | v1.13.x               |
+| 1.34               | v1.13.x               |
 | 1.29               | v1.12.x               |
 | 1.28               | v1.12.x               |
 | 1.27               | v1.10.x               |
