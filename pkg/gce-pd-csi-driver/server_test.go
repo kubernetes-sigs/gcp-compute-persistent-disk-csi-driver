@@ -25,9 +25,9 @@ import (
 	"google.golang.org/grpc"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 func createSocketFile() (string, func(), error) {
@@ -104,7 +104,7 @@ func TestServerCreateVolumeMetric(t *testing.T) {
 		CapacityRange:      stdCapRange,
 		VolumeCapabilities: stdVolCaps,
 		Parameters: map[string]string{
-			common.ParameterKeyType: "pd-balanced",
+			parameters.ParameterKeyType: "pd-balanced",
 		},
 	}
 	resp, err := controllerClient.CreateVolume(context.Background(), req)

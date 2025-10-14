@@ -30,6 +30,8 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -102,12 +104,12 @@ func (cloud *FakeCloudProvider) GetDefaultZone() string {
 }
 
 func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
-	if project == common.UnspecifiedValue {
+	if project == constants.UnspecifiedValue {
 		project = cloud.project
 	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
-		if volumeKey.Zone != common.UnspecifiedValue {
+		if volumeKey.Zone != constants.UnspecifiedValue {
 			return project, volumeKey, nil
 		}
 		for diskVolKey, d := range cloud.disks {
@@ -118,7 +120,7 @@ func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Contex
 		}
 		return "", nil, notFoundError()
 	case meta.Regional:
-		if volumeKey.Region != common.UnspecifiedValue {
+		if volumeKey.Region != constants.UnspecifiedValue {
 			return project, volumeKey, nil
 		}
 		r, err := common.GetRegionFromZones([]string{cloud.zone})
@@ -197,7 +199,7 @@ func (cloud *FakeCloudProvider) GetDisk(ctx context.Context, project string, vol
 	return disk, nil
 }
 
-func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params parameters.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	if disk, ok := cloud.disks[volKey.String()]; ok {
 		err := ValidateExistingDisk(ctx, disk, params,
 			int64(capacityRange.GetRequiredBytes()),
@@ -229,9 +231,9 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 			return err
 		}
 		switch snapshotType {
-		case common.DiskSnapshotType:
+		case parameters.DiskSnapshotType:
 			computeDisk.SourceSnapshotId = snapshotID
-		case common.DiskImageType:
+		case parameters.DiskImageType:
 			computeDisk.SourceImageId = snapshotID
 		default:
 			return fmt.Errorf("invalid snapshot type in snapshot ID: %s", snapshotType)
@@ -258,7 +260,7 @@ func (cloud *FakeCloudProvider) InsertDisk(ctx context.Context, project string, 
 	return nil
 }
 
-func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+func (cloud *FakeCloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
 	_, ok := cloud.disks[volKey.String()]
 	if !ok {
 		return notFoundError()
@@ -399,7 +401,7 @@ func (cloud *FakeCloudProvider) GetSnapshot(ctx context.Context, project, snapsh
 	return snapshot, nil
 }
 
-func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
+func (cloud *FakeCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams parameters.SnapshotParameters) (*computev1.Snapshot, error) {
 	if snapshot, ok := cloud.snapshots[snapshotName]; ok {
 		return snapshot, nil
 	}
@@ -480,7 +482,7 @@ func (cloud *FakeCloudProvider) GetImage(ctx context.Context, project, imageName
 	return image, nil
 }
 
-func (cloud *FakeCloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
+func (cloud *FakeCloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams parameters.SnapshotParameters) (*computev1.Image, error) {
 	if image, ok := cloud.images[imageName]; ok {
 		return image, nil
 	}
@@ -583,14 +585,14 @@ type FakeBlockingCloudProvider struct {
 // Upon starting a CreateSnapshot, it passes a chan 'executeCreateSnapshot' into readyToExecute, then blocks on executeCreateSnapshot.
 // The test calling this function can block on readyToExecute to ensure that the operation has started and
 // allowed the CreateSnapshot to continue by passing a struct into executeCreateSnapshot.
-func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
+func (cloud *FakeBlockingCloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams parameters.SnapshotParameters) (*computev1.Snapshot, error) {
 	executeCreateSnapshot := make(chan Signal)
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot
 	return cloud.FakeCloudProvider.CreateSnapshot(ctx, project, volKey, snapshotName, snapshotParams)
 }
 
-func (cloud *FakeBlockingCloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
+func (cloud *FakeBlockingCloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams parameters.SnapshotParameters) (*computev1.Image, error) {
 	executeCreateSnapshot := make(chan Signal)
 	cloud.ReadyToExecute <- executeCreateSnapshot
 	<-executeCreateSnapshot

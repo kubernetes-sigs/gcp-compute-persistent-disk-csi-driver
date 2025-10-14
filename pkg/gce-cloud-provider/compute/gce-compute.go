@@ -41,6 +41,8 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -100,9 +102,9 @@ type GCECompute interface {
 	// Disk Methods
 	GetDisk(ctx context.Context, project string, volumeKey *meta.Key) (*CloudDisk, error)
 	RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error)
-	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
+	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params parameters.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
-	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error
+	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
@@ -122,11 +124,11 @@ type GCECompute interface {
 	ListZones(ctx context.Context, region string) ([]string, error)
 	ListSnapshots(ctx context.Context, filter string) ([]*computev1.Snapshot, string, error)
 	GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error)
-	CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error)
+	CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams parameters.SnapshotParameters) (*computev1.Snapshot, error)
 	DeleteSnapshot(ctx context.Context, project, snapshotName string) error
 	ListImages(ctx context.Context, filter string) ([]*computev1.Image, string, error)
 	GetImage(ctx context.Context, project, imageName string) (*computev1.Image, error)
-	CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error)
+	CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams parameters.SnapshotParameters) (*computev1.Image, error)
 	DeleteImage(ctx context.Context, project, imageName string) error
 }
 
@@ -292,7 +294,7 @@ func (cloud *CloudProvider) listInstancesForProject(service *computev1.Service, 
 // by the volume key and return a volume key with a correct zone
 func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
 	klog.V(5).Infof("Repairing potentially underspecified volume key %v", volumeKey)
-	if project == common.UnspecifiedValue {
+	if project == constants.UnspecifiedValue {
 		project = cloud.project
 	}
 	region, err := common.GetRegionFromZones([]string{cloud.zone})
@@ -302,7 +304,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 	switch volumeKey.Type() {
 	case meta.Zonal:
 		foundZone := ""
-		if volumeKey.Zone == common.UnspecifiedValue {
+		if volumeKey.Zone == constants.UnspecifiedValue {
 			// list all zones, try to get disk in each zone
 			zones, err := cloud.ListZones(ctx, region)
 			if err != nil {
@@ -334,7 +336,7 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 		}
 		return project, volumeKey, nil
 	case meta.Regional:
-		if volumeKey.Region == common.UnspecifiedValue {
+		if volumeKey.Region == constants.UnspecifiedValue {
 			volumeKey.Region = region
 		}
 		return project, volumeKey, nil
@@ -438,7 +440,7 @@ func (cloud *CloudProvider) getRegionURI(project, region string) string {
 		region)
 }
 
-func ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params common.DiskParameters, reqBytes, limBytes int64, multiWriter bool, accessMode string) error {
+func ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params parameters.DiskParameters, reqBytes, limBytes int64, multiWriter bool, accessMode string) error {
 	klog.V(5).Infof("Validating existing disk %v with diskType: %s, reqested bytes: %v, limit bytes: %v", resp, params.DiskType, reqBytes, limBytes)
 	if resp == nil {
 		return fmt.Errorf("disk does not exist")
@@ -468,8 +470,8 @@ func validAccessMode(want, got string) bool {
 		return true
 	}
 	switch want {
-	case common.GCEReadOnlyManyAccessMode, common.GCEReadWriteOnceAccessMode:
-		return got == common.GCEReadWriteManyAccessMode
+	case constants.GCEReadOnlyManyAccessMode, constants.GCEReadWriteOnceAccessMode:
+		return got == constants.GCEReadWriteManyAccessMode
 	// For RWX, no other access mode is valid.
 	default:
 		return false
@@ -478,7 +480,7 @@ func validAccessMode(want, got string) bool {
 
 // ValidateDiskParameters takes a CloudDisk and returns true if the parameters
 // specified validly describe the disk provided, and false otherwise.
-func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error {
+func ValidateDiskParameters(disk *CloudDisk, params parameters.DiskParameters) error {
 	if disk.GetPDType() != params.DiskType {
 		return fmt.Errorf("actual pd type %s did not match the expected param %s", disk.GetPDType(), params.DiskType)
 	}
@@ -497,7 +499,7 @@ func ValidateDiskParameters(disk *CloudDisk, params common.DiskParameters) error
 	return nil
 }
 
-func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *CloudProvider) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params parameters.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	klog.V(5).Infof("Inserting disk %v", volKey)
 
 	description, err := encodeTags(params.Tags)
@@ -533,7 +535,7 @@ func (cloud *CloudProvider) constructDiskToCreate(
 	ctx context.Context,
 	project string,
 	volKey *meta.Key,
-	params common.DiskParameters,
+	params parameters.DiskParameters,
 	capBytes int64,
 	replicaZones []string,
 	snapshotID string,
@@ -568,7 +570,7 @@ func (cloud *CloudProvider) constructDiskToCreate(
 		if volKey.Type() == meta.Regional {
 			return nil, status.Errorf(codes.InvalidArgument, "cannot create regional disks in a Storage Pool")
 		}
-		sp := common.StoragePoolInZone(params.StoragePools, volKey.Zone)
+		sp := parameters.StoragePoolInZone(params.StoragePools, volKey.Zone)
 		if sp == nil {
 			return nil, status.Errorf(codes.InvalidArgument, "cannot create disk in zone %q: no Storage Pools exist in zone", volKey.Zone)
 		}
@@ -581,9 +583,9 @@ func (cloud *CloudProvider) constructDiskToCreate(
 			return nil, err
 		}
 		switch snapshotType {
-		case common.DiskSnapshotType:
+		case parameters.DiskSnapshotType:
 			diskToCreate.SourceSnapshot = snapshotID
-		case common.DiskImageType:
+		case parameters.DiskImageType:
 			diskToCreate.SourceImage = snapshotID
 		default:
 			return nil, fmt.Errorf("invalid snapshot type in snapshot ID: %s", snapshotType)
@@ -619,7 +621,7 @@ func (cloud *CloudProvider) constructDiskToCreate(
 	return diskToCreate, nil
 }
 
-func (cloud *CloudProvider) processDiskAlreadyExistErr(ctx context.Context, err error, project string, volKey *meta.Key, params common.DiskParameters, capacityRange *csi.CapacityRange, multiWriter bool, accessMode string) error {
+func (cloud *CloudProvider) processDiskAlreadyExistErr(ctx context.Context, err error, project string, volKey *meta.Key, params parameters.DiskParameters, capacityRange *csi.CapacityRange, multiWriter bool, accessMode string) error {
 	if err == nil {
 		return nil
 	}
@@ -643,7 +645,7 @@ func (cloud *CloudProvider) processDiskAlreadyExistErr(ctx context.Context, err 
 	return err
 }
 
-func (cloud *CloudProvider) insertConstructedDisk(ctx context.Context, disk *computebeta.Disk, isZonal bool, project string, volKey *meta.Key, params common.DiskParameters, capacityRange *csi.CapacityRange, multiWriter bool, accessMode string) error {
+func (cloud *CloudProvider) insertConstructedDisk(ctx context.Context, disk *computebeta.Disk, isZonal bool, project string, volKey *meta.Key, params parameters.DiskParameters, capacityRange *csi.CapacityRange, multiWriter bool, accessMode string) error {
 	var (
 		insertOp *computebeta.Operation
 		opName   string
@@ -679,7 +681,7 @@ func (cloud *CloudProvider) insertConstructedDisk(ctx context.Context, disk *com
 	return nil
 }
 
-func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
 	// hyperdisks are zonal disks
 	// pd-disks do not support modification of IOPS and Throughput
 	if volKey.Type() == meta.Regional {
@@ -689,7 +691,7 @@ func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volK
 	return cloud.updateZonalDisk(ctx, project, volKey, existingDisk, params)
 }
 
-func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error {
+func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
 	specifiedIops := params.IOPS != nil && *params.IOPS != 0
 	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
 	if !specifiedIops && !specifiedThroughput {
@@ -1263,7 +1265,7 @@ func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, project, snapsho
 	return nil
 }
 
-func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams common.SnapshotParameters) (*computev1.Snapshot, error) {
+func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, volKey *meta.Key, snapshotName string, snapshotParams parameters.SnapshotParameters) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Creating snapshot %s for volume %v", snapshotName, volKey)
 
 	description, err := encodeTags(snapshotParams.Tags)
@@ -1306,7 +1308,7 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, 
 	return snapshot, err
 }
 
-func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams common.SnapshotParameters) (*computev1.Image, error) {
+func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, volKey *meta.Key, imageName string, snapshotParams parameters.SnapshotParameters) (*computev1.Image, error) {
 	klog.V(5).Infof("Creating image %s for source %v", imageName, volKey)
 
 	description, err := encodeTags(snapshotParams.Tags)

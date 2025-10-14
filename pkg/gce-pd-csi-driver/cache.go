@@ -7,19 +7,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	fsnotify "github.com/fsnotify/fsnotify"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 )
 
 const (
@@ -174,7 +170,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		// Validate that cache is setup for required size
 		klog.V(4).Infof("Assuming valid data cache size and mode, resizing cache is not supported")
 	} else {
-		cacheSize := req.GetPublishContext()[common.ContextDataCacheSize]
+		cacheSize := req.GetPublishContext()[constants.ContextDataCacheSize]
 		maxChunkSizeStr := strconv.FormatInt(int64(maxChunkSize/KiB), 10)
 		var chunkSize string
 		cachePvSize, err := fetchPvSizeGiB()
@@ -220,7 +216,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--zero",
 			"y",
 			"--cachemode",
-			req.GetPublishContext()[common.ContextDataCacheMode],
+			req.GetPublishContext()[constants.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
 			"--chunksize",
 			chunkSize,
@@ -257,19 +253,12 @@ func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx con
 }
 
 func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, error) {
-	cfg, err := rest.InClusterConfig()
+	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return 0, err
-	}
-	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
-	if err != nil {
-		return 0, err
-	}
-	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeLabelPrefix, common.DataCacheLssdCountLabel)]; found {
+
+	if val, found := node.GetLabels()[fmt.Sprintf(constants.NodeLabelPrefix, constants.DataCacheLssdCountLabel)]; found {
 		dataCacheCount, err := strconv.Atoi(val)
 		if err != nil {
 			return 0, fmt.Errorf("Error getting Data Cache's LSSD count from node label: %v", err)
@@ -278,30 +267,6 @@ func GetDataCacheCountFromNodeLabel(ctx context.Context, nodeName string) (int, 
 		return dataCacheCount, nil
 	}
 	return 0, nil
-}
-
-func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string) (*v1.Node, error) {
-	var nodeObj *v1.Node
-	backoff := wait.Backoff{
-		Duration: 1 * time.Second,
-		Factor:   2.0,
-		Steps:    5,
-	}
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
-		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			klog.Warningf("Error getting node %s: %v, retrying...\n", nodeName, err)
-			return false, nil
-		}
-		nodeObj = node
-		klog.V(4).Infof("Successfully retrieved node info %s\n", nodeName)
-		return true, nil
-	})
-
-	if err != nil {
-		klog.Errorf("Failed to get node %s after retries: %v\n", nodeName, err)
-	}
-	return nodeObj, err
 }
 
 func FetchRaidedLssdCountForDatacache() (int, error) {
@@ -617,7 +582,7 @@ func InitializeDataCacheNode(nodeId string) error {
 	return nil
 }
 
-func StartWatcher(nodeName string) {
+func StartWatcher(ctx context.Context, nodeName string) {
 	dirToWatch := "/dev/"
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -632,7 +597,7 @@ func StartWatcher(nodeName string) {
 	}
 	errorCh := make(chan error, 1)
 	// Handle the error received from the watcher goroutine
-	go watchDiskDetaches(watcher, nodeName, errorCh)
+	go watchDiskDetaches(ctx, watcher, nodeName, errorCh)
 
 	select {
 	case err := <-errorCh:
@@ -640,9 +605,12 @@ func StartWatcher(nodeName string) {
 	}
 }
 
-func watchDiskDetaches(watcher *fsnotify.Watcher, nodeName string, errorCh chan error) error {
+func watchDiskDetaches(ctx context.Context, watcher *fsnotify.Watcher, nodeName string, errorCh chan error) error {
 	for {
 		select {
+		case <-ctx.Done():
+			klog.Infof("Context done, stopping watcher")
+			return nil
 		// watch for errors
 		case err := <-watcher.Errors:
 			errorCh <- fmt.Errorf("disk update event errored: %v", err)

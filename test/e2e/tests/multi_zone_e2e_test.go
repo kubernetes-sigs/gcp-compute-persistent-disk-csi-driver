@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
@@ -86,7 +88,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 			segments := resp.GetAccessibleTopology().GetSegments()
 			Expect(segments).ToNot(BeNil())
 
-			Expect(segments[common.TopologyKeyZone]).To(Equal(z))
+			Expect(segments[constants.TopologyKeyZone]).To(Equal(z))
 			Expect(len(segments)).To(Equal(1))
 		}
 
@@ -126,7 +128,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		_, volID1 := createAndValidateZonalDisk(controllerClient, p, zones[1], "hyperdisk-ml", volName)
 
 		labelsMap := map[string]string{
-			common.MultiZoneLabel: "true",
+			constants.MultiZoneLabel: "true",
 		}
 		disk1, err := computeService.Disks.Get(p, zones[0], volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk")
@@ -217,7 +219,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		_, volID0 := createAndValidateZonalDisk(controllerClient, p, zones[0], "hyperdisk-ml", volName)
 
 		labelsMap := map[string]string{
-			common.MultiZoneLabel: "true",
+			constants.MultiZoneLabel: "true",
 		}
 		disk1, err := computeService.Disks.Get(p, zones[0], volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk")
@@ -233,13 +235,13 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 		// Create multi-zone Disk
 		resp, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 					},
 				},
 			},
@@ -257,7 +259,7 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Error creating multi-zone volume")
 		topology := resp.GetAccessibleTopology()
 		Expect(len(topology)).To(Equal(2))
-		gotZones := []string{topology[0].Segments[common.TopologyKeyZone], topology[1].Segments[common.TopologyKeyZone]}
+		gotZones := []string{topology[0].Segments[constants.TopologyKeyZone], topology[1].Segments[constants.TopologyKeyZone]}
 		Expect(gotZones).To(ConsistOf(zones[0], zones[1]))
 
 		volID := fmt.Sprintf("projects/%s/zones/multi-zone/disks/%s", p, volName)
@@ -355,16 +357,16 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create multi-zone Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 					},
 				},
 			},
@@ -423,8 +425,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
 
 		// Validate disks have multi-zone labels
-		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
-		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk1.Labels[constants.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[constants.MultiZoneLabel]).To(Equal("true"))
 
 		// Validate disks are ROX
 		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
@@ -503,8 +505,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create multi-zone Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{},
 			[]*csi.VolumeCapability{
@@ -562,8 +564,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
 
 		// Validate disks have multi-zone labels
-		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
-		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk1.Labels[constants.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[constants.MultiZoneLabel]).To(Equal("true"))
 
 		// Validate disks are ROX
 		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
@@ -647,16 +649,16 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 
 		_, err = controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 					},
 				},
 			},
@@ -698,8 +700,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
 
 		// Validate disks have multi-zone labels
-		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
-		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk1.Labels[constants.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[constants.MultiZoneLabel]).To(Equal("true"))
 
 		// Validate disks are ROX
 		Expect(disk1.AccessMode).To(Equal("READ_ONLY_MANY"))
@@ -750,16 +752,16 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 					},
 				},
 			},
@@ -795,8 +797,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
 
 		// Validate disks have multi-zone labels
-		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
-		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk1.Labels[constants.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[constants.MultiZoneLabel]).To(Equal("true"))
 
 		// Validate disks are RWO
 		Expect(disk1.AccessMode).To(Equal("READ_WRITE_SINGLE"))
@@ -866,16 +868,16 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyEnableMultiZoneProvisioning: "true",
-			common.ParameterKeyType:                        "hyperdisk-ml",
+			parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
+			parameters.ParameterKeyType:                        "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 					},
 				},
 			},
@@ -911,8 +913,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		Expect(err).To(BeNil(), "Failed to get disk %v/%v", zones[1], volName)
 
 		// Validate disks have multi-zone labels
-		Expect(disk1.Labels[common.MultiZoneLabel]).To(Equal("true"))
-		Expect(disk2.Labels[common.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk1.Labels[constants.MultiZoneLabel]).To(Equal("true"))
+		Expect(disk2.Labels[constants.MultiZoneLabel]).To(Equal("true"))
 
 		// Validate disks are RWO
 		Expect(disk1.AccessMode).To(Equal("READ_WRITE_SINGLE"))
@@ -976,12 +978,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		_, err := controllerClient.CreateVolumeWithCaps(volName, map[string]string{
-			common.ParameterKeyType: "hyperdisk-ml",
+			parameters.ParameterKeyType: "hyperdisk-ml",
 		}, defaultHdmlSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+						Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 					},
 				},
 			},
@@ -1066,14 +1068,14 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyReplicationType: "regional-pd",
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 				},
 			},
 		}, nil)
@@ -1149,15 +1151,15 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyReplicationType: "regional-pd",
-			common.ParameterAvailabilityClass:  common.ParameterRegionalHardFailoverClass,
+			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterAvailabilityClass:  parameters.ParameterRegionalHardFailoverClass,
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 				},
 			},
 		}, nil)
@@ -1267,16 +1269,16 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		volName := testNamePrefix + string(uuid.NewUUID())
 		wantIOPs, wantThroughput := int64(7000), int64(250)
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyType:                          common.DiskTypeHdHA,
-			common.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
-			common.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
+			parameters.ParameterKeyType:                          parameters.DiskTypeHdHA,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       strconv.FormatInt(wantIOPs, 10),
+			parameters.ParameterKeyProvisionedThroughputOnCreate: strconv.FormatInt(wantThroughput, 10) + "Mi",
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 				},
 			},
 		}, nil)
@@ -1350,15 +1352,15 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			common.ParameterKeyType:           common.DiskTypeHdHA,
-			common.ParameterAvailabilityClass: common.ParameterRegionalHardFailoverClass,
+			parameters.ParameterKeyType:           parameters.DiskTypeHdHA,
+			parameters.ParameterAvailabilityClass: parameters.ParameterRegionalHardFailoverClass,
 		}, defaultRepdSizeGb, &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[0]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[0]},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: zones[1]},
+					Segments: map[string]string{constants.TopologyKeyZone: zones[1]},
 				},
 			},
 		}, nil)

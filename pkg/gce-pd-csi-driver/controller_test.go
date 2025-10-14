@@ -44,8 +44,10 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -66,11 +68,11 @@ var (
 		RequiredBytes: common.GbToBytes(20),
 	}
 	stdParams = map[string]string{
-		common.ParameterKeyType: stdDiskType,
+		parameters.ParameterKeyType: stdDiskType,
 	}
 	stdTopology = []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 	}
 
@@ -108,7 +110,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -126,7 +128,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2", parameters.ParameterKeySnapshotType: "images"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -188,7 +190,7 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testVolumeID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: "bad-region"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: "bad-region"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				createZonalCloudDisk(name),
@@ -230,13 +232,13 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2", parameters.ParameterKeySnapshotType: "images"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.DiskTypeHdHA,
+					Type:     parameters.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -247,13 +249,13 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			req: &csi.CreateSnapshotRequest{
 				Name:           name,
 				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
+				Parameters:     map[string]string{parameters.ParameterKeyStorageLocations: " US-WEST2"},
 			},
 			seedDisks: []*gce.CloudDisk{
 				gce.CloudDiskFromV1(&compute.Disk{
 					Name:     name,
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.DiskTypeHdHA,
+					Type:     parameters.DiskTypeHdHA,
 					Region:   "country-region",
 				}),
 			},
@@ -537,7 +539,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 			createReq := &csi.CreateSnapshotRequest{
 				Name:           nameID,
 				SourceVolumeId: volumeID,
-				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskSnapshotType},
+				Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskSnapshotType},
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -551,7 +553,7 @@ func TestListSnapshotsArguments(t *testing.T) {
 			createReq := &csi.CreateSnapshotRequest{
 				Name:           nameID,
 				SourceVolumeId: volumeID,
-				Parameters:     map[string]string{common.ParameterKeySnapshotType: common.DiskImageType},
+				Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskImageType},
 			}
 			_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
 			if err != nil {
@@ -723,7 +725,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone"},
 						},
 					},
 				},
@@ -734,7 +736,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone"},
 					},
 				},
 			},
@@ -749,24 +751,24 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+							Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 						},
 					},
 				},
@@ -777,7 +779,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},
@@ -792,7 +794,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{"ooblezoners": "topology-zone", common.TopologyKeyZone: "top-zone"},
+							Segments: map[string]string{"ooblezoners": "topology-zone", constants.TopologyKeyZone: "top-zone"},
 						},
 					},
 				},
@@ -823,14 +825,14 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               name,
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyReplicationType: replicationTypeRegionalPD},
+				Parameters:         map[string]string{parameters.ParameterKeyReplicationType: replicationTypeRegionalPD},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 						},
 					},
 				},
@@ -841,10 +843,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 					},
 				},
 			},
@@ -856,17 +858,17 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+					parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 				},
@@ -880,7 +882,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+					parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 				},
 			},
 			expVol: &csi.Volume{
@@ -889,10 +891,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 				},
 			},
@@ -904,14 +906,14 @@ func TestCreateVolumeArguments(t *testing.T) {
 				Name:               name,
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyType: common.DiskTypeHdHA},
+				Parameters:         map[string]string{parameters.ParameterKeyType: parameters.DiskTypeHdHA},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 						},
 					},
 				},
@@ -922,10 +924,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: region + "-b"},
 					},
 				},
 			},
@@ -937,17 +939,17 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.DiskTypeHdHA,
+					parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: region + "-c"},
 						},
 					},
 				},
@@ -961,7 +963,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyType: common.DiskTypeHdHA,
+					parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 				},
 			},
 			expVol: &csi.Volume{
@@ -970,10 +972,10 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 				},
 			},
@@ -1025,7 +1027,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
+					parameters.ParameterKeyDiskEncryptionKmsKey: "projects/KMS_PROJECT_ID/locations/REGION/keyRings/KEY_RING/cryptoKeys/KEY",
 				},
 			},
 			expVol: &csi.Volume{
@@ -1120,12 +1122,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1137,7 +1139,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeContext: nil,
 				AccessibleTopology: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -1152,12 +1154,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1175,12 +1177,12 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1297,7 +1299,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expErrCode: codes.InvalidArgument,
@@ -1318,7 +1320,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-ml",
+					parameters.ParameterKeyType: "hyperdisk-ml",
 				},
 			},
 			expVol: &csi.Volume{
@@ -1338,7 +1340,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeCapabilities: stdVolCaps,
 				Parameters: mergeParameters(
 					stdParams,
-					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "false"},
+					map[string]string{parameters.ParameterKeyUseAllowedDiskTopology: "false"},
 				),
 			},
 			enableDiskTopology: true,
@@ -1349,7 +1351,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							common.TopologyKeyZone: zone,
+							constants.TopologyKeyZone: zone,
 							// Disk not type not included since useAllowedDiskTopology is false
 						},
 					},
@@ -1364,7 +1366,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				VolumeCapabilities: stdVolCaps,
 				Parameters: mergeParameters(
 					stdParams,
-					map[string]string{common.ParameterKeyUseAllowedDiskTopology: "true"},
+					map[string]string{parameters.ParameterKeyUseAllowedDiskTopology: "true"},
 				),
 			},
 			enableDiskTopology: true,
@@ -1375,7 +1377,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 				AccessibleTopology: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							common.TopologyKeyZone: zone,
+							constants.TopologyKeyZone: zone,
 							// Disk type is added as topology segment.
 							common.DiskTypeLabelKey(stdDiskType): "true",
 						},
@@ -1450,8 +1452,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1463,12 +1465,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1491,8 +1493,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1522,8 +1524,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1535,18 +1537,18 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 				},
@@ -1569,24 +1571,24 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 				},
@@ -1609,21 +1611,21 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -1646,21 +1648,21 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-balanced",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-balanced",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
@@ -1683,8 +1685,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1712,8 +1714,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -1725,12 +1727,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1760,18 +1762,18 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -1795,12 +1797,12 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		gceDriver.cs.fallbackRequisiteZones = tc.fallbackZones
 
 		if tc.req.VolumeContentSource.GetType() != nil {
-			snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+			snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 			if err != nil {
 				t.Errorf("Got error extracting snapshot parameters: %v", err)
 			}
-			if snapshotParams.SnapshotType == common.DiskSnapshotType {
-				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, common.MultiZoneValue), name, snapshotParams)
+			if snapshotParams.SnapshotType == parameters.DiskSnapshotType {
+				fcp.CreateSnapshot(context.Background(), project, meta.ZonalKey(name, constants.MultiZoneValue), name, snapshotParams)
 			} else {
 				t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
 			}
@@ -1825,7 +1827,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		topologies := make([]*csi.Topology, 0, len(tc.expZones))
 		for _, zone := range tc.expZones {
 			topologies = append(topologies, &csi.Topology{
-				Segments: map[string]string{common.TopologyKeyZone: zone},
+				Segments: map[string]string{constants.TopologyKeyZone: zone},
 			})
 		}
 
@@ -1847,7 +1849,7 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 		klog.Warningf("Got accessible topology: %v", vol.GetAccessibleTopology())
 
 		sortTopologies := func(t1, t2 *csi.Topology) bool {
-			return t1.Segments[common.TopologyKeyZone] < t2.Segments[common.TopologyKeyZone]
+			return t1.Segments[constants.TopologyKeyZone] < t2.Segments[constants.TopologyKeyZone]
 		}
 
 		// Custom comparers to compare two volumes
@@ -1897,8 +1899,8 @@ func TestMultiZoneVolumeCreation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
-			if disk.GetLabels()[common.MultiZoneLabel] != "true" {
-				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, common.MultiZoneLabel, disk.GetLabels())
+			if disk.GetLabels()[constants.MultiZoneLabel] != "true" {
+				t.Fatalf("Expect %s disk to have %s label, got: %v", volumeKey, constants.MultiZoneLabel, disk.GetLabels())
 			}
 		}
 	}
@@ -1927,7 +1929,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "pd-balanced",
+					parameters.ParameterKeyType: "pd-balanced",
 				},
 			},
 			expMultiWriter: false,
@@ -1947,7 +1949,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "pd-balanced",
+					parameters.ParameterKeyType: "pd-balanced",
 				},
 			},
 			expMultiWriter: true,
@@ -1967,10 +1969,10 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
-			expAccessMode: common.GCEReadWriteManyAccessMode,
+			expAccessMode: constants.GCEReadWriteManyAccessMode,
 		},
 		{
 			name: "success non-multi-writer Hyperdisk",
@@ -1987,10 +1989,10 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
-			expAccessMode: common.GCEReadWriteOnceAccessMode,
+			expAccessMode: constants.GCEReadWriteOnceAccessMode,
 		},
 		{
 			name: "failure unsupported access mode for Hyperdisk",
@@ -2007,7 +2009,7 @@ func TestCreateVolumeMultiWriterOrAccessMode(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType: "hyperdisk-balanced",
+					parameters.ParameterKeyType: "hyperdisk-balanced",
 				},
 			},
 			expErrCode: codes.InvalidArgument,
@@ -2099,7 +2101,7 @@ func (cloud *FakeCloudProviderInsertDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.insertDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
+func (cloud *FakeCloudProviderInsertDiskErr) InsertDisk(ctx context.Context, project string, volKey *meta.Key, params parameters.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error {
 	if err, ok := cloud.insertDiskErrors[volKey.String()]; ok {
 		return err
 	}
@@ -2131,24 +2133,24 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2178,24 +2180,24 @@ func TestMultiZoneVolumeCreationErrHandling(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                        "hyperdisk-ml",
-					common.ParameterKeyEnableMultiZoneProvisioning: "true",
+					parameters.ParameterKeyType:                        "hyperdisk-ml",
+					parameters.ParameterKeyEnableMultiZoneProvisioning: "true",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2281,14 +2283,14 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2314,14 +2316,14 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 					},
 				},
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "pd-ssd",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "10000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
+					parameters.ParameterKeyType:                          "pd-ssd",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "10000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "500Mi",
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2384,7 +2386,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 		name          string
 		req           *csi.ControllerModifyVolumeRequest
 		diskType      string
-		params        *common.DiskParameters
+		params        *parameters.DiskParameters
 		expIops       int64
 		expThroughput int64
 		expErrMessage string
@@ -2396,7 +2398,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "hyperdisk-balanced",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType:                      "hyperdisk-balanced",
 				ProvisionedIOPSOnCreate:       10000,
 				ProvisionedThroughputOnCreate: 500,
@@ -2412,7 +2414,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "0", "throughput": "0Mi"},
 			},
 			diskType: "hyperdisk-balanced",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType:                      "hyperdisk-balanced",
 				ProvisionedIOPSOnCreate:       10000,
 				ProvisionedThroughputOnCreate: 500,
@@ -2428,7 +2430,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
 			},
 			diskType: "pd-ssd",
-			params: &common.DiskParameters{
+			params: &parameters.DiskParameters{
 				DiskType: "pd-ssd",
 			},
 			expIops:       0,
@@ -2502,7 +2504,7 @@ func (cloud *FakeCloudProviderUpdateDiskErr) AddDiskForErr(volKey *meta.Key, err
 	cloud.updateDiskErrors[volKey.String()] = err
 }
 
-func (cloud *FakeCloudProviderUpdateDiskErr) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *gcecloudprovider.CloudDisk, params common.ModifyVolumeParameters) error {
+func (cloud *FakeCloudProviderUpdateDiskErr) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *gcecloudprovider.CloudDisk, params parameters.ModifyVolumeParameters) error {
 	if err, ok := cloud.updateDiskErrors[volKey.String()]; ok {
 		return err
 	}
@@ -2537,20 +2539,20 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 			createReq: &csi.CreateVolumeRequest{
 				Name: name,
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
 				},
 				VolumeCapabilities: stdVolCaps,
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2573,20 +2575,20 @@ func TestVolumeModifyErrorHandling(t *testing.T) {
 			createReq: &csi.CreateVolumeRequest{
 				Name: name,
 				Parameters: map[string]string{
-					common.ParameterKeyType:                          "hyperdisk-balanced",
-					common.ParameterKeyProvisionedIOPSOnCreate:       "3000",
-					common.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
+					parameters.ParameterKeyType:                          "hyperdisk-balanced",
+					parameters.ParameterKeyProvisionedIOPSOnCreate:       "3000",
+					parameters.ParameterKeyProvisionedThroughputOnCreate: "150Mi",
 				},
 				VolumeCapabilities: stdVolCaps,
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
@@ -2964,12 +2966,12 @@ func TestListVolumeResponse(t *testing.T) {
 				{
 					Name:     fmt.Sprintf("%s-pv-1", zone1),
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone1, "pv-1"),
-					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+					Labels:   map[string]string{constants.MultiZoneLabel: "true"},
 				},
 				{
 					Name:     fmt.Sprintf("%s-pv-1", zone2),
 					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone2, "pv-1"),
-					Labels:   map[string]string{common.MultiZoneLabel: "true"},
+					Labels:   map[string]string{constants.MultiZoneLabel: "true"},
 				},
 			},
 			instances: []compute.Instance{
@@ -3079,14 +3081,14 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			name:            "success with data source of snapshot type",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskSnapshotType,
+			snapshotType:    parameters.DiskSnapshotType,
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskSnapshotType,
+			snapshotType:    parameters.DiskSnapshotType,
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
 		},
@@ -3094,14 +3096,14 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 			name:            "success with data source of snapshot type",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskImageType,
+			snapshotType:    parameters.DiskImageType,
 			snapshotOnCloud: true,
 		},
 		{
 			name:            "fail with data source of snapshot type that doesn't exist",
 			project:         "test-project",
 			volKey:          meta.ZonalKey("my-disk", zone),
-			snapshotType:    common.DiskImageType,
+			snapshotType:    parameters.DiskImageType,
 			snapshotOnCloud: false,
 			expErrCode:      codes.NotFound,
 		},
@@ -3113,7 +3115,7 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Setup new driver each time so no interference
 		gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{})
 
-		snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+		snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 		if err != nil {
 			t.Errorf("Got error extracting snapshot parameters: %v", err)
 		}
@@ -3121,12 +3123,12 @@ func TestCreateVolumeWithVolumeSourceFromSnapshot(t *testing.T) {
 		// Start Test
 		var snapshotID string
 		switch tc.snapshotType {
-		case common.DiskSnapshotType:
+		case parameters.DiskSnapshotType:
 			snapshotID = testSnapshotID
 			if tc.snapshotOnCloud {
 				gceDriver.cs.CloudProvider.CreateSnapshot(context.Background(), tc.project, tc.volKey, name, snapshotParams)
 			}
-		case common.DiskImageType:
+		case parameters.DiskImageType:
 			snapshotID = testImageID
 			if tc.snapshotOnCloud {
 				gceDriver.cs.CloudProvider.CreateImage(context.Background(), tc.project, tc.volKey, name, snapshotParams)
@@ -3192,7 +3194,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyReplicationType: replicationTypeNone,
 			},
 			cloneIsRegional:              false,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: false},
@@ -3203,7 +3205,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testRegionalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: "", srcIsRegional: true, cloneIsRegional: true},
@@ -3214,7 +3216,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyType: common.DiskTypeHdHA,
+				parameters.ParameterKeyType: parameters.DiskTypeHdHA,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: true},
@@ -3225,7 +3227,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			nilVolumeContentSource: true,
 			requestCapacityRange:   stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
+				parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
 			cloneIsRegional:              true,
 			expectedLocationRequirements: nil,
@@ -3236,7 +3238,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       fmt.Sprintf("projects/%s/disks/%s", project, testSourceVolumeName),
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyReplicationType: replicationTypeNone,
 			},
 			cloneIsRegional:              false,
 			expectedLocationRequirements: nil,
@@ -3282,40 +3284,40 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 	testRegionalVolumeSourceID := fmt.Sprintf("projects/%s/regions/%s/disks/%s", project, region, testSourceVolumeName)
 	testSecondZonalVolumeSourceID := fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "different-zone1", testSourceVolumeName)
 	zonalParams := map[string]string{
-		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
-		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+		parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeNone,
+		parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	regionalParams := map[string]string{
-		common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeRegionalPD,
-		common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+		parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeRegionalPD,
+		parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 	}
 	requisiteTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
 	requisiteAllRegionZonesTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: "country-region-fakethirdzone"},
+			Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakethirdzone"},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
 	prefTopology := []*csi.Topology{
 		{
-			Segments: map[string]string{common.TopologyKeyZone: zone},
+			Segments: map[string]string{constants.TopologyKeyZone: zone},
 		},
 		{
-			Segments: map[string]string{common.TopologyKeyZone: secondZone},
+			Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 		},
 	}
 
@@ -3354,7 +3356,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3375,17 +3377,17 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3409,7 +3411,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3421,10 +3423,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			enableStoragePools:   true,
 			reqParameters: map[string]string{
-				common.ParameterKeyType:                 "hyperdisk-balanced",
-				common.ParameterKeyReplicationType:      replicationTypeNone,
-				common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
-				common.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
+				parameters.ParameterKeyType:                 "hyperdisk-balanced",
+				parameters.ParameterKeyReplicationType:      replicationTypeNone,
+				parameters.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
+				parameters.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
 			},
 			sourceReqParameters: zonalParams,
 			sourceTopology: &csi.TopologyRequirement{
@@ -3458,7 +3460,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: zone, Region: ""},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 			},
 		},
@@ -3478,10 +3480,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3501,20 +3503,20 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3537,10 +3539,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3563,10 +3565,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3586,10 +3588,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey:     &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3609,20 +3611,20 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 				Requisite: requisiteTopology,
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
+						Segments: map[string]string{constants.TopologyKeyZone: secondZone},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
 					},
 				},
 			},
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3645,10 +3647,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3671,10 +3673,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			expCloneKey: &meta.Key{Name: testCloneVolumeName, Zone: "", Region: "country-region"},
 			expAccessibleTop: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "country-region-fakesecondzone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "country-region-fakesecondzone"},
 				},
 			},
 		},
@@ -3694,10 +3696,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			requestTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone2"},
 					},
 				},
 			},
@@ -3711,7 +3713,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: "different-type",
+				parameters.ParameterKeyType: "different-type",
 			},
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: requisiteTopology,
@@ -3731,8 +3733,8 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			reqParameters:        zonalParams,
 			sourceReqParameters: map[string]string{
-				common.ParameterKeyType: stdDiskType, common.ParameterKeyReplicationType: replicationTypeNone,
-				common.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
+				parameters.ParameterKeyType: stdDiskType, parameters.ParameterKeyReplicationType: replicationTypeNone,
+				parameters.ParameterKeyDiskEncryptionKmsKey: "different-encryption-key",
 			},
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: requisiteTopology,
@@ -3755,10 +3757,10 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceTopology: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "different-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "different-zone2"},
 					},
 				},
 			},
@@ -3918,7 +3920,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 
 func sortTopologies(in []*csi.Topology) {
 	sort.Slice(in, func(i, j int) bool {
-		return in[i].Segments[common.TopologyKeyZone] < in[j].Segments[common.TopologyKeyZone]
+		return in[i].Segments[constants.TopologyKeyZone] < in[j].Segments[constants.TopologyKeyZone]
 	})
 }
 
@@ -3937,13 +3939,13 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		AccessibilityRequirements: &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 				},
 			},
 		},
@@ -3958,7 +3960,7 @@ func TestCreateVolumeRandomRequisiteTopology(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateVolume did not expect error, but got %v", err)
 		}
-		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[common.TopologyKeyZone]
+		tZone, ok := resp.GetVolume().GetAccessibleTopology()[0].GetSegments()[constants.TopologyKeyZone]
 		if !ok {
 			t.Fatalf("Could not find topology zone in response")
 		}
@@ -4062,7 +4064,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 				createZonalCloudDiskWithZone(name, zone),
 			},
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, constants.MultiZoneValue, name),
 			},
 		},
 		{
@@ -4072,7 +4074,7 @@ func TestMultiZoneDeleteVolume(t *testing.T) {
 				createZonalCloudDiskWithZone(name, secondZone),
 			},
 			req: &csi.DeleteVolumeRequest{
-				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, common.MultiZoneValue, name),
+				VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, constants.MultiZoneValue, name),
 			},
 		},
 	}
@@ -4341,7 +4343,7 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: normal",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -4350,10 +4352,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: multiple topologies",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone", "test-zone2"}...),
@@ -4362,10 +4364,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 				{
 					Segments: map[string]string{"fake-key": "fake-value"},
@@ -4377,10 +4379,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "success: duplicate",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone"},
 				},
 			},
 			expZones: sets.NewString([]string{"test-zone"}...),
@@ -4394,10 +4396,10 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name: "fail: wrong key inside",
 			topology: []*csi.Topology{
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
 				},
 				{
-					Segments: map[string]string{common.TopologyKeyZone: "test-zone2"},
+					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
 				},
 			},
 			expErr: true,
@@ -4521,24 +4523,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4550,24 +4552,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4580,16 +4582,16 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{},
@@ -4603,30 +4605,30 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone5"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone5"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone6"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone6"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4638,27 +4640,27 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-d"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-east1-a"},
 					},
 				},
 			},
@@ -4671,27 +4673,27 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-d"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-d"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-east1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-east1-a"},
 					},
 				},
 			},
@@ -4704,24 +4706,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 			},
@@ -4734,24 +4736,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-f"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-f"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 			},
@@ -4764,18 +4766,18 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4789,15 +4791,15 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-west1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-west1-b"},
 					},
 				},
 			},
@@ -4815,7 +4817,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					// This only has one, so we can test that a second is pulled from
 					// fallbackRequisiteZones.
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -4829,12 +4831,12 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -4847,24 +4849,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 				},
 			},
@@ -4876,12 +4878,12 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4894,24 +4896,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4924,24 +4926,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4954,24 +4956,24 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 				Preferred: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 				},
 			},
@@ -4984,13 +4986,13 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-c"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 					},
 				},
 			},
@@ -5002,13 +5004,13 @@ func TestPickZonesFromTopology(t *testing.T) {
 			top: &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone3"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone3"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone1"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone1"},
 					},
 					{
-						Segments: map[string]string{common.TopologyKeyZone: "topology-zone2"},
+						Segments: map[string]string{constants.TopologyKeyZone: "topology-zone2"},
 					},
 				},
 			},
@@ -5680,9 +5682,9 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyEnableConfidentialCompute: "true",
-					common.ParameterKeyDiskEncryptionKmsKey:      testDiskEncryptionKmsKey,
-					common.ParameterKeyType:                      "hyperdisk-balanced",
+					parameters.ParameterKeyEnableConfidentialCompute: "true",
+					parameters.ParameterKeyDiskEncryptionKmsKey:      testDiskEncryptionKmsKey,
+					parameters.ParameterKeyType:                      "hyperdisk-balanced",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -5702,8 +5704,8 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				CapacityRange:      stdCapRange,
 				VolumeCapabilities: stdVolCaps,
 				Parameters: map[string]string{
-					common.ParameterKeyEnableConfidentialCompute: "false",
-					common.ParameterKeyType:                      "hyperdisk-balanced",
+					parameters.ParameterKeyEnableConfidentialCompute: "false",
+					parameters.ParameterKeyType:                      "hyperdisk-balanced",
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Snapshot{
@@ -5725,11 +5727,11 @@ func TestCreateConfidentialVolume(t *testing.T) {
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
 
 			if tc.req.VolumeContentSource.GetType() != nil {
-				snapshotParams, err := common.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
+				snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(nil, gceDriver.name, nil)
 				if err != nil {
 					t.Errorf("Got error extracting snapshot parameters: %v", err)
 				}
-				if snapshotParams.SnapshotType == common.DiskSnapshotType {
+				if snapshotParams.SnapshotType == parameters.DiskSnapshotType {
 					fcp.CreateSnapshot(context.Background(), project, tc.volKey, name, snapshotParams)
 				} else {
 					t.Fatalf("No volume source mentioned in snapshot parameters %v", snapshotParams)
@@ -5752,7 +5754,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Get Disk failed for created disk with error: %v", err)
 			}
-			val, ok := tc.req.Parameters[common.ParameterKeyEnableConfidentialCompute]
+			val, ok := tc.req.Parameters[parameters.ParameterKeyEnableConfidentialCompute]
 			if ok && val != strconv.FormatBool(createdDisk.GetEnableConfidentialCompute()) {
 				t.Fatalf("Confidential disk parameter does not match with created disk: %v Got error %v", createdDisk.GetEnableConfidentialCompute(), err)
 			}

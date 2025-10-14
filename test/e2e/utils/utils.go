@@ -31,6 +31,7 @@ import (
 	boskosclient "sigs.k8s.io/boskos/client"
 	"sigs.k8s.io/boskos/common"
 	utilcommon "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
@@ -74,7 +75,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--disk-topology=true",
 	}
 
-	extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", utilcommon.TestNode))
+	extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", constants.TestNode))
 	if instance.GetLocalSSD() > 0 {
 		extra_flags = append(extra_flags, "--enable-data-cache")
 	}

@@ -32,14 +32,15 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/resizefs"
@@ -80,6 +81,8 @@ type GCENodeServer struct {
 	csi.UnimplementedNodeServer
 
 	metricsManager *metrics.MetricsManager
+	// A cache of the device paths for the volumes that are attached to the node.
+	DeviceCache *linkcache.DeviceCache
 }
 
 type NodeServerArgs struct {
@@ -97,6 +100,7 @@ type NodeServerArgs struct {
 	SysfsPath string
 
 	MetricsManager *metrics.MetricsManager
+	DeviceCache    *linkcache.DeviceCache
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -198,7 +202,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 	}
 
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
@@ -240,7 +244,7 @@ func (ns *GCENodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePub
 		klog.V(4).Infof("NodePublishVolume with block volume mode")
 
 		partition := ""
-		if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
+		if part, ok := req.GetVolumeContext()[constants.VolumeAttributePartition]; ok {
 			partition = part
 		}
 
@@ -322,7 +326,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 	}
 
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
@@ -350,7 +354,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
@@ -368,7 +372,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	// Part 1: Get device path of attached device
 	partition := ""
 
-	if part, ok := req.GetVolumeContext()[common.VolumeAttributePartition]; ok {
+	if part, ok := req.GetVolumeContext()[constants.VolumeAttributePartition]; ok {
 		partition = part
 	}
 	devicePath, err := getDevicePath(ns, volumeID, partition)
@@ -378,7 +382,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
-	if ns.EnableDataCache && (req.GetPublishContext()[common.ContextDataCacheSize] != "" || req.GetPublishContext()[common.ContextDataCacheMode] != "") {
+	if ns.EnableDataCache && (req.GetPublishContext()[constants.ContextDataCacheSize] != "" || req.GetPublishContext()[constants.ContextDataCacheMode] != "") {
 		if len(nodeId) == 0 {
 			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
 		}
@@ -386,7 +390,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		if err != nil {
 			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
 		}
-		configError := ValidateDataCacheConfig(req.GetPublishContext()[common.ContextDataCacheMode], req.GetPublishContext()[common.ContextDataCacheSize], ctx)
+		configError := ValidateDataCacheConfig(req.GetPublishContext()[constants.ContextDataCacheMode], req.GetPublishContext()[constants.ContextDataCacheSize], ctx)
 		if configError != nil {
 			if ns.DataCacheEnabledNodePool {
 				return nil, status.Error(codes.DataLoss, fmt.Sprintf("Error validate configuration for Data Cache: %v", configError.Error()))
@@ -447,7 +451,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	// If a disk size is provided in the publish context, ensure it matches the actual device size.
-	if expectedSize := req.GetPublishContext()[common.ContextDiskSizeGB]; expectedSize != "" {
+	if expectedSize := req.GetPublishContext()[constants.ContextDiskSizeGB]; expectedSize != "" {
 		actualSize, err := getBlockSizeBytes(devicePath, ns.Mounter)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get block size for '%s': %v", devicePath, err.Error()))
@@ -545,6 +549,13 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 	}
 
+	if ns.DeviceCache != nil {
+		err = ns.DeviceCache.AddVolume(volumeID)
+		if err != nil {
+			klog.Warningf("Error adding volume %s to cache: %v", volumeID, err)
+		}
+	}
+
 	klog.V(4).Infof("NodeStageVolume succeeded on %v to %s", volumeID, stagingTargetPath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -631,7 +642,7 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 	}
 
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
 
@@ -663,6 +674,11 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 			return nil, status.Errorf(codes.DataLoss, "Failed to cleanup cache for volume %s: %v", volumeID, err)
 		}
 	}
+
+	if ns.DeviceCache != nil {
+		ns.DeviceCache.RemoveVolume(volumeID)
+	}
+
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -698,7 +714,7 @@ func (ns *GCENodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeG
 
 func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	top := &csi.Topology{
-		Segments: map[string]string{common.TopologyKeyZone: ns.MetadataService.GetZone()},
+		Segments: map[string]string{constants.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
@@ -940,19 +956,11 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 }
 
 func GetAttachLimitsOverrideFromNodeLabel(ctx context.Context, nodeName string) (int64, error) {
-	cfg, err := rest.InClusterConfig()
+	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return 0, err
-	}
-	node, err := getNodeWithRetry(ctx, kubeClient, nodeName)
-	if err != nil {
-		return 0, err
-	}
-	if val, found := node.GetLabels()[fmt.Sprintf(common.NodeRestrictionLabelPrefix, common.AttachLimitOverrideLabel)]; found {
+	if val, found := node.GetLabels()[fmt.Sprintf(constants.NodeRestrictionLabelPrefix, constants.AttachLimitOverrideLabel)]; found {
 		attachLimitOverrideForNode, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
 			return 0, fmt.Errorf("error getting attach limit override from node label: %v", err)

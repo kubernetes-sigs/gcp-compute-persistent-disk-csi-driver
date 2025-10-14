@@ -25,7 +25,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 var (
@@ -301,7 +302,7 @@ func TestValidateStoragePools(t *testing.T) {
 	testCases := []struct {
 		name       string
 		req        *csi.CreateVolumeRequest
-		params     common.DiskParameters
+		params     parameters.DiskParameters
 		project    string
 		expErr     error
 		enableHdHA bool
@@ -311,7 +312,7 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
 			},
 			expErr: nil,
@@ -319,7 +320,7 @@ func TestValidateStoragePools(t *testing.T) {
 		{
 			name: "success with nil CreateVolumeReq",
 			req:  nil,
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
 			},
 			expErr: nil,
@@ -329,9 +330,9 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -355,9 +356,9 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "pd-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -380,10 +381,10 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType:        "hyperdisk-balanced",
 				ReplicationType: "regional-pd",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -406,9 +407,9 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -432,9 +433,9 @@ func TestValidateStoragePools(t *testing.T) {
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -464,9 +465,9 @@ func TestValidateStoragePools(t *testing.T) {
 					},
 				},
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -491,22 +492,22 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -531,25 +532,25 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -574,25 +575,25 @@ func TestValidateStoragePools(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
 			},
-			params: common.DiskParameters{
+			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
-				StoragePools: []common.StoragePool{
+				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",
 						Zone:         "us-central1-a",
@@ -633,7 +634,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 	testCases := []struct {
 		name         string
 		req          *csi.CreateVolumeRequest
-		storagePools []common.StoragePool
+		storagePools []parameters.StoragePool
 		expErr       error
 	}{
 		{
@@ -643,17 +644,17 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",
@@ -677,12 +678,12 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					Requisite: []*csi.Topology{{}},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",
@@ -699,17 +700,17 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-b",
@@ -726,23 +727,23 @@ func TestValidateStoragePoolZones(t *testing.T) {
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Requisite: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 					Preferred: []*csi.Topology{
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-a"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
 						},
 						{
-							Segments: map[string]string{common.TopologyKeyZone: "us-central1-b"},
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
 						},
 					},
 				},
 			},
-			storagePools: []common.StoragePool{
+			storagePools: []parameters.StoragePool{
 				{
 					Project:      "test-project",
 					Zone:         "us-central1-a",
@@ -821,7 +822,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadOnlyManyAccessMode,
+			want: constants.GCEReadOnlyManyAccessMode,
 		},
 		{
 			name: "success getting RWO",
@@ -832,7 +833,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadWriteOnceAccessMode,
+			want: constants.GCEReadWriteOnceAccessMode,
 		},
 		{
 			name: "success getting RWX",
@@ -843,7 +844,7 @@ func TestGetHyperdiskAccessModeFromCapabilities(t *testing.T) {
 					},
 				},
 			},
-			want: common.GCEReadWriteManyAccessMode,
+			want: constants.GCEReadWriteManyAccessMode,
 		},
 	} {
 		t.Logf("Running test: %v", tc.name)
@@ -884,7 +885,7 @@ func TestIsDataCacheEnabledNodePool(t *testing.T) {
 		},
 		{
 			name:                 "test node",
-			nodeName:             common.TestNode,
+			nodeName:             constants.TestNode,
 			dataCacheFlag:        true,
 			wantDataCacheEnabled: true,
 		},

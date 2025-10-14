@@ -29,11 +29,13 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/convert"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
 )
@@ -96,6 +98,8 @@ var (
 	extraTagsStr = flag.String("extra-tags", "", "Extra tags to attach to each Compute Disk, Image, Snapshot created. It is a comma separated list of parent id, key and value like '<parent_id1>/<tag_key1>/<tag_value1>,...,<parent_idN>/<tag_keyN>/<tag_valueN>'. parent_id is the Organization or the Project ID or Project name where the tag key and the tag value resources exist. A maximum of 50 tags bindings is allowed for a resource. See https://cloud.google.com/resource-manager/docs/tags/tags-overview, https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing for details")
 
 	diskTopology = flag.Bool("disk-topology", false, "If set to true, the driver will add a disk-type.gke.io/[disk-type] topology label when the StorageClass has the use-allowed-disk-topology parameter set to true. That topology label is included in the Topologies returned in CreateVolumeResponse. This flag is disabled by default.")
+
+	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
 
 	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
 
@@ -170,6 +174,7 @@ func handle() {
 				klog.Errorf("Failed to emit process start time: %v", err.Error())
 			}
 			mm.RegisterMountMetric()
+			mm.RegisterUnexpectedDevicePathChangesMetric()
 		}
 		metricsManager = &mm
 	}
@@ -177,7 +182,7 @@ func handle() {
 	if len(*extraVolumeLabelsStr) > 0 && !*runControllerService {
 		klog.Fatalf("Extra volume labels provided but not running controller")
 	}
-	extraVolumeLabels, err := common.ConvertLabelsStringToMap(*extraVolumeLabelsStr)
+	extraVolumeLabels, err := convert.ConvertLabelsStringToMap(*extraVolumeLabelsStr)
 	if err != nil {
 		klog.Fatalf("Bad extra volume labels: %v", err.Error())
 	}
@@ -185,7 +190,7 @@ func handle() {
 	if len(*extraTagsStr) > 0 && !*runControllerService {
 		klog.Fatalf("Extra tags provided but not running controller")
 	}
-	extraTags, err := common.ConvertTagsStringToMap(*extraTagsStr)
+	extraTags, err := convert.ConvertTagsStringToMap(*extraTagsStr)
 	if err != nil {
 		klog.Fatalf("Bad extra tags: %v", err.Error())
 	}
@@ -278,6 +283,13 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils, metricsManager)
+		if err != nil {
+			klog.Warningf("Failed to create device cache: %v", err.Error())
+		} else {
+			go deviceCache.Run(ctx)
+		}
+
 		// TODO(2042): Move more of the constructor args into this struct
 		nsArgs := &driver.NodeServerArgs{
 			EnableDeviceInUseCheck:   *enableDeviceInUseCheck,
@@ -286,6 +298,7 @@ func handle() {
 			DataCacheEnabledNodePool: isDataCacheEnabledNodePool,
 			SysfsPath:                "/sys",
 			MetricsManager:           metricsManager,
+			DeviceCache:              deviceCache,
 		}
 		nodeServer = driver.NewNodeServer(gceDriver, mounter, deviceUtils, meta, statter, nsArgs)
 
@@ -300,9 +313,10 @@ func handle() {
 				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 					klog.Errorf("Data Cache setup failed: %v", err)
 				}
-				go driver.StartWatcher(*nodeName)
+				go driver.StartWatcher(ctx, *nodeName)
 			}
 		}
+
 	}
 
 	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
@@ -425,8 +439,8 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 		return nil
 	}
 
-	lssdCount := common.LocalSSDCountForDataCache
-	if nodeName != common.TestNode {
+	lssdCount := constants.LocalSSDCountForDataCache
+	if nodeName != constants.TestNode {
 		var err error
 		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
 		if err != nil {

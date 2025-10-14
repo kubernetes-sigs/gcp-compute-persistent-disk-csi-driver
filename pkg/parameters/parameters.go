@@ -14,14 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package parameters
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/convert"
 )
 
 const (
@@ -50,13 +53,7 @@ const (
 	ParameterKeyStorageLocations = "storage-locations"
 	ParameterKeySnapshotType     = "snapshot-type"
 	ParameterKeyImageFamily      = "image-family"
-	DiskSnapshotType             = "snapshots"
-	DiskImageType                = "images"
 	replicationTypeNone          = "none"
-
-	// Parameters for AvailabilityClass
-	ParameterNoAvailabilityClass       = "none"
-	ParameterRegionalHardFailoverClass = "regional-hard-failover"
 
 	// Keys for PV and PVC parameters as reported by external-provisioner
 	ParameterKeyPVCName      = "csi.storage.k8s.io/pvc/name"
@@ -74,6 +71,10 @@ const (
 	ParameterKeyVolumeSnapshotNamespace   = "csi.storage.k8s.io/volumesnapshot/namespace"
 	ParameterKeyVolumeSnapshotContentName = "csi.storage.k8s.io/volumesnapshotcontent/name"
 
+	// Parameters for AvailabilityClass
+	ParameterNoAvailabilityClass       = "none"
+	ParameterRegionalHardFailoverClass = "regional-hard-failover"
+
 	// Keys for tags to put in the provisioned snapshot description
 	tagKeyCreatedForSnapshotName        = "kubernetes.io/created-for/volumesnapshot/name"
 	tagKeyCreatedForSnapshotNamespace   = "kubernetes.io/created-for/volumesnapshot/namespace"
@@ -84,7 +85,18 @@ const (
 	DiskTypeHdT  = "hyperdisk-throughput"
 	DiskTypeHdE  = "hyperdisk-extreme"
 	DiskTypeHdML = "hyperdisk-ml"
+
+	// Parameters for VolumeSnapshotClass
+	DiskSnapshotType = "snapshots"
+	DiskImageType    = "images"
 )
+
+type StoragePool struct {
+	Project      string
+	Zone         string
+	Name         string
+	ResourceName string
+}
 
 type DataCacheParameters struct {
 	// Values: {string} in int64 form
@@ -154,13 +166,6 @@ type SnapshotParameters struct {
 	ResourceTags     map[string]string
 }
 
-type StoragePool struct {
-	Project      string
-	Zone         string
-	Name         string
-	ResourceName string
-}
-
 type ParameterProcessor struct {
 	DriverName         string
 	EnableStoragePools bool
@@ -192,7 +197,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 	// Set data cache mode default
 	d := DataCacheParameters{}
 	if enableDataCache && parameters[ParameterKeyDataCacheSize] != "" {
-		d.DataCacheMode = DataCacheModeWriteThrough
+		d.DataCacheMode = constants.DataCacheModeWriteThrough
 	}
 
 	for k, v := range extraVolumeLabels {
@@ -230,7 +235,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		case ParameterKeyPVName:
 			p.Tags[tagKeyCreatedForVolumeName] = v
 		case ParameterKeyLabels:
-			paramLabels, err := ConvertLabelsStringToMap(v)
+			paramLabels, err := convert.ConvertLabelsStringToMap(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
 			}
@@ -239,13 +244,13 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				p.Labels[labelKey] = labelValue
 			}
 		case ParameterKeyProvisionedIOPSOnCreate:
-			paramProvisionedIOPSOnCreate, err := ConvertStringToInt64(v)
+			paramProvisionedIOPSOnCreate, err := convert.ConvertStringToInt64(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid provisionedIOPSOnCreate parameter: %w", err)
 			}
 			p.ProvisionedIOPSOnCreate = paramProvisionedIOPSOnCreate
 		case ParameterKeyProvisionedThroughputOnCreate:
-			paramProvisionedThroughputOnCreate, err := ConvertMiStringToInt64(v)
+			paramProvisionedThroughputOnCreate, err := convert.ConvertMiStringToInt64(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid provisionedThroughputOnCreate parameter: %w", err)
 			}
@@ -254,7 +259,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 			p.ProvisionedThroughputOnCreate = paramProvisionedThroughputOnCreate
 		case ParameterAvailabilityClass:
-			paramAvailabilityClass, err := ConvertStringToAvailabilityClass(v)
+			paramAvailabilityClass, err := convertStringToAvailabilityClass(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid availability class parameter: %w", err)
 			}
@@ -262,7 +267,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				p.ForceAttach = true
 			}
 		case ParameterKeyEnableConfidentialCompute:
-			paramEnableConfidentialCompute, err := ConvertStringToBool(v)
+			paramEnableConfidentialCompute, err := convert.ConvertStringToBool(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid value for enable-confidential-storage parameter: %w", err)
 			}
@@ -289,7 +294,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				return p, d, fmt.Errorf("data caching enabled: %v; parameters contains invalid option %q", enableDataCache, ParameterKeyDataCacheSize)
 			}
 
-			paramDataCacheSize, err := ConvertGiStringToInt64(v)
+			paramDataCacheSize, err := convert.ConvertGiStringToInt64(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid dataCacheSize parameter: %w", err)
 			}
@@ -313,14 +318,14 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			if !pp.EnableMultiZone {
 				return p, d, fmt.Errorf("parameters contains invalid option %q", ParameterKeyEnableMultiZoneProvisioning)
 			}
-			paramEnableMultiZoneProvisioning, err := ConvertStringToBool(v)
+			paramEnableMultiZoneProvisioning, err := convert.ConvertStringToBool(v)
 			if err != nil {
 				return p, d, fmt.Errorf("parameters contain invalid value for %s parameter: %w", ParameterKeyEnableMultiZoneProvisioning, err)
 			}
 
 			p.MultiZoneProvisioning = paramEnableMultiZoneProvisioning
 			if paramEnableMultiZoneProvisioning {
-				p.Labels[MultiZoneLabel] = "true"
+				p.Labels[constants.MultiZoneLabel] = "true"
 			}
 		case ParameterAccessMode:
 			if v != "" {
@@ -332,7 +337,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				continue
 			}
 
-			paramUseAllowedDiskTopology, err := ConvertStringToBool(v)
+			paramUseAllowedDiskTopology, err := convert.ConvertStringToBool(v)
 			if err != nil {
 				klog.Warningf("failed to convert %s parameter with value %q to bool: %v", ParameterKeyUseAllowedDiskTopology, v, err)
 				continue
@@ -385,7 +390,7 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 		case ParameterKeyVolumeSnapshotContentName:
 			p.Tags[tagKeyCreatedForSnapshotContentName] = v
 		case ParameterKeyLabels:
-			paramLabels, err := ConvertLabelsStringToMap(v)
+			paramLabels, err := convert.ConvertLabelsStringToMap(v)
 			if err != nil {
 				return p, fmt.Errorf("parameters contain invalid labels parameter: %w", err)
 			}
@@ -408,7 +413,7 @@ func ExtractAndDefaultSnapshotParameters(parameters map[string]string, driverNam
 }
 
 func extractResourceTagsParameter(tagsString string, resourceTags map[string]string) error {
-	paramResourceTags, err := ConvertTagsStringToMap(tagsString)
+	paramResourceTags, err := convert.ConvertTagsStringToMap(tagsString)
 	if err != nil {
 		return fmt.Errorf("parameters contain invalid %s parameter: %w", ParameterKeyResourceTags, err)
 	}
@@ -426,13 +431,13 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 	for key, value := range parameters {
 		switch strings.ToLower(key) {
 		case "iops":
-			iops, err := ConvertStringToInt64(value)
+			iops, err := convert.ConvertStringToInt64(value)
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
 			}
 			modifyVolumeParams.IOPS = &iops
 		case "throughput":
-			throughput, err := ConvertMiStringToInt64(value)
+			throughput, err := convert.ConvertMiStringToInt64(value)
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
 			}
@@ -442,4 +447,40 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 		}
 	}
 	return modifyVolumeParams, nil
+}
+
+// convertStringToAvailabilityClass converts a string to an availability class string.
+func convertStringToAvailabilityClass(str string) (string, error) {
+	switch strings.ToLower(str) {
+	case ParameterNoAvailabilityClass:
+		return ParameterNoAvailabilityClass, nil
+	case ParameterRegionalHardFailoverClass:
+		return ParameterRegionalHardFailoverClass, nil
+	}
+	return "", fmt.Errorf("Unexpected boolean string %s", str)
+}
+
+// StoragePoolZones returns the unique zones of the given storage pool resource names.
+// Returns an error if multiple storage pools in 1 zone are found.
+func StoragePoolZones(storagePools []StoragePool) ([]string, error) {
+	zonesSet := sets.String{}
+	var zones []string
+	for _, sp := range storagePools {
+		if zonesSet.Has(sp.Zone) {
+			return nil, fmt.Errorf("found multiple storage pools in zone %s. Only one storage pool per zone is allowed", sp.Zone)
+		}
+		zonesSet.Insert(sp.Zone)
+		zones = append(zones, sp.Zone)
+	}
+	return zones, nil
+}
+
+// StoragePoolInZone returns the storage pool in the given zone.
+func StoragePoolInZone(storagePools []StoragePool, zone string) *StoragePool {
+	for _, pool := range storagePools {
+		if zone == pool.Zone {
+			return &pool
+		}
+	}
+	return nil
 }

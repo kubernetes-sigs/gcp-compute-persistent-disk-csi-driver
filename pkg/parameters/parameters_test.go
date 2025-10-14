@@ -14,13 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package parameters
 
 import (
 	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
 func TestExtractAndDefaultParameters(t *testing.T) {
@@ -380,14 +381,14 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ResourceTags: map[string]string{},
 			},
 			expectDataCacheParams: DataCacheParameters{
-				DataCacheMode: DataCacheModeWriteThrough,
+				DataCacheMode: constants.DataCacheModeWriteThrough,
 				DataCacheSize: "1234",
 			},
 		},
 		{
 			name:            "data cache parameters",
 			enableDataCache: true,
-			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: DataCacheModeWriteBack},
+			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: constants.DataCacheModeWriteBack},
 			labels:          map[string]string{},
 			expectParams: DiskParameters{
 				DiskType:             "pd-balanced",
@@ -401,27 +402,27 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				ResourceTags: map[string]string{},
 			},
 			expectDataCacheParams: DataCacheParameters{
-				DataCacheMode: DataCacheModeWriteBack,
+				DataCacheMode: constants.DataCacheModeWriteBack,
 				DataCacheSize: "1234",
 			},
 		},
 		{
 			name:            "data cache parameters - enableDataCache is false",
 			enableDataCache: false,
-			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: DataCacheModeWriteBack},
+			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: constants.DataCacheModeWriteBack},
 			labels:          map[string]string{},
 			expectErr:       true,
 		},
 		{
 			name:            "multi-zone-enable parameters, multi-zone label is set, multi-zone feature enabled",
 			parameters:      map[string]string{ParameterKeyType: "hyperdisk-ml", ParameterKeyEnableMultiZoneProvisioning: "true"},
-			labels:          map[string]string{MultiZoneLabel: "true"},
+			labels:          map[string]string{constants.MultiZoneLabel: "true"},
 			enableMultiZone: true,
 			expectParams: DiskParameters{
 				DiskType:              "hyperdisk-ml",
 				ReplicationType:       "none",
 				Tags:                  map[string]string{},
-				Labels:                map[string]string{MultiZoneLabel: "true"},
+				Labels:                map[string]string{constants.MultiZoneLabel: "true"},
 				ResourceTags:          map[string]string{},
 				MultiZoneProvisioning: true,
 			},

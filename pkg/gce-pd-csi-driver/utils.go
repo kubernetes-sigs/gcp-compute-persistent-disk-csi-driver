@@ -27,6 +27,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -37,9 +39,9 @@ var (
 	ProbeCSIFullMethod = "/csi.v1.Identity/Probe"
 
 	csiAccessModeToHyperdiskMode = map[csi.VolumeCapability_AccessMode_Mode]string{
-		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:      common.GCEReadWriteOnceAccessMode,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  common.GCEReadOnlyManyAccessMode,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: common.GCEReadWriteManyAccessMode,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:      constants.GCEReadWriteOnceAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:  constants.GCEReadOnlyManyAccessMode,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER: constants.GCEReadWriteManyAccessMode,
 	}
 
 	supportedMultiAttachAccessModes = map[csi.VolumeCapability_AccessMode_Mode]bool{
@@ -155,7 +157,7 @@ func validateAccessMode(am *csi.VolumeCapability_AccessMode) error {
 	return nil
 }
 
-func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParameters, project string) error {
+func validateStoragePools(req *csi.CreateVolumeRequest, params parameters.DiskParameters, project string) error {
 	storagePoolsEnabled := params.StoragePools != nil
 	if !storagePoolsEnabled || req == nil {
 		return nil
@@ -191,8 +193,8 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParame
 	return nil
 }
 
-func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []common.StoragePool) error {
-	storagePoolZones, err := common.StoragePoolZones(storagePools)
+func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []parameters.StoragePool) error {
+	storagePoolZones, err := parameters.StoragePoolZones(storagePools)
 	if err != nil {
 		return err
 	}
@@ -206,7 +208,7 @@ func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []commo
 	return nil
 }
 
-func validateStoragePoolProjects(project string, storagePools []common.StoragePool) error {
+func validateStoragePoolProjects(project string, storagePools []parameters.StoragePool) error {
 	spProjects := sets.String{}
 	for _, sp := range storagePools {
 		if sp.Project != project {
@@ -352,7 +354,7 @@ func IsDataCacheEnabledNodePool(ctx context.Context, nodeName string, enableData
 	if !enableDataCacheFlag {
 		return false, nil
 	}
-	if nodeName == common.TestNode { // disregard logic below when E2E testing.
+	if nodeName == constants.TestNode { // disregard logic below when E2E testing.
 		return true, nil
 	}
 	if len(nodeName) > 0 {
