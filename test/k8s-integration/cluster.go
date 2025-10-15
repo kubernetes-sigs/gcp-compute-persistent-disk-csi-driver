@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
@@ -205,6 +206,13 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
 		"--quiet", "--machine-type", "n1-standard-2", "--no-enable-autoupgrade"}
+
+	// To avoid unexpected GKE maintenance, create a 4-hour maintenance exclusion window.
+	t := time.Now().UTC()
+	cmdParams = append(cmdParams, "--maintenance-exclusion",
+		"start="+t.Format("2006-01-02T15:04:05Z")+
+			",end="+t.Add(4*time.Hour).Format("2006-01-02T15:04:05Z")+
+			",name=e2e-test")
 
 	if imageType == "win2019" || imageType == "win2022" {
 		cmdParams = append(cmdParams, "--image-type", "WINDOWS_LTSC_CONTAINERD")
