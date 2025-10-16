@@ -207,13 +207,6 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
 		"--quiet", "--machine-type", "n1-standard-2", "--no-enable-autoupgrade"}
 
-	// To avoid unexpected GKE maintenance, create a 4-hour maintenance exclusion window.
-	t := time.Now().UTC()
-	cmdParams = append(cmdParams, "--maintenance-exclusion",
-		"start="+t.Format("2006-01-02T15:04:05Z")+
-			",end="+t.Add(4*time.Hour).Format("2006-01-02T15:04:05Z")+
-			",name=e2e-test")
-
 	if imageType == "win2019" || imageType == "win2022" {
 		cmdParams = append(cmdParams, "--image-type", "WINDOWS_LTSC_CONTAINERD")
 		if imageType == "win2019" {
@@ -260,6 +253,17 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	err = runCommand("Starting E2E Cluster on GKE", cmd)
 	if err != nil {
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err.Error())
+	}
+
+	// To avoid unexpected GKE maintenance, create a 4-hour maintenance exclusion window.
+	startExclusionTime := time.Now().UTC()
+	cmd = exec.Command("gcloud", "container", "clusters", "update", *gkeTestClusterName, locationArg, locationVal, "--quiet",
+		"--add-maintenance-exclusion-name", "no-upgrades-during-test",
+		"--add-maintenance-exclusion-start", startExclusionTime.Format(time.RFC3339),
+		"--add-maintenance-exclusion-end", startExclusionTime.Add(2*time.Hour).Format(time.RFC3339),
+		"--add-maintenance-exclusion-scope", "no_upgrades")
+	if err := runCommand("Updating Cluster with maintenance window", cmd); err != nil {
+		return fmt.Errorf("failed to update cluster with maintenance window: %w", err)
 	}
 
 	// Because gcloud cannot disable addons on cluster create, the deployment has
