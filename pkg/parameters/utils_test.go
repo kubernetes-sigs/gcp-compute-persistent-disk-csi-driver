@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+const (
+	validKmsKeyRegional = "projects/my-project/locations/us-central1/keyRings/TestKeyRing/cryptoKeys/test-key"
+	validKmsKeyGlobal   = "projects/my-project/locations/global/keyRings/TestKeyRing/cryptoKeys/test-key"
+	invalidKmsKey       = "projects/my-project/locations/keyRings/TestKeyRing/cryptoKeys/test-key"
+)
+
 func TestSnapshotStorageLocations(t *testing.T) {
 	tests := []struct {
 		desc                        string
@@ -161,15 +167,15 @@ func TestIsValidDiskEncryptionKmsKey(t *testing.T) {
 		expectedIsValid      bool
 	}{
 		{
-			diskEncryptionKmsKey: "projects/my-project/locations/us-central1/keyRings/TestKeyRing/cryptoKeys/test-key",
+			diskEncryptionKmsKey: validKmsKeyRegional,
 			expectedIsValid:      true,
 		},
 		{
-			diskEncryptionKmsKey: "projects/my-project/locations/global/keyRings/TestKeyRing/cryptoKeys/test-key",
+			diskEncryptionKmsKey: validKmsKeyGlobal,
 			expectedIsValid:      true,
 		},
 		{
-			diskEncryptionKmsKey: "projects/my-project/locations/keyRings/TestKeyRing/cryptoKeys/test-key",
+			diskEncryptionKmsKey: invalidKmsKey,
 			expectedIsValid:      false,
 		},
 	}

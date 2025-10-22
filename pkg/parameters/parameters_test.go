@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
 
@@ -282,6 +283,24 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
+			name:       "confidential compute enabled with valid KMS key",
+			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: validKmsKeyRegional},
+			expectParams: DiskParameters{
+				DiskType:                  "pd-standard",
+				ReplicationType:           "none",
+				DiskEncryptionKMSKey:      validKmsKeyRegional,
+				EnableConfidentialCompute: true,
+				Tags:                      map[string]string{},
+				Labels:                    map[string]string{},
+				ResourceTags:              map[string]string{},
+			},
+		},
+		{
+			name:       "confidential compute enabled with invalid KMS key",
+			parameters: map[string]string{ParameterKeyEnableConfidentialCompute: "true", ParameterKeyDiskEncryptionKmsKey: invalidKmsKey},
+			expectErr:  true,
+		},
+		{
 			name:               "storage pool parameters",
 			enableStoragePools: true,
 			parameters:         map[string]string{ParameterKeyType: "hyperdisk-balanced", ParameterKeyStoragePools: "projects/my-project/zones/us-central1-a/storagePools/storagePool-1,projects/my-project/zones/us-central1-b/storagePools/storagePool-2"},
@@ -533,7 +552,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tc.expectParams, p); diff != "" {
+			if diff := cmp.Diff(tc.expectParams, p, cmpopts.IgnoreUnexported(DiskParameters{})); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 
