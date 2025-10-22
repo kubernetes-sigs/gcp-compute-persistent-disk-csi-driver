@@ -1451,6 +1451,11 @@ func TestCodeForError(t *testing.T) {
 			inputErr: &TemporaryError{code: codes.Aborted, err: context.Canceled},
 			expCode:  codes.Aborted,
 		},
+		{
+			name:     "CMEK precondition failed error, under layers of wrapping",
+			inputErr: fmt.Errorf("unknown Insert disk error: %w", &googleapi.Error{Code: http.StatusPreconditionFailed, Message: "CMEK policy violated"}),
+			expCode:  codes.FailedPrecondition,
+		},
 	}
 
 	for _, tc := range testCases {
