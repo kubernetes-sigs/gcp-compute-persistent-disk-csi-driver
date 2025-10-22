@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,7 +40,6 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
@@ -99,7 +99,7 @@ type GCECompute interface {
 	GetDefaultZone() string
 	// Disk Methods
 	GetDisk(ctx context.Context, project string, volumeKey *meta.Key) (*CloudDisk, error)
-	RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error)
+	RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key, fallbackZone string) (string, *meta.Key, error)
 	InsertDisk(ctx context.Context, project string, volKey *meta.Key, params common.DiskParameters, capBytes int64, capacityRange *csi.CapacityRange, replicaZones []string, snapshotID string, volumeContentSourceVolumeID string, multiWriter bool, accessMode string) error
 	DeleteDisk(ctx context.Context, project string, volumeKey *meta.Key) error
 	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params common.ModifyVolumeParameters) error
@@ -290,26 +290,30 @@ func (cloud *CloudProvider) listInstancesForProject(service *computev1.Service, 
 
 // RepairUnderspecifiedVolumeKey will query the cloud provider and check each zone for the disk specified
 // by the volume key and return a volume key with a correct zone
-func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
+func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key, fallbackZone string) (string, *meta.Key, error) {
+	return repairUnderspecifiedVolumeKeyWithProvider(ctx, cloud, project, volumeKey, fallbackZone)
+}
+
+func repairUnderspecifiedVolumeKeyWithProvider(ctx context.Context, cloud GCECompute, project string, volumeKey *meta.Key, fallbackZone string) (string, *meta.Key, error) {
 	klog.V(5).Infof("Repairing potentially underspecified volume key %v", volumeKey)
 	if project == common.UnspecifiedValue {
-		project = cloud.project
+		project = cloud.GetDefaultProject()
 	}
-	region, err := common.GetRegionFromZones([]string{cloud.zone})
+	region, err := common.GetRegionFromZones([]string{cloud.GetDefaultZone()})
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to get region from zones: %w", err)
 	}
 	switch volumeKey.Type() {
 	case meta.Zonal:
-		foundZone := ""
 		if volumeKey.Zone == common.UnspecifiedValue {
 			// list all zones, try to get disk in each zone
 			zones, err := cloud.ListZones(ctx, region)
 			if err != nil {
 				return "", nil, err
 			}
+			diskZones := []string{}
 			for _, zone := range zones {
-				_, err := cloud.getZonalDiskOrError(ctx, project, zone, volumeKey.Name)
+				_, err := cloud.GetDisk(ctx, project, &meta.Key{Name: volumeKey.Name, Zone: zone})
 				if err != nil {
 					if IsGCENotFoundError(err) {
 						// Couldn't find the disk in this zone so we keep
@@ -320,16 +324,22 @@ func (cloud *CloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, p
 					// so we return error immediately
 					return "", nil, err
 				}
-				if len(foundZone) > 0 {
-					return "", nil, fmt.Errorf("found disk %s in more than one zone: %s and %s", volumeKey.Name, foundZone, zone)
-				}
-				foundZone = zone
+				diskZones = append(diskZones, zone)
 			}
 
-			if len(foundZone) == 0 {
+			if len(diskZones) == 0 {
 				return "", nil, notFoundError()
+			} else if len(diskZones) > 1 && fallbackZone == "" {
+				return "", nil, fmt.Errorf("found disk %s in more than one zone and no fallback: %v", volumeKey.Name, diskZones)
+			} else if len(diskZones) > 1 && fallbackZone != "" {
+				if !slices.Contains(diskZones, fallbackZone) {
+					return "", nil, fmt.Errorf("found disk %s in more than one zone (%v) but none match fallback zone %s", volumeKey.Name, diskZones, fallbackZone)
+				}
+				volumeKey.Zone = fallbackZone
+			} else {
+				volumeKey.Zone = diskZones[0]
 			}
-			volumeKey.Zone = foundZone
+
 			return project, volumeKey, nil
 		}
 		return project, volumeKey, nil
@@ -390,22 +400,6 @@ func (cloud *CloudProvider) GetDisk(ctx context.Context, project string, key *me
 	default:
 		return nil, fmt.Errorf("key was neither zonal nor regional, got: %v", key.String())
 	}
-}
-
-func (cloud *CloudProvider) getZonalDiskOrError(ctx context.Context, project, volumeZone, volumeName string) (*computev1.Disk, error) {
-	disk, err := cloud.service.Disks.Get(project, volumeZone, volumeName).Context(ctx).Do()
-	if err != nil {
-		return nil, err
-	}
-	return disk, nil
-}
-
-func (cloud *CloudProvider) getRegionalDiskOrError(ctx context.Context, project, volumeRegion, volumeName string) (*computev1.Disk, error) {
-	disk, err := cloud.service.RegionDisks.Get(project, volumeRegion, volumeName).Context(ctx).Do()
-	if err != nil {
-		return nil, err
-	}
-	return disk, nil
 }
 
 func (cloud *CloudProvider) getZonalBetaDiskOrError(ctx context.Context, project, volumeZone, volumeName string) (*computebeta.Disk, error) {
