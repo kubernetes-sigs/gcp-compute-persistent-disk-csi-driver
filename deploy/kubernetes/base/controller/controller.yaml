@@ -146,7 +146,6 @@ spec:
             - "--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml"
             - --enable-data-cache
             - --run-node-service=false
-            - --enable-multitenancy
           command:
             - /gce-pd-csi-driver
           env:

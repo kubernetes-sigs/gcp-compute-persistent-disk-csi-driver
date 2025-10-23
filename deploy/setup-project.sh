@@ -17,6 +17,9 @@
 # ENABLE_KMS_ADMIN: Add service account permissions to destroy Cloud KMS keys.
 # CREATE_SA_KEY: (Optional) If true, creates a new service account key and
 #   exports it if creating a new service account
+# NODE_SERVICE_ACCOUNTS: (Optional) Comma-separated list of service accounts
+#   that the CSI driver should be allowed to impersonate. If not specified,
+#   defaults to project-level serviceAccountUser role.
 
 set -o nounset
 set -o errexit
@@ -102,22 +105,36 @@ gcloud iam roles $action gcp_compute_persistent_disk_csi_driver_custom_role --qu
 # Bind service account to roles
 for role in ${BIND_ROLES}
 do
-  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "${role}"
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "${role}" --condition=None
 done
+
+# Grant scoped serviceAccountUser role for node service accounts
+if use_scoped_sa_role;
+then
+	IFS=',' read -ra NODE_SA_ARRAY <<< "${NODE_SERVICE_ACCOUNTS}"
+	for node_sa in "${NODE_SA_ARRAY[@]}";
+	do
+		node_sa=$(echo "${node_sa}" | xargs) # trim whitespace
+		echo "Granting ${SA_USER_ROLE} for ${node_sa} to serviceAccount:${IAM_NAME}"
+		gcloud iam service-accounts add-iam-policy-binding "${node_sa}" \
+			--member="serviceAccount:${IAM_NAME}" --condition=None \
+			--role="${SA_USER_ROLE}" --project="${PROJECT}"
+	done
+fi
 
 # Authorize GCE to encrypt/decrypt using Cloud KMS encryption keys.
 # https://cloud.google.com/compute/docs/disks/customer-managed-encryption#before_you_begin
 if [ "${ENABLE_KMS}" = true ];
 then
   gcloud services enable cloudkms.googleapis.com --project="${PROJECT}"
-  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"service-${PROJECT_NUMBER}@compute-system.iam.gserviceaccount.com" --role "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"service-${PROJECT_NUMBER}@compute-system.iam.gserviceaccount.com" --role "roles/cloudkms.cryptoKeyEncrypterDecrypter" --condition=None
 fi
 
 # Authorize SA to destroy Cloud KMS encryption keys.
 if [ "${ENABLE_KMS_ADMIN}" = true ];
 then
   gcloud services enable cloudkms.googleapis.com --project="${PROJECT}"
-  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "roles/cloudkms.admin"
+  gcloud projects add-iam-policy-binding "${PROJECT}" --member serviceAccount:"${IAM_NAME}" --role "roles/cloudkms.admin" --condition=None
 fi
 
 # Export key if needed

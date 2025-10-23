@@ -2,13 +2,13 @@
 
 ## Install Driver
 
-1. Clone the driver to your local machine
+### 1. Clone the driver to your local machine
 
 ```console
 $ git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver $GOPATH/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 ```
 
-2. [One-time per project] Set up or use an existing service account:
+### 2. [One-time per project] Set up or use an existing service account:
 
 The driver requires a service account that has the following permissions and
 roles to function properly:
@@ -18,7 +18,7 @@ compute.instances.get
 compute.instances.attachDisk
 compute.instances.detachDisk
 roles/compute.storageAdmin
-roles/iam.serviceAccountUser
+roles/iam.serviceAccountUser (see security note below)
 ```
 
 If there is a pre-existing service account with these roles for use then the
@@ -33,7 +33,24 @@ $ GCE_PD_SA_DIR=/my/safe/credentials/directory
 **Note**: The service account key *must* be named `cloud-sa.json` at driver deploy time
 
 However, if there is no pre-existing service account for use the provided script
-can be used to create a new service account with all the required permissions:
+can be used to create a new service account with all the required permissions.
+
+#### Security Note: Service Account Impersonation
+
+The CSI driver requires the `roles/iam.serviceAccountUser` role to impersonate node service accounts when attaching and detaching disks. This role can be configured in two ways:
+
+* **Recommended (Scoped)**: Grant the role only for specific node service accounts
+* **Default (Project-wide)**: Allow project-wide service account impersonation (less secure)
+
+For improved security, specify the node service accounts that the CSI driver needs to impersonate using the `NODE_SERVICE_ACCOUNTS` environment variable. This limits the role to only the specified accounts. Without `NODE_SERVICE_ACCOUNTS`, the CSI driver can impersonate any service account in the project.
+
+```console
+$ NODE_SERVICE_ACCOUNTS="master-sa@project.iam.gserviceaccount.com,worker-sa@project.iam.gserviceaccount.com"  # Comma-separated list of node service accounts
+```
+
+For more details, see [How to remediate over privileged service account users](https://cloud.google.com/security-command-center/docs/how-to-remediate-security-health-analytics-findings#over_privileged_service_account_user).
+
+#### Create service account for the CSI driver
 
 ```console
 $ PROJECT=your-project-here                       # GCP project
@@ -46,9 +63,10 @@ $ ./deploy/setup-project.sh
 deployment, all actions performed by the driver will be performed as the
 specified service account
 
-3. Deploy driver to Kubernetes Cluster
+### 3. Deploy driver to Kubernetes Cluster
 
 ```console
+$ NODE_SERVICE_ACCOUNTS="master-sa@project.iam.gserviceaccount.com,worker-sa@project.iam.gserviceaccount.com"  # Same as the setup-project.sh step
 $ GCE_PD_SA_DIR=/my/safe/credentials/directory    # Directory to get the service account key
 $ GCE_PD_DRIVER_VERSION=stable-master             # Driver version to deploy
 $ ./deploy/kubernetes/deploy-driver.sh
@@ -74,6 +92,8 @@ additional permissions are required in order to create the new service account:
 ```
 resourcemanager.projects.getIamPolicy
 resourcemanager.projects.setIamPolicy
+iam.serviceAccounts.getIamPolicy
+iam.serviceAccounts.setIamPolicy
 iam.serviceAccounts.create
 iam.serviceAccounts.delete
 ```
