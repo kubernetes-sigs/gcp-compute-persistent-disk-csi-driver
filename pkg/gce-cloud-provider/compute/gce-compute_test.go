@@ -16,9 +16,12 @@ package gcecloudprovider
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	computebeta "google.golang.org/api/compute/v0.beta"
+	"google.golang.org/api/compute/v1"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/grpc/codes"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -329,5 +332,120 @@ func TestCodeForGCEOpError(t *testing.T) {
 		if errCode != tc.expCode {
 			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}
+	}
+}
+
+func TestRepairUnderspecifiedVolumeKey(t *testing.T) {
+	cloudProvider, err := CreateFakeCloudProvider("project-id", "country-region-fakefirstzone", []*CloudDisk{
+		CloudDiskFromV1(&compute.Disk{
+			Name:     "disk-a",
+			Zone:     "country-region-fakefirstzone",
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project-id/zones/country-region-fakefirstzone/disks/disk-a"),
+		}),
+		CloudDiskFromV1(&compute.Disk{
+			Name:     "disk-ab",
+			Zone:     "country-region-fakefirstzone",
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project-id/zones/country-region-fakefirstzone/disks/disk-ab"),
+		}),
+		CloudDiskFromV1(&compute.Disk{
+			Name:     "disk-ab",
+			Zone:     "country-region-fakesecondzone",
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project-id/zones/country-region-fakesecondzone/disks/disk-ab"),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("can't create fake cloud provider: %v", err)
+	}
+
+	for _, tc := range []struct {
+		testName        string
+		project         string
+		key             meta.Key
+		fallback        string
+		expectedProject string
+		expectedKey     meta.Key
+		expectError     bool
+	}{
+		{
+			testName:        "fully specified",
+			project:         "my-project",
+			key:             meta.Key{Name: "disk", Zone: "zone-1"},
+			expectedProject: "my-project",
+			expectedKey:     meta.Key{Name: "disk", Zone: "zone-1"},
+		},
+		{
+			testName:        "fully specified, fallback ignored",
+			project:         "my-project",
+			key:             meta.Key{Name: "disk", Zone: "zone-1"},
+			fallback:        "zone-2",
+			expectedProject: "my-project",
+			expectedKey:     meta.Key{Name: "disk", Zone: "zone-1"},
+		},
+		{
+			testName:        "unspecified zonal",
+			project:         "UNSPECIFIED",
+			key:             meta.Key{Name: "disk-a", Zone: "UNSPECIFIED"},
+			expectedProject: "project-id",
+			expectedKey:     meta.Key{Name: "disk-a", Zone: "country-region-fakefirstzone"},
+		},
+		{
+			testName:        "unspecified regional",
+			project:         "UNSPECIFIED",
+			key:             meta.Key{Name: "disk-a", Region: "UNSPECIFIED"},
+			expectedProject: "project-id",
+			expectedKey:     meta.Key{Name: "disk-a", Region: "country-region"},
+		},
+		{
+			testName:        "multizone regional",
+			project:         "UNSPECIFIED",
+			key:             meta.Key{Name: "disk-ab", Region: "UNSPECIFIED"},
+			expectedProject: "project-id",
+			expectedKey:     meta.Key{Name: "disk-ab", Region: "country-region"},
+		},
+		{
+			testName:    "multi-zone, no fallback",
+			project:     "project-id",
+			key:         meta.Key{Name: "disk-ab", Zone: "UNSPECIFIED"},
+			expectError: true,
+		},
+		{
+			testName:    "multi-zone, no matching fallback",
+			project:     "project-id",
+			key:         meta.Key{Name: "disk-ab", Zone: "UNSPECIFIED"},
+			fallback:    "unknown-zone",
+			expectError: true,
+		},
+		{
+			testName:        "multi-zone, fallback",
+			project:         "my-project",
+			key:             meta.Key{Name: "disk-ab", Zone: "UNSPECIFIED"},
+			fallback:        "country-region-fakesecondzone",
+			expectedProject: "my-project",
+			expectedKey:     meta.Key{Name: "disk-ab", Zone: "country-region-fakesecondzone"},
+		},
+	} {
+		t.Run(tc.testName, func(t *testing.T) {
+			// RepairUnderspecifiedVolumeKey mutates the argument as well as returning it, sigh. We verify those semantics here
+			key := tc.key
+			prj, retKey, err := cloudProvider.RepairUnderspecifiedVolumeKey(context.Background(), tc.project, &key, tc.fallback)
+			if tc.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got %v", err)
+				}
+				if retKey != &key {
+					t.Error("Did not return argument key")
+				}
+				if prj != tc.expectedProject {
+					t.Errorf("Got project %s, expected %s", prj, tc.expectedProject)
+				}
+				if key.Name != tc.expectedKey.Name || key.Zone != tc.expectedKey.Zone || key.Region != tc.expectedKey.Region {
+					t.Errorf("Got key %+v, expected %+v", key, tc.expectedKey)
+				}
+			}
+		})
 	}
 }
