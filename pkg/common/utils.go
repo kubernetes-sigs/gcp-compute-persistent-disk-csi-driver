@@ -97,11 +97,12 @@ var (
 
 	// userErrorCodeMap tells how API error types are translated to error codes.
 	userErrorCodeMap = map[int]codes.Code{
-		http.StatusForbidden:       codes.PermissionDenied,
-		http.StatusBadRequest:      codes.InvalidArgument,
-		http.StatusTooManyRequests: codes.ResourceExhausted,
-		http.StatusNotFound:        codes.NotFound,
-		http.StatusConflict:        codes.FailedPrecondition,
+		http.StatusForbidden:          codes.PermissionDenied,
+		http.StatusBadRequest:         codes.InvalidArgument,
+		http.StatusTooManyRequests:    codes.ResourceExhausted,
+		http.StatusNotFound:           codes.NotFound,
+		http.StatusConflict:           codes.FailedPrecondition,
+		http.StatusPreconditionFailed: codes.FailedPrecondition,
 	}
 
 	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
