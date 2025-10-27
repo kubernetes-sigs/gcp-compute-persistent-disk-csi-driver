@@ -30,7 +30,6 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -103,35 +102,8 @@ func (cloud *FakeCloudProvider) GetDefaultZone() string {
 	return cloud.zone
 }
 
-func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key) (string, *meta.Key, error) {
-	if project == constants.UnspecifiedValue {
-		project = cloud.project
-	}
-	switch volumeKey.Type() {
-	case meta.Zonal:
-		if volumeKey.Zone != constants.UnspecifiedValue {
-			return project, volumeKey, nil
-		}
-		for diskVolKey, d := range cloud.disks {
-			if diskVolKey == volumeKey.String() {
-				volumeKey.Zone = d.GetZone()
-				return project, volumeKey, nil
-			}
-		}
-		return "", nil, notFoundError()
-	case meta.Regional:
-		if volumeKey.Region != constants.UnspecifiedValue {
-			return project, volumeKey, nil
-		}
-		r, err := common.GetRegionFromZones([]string{cloud.zone})
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to get region from zones: %w", err)
-		}
-		volumeKey.Region = r
-		return project, volumeKey, nil
-	default:
-		return "", nil, fmt.Errorf("Volume key %v not zonal nor regional", volumeKey.Name)
-	}
+func (cloud *FakeCloudProvider) RepairUnderspecifiedVolumeKey(ctx context.Context, project string, volumeKey *meta.Key, fallbackZone string) (string, *meta.Key, error) {
+	return repairUnderspecifiedVolumeKeyWithProvider(ctx, cloud, project, volumeKey, fallbackZone)
 }
 
 func (cloud *FakeCloudProvider) ListZones(ctx context.Context, region string) ([]string, error) {
