@@ -38,6 +38,10 @@ import (
 	remote "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/remote"
 )
 
+const (
+	noMachineType = "none"
+)
+
 var (
 	project                   = flag.String("project", "", "Project to run tests in")
 	serviceAccount            = flag.String("service-account", "", "Service account to bring up instance with")
@@ -55,7 +59,7 @@ var (
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
 	// Multi-writer is only supported on M3, C3, and N4
 	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
-	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on")
+	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on, or `none' to skip")
 	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "sapphirerapids", "Minimum CPU architecture")
 
 	testContexts          = []*remote.TestContext{}
@@ -121,11 +125,13 @@ var _ = BeforeSuite(func() {
 			}(zone, j)
 		}
 		wg.Add(1)
-		go func(curZone string) {
-			defer GinkgoRecover()
-			defer wg.Done()
-			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
-		}(zone)
+		if *hdMachineType != noMachineType {
+			go func(curZone string) {
+				defer GinkgoRecover()
+				defer wg.Done()
+				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
+			}(zone)
+		}
 		wg.Wait()
 	}
 
