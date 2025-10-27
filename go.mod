@@ -9,14 +9,14 @@ require (
 	cloud.google.com/go/kms v1.18.0
 	cloud.google.com/go/resourcemanager v1.9.7
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.33.0
-	github.com/container-storage-interface/spec v1.11.0
+	github.com/container-storage-interface/spec v1.12.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.12.5
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kubernetes-csi/csi-proxy/client v1.3.0
-	github.com/kubernetes-csi/csi-test/v5 v5.3.1
+	github.com/kubernetes-csi/csi-test/v5 v5.4.0
 	github.com/onsi/ginkgo/v2 v2.26.0
 	github.com/onsi/gomega v1.38.2
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
