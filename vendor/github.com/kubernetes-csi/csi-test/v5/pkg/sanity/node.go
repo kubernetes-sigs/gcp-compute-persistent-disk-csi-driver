@@ -86,21 +86,9 @@ func runControllerTest(sc *TestContext, r *Resources, controllerPublishSupported
 
 	// Create Volume First
 	By("creating a single node writer volume")
-	vol := r.MustCreateVolume(
-		context.Background(),
-		&csi.CreateVolumeRequest{
-			Name: name,
-			VolumeCapabilities: []*csi.VolumeCapability{
-				TestVolumeCapabilityWithAccessType(sc, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-			},
-			CapacityRange: &csi.CapacityRange{
-				RequiredBytes: TestVolumeSize(sc),
-			},
-			Secrets:                   sc.Secrets.CreateVolumeSecret,
-			Parameters:                sc.Config.TestVolumeParameters,
-			AccessibilityRequirements: accReqs,
-		},
-	)
+	req := MakeCreateVolumeReq(sc, name)
+	req.AccessibilityRequirements = accReqs
+	vol := r.MustCreateVolume(context.Background(), req)
 
 	var conpubvol *csi.ControllerPublishVolumeResponse
 	if controllerPublishSupported {
@@ -193,17 +181,7 @@ var _ = DescribeSanity("Node Service", func(sc *TestContext) {
 		By("creating a single node writer volume for expansion")
 		return r.MustCreateVolume(
 			context.Background(),
-			&csi.CreateVolumeRequest{
-				Name: volumeName,
-				VolumeCapabilities: []*csi.VolumeCapability{
-					TestVolumeCapabilityWithAccessType(sc, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
-				},
-				CapacityRange: &csi.CapacityRange{
-					RequiredBytes: TestVolumeSize(sc),
-				},
-				Secrets:    sc.Secrets.CreateVolumeSecret,
-				Parameters: sc.Config.TestVolumeParameters,
-			},
+			MakeCreateVolumeReq(sc, volumeName),
 		)
 	}
 
@@ -538,21 +516,7 @@ var _ = DescribeSanity("Node Service", func(sc *TestContext) {
 
 			vol := r.MustCreateVolume(
 				context.Background(),
-				&csi.CreateVolumeRequest{
-					Name: name,
-					VolumeCapabilities: []*csi.VolumeCapability{
-						{
-							AccessType: &csi.VolumeCapability_Mount{
-								Mount: &csi.VolumeCapability_MountVolume{},
-							},
-							AccessMode: &csi.VolumeCapability_AccessMode{
-								Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-							},
-						},
-					},
-					Secrets:    sc.Secrets.CreateVolumeSecret,
-					Parameters: sc.Config.TestVolumeParameters,
-				},
+				MakeCreateVolumeReq(sc, name),
 			)
 
 			rsp, err := r.NodeStageVolume(
