@@ -92,7 +92,7 @@ func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) b
 	// Ideally we could compare to see if the new instance has a greater minCpuPlatfor
 	// For now we just check it was set and it's different.
 	if curInst.MinCpuPlatform != "" && curInst.MinCpuPlatform != newInst.MinCpuPlatform {
-		klog.Infof("CPU Platform mismatch")
+		klog.Infof("CPU Platform mismatch: cur: %v; new: %v", curInst.MinCpuPlatform, newInst.MinCpuPlatform)
 		return true
 	}
 	if (curInst.ConfidentialInstanceConfig != nil && newInst.ConfidentialInstanceConfig == nil) ||
@@ -102,7 +102,7 @@ func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) b
 		return true
 	}
 	if curInst.SourceMachineImage != newInst.SourceMachineImage {
-		klog.Infof("Source Machine Mismatch")
+		klog.Infof("Source Machine Mismatch: cur: %v; new: %v", curInst.SourceMachineImage, newInst.SourceMachineImage)
 		return true
 	}
 	return false
@@ -131,7 +131,8 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 						Type: "ONE_TO_ONE_NAT",
 						Name: "External NAT",
 					},
-				}},
+				},
+			},
 		},
 		Disks: []*compute.AttachedDisk{
 			{
