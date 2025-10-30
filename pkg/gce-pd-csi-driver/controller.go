@@ -1702,7 +1702,7 @@ func (gceCS *GCEControllerServer) createPDSnapshot(ctx context.Context, project 
 		return nil, status.Errorf(codes.Internal, "Failed to covert creation timestamp: %v", err.Error())
 	}
 
-	ready, err := isCSISnapshotReady(snapshot.Status)
+	ready, err := isCSISnapshotReady(snapshot)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Snapshot had error checking ready status: %v", err.Error())
 	}
@@ -1844,15 +1844,13 @@ func (gceCS *GCEControllerServer) validateExistingSnapshot(snapshot *compute.Sna
 	return nil
 }
 
-func isCSISnapshotReady(status string) (bool, error) {
-	switch status {
+func isCSISnapshotReady(snapshot *compute.Snapshot) (bool, error) {
+	klog.V(4).Infof("snapshot %s is %s", snapshot.SelfLink, snapshot.Status)
+	switch snapshot.Status {
 	case "READY":
 		return true, nil
 	case "FAILED":
-		return false, fmt.Errorf("snapshot status is FAILED")
-	case "DELETING":
-		klog.V(4).Infof("snapshot is in DELETING")
-		fallthrough
+		return false, fmt.Errorf("snapshot %s status is FAILED", snapshot.SelfLink)
 	default:
 		return false, nil
 	}
@@ -2100,7 +2098,7 @@ func generateDiskSnapshotEntry(snapshot *compute.Snapshot) (*csi.ListSnapshotsRe
 	// We ignore the error intentionally here since we are just listing snapshots
 	// TODO: If the snapshot is in "FAILED" state we need to think through what this
 	// should actually look like.
-	ready, _ := isCSISnapshotReady(snapshot.Status)
+	ready, _ := isCSISnapshotReady(snapshot)
 
 	entry := &csi.ListSnapshotsResponse_Entry{
 		Snapshot: &csi.Snapshot{
