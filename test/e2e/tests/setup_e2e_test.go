@@ -62,6 +62,9 @@ var (
 	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on, or `none' to skip")
 	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "sapphirerapids", "Minimum CPU architecture")
 
+	// Some architectures don't have local ssd. Give way to opt out of tests like datacache.
+	skipLocalSsdTests = flag.Bool("skip-local-ssd-tests", false, "Skip local ssd tests like datacache")
+
 	testContexts          = []*remote.TestContext{}
 	hyperdiskTestContexts = []*remote.TestContext{}
 	computeService        *compute.Service
@@ -183,6 +186,13 @@ func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestConte
 	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
 }
 
+func getLocalSsdCount() int64 {
+	if *skipLocalSsdTests {
+		return 0
+	}
+	return constants.LocalSSDCountForDataCache
+}
+
 func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
 	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
@@ -199,7 +209,7 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
-		LocalSSDCount:             constants.LocalSSDCountForDataCache,
+		LocalSSDCount:             getLocalSsdCount(),
 	}
 
 	if machineType == *hdMachineType {
