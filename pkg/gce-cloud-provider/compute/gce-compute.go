@@ -1579,7 +1579,7 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 				}
 			}
 		case <-timer.C:
-			return nil, fmt.Errorf("Timeout waiting for snapshot %s to be created.", snapshotName)
+			return nil, status.Errorf(codes.DeadlineExceeded, "Timeout waiting for snapshot %s to be created.", snapshotName)
 		}
 	}
 }
