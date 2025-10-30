@@ -1483,6 +1483,9 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should create disks, attach them to instance with local ssd, setup caching between LSSD->detach->reattach to same instance", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
+		if testContext.Instance.GetLocalSSD() == 0 {
+			Skip("Skipping data cache as no local ssd in context")
+		}
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
