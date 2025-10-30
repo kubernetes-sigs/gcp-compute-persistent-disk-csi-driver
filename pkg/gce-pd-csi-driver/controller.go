@@ -132,6 +132,7 @@ type GCEControllerServer struct {
 type GCEControllerServerArgs struct {
 	EnableDiskTopology       bool
 	EnableDiskSizeValidation bool
+	EnableDynamicVolumes     bool
 }
 
 type MultiZoneVolumeHandleConfig struct {
