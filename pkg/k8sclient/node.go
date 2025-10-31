@@ -2,6 +2,7 @@ package k8sclient
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -13,6 +14,9 @@ import (
 )
 
 func GetNodeWithRetry(ctx context.Context, nodeName string) (*v1.Node, error) {
+	if nodeName == "" {
+		return nil, fmt.Errorf("node name is empty")
+	}
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, err
