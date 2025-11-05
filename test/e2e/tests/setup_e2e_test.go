@@ -127,8 +127,8 @@ var _ = BeforeSuite(func() {
 				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
 			}(zone, j)
 		}
-		wg.Add(1)
 		if *hdMachineType != noMachineType {
+			wg.Add(1)
 			go func(curZone string) {
 				defer GinkgoRecover()
 				defer wg.Done()
