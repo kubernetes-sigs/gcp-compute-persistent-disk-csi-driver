@@ -65,8 +65,8 @@ var (
 	// Some architectures don't have local ssd. Give way to opt out of tests like datacache.
 	skipLocalSsdTests = flag.Bool("skip-local-ssd-tests", false, "Skip local ssd tests like datacache")
 
-	testContexts          = []*remote.TestContext{}
-	hyperdiskTestContexts = []*remote.TestContext{}
+	testContexts          []*remote.TestContext
+	hyperdiskTestContexts []*remote.TestContext
 	computeService        *compute.Service
 	computeAlphaService   *computealpha.Service
 	computeBetaService    *computebeta.Service
@@ -87,10 +87,6 @@ var _ = BeforeSuite(func() {
 	var err error
 	numberOfInstancesPerZone := 2
 	zones := strings.Split(*zones, ",")
-	tcc := make(chan *remote.TestContext, len(zones)*numberOfInstancesPerZone)
-	hdtcc := make(chan *remote.TestContext, len(zones))
-	defer close(tcc)
-	defer close(hdtcc)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -116,42 +112,40 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
-	setupContext := func(zone string) {
-		var wg sync.WaitGroup
+	testContexts = make([]*remote.TestContext, numberOfInstancesPerZone*len(zones))
+	if *hdMachineType != noMachineType {
+		hyperdiskTestContexts = make([]*remote.TestContext, len(zones))
+	}
+	var wg sync.WaitGroup
+	setupContext := func(idx int, zone string) {
 		// Create 2 instances for each zone as we need 2 instances each zone for certain test cases
 		for j := 0; j < numberOfInstancesPerZone; j++ {
 			wg.Add(1)
 			go func(curZone string, randInt int) {
 				defer GinkgoRecover()
 				defer wg.Done()
-				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+				tc := NewDefaultTestContext(curZone, strconv.Itoa(randInt))
+				k := j + idx*numberOfInstancesPerZone
+				testContexts[k] = tc
+				klog.Infof("Added TestContext for node %s at %d", tc.Instance.GetName(), k)
 			}(zone, j)
 		}
-		if *hdMachineType != noMachineType {
+		if hyperdiskTestContexts != nil {
 			wg.Add(1)
 			go func(curZone string) {
 				defer GinkgoRecover()
 				defer wg.Done()
-				hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
+				tc := NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
+				hyperdiskTestContexts[idx] = tc
+				klog.Infof("Added hyperdisk TestContext for node %s at %d", tc.Instance.GetName(), idx)
 			}(zone)
 		}
-		wg.Wait()
 	}
 
-	for _, zone := range zones {
-		setupContext(zone)
+	for i, zone := range zones {
+		setupContext(i, zone)
 	}
-
-	for i := 0; i < len(zones)*numberOfInstancesPerZone; i++ {
-		tc := <-tcc
-		testContexts = append(testContexts, tc)
-		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
-	}
-	for i := 0; i < len(zones); i++ {
-		tc := <-hdtcc
-		hyperdiskTestContexts = append(hyperdiskTestContexts, tc)
-		klog.Infof("Added TestContext for node %s", tc.Instance.GetName())
-	}
+	wg.Wait()
 })
 
 var _ = AfterSuite(func() {
