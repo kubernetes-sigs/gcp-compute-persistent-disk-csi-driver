@@ -1125,14 +1125,49 @@ func TestNodeStageVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid request with disk size check",
+			name: "Valid request disk size matches expected size",
+			req: &csi.NodeStageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: stagingPath,
+				VolumeCapability:  stdVolCap,
+				PublishContext:    map[string]string{constants.ContextDiskSizeGB: "6"},
+			},
+			deviceSize:   6442450944,
+			blockExtSize: 1,
+			readonlyBit:  "1",
+			expResize:    false,
+			expCommandList: []fakeCmd{
+				{
+					cmd:    "blockdev",
+					args:   "--getsize64 /dev/disk/fake-path",
+					stdout: "%v",
+				},
+				{
+					cmd:    "blkid",
+					args:   "-p -s TYPE -s PTTYPE -o export /dev/disk/fake-path",
+					stdout: "DEVNAME=/dev/sdb\nTYPE=%v",
+				},
+				{
+					cmd:    "fsck",
+					args:   "-a /dev/disk/fake-path",
+					stdout: "",
+				},
+				{
+					cmd:    "blockdev",
+					args:   "--getro /dev/disk/fake-path",
+					stdout: "%v",
+				},
+			},
+		},
+		{
+			name: "Valid request disk size exceeds expected size",
 			req: &csi.NodeStageVolumeRequest{
 				VolumeId:          volumeID,
 				StagingTargetPath: stagingPath,
 				VolumeCapability:  stdVolCap,
 				PublishContext:    map[string]string{constants.ContextDiskSizeGB: "1"},
 			},
-			deviceSize:   1,
+			deviceSize:   6442450944,
 			blockExtSize: 1,
 			readonlyBit:  "1",
 			expResize:    false,
@@ -1246,7 +1281,7 @@ func TestNodeStageVolume(t *testing.T) {
 				VolumeCapability:  stdVolCap,
 				PublishContext:    map[string]string{constants.ContextDiskSizeGB: "10"},
 			},
-			deviceSize: 5,
+			deviceSize: 6442450944,
 			expErrCode: codes.Internal,
 			expCommandList: []fakeCmd{
 				{
