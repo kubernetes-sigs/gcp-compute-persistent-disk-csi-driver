@@ -32,6 +32,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
@@ -451,14 +453,22 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	}
 
 	// If a disk size is provided in the publish context, ensure it matches the actual device size.
-	if expectedSize := req.GetPublishContext()[constants.ContextDiskSizeGB]; expectedSize != "" {
-		actualSize, err := getBlockSizeBytes(devicePath, ns.Mounter)
+	expectedDiskSizeStr := req.GetPublishContext()[constants.ContextDiskSizeGB]
+	if expectedSizeGib, err := strconv.ParseInt(expectedDiskSizeStr, 10, 64); err == nil {
+		actualSizeBytes, err := getBlockSizeBytes(devicePath, ns.Mounter)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get block size for '%s': %v", devicePath, err.Error()))
 		}
-		if expectedSize != strconv.FormatInt(actualSize, 10) {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("expected block size %q, got %q", expectedSize, strconv.FormatInt(actualSize, 10)))
+		actualSizeGib, err := volumehelpers.RoundUpToGiB(*resource.NewQuantity(actualSizeBytes, resource.DecimalSI))
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to convert block size '%d' to GiB: %v", actualSizeBytes, err.Error()))
 		}
+
+		if expectedSizeGib > actualSizeGib {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("expected block size %q, got %q", expectedSizeGib, actualSizeGib))
+		}
+	} else {
+		klog.V(4).Infof("skipping disk size validation due to invalid expected size: %v", err)
 	}
 
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
