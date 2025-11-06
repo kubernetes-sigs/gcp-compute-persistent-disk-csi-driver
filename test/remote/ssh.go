@@ -100,6 +100,48 @@ func (i *InstanceInfo) SSHCheckAlive() error {
 	})
 }
 
+func (i *InstanceInfo) DisableUdev() error {
+	return wait.Poll(5*time.Second, time.Minute, func() (bool, error) {
+		_, err := i.SSH("systemctl", "stop", "systemd-udevd")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to stop systemd-udevd: %v", err)
+			return false, nil
+		}
+		_, err = i.SSH("systemctl", "stop", "systemd-udevd-kernel.socket")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to stop systemd-udevd-kernel.socket: %v", err)
+			return false, nil
+		}
+		_, err = i.SSH("systemctl", "stop", "systemd-udevd-control.socket")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to stop systemd-udevd-control.socket: %v", err)
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
+func (i *InstanceInfo) EnableUdev() error {
+	return wait.Poll(5*time.Second, time.Minute, func() (bool, error) {
+		_, err := i.SSH("systemctl", "start", "systemd-udevd")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to start systemd-udevd: %v", err)
+			return false, nil
+		}
+		_, err = i.SSH("systemctl", "start", "systemd-udevd-kernel.socket")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to start systemd-udevd-kernel.socket: %v", err)
+			return false, nil
+		}
+		_, err = i.SSH("systemctl", "start", "systemd-udevd-control.socket")
+		if err != nil {
+			klog.V(2).Infof("(will retry) failed to start systemd-udevd-control.socket: %v", err)
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
 // runSSHCommand executes the ssh or scp command, adding the flag provided --ssh-options
 func runSSHCommand(cmd string, args ...string) (string, error) {
 	if pk, ok := os.LookupEnv("JENKINS_GCE_SSH_PRIVATE_KEY_FILE"); ok {
