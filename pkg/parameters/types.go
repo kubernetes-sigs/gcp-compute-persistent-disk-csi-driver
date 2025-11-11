@@ -21,6 +21,15 @@ type DiskParameters struct {
 	// Values: pd-standard, pd-balanced, pd-ssd, or any other PD disk type. Not validated.
 	// Default: pd-standard
 	DiskType string
+	// Values: any PD type. Not validated.
+	// Default: ""
+	PDType string
+	// Values: any HD type. Not validated.
+	// Default: ""
+	HDType string
+	// Values: pdType, hdType
+	// Default: hdType
+	DiskTypePreference string
 	// Values: "none", regional-pd
 	// Default: "none"
 	ReplicationType string
@@ -66,6 +75,10 @@ func (dp *DiskParameters) IsRegional() bool {
 	return dp.ReplicationType == "regional-pd" || dp.DiskType == DiskTypeHdHA
 }
 
+func (dp *DiskParameters) IsDiskDynamic() bool {
+	return dp.DiskType == DynamicVolumeType
+}
+
 // SnapshotParameters contains normalized and defaulted parameters for snapshots
 type SnapshotParameters struct {
 	StorageLocations []string
@@ -77,14 +90,15 @@ type SnapshotParameters struct {
 }
 
 type ParameterProcessor struct {
-	DriverName         string
-	EnableStoragePools bool
-	EnableMultiZone    bool
-	EnableHdHA         bool
-	EnableDiskTopology bool
-	ExtraVolumeLabels  map[string]string
-	EnableDataCache    bool
-	ExtraTags          map[string]string
+	DriverName           string
+	EnableStoragePools   bool
+	EnableMultiZone      bool
+	EnableHdHA           bool
+	EnableDiskTopology   bool
+	EnableDataCache      bool
+	EnableDynamicVolumes bool
+	ExtraVolumeLabels    map[string]string
+	ExtraTags            map[string]string
 }
 
 func (pp *ParameterProcessor) isHDHADisabled() bool {
@@ -105,6 +119,10 @@ func (pp *ParameterProcessor) isMultiZoneDisabled() bool {
 
 func (pp *ParameterProcessor) isDiskTopologyDisabled() bool {
 	return !pp.EnableDiskTopology
+}
+
+func (pp *ParameterProcessor) isDynamicVolumesDisabled() bool {
+	return !pp.EnableDynamicVolumes
 }
 
 type ModifyVolumeParameters struct {

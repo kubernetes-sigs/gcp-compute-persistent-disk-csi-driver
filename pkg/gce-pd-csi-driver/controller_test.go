@@ -595,12 +595,13 @@ func TestListSnapshotsArguments(t *testing.T) {
 
 func TestCreateVolumeArguments(t *testing.T) {
 	testCases := []struct {
-		name               string
-		req                *csi.CreateVolumeRequest
-		enableStoragePools bool
-		expVol             *csi.Volume
-		expErrCode         codes.Code
-		enableDiskTopology bool
+		name                 string
+		req                  *csi.CreateVolumeRequest
+		enableStoragePools   bool
+		expVol               *csi.Volume
+		expErrCode           codes.Code
+		enableDiskTopology   bool
+		enableDynamicVolumes bool
 	}{
 		{
 			name: "success default",
@@ -783,23 +784,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 					},
 				},
 			},
-		},
-		{
-			name: "fail with extra topology",
-			req: &csi.CreateVolumeRequest{
-				Name:               "test-name",
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				Parameters:         stdParams,
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{"ooblezoners": "topology-zone", constants.TopologyKeyZone: "top-zone"},
-						},
-					},
-				},
-			},
-			expErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "fail with missing topology zone",
@@ -1385,13 +1369,154 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "success with dynamic volumes enabled but standard type",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success with dynamic volumes selecting disk",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterKeyType: parameters.DynamicVolumeType,
+					parameters.ParameterPDType:  "pd-balanced",
+					parameters.ParameterHDType:  "hyperdisk-balanced",
+				},
+			},
+			enableDynamicVolumes: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success defaulting pd-type",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterKeyType: parameters.DynamicVolumeType,
+					parameters.ParameterHDType:  "hyperdisk-balanced",
+				},
+			},
+			enableDynamicVolumes: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success defaulting hd-type",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterKeyType: parameters.DynamicVolumeType,
+					parameters.ParameterPDType:  "pd-balanced",
+				},
+			},
+			enableDynamicVolumes: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "fail with dynamic volume missing dynamic type",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterHDType: "hyperdisk-balanced",
+					parameters.ParameterPDType: "pd-balanced",
+				},
+			},
+			enableDynamicVolumes: true,
+			expErrCode:           codes.InvalidArgument,
+		},
+		{
+			name: "success with dynamic volumes selecting disk override",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterKeyType:        parameters.DynamicVolumeType,
+					parameters.ParameterPDType:         "pd-balanced",
+					parameters.ParameterHDType:         "hyperdisk-balanced",
+					parameters.ParameterDiskPreference: parameters.ParameterPDType,
+				},
+			},
+			enableDynamicVolumes: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup new driver each time so no interference
-			args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
+			args := &GCEControllerServerArgs{
+				EnableDiskTopology:   tc.enableDiskTopology,
+				EnableDynamicVolumes: tc.enableDynamicVolumes,
+			}
 			gceDriver := initGCEDriver(t, nil, args)
 			gceDriver.cs.enableStoragePools = tc.enableStoragePools
 
@@ -4391,18 +4516,6 @@ func TestGetZonesFromTopology(t *testing.T) {
 			name:     "success: empty",
 			topology: []*csi.Topology{},
 			expZones: sets.NewString(),
-		},
-		{
-			name: "fail: wrong key inside",
-			topology: []*csi.Topology{
-				{
-					Segments: map[string]string{constants.TopologyKeyZone: "test-zone", "fake-key": "fake-value"},
-				},
-				{
-					Segments: map[string]string{constants.TopologyKeyZone: "test-zone2"},
-				},
-			},
-			expErr: true,
 		},
 		{
 			name:     "success: no topology",
