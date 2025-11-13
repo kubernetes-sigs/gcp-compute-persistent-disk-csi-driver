@@ -189,7 +189,7 @@ func TestSanitizeDiskParameters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			sanitizeDiskParameters(tc.parameters)
+			SanitizeDiskParameters(tc.parameters)
 			got := tc.parameters
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("sanitizeDiskParameters() mismatch (-want +got):\n%s", diff)

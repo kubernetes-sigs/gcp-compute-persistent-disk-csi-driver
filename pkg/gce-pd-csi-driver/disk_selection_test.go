@@ -10,6 +10,7 @@ import (
 	computev1 "google.golang.org/api/compute/v1"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -46,8 +47,8 @@ func TestSelectDisk(t *testing.T) {
 			desc: "no topologies select default",
 			req: &csi.CreateVolumeRequest{
 				Parameters: map[string]string{
-					pdTypeParam: pdTestDiskType,
-					hdTypeParam: hdTestDiskType,
+					parameters.ParameterPDType: pdTestDiskType,
+					parameters.ParameterHDType: hdTestDiskType,
 				},
 			},
 			want: hdTestDiskType,
@@ -56,8 +57,8 @@ func TestSelectDisk(t *testing.T) {
 			desc: "topologies only support pd",
 			req: &csi.CreateVolumeRequest{
 				Parameters: map[string]string{
-					pdTypeParam: pdTestDiskType,
-					hdTypeParam: hdTestDiskType,
+					parameters.ParameterPDType: pdTestDiskType,
+					parameters.ParameterHDType: hdTestDiskType,
 				},
 				AccessibilityRequirements: &csi.TopologyRequirement{
 					Preferred: []*csi.Topology{
@@ -75,8 +76,8 @@ func TestSelectDisk(t *testing.T) {
 			desc: "source volume specified",
 			req: &csi.CreateVolumeRequest{
 				Parameters: map[string]string{
-					pdTypeParam: pdTestDiskType,
-					hdTypeParam: hdTestDiskType,
+					parameters.ParameterPDType: pdTestDiskType,
+					parameters.ParameterHDType: hdTestDiskType,
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Volume{
@@ -96,8 +97,8 @@ func TestSelectDisk(t *testing.T) {
 			desc: "fail source volume missing",
 			req: &csi.CreateVolumeRequest{
 				Parameters: map[string]string{
-					pdTypeParam: pdTestDiskType,
-					hdTypeParam: hdTestDiskType,
+					parameters.ParameterPDType: pdTestDiskType,
+					parameters.ParameterHDType: hdTestDiskType,
 				},
 				VolumeContentSource: &csi.VolumeContentSource{
 					Type: &csi.VolumeContentSource_Volume{
@@ -138,8 +139,8 @@ func TestGetDiskTypes(t *testing.T) {
 		{
 			desc: "successful extraction",
 			parameters: map[string]string{
-				pdTypeParam: pdTestDiskType,
-				hdTypeParam: hdTestDiskType,
+				parameters.ParameterPDType: pdTestDiskType,
+				parameters.ParameterHDType: hdTestDiskType,
 			},
 			want: &dynamicDiskTypes{
 				PD:      pdTestDiskType,
@@ -150,9 +151,9 @@ func TestGetDiskTypes(t *testing.T) {
 		{
 			desc: "pd default override",
 			parameters: map[string]string{
-				pdTypeParam:         pdTestDiskType,
-				hdTypeParam:         hdTestDiskType,
-				typePreferenceParam: preferenceForHD,
+				parameters.ParameterPDType: pdTestDiskType,
+				parameters.ParameterHDType: hdTestDiskType,
+				typePreferenceParam:        preferenceForHD,
 			},
 			want: &dynamicDiskTypes{
 				PD:      pdTestDiskType,
@@ -163,9 +164,9 @@ func TestGetDiskTypes(t *testing.T) {
 		{
 			desc: "hd default override",
 			parameters: map[string]string{
-				pdTypeParam:         pdTestDiskType,
-				hdTypeParam:         hdTestDiskType,
-				typePreferenceParam: preferenceForHD,
+				parameters.ParameterPDType: pdTestDiskType,
+				parameters.ParameterHDType: hdTestDiskType,
+				typePreferenceParam:        preferenceForHD,
 			},
 			want: &dynamicDiskTypes{
 				PD:      pdTestDiskType,
@@ -176,23 +177,23 @@ func TestGetDiskTypes(t *testing.T) {
 		{
 			desc: "invalid type preference",
 			parameters: map[string]string{
-				pdTypeParam:         pdTestDiskType,
-				hdTypeParam:         hdTestDiskType,
-				typePreferenceParam: "fake-preference",
+				parameters.ParameterPDType: pdTestDiskType,
+				parameters.ParameterHDType: hdTestDiskType,
+				typePreferenceParam:        "fake-preference",
 			},
 			wantErr: true,
 		},
 		{
 			desc: "missing pd type",
 			parameters: map[string]string{
-				hdTypeParam: hdTestDiskType,
+				parameters.ParameterHDType: hdTestDiskType,
 			},
 			wantErr: true,
 		},
 		{
 			desc: "missing hd type",
 			parameters: map[string]string{
-				pdTypeParam: pdTestDiskType,
+				parameters.ParameterPDType: pdTestDiskType,
 			},
 			wantErr: true,
 		},

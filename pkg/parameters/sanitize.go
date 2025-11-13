@@ -43,9 +43,9 @@ func isPD(diskType string) bool {
 
 type sanitizer func(dp *DiskParameters)
 
-// sanitizeDiskParameters removes any parameters that are not applicable to the specified disk type,
+// SanitizeDiskParameters removes any parameters that are not applicable to the specified disk type,
 // and is intended to only be used for dynamic volumes.
-func sanitizeDiskParameters(dp *DiskParameters) {
+func SanitizeDiskParameters(dp *DiskParameters) {
 	if dp == nil {
 		return
 	}

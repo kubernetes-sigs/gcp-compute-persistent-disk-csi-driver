@@ -189,6 +189,8 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 
 			p.UseAllowedDiskTopology = paramUseAllowedDiskTopology
+		case ParameterHDType, ParameterPDType, DynamicVolumeType:
+			continue
 		default:
 			return p, d, fmt.Errorf("parameters contains invalid option %q", k)
 		}

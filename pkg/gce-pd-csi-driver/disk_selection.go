@@ -8,11 +8,10 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
-	pdTypeParam         = "pdType"
-	hdTypeParam         = "hdType"
 	typePreferenceParam = "diskTypePreference"
 
 	preferenceForPD = "pd-type"
@@ -44,24 +43,24 @@ type dynamicDiskTypes struct {
 }
 
 // Extract disk types from the CSI CreateVolumeRequest.
-func getDynamicDiskTypes(parameters map[string]string) (*dynamicDiskTypes, error) {
-	if parameters == nil {
+func getDynamicDiskTypes(reqParams map[string]string) (*dynamicDiskTypes, error) {
+	if reqParams == nil {
 		return nil, fmt.Errorf("request parameters are nil")
 	}
 
-	pdType := strings.ToLower(parameters[pdTypeParam])
+	pdType := strings.ToLower(reqParams[parameters.ParameterPDType])
 	if pdType == "" {
-		return nil, fmt.Errorf("missing required parameter %q", pdTypeParam)
+		return nil, fmt.Errorf("missing required parameter %q", parameters.ParameterPDType)
 	}
-	hdType := strings.ToLower(parameters[hdTypeParam])
+	hdType := strings.ToLower(reqParams[parameters.ParameterHDType])
 	if hdType == "" {
-		return nil, fmt.Errorf("missing required parameter %q", hdTypeParam)
+		return nil, fmt.Errorf("missing required parameter %q", parameters.ParameterHDType)
 	}
 
 	// Determine default disk type based on preference parameter. If the parameter is
 	// unspecfied than default to hdType.
 	defaultDiskType := hdType
-	if diskTypePreference, hasParameter := parameters[typePreferenceParam]; hasParameter {
+	if diskTypePreference, hasParameter := reqParams[typePreferenceParam]; hasParameter {
 		switch strings.ToLower(diskTypePreference) {
 		case preferenceForPD:
 			defaultDiskType = pdType
