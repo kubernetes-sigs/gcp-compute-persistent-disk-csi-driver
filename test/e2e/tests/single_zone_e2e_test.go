@@ -1668,6 +1668,94 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
 	})
 
+	It("Should mount if udev disabled, and remount if it's enabled again", func() {
+		testContext := getRandomTestContext()
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		klog.Infof("Disabling udev")
+		err := instance.DisableUdev()
+		Expect(err).To(BeNil(), "Failed to disable udev")
+
+		// Create Disk
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		vol2Name, vol2ID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+
+		defer func() {
+			// Delete Disks
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			err = client.DeleteVolume(vol2ID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+
+			// Validate Disks Deleted
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			_, err = computeService.Disks.Get(p, z, vol2Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+		}()
+
+		// Attach & detach disk. We retry as we expect the udev repair to take a little bit of time.
+		klog.Infof("Starting attach & detach with disabled udev")
+		err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+			err = testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
+			if err != nil {
+				klog.Infof("Initial udev error, retrying: %v", err)
+			}
+			return err == nil, nil
+		})
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
+
+		// Attach a different disk. The conflicting udev paths should not cause a problem.
+		klog.Infof("Starting second attach & detach with disabled udev")
+		err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+			err = testAttachWriteReadDetach(vol2ID, vol2Name, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
+			if err != nil {
+				klog.Infof("second disk udev error, retrying: %v", err)
+			}
+			return err == nil, nil
+		})
+		Expect(err).To(BeNil(), "Failed to go through second volume lifecycle")
+
+		// Attach, reenable udev, go through lifecycle of second disk, detach first
+		klog.Infof("Starting attach & udev re-enable")
+		var detacher func()
+		var args *verifyArgs
+		err = wait.Poll(10*time.Second, 5*time.Minute, func() (bool, error) {
+			err, detacher, args = testAttachAndMount(volID, volName, instance, client, attachAndMountArgs{})
+			if err != nil {
+				klog.Infof("attach before reenable failed, retrying: %v", err)
+			}
+			return err == nil, nil
+		})
+		Expect(err).To(BeNil(), "Failed second attach")
+		defer detacher()
+
+		klog.Infof("Re-enabling udev")
+		err = instance.EnableUdev()
+		Expect(err).To(BeNil(), "Failed to enable udev")
+
+		// After udev is enabled we expect everything to succeed on the first try.
+
+		klog.Infof("Testing attach & detach with re-enabled udev")
+		err = testAttachWriteReadDetach(vol2ID, vol2Name, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to go through nested volume lifecycle with enabled")
+
+		klog.Infof("Testing detach with re-enabled udev")
+		err = client.NodeUnpublishVolume(volID, args.publishDir)
+		Expect(err).To(BeNil(), "Failed to unpublish first")
+
+		err = client.NodeUnstageVolume(volID, args.stageDir)
+		Expect(err).To(BeNil(), "Failed to unstage first")
+
+		// Go through complete lifecycle again, with udev enabled.
+		klog.Infof("Testing final lifecycle enabled udev")
+		err = testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, false /* detachAndReattach */, false /* setupDataCache */)
+		Expect(err).To(BeNil(), "Failed to go through volume lifecycle with udev enabled")
+	})
+
 	type multiZoneTestConfig struct {
 		diskType          string
 		readOnly          bool

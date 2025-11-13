@@ -290,7 +290,10 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("failed to find and re-link disk %s with udevadm after retrying for %v: %w", deviceName, pollTimeout, err)
+		klog.Warningf("For device %s udevadmin failed: %v. Trying to manually link", deviceName, err)
+		if err := manuallySetDevicePath(deviceName); err != nil {
+			return "", fmt.Errorf("failed to manually set link for disk %s: %w", deviceName, err)
+		}
 	}
 
 	return devicePath, nil
@@ -338,11 +341,11 @@ func findAvailableDevFsPaths() ([]string, error) {
 	return append(diskSDPaths, diskNvmePaths...), nil
 }
 
-func udevadmTriggerForDiskIfExists(deviceName string) error {
+func findDevice(deviceName string) (string, string, error) {
 	devFsPathToSerial := map[string]string{}
 	devFsPaths, err := findAvailableDevFsPaths()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	for _, devFsPath := range devFsPaths {
 		devFsSerial, err := getDevFsSerial(devFsPath)
@@ -355,17 +358,33 @@ func udevadmTriggerForDiskIfExists(deviceName string) error {
 		klog.V(4).Infof("device path %s, serial number %v", devFsPath, devFsSerial)
 		devFsPathToSerial[devFsPath] = devFsSerial
 		if devFsSerial == deviceName {
-			// Found the disk that we're looking for so run a trigger on it
-			// to resolve its /dev/by-id/ path
-			klog.Warningf("udevadm --trigger running to fix disk at path %s which has serial number %s", devFsPath, devFsSerial)
-			err := udevadmChangeToDrive(devFsPath)
-			if err != nil {
-				return fmt.Errorf("udevadm --trigger failed to fix device path %s which has serial number %s: %w", devFsPath, devFsSerial, err)
-			}
-			return nil
+			return devFsPath, devFsSerial, nil
 		}
 	}
-	return fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found in device path %v", deviceName, devFsPathToSerial)
+	return "", "", fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found in device path %v", deviceName, devFsPathToSerial)
+}
+
+func manuallySetDevicePath(deviceName string) error {
+	devFsPath, devFsSerial, err := findDevice(deviceName)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(devFsPath, path.Join(diskByIdPath, diskGooglePrefix+devFsSerial))
+}
+
+func udevadmTriggerForDiskIfExists(deviceName string) error {
+	devFsPath, devFsSerial, err := findDevice(deviceName)
+	if err != nil {
+		return err
+	}
+	// Found the disk that we're looking for so run a trigger on it
+	// to resolve its /dev/by-id/ path
+	klog.Warningf("udevadm --trigger running to fix disk at path %s which has serial number %s", devFsPath, devFsSerial)
+	err = udevadmChangeToDrive(devFsPath)
+	if err != nil {
+		return fmt.Errorf("udevadm --trigger failed to fix device path %s which has serial number %s: %w", devFsPath, devFsSerial, err)
+	}
+	return nil
 }
 
 // Calls "udevadm trigger --action=change" on the specified drive. drivePath
