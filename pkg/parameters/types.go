@@ -42,6 +42,7 @@ type DiskParameters struct {
 	// Values: {bool}
 	// Default: false
 	EnableConfidentialCompute bool
+	// Values: {bool}
 	// Default: false
 	ForceAttach bool
 	// Values: {[]string}
@@ -56,7 +57,7 @@ type DiskParameters struct {
 	// Values: READ_WRITE_SINGLE, READ_ONLY_MANY, READ_WRITE_MANY
 	// Default: READ_WRITE_SINGLE
 	AccessMode string
-	// Values {}
+	// Values: {bool}
 	// Default: false
 	UseAllowedDiskTopology bool
 }
@@ -81,6 +82,29 @@ type ParameterProcessor struct {
 	EnableMultiZone    bool
 	EnableHdHA         bool
 	EnableDiskTopology bool
+	ExtraVolumeLabels  map[string]string
+	EnableDataCache    bool
+	ExtraTags          map[string]string
+}
+
+func (pp *ParameterProcessor) isHDHADisabled() bool {
+	return !pp.EnableHdHA
+}
+
+func (pp *ParameterProcessor) isStoragePoolDisabled() bool {
+	return !pp.EnableStoragePools
+}
+
+func (pp *ParameterProcessor) isDataCacheDisabled() bool {
+	return !pp.EnableDataCache
+}
+
+func (pp *ParameterProcessor) isMultiZoneDisabled() bool {
+	return !pp.EnableMultiZone
+}
+
+func (pp *ParameterProcessor) isDiskTopologyDisabled() bool {
+	return !pp.EnableDiskTopology
 }
 
 type ModifyVolumeParameters struct {
