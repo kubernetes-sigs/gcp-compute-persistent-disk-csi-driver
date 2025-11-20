@@ -60,7 +60,7 @@ var (
 	// Multi-writer is only supported on M3, C3, and N4
 	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
 	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on, or `none' to skip")
-	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "sapphirerapids", "Minimum CPU architecture")
+	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "Intel Sapphire Rapids", "Minimum CPU architecture")
 
 	// Some architectures don't have local ssd. Give way to opt out of tests like datacache.
 	skipLocalSsdTests = flag.Bool("skip-local-ssd-tests", false, "Skip local ssd tests like datacache")

@@ -670,7 +670,7 @@ func (cloud *CloudProvider) insertConstructedDisk(ctx context.Context, disk *com
 	}
 
 	if filterErr := cloud.processDiskAlreadyExistErr(ctx, err, project, volKey, params, capacityRange, multiWriter, accessMode); filterErr != nil {
-		return common.NewTemporaryError(codes.Unavailable, fmt.Errorf("unknown error when polling the operation: %w", err))
+		return common.NewTemporaryError(codes.Unavailable, fmt.Errorf("unknown error when polling the operation: %w; filter error %v", err, filterErr))
 	}
 	return nil
 }
@@ -1063,7 +1063,7 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName 
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForZonalOp(op: %s, zone: %#v, err: %v) failed to poll the operation", opName, zone, err)
 			return false, nil
 		}
@@ -1080,7 +1080,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.RegionOperations.Wait(project, region, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForRegionalOp(op: %s, region: %#v, err: %v) failed to poll the operation", opName, region, err)
 			return false, nil
 		}
@@ -1089,6 +1089,10 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 			return false, err
 		}
 		done, err := opIsDone(waitOp)
+		if err != nil && status.Code(err) == codes.Unavailable {
+			klog.Errorf("retriable error in op: %+v", err)
+			return false, nil
+		}
 		return done, err
 	})
 }
@@ -1097,7 +1101,7 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.GlobalOperations.Wait(project, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForGlobalOp(op: %s, err: %v) failed to poll the operation", opName, err)
 			return false, nil
 		}
@@ -1197,6 +1201,7 @@ func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 		"QUOTA_EXCEEDED":                            codes.ResourceExhausted,
 		"ZONE_RESOURCE_POOL_EXHAUSTED":              codes.Unavailable,
 		"ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS": codes.Unavailable,
+		"INTERNAL_ERROR":                            codes.Unavailable,
 		"REGION_QUOTA_EXCEEDED":                     codes.ResourceExhausted,
 		"RATE_LIMIT_EXCEEDED":                       codes.ResourceExhausted,
 		"INVALID_USAGE":                             codes.InvalidArgument,

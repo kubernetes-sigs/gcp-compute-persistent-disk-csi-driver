@@ -363,7 +363,7 @@ func isGoogleAPIError(err error) (codes.Code, error) {
 }
 
 func loggedErrorForCode(msg string, code codes.Code, err error) error {
-	klog.Errorf(msg+"%v", err.Error())
+	klog.Errorf("%v: %s %v", code, msg, err.Error())
 	return status.Errorf(code, msg+"%v", err.Error())
 }
 

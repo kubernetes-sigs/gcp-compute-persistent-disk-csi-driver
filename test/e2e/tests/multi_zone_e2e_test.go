@@ -64,7 +64,7 @@ func checkSkipMultiZoneTests() {
 	// TODO: Remove this once hyperdisk-ml SKU is supported
 	// If you want to run these tests, set the env variable: RUN_MULTI_ZONE_TESTS=true
 	if !runMultiZoneTests() {
-		Skip("Not running multi-zone tests, as RUN_MULTI_ZONE_TESTS is falsy")
+		Skip("Not running multi-zone tests without RUN_MULTI_ZONE_TESTS=true")
 	}
 }
 
@@ -1235,8 +1235,9 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should successfully run through entire lifecycle of a HdHA volume on instances in 2 zones", func() {
-		// Create new driver and client
+		Skip("Flaking on GCP errors. Google internal bug: 463743704")
 
+		// Create new driver and client
 		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
@@ -1255,10 +1256,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		}
 
 		Expect(len(zoneToContext)).To(Equal(2), "Must have instances in 2 zones")
+		klog.Infof("Using zones %s and %s", zones[0], zones[1])
 
 		controllerContext := zoneToContext[zones[0]]
 		controllerClient := controllerContext.Client
 		controllerInstance := controllerContext.Instance
+		klog.Infof("Using controller instance %v", controllerInstance.GetName())
 
 		p, _, _ := controllerInstance.GetIdentity()
 
@@ -1321,6 +1324,8 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should create a HdHA instance, write to it, force-attach it to another instance, and read the same data", func() {
+		Skip("Flaking on GCP errors. Google internal bug: 463743704")
+
 		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
