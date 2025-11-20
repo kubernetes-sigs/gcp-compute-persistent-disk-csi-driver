@@ -595,12 +595,13 @@ func TestListSnapshotsArguments(t *testing.T) {
 
 func TestCreateVolumeArguments(t *testing.T) {
 	testCases := []struct {
-		name               string
-		req                *csi.CreateVolumeRequest
-		enableStoragePools bool
-		expVol             *csi.Volume
-		expErrCode         codes.Code
-		enableDiskTopology bool
+		name                 string
+		req                  *csi.CreateVolumeRequest
+		enableStoragePools   bool
+		expVol               *csi.Volume
+		expErrCode           codes.Code
+		enableDiskTopology   bool
+		enableDynamicVolumes bool
 	}{
 		{
 			name: "success default",
@@ -1385,13 +1386,63 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "success with dynamic volumes enabled but standard volume",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         stdParams,
+			},
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success with dynamic volumes selecting disk",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters: map[string]string{
+					parameters.ParameterKeyType: parameters.DynamicVolumeType,
+					parameters.ParameterPDType:  "pd-balanced",
+					parameters.ParameterHDType:  "hyperdisk-balanced",
+				},
+			},
+			enableDynamicVolumes: true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      testVolumeID,
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							constants.TopologyKeyZone: zone,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	// Run test cases
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup new driver each time so no interference
-			args := &GCEControllerServerArgs{EnableDiskTopology: tc.enableDiskTopology}
+			args := &GCEControllerServerArgs{
+				EnableDiskTopology:   tc.enableDiskTopology,
+				EnableDynamicVolumes: tc.enableDynamicVolumes,
+			}
 			gceDriver := initGCEDriver(t, nil, args)
 			gceDriver.cs.enableStoragePools = tc.enableStoragePools
 

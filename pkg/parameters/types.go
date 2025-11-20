@@ -21,6 +21,15 @@ type DiskParameters struct {
 	// Values: pd-standard, pd-balanced, pd-ssd, or any other PD disk type. Not validated.
 	// Default: pd-standard
 	DiskType string
+	// Values: any PD type. Not validated.
+	// Default: ""
+	PDType string
+	// Values: any HD type. Not validated.
+	// Default: ""
+	HDType string
+	// Values: pdType, hdType
+	// Default: hdType
+	DiskTypePreference string
 	// Values: "none", regional-pd
 	// Default: "none"
 	ReplicationType string

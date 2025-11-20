@@ -115,6 +115,9 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration
 	enableDataCache bool
 
+	// If set to true, the CSI Driver will allow volumes to be provisioned with dynamic disk type selection.
+	enableDynamicVolumes bool
+
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
@@ -322,6 +325,14 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters())
+	if gceCS.enableDynamicVolumes && params.DiskType == "dynamic" {
+		dynamicDiskType, err := SelectDisk(ctx, req, gceCS.CloudProvider)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to select disk type: %v", err.Error())
+		}
+		params.DiskType = dynamicDiskType
+		parameters.SanitizeDiskParameters(&params)
+	}
 	metrics.UpdateRequestMetadataFromParams(ctx, params)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
