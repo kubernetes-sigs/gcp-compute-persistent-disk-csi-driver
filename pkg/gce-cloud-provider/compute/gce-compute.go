@@ -1063,7 +1063,7 @@ func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName 
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForZonalOp(op: %s, zone: %#v, err: %v) failed to poll the operation", opName, zone, err)
 			return false, nil
 		}
@@ -1080,7 +1080,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.RegionOperations.Wait(project, region, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForRegionalOp(op: %s, region: %#v, err: %v) failed to poll the operation", opName, region, err)
 			return false, nil
 		}
@@ -1097,7 +1097,7 @@ func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.GlobalOperations.Wait(project, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
-		if err != nil && waitOp.HttpErrorStatusCode == 503 {
+		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForGlobalOp(op: %s, err: %v) failed to poll the operation", opName, err)
 			return false, nil
 		}
