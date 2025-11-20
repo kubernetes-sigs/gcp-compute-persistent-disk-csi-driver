@@ -5,7 +5,7 @@
 To build and install a development version of the driver:
 
 ```sh
-GCE_PD_CSI_STAGING_IMAGE=gcr.io/path/to/driver/image:dev   # Location to push dev image to
+GCE_PD_CSI_STAGING_IMAGE=registry.pkg.dev/path/to/driver/image   # Location to push dev image to
 make push-container
 
 # Modify controller.yaml and node.yaml in ./deploy/kubernetes/dev to use dev image
@@ -152,10 +152,10 @@ kubetest <custom flags based on your provider> \
 
 ## Dependency management
 
-Use [dep](https://github.com/golang/dep)
+Use go modules to manage dependencies
 
 ```sh
-dep ensure
+go mod tidy
 ```
 
 To modify dependencies or versions change `./Gopkg.toml`
