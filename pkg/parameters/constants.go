@@ -62,4 +62,10 @@ const (
 	// Parameters for VolumeSnapshotClass
 	DiskSnapshotType = "snapshots"
 	DiskImageType    = "images"
+
+	// Parameter for DynamicVolumes
+	DynamicVolumeType       = "dynamic"
+	ParameterHDType         = "hyperdisk-type"
+	ParameterPDType         = "pd-type"
+	ParameterDiskPreference = "disk-type-preference"
 )

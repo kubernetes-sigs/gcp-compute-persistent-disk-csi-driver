@@ -475,7 +475,8 @@ func validAccessMode(want, got string) bool {
 // ValidateDiskParameters takes a CloudDisk and returns true if the parameters
 // specified validly describe the disk provided, and false otherwise.
 func ValidateDiskParameters(disk *CloudDisk, params parameters.DiskParameters) error {
-	if disk.GetPDType() != params.DiskType {
+	// Skip this check for dynamic volumes because dynamic is not a valid disk type.
+	if disk.GetPDType() != params.DiskType && !params.IsDiskDynamic() {
 		return fmt.Errorf("actual pd type %s did not match the expected param %s", disk.GetPDType(), params.DiskType)
 	}
 

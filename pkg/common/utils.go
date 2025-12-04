@@ -497,6 +497,10 @@ func HasDiskTypeLabelKeyPrefix(labelKey string) bool {
 	return strings.HasPrefix(labelKey, constants.DiskTypeKeyPrefix)
 }
 
+func DiskTypeFromLabel(labelKey string) string {
+	return strings.TrimPrefix(labelKey, constants.DiskTypeKeyPrefix+"/")
+}
+
 func DiskTypeLabelKey(diskType string) string {
 	return fmt.Sprintf("%s/%s", constants.DiskTypeKeyPrefix, diskType)
 }

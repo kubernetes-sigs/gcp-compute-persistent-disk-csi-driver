@@ -115,6 +115,9 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned with data cache configuration
 	enableDataCache bool
 
+	// If set to true, the CSI Driver will allow volumes to be provisioned with dynamic disk type selection.
+	enableDynamicVolumes bool
+
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
@@ -322,6 +325,13 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	// Apply Parameters (case-insensitive). We leave validation of
 	// the values to the cloud provider.
 	params, dataCacheParams, err := gceCS.parameterProcessor().ExtractAndDefaultParameters(req.GetParameters())
+	if gceCS.enableDynamicVolumes && params.IsDiskDynamic() {
+		params.DiskType, err = SelectDisk(ctx, req, gceCS.CloudProvider)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to select disk type: %v", err.Error())
+		}
+		parameters.SanitizeDiskParameters(&params)
+	}
 	metrics.UpdateRequestMetadataFromParams(ctx, params)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to extract parameters: %v", err.Error())
@@ -735,8 +745,11 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 				}
 			}
 			// Verify the disk type and encryption key of the clone are the same as that of the source disk.
-			if diskFromSourceVolume.GetPDType() != params.DiskType || !gce.KmsKeyEqual(diskFromSourceVolume.GetKMSKeyName(), params.DiskEncryptionKMSKey) {
-				return nil, status.Errorf(codes.InvalidArgument, "CreateVolume Parameters %v do not match source volume Parameters", params)
+			if diskFromSourceVolume.GetPDType() != params.DiskType {
+				return nil, status.Errorf(codes.InvalidArgument, "CreateVolume source volume disk type %q must match new volume %q", diskFromSourceVolume.GetPDType(), params.DiskType)
+			}
+			if !gce.KmsKeyEqual(diskFromSourceVolume.GetKMSKeyName(), params.DiskEncryptionKMSKey) {
+				return nil, status.Errorf(codes.InvalidArgument, "CreateVolume source volume KMS key %q must match new volume %q", diskFromSourceVolume.GetKMSKeyName(), params.DiskEncryptionKMSKey)
 			}
 			// Verify the disk capacity range are the same or greater as that of the source disk.
 			if diskFromSourceVolume.GetSizeGb() > common.BytesToGbRoundDown(capBytes) {
@@ -1345,14 +1358,15 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 
 func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProcessor {
 	return &parameters.ParameterProcessor{
-		DriverName:         gceCS.Driver.name,
-		EnableStoragePools: gceCS.enableStoragePools,
-		EnableMultiZone:    gceCS.multiZoneVolumeHandleConfig.Enable,
-		EnableHdHA:         gceCS.enableHdHA,
-		EnableDiskTopology: gceCS.EnableDiskTopology,
-		ExtraVolumeLabels:  gceCS.Driver.extraVolumeLabels,
-		EnableDataCache:    gceCS.enableDataCache,
-		ExtraTags:          gceCS.Driver.extraTags,
+		DriverName:           gceCS.Driver.name,
+		EnableStoragePools:   gceCS.enableStoragePools,
+		EnableMultiZone:      gceCS.multiZoneVolumeHandleConfig.Enable,
+		EnableHdHA:           gceCS.enableHdHA,
+		EnableDiskTopology:   gceCS.EnableDiskTopology,
+		ExtraVolumeLabels:    gceCS.Driver.extraVolumeLabels,
+		EnableDataCache:      gceCS.enableDataCache,
+		ExtraTags:            gceCS.Driver.extraTags,
+		EnableDynamicVolumes: gceCS.enableDynamicVolumes,
 	}
 }
 
@@ -2326,19 +2340,12 @@ func getZonesFromTopology(topList []*csi.Topology) ([]string, error) {
 }
 
 func getZoneFromSegment(seg map[string]string) (string, error) {
-	var zone string
 	for k, v := range seg {
-		switch k {
-		case constants.TopologyKeyZone:
-			zone = v
-		default:
-			return "", fmt.Errorf("topology segment has unknown key %v", k)
+		if k == constants.TopologyKeyZone {
+			return v, nil
 		}
 	}
-	if len(zone) == 0 {
-		return "", fmt.Errorf("topology specified but could not find zone in segment: %v", seg)
-	}
-	return zone, nil
+	return "", fmt.Errorf("topology specified but could not find zone in segment: %v", seg)
 }
 
 func (gceCS *GCEControllerServer) pickZones(ctx context.Context, top *csi.TopologyRequirement, numZones int, locationTopReq *locationRequirements) ([]string, error) {

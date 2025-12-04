@@ -65,6 +65,12 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				if pp.isHDHADisabled() && p.DiskType == DiskTypeHdHA {
 					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
 				}
+				if p.DiskType == DynamicVolumeType {
+					if pp.isDynamicVolumesDisabled() {
+						return p, d, fmt.Errorf("parameters contain invalid disk type %s, must enable dynamic volumes", DynamicVolumeType)
+					}
+				}
+
 			}
 		case ParameterKeyReplicationType:
 			if v != "" {
@@ -189,6 +195,26 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 			}
 
 			p.UseAllowedDiskTopology = paramUseAllowedDiskTopology
+		case ParameterHDType, ParameterPDType:
+			if pp.isDynamicVolumesDisabled() {
+				return p, d, fmt.Errorf("parameters contains invalid option %q, must enable dynamic volumes", k)
+			}
+			if strings.ToLower(parameters[ParameterKeyType]) != DynamicVolumeType {
+				return p, d, fmt.Errorf("must specify %q parameter as %q when %q is specified", ParameterKeyType, DynamicVolumeType, k)
+			}
+		case ParameterDiskPreference:
+			if pp.isDynamicVolumesDisabled() {
+				return p, d, fmt.Errorf("parameters contains invalid option %q, must enable dynamic volumes", k)
+			}
+			if v != "" {
+				preference := strings.ToLower(v)
+				if preference != ParameterHDType && preference != ParameterPDType {
+					return p, d, fmt.Errorf("must specify disk type preference as either %q or %q", ParameterHDType, ParameterPDType)
+				}
+			}
+			if strings.ToLower(parameters[ParameterKeyType]) != DynamicVolumeType {
+				return p, d, fmt.Errorf("must specify %q parameter as %q when using dynamic volume", ParameterKeyType, DynamicVolumeType)
+			}
 		default:
 			return p, d, fmt.Errorf("parameters contains invalid option %q", k)
 		}
