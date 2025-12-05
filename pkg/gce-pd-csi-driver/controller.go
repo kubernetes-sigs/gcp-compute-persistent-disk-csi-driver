@@ -642,7 +642,7 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 
 	disk, err := gceCS.createSingleDisk(ctx, req, params, volKey, zones, accessMode)
 	if err != nil {
-		return nil, common.LoggedError("CreateVolume failed: %v", err)
+		return nil, common.LoggedError("CreateVolume failed: ", err)
 	}
 
 	return gceCS.generateCreateVolumeResponseWithVolumeId(disk, zones, params, dataCacheParams, enableDataCache, volumeID), nil
