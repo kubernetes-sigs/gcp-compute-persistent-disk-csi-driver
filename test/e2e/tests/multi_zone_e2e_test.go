@@ -1235,8 +1235,6 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should successfully run through entire lifecycle of a HdHA volume on instances in 2 zones", func() {
-		Skip("Flaking on GCP errors. Google internal bug: 463743704")
-
 		// Create new driver and client
 		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
@@ -1324,8 +1322,6 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should create a HdHA instance, write to it, force-attach it to another instance, and read the same data", func() {
-		Skip("Flaking on GCP errors. Google internal bug: 463743704")
-
 		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
