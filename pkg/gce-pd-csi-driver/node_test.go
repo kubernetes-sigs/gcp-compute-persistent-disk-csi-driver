@@ -958,7 +958,7 @@ func TestNodeStageVolume(t *testing.T) {
 				},
 				{
 					cmd:    "blkid",
-					args:   fmt.Sprintf("--match-tag UUID --output value %v", stagingPath),
+					args:   fmt.Sprintf("--match-tag UUID --output value /dev/disk/fake-path"),
 					stdout: btrfsUUID + "\n",
 				},
 			},
@@ -1027,7 +1027,7 @@ func TestNodeStageVolume(t *testing.T) {
 				},
 				{
 					cmd:    "blkid",
-					args:   fmt.Sprintf("--match-tag UUID --output value %v", stagingPath),
+					args:   fmt.Sprintf("--match-tag UUID --output value /dev/disk/fake-path"),
 					stdout: btrfsUUID + "\n",
 				},
 			},
