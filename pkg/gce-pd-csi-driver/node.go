@@ -538,7 +538,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// Part 6: if configured, write sysfs values
 	if len(btrfsSysfs) > 0 {
-		args := []string{"--match-tag", "UUID", "--output", "value", stagingTargetPath}
+		args := []string{"--match-tag", "UUID", "--output", "value", devicePath}
 		cmd := ns.Mounter.Exec.Command("blkid", args...)
 		var stderr bytes.Buffer
 		cmd.SetStderr(&stderr)
