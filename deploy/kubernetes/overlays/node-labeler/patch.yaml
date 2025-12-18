@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-gce-pd-controller
+spec:
+  template:
+    spec:
+      containers:
+      - name: gce-pd-node-labeler
+        image: cloud-provider-gcp/gce-pd-node-labeler
+        args:
+          - "--v=5"
+          - "--configmap-name=machine-pd-compatibility"
+          - "--configmap-namespace=gce-pd-csi-driver"
