@@ -83,6 +83,10 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019, ltsc2022" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019), $(BASE_IMAGE_LTSC2022)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
+build-and-push-node-labeler-multi-arch: build-node-labeler-container-linux-amd64 build-node-labeler-container-linux-arm64
+	$(DOCKER) manifest create $(LABELERSTAGINGIMAGE):$(STAGINGVERSION) $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64
+	$(DOCKER) manifest push -p $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)
+
 push-container: build-container
 
 # Used by hack/verify-docker-deps.sh, not used for building artifacts
