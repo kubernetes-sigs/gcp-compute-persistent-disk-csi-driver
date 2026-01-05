@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gce-pd-csi-driver
+resources:
+  - service-account.yaml
+  - rbac-webhook.yaml
+  - deployment.yaml
+  - service.yaml
+  - webhook-config.yaml
+  - cert-setup.yaml
+images:
+- name: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+  newName: pd-csi-driver
+  newTag: dev
