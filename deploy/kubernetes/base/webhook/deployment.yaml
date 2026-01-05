@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pd-csi-taint-webhook
+  namespace: gce-pd-csi-driver
+  labels:
+    app: pd-csi-taint-webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pd-csi-taint-webhook
+  template:
+    metadata:
+      labels:
+        app: pd-csi-taint-webhook
+    spec:
+      serviceAccountName: pd-csi-taint-webhook-sa
+      containers:
+        - name: webhook
+          image: gke.gcr.io/gcp-compute-persistent-disk-csi-driver:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--run-taint-webhook=true"
+            - "--webhook-port=9443"
+            - "--v=5"
+          ports:
+            - containerPort: 9443
+              name: webhook
+          volumeMounts:
+            - name: certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+      volumes:
+        - name: certs
+          secret:
+            secretName: pd-csi-webhook-certs # REQUIRED: Must contain tls.crt and tls.key
+            defaultMode: 420
