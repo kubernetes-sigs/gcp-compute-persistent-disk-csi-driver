@@ -50,8 +50,11 @@ spec:
           command:
             - /gce-pd-csi-driver
           volumeMounts:
-            - name: kubelet-dir
-              mountPath: C:\var\lib\kubelet
+            - name: kubelet-plugin-dir
+              mountPath: C:\var\lib\kubelet\plugins\kubernetes.io\csi
+              mountPropagation: "None"
+            - name: kubelet-pods
+              mountPath: C:\var\lib\kubelet\pods
               mountPropagation: "None"
             - name: plugin-dir
               mountPath: C:\csi
@@ -100,10 +103,13 @@ spec:
         hostPath:
           path: \var\lib\kubelet\plugins_registry
           type: Directory
-      - name: kubelet-dir
+      - name: kubelet-pods
         hostPath:
-          path: \var\lib\kubelet
-          type: Directory
+          path: \var\lib\kubelet\pods
+      - name: kubelet-plugin-dir
+        hostPath:
+          path: \var\lib\kubelet\plugins\kubernetes.io\csi
+          type: DirectoryOrCreate
       - name: plugin-dir
         hostPath:
           path: \var\lib\kubelet\plugins\pd.csi.storage.gke.io
