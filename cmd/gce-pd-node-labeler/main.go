@@ -47,7 +47,6 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 	log.SetLogger(klog.NewKlogr())
-
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
@@ -80,32 +79,9 @@ func main() {
 		klog.Fatalf("Failed to add runnable to manager: %v", err)
 	}
 
-	mapFn := func(ctx context.Context, obj client.Object) []reconcile.Request {
-		cm, ok := obj.(*corev1.ConfigMap)
-		if !ok {
-			klog.Errorf("Expected a ConfigMap object but got %T", obj)
-			return nil
-		}
-		if err := reconciler.UpdateMachinePDCompatibility(ctx); err != nil {
-			klog.Errorf("Failed to update disk compatibility map from ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
-			return nil
-		}
-
-		var nodes corev1.NodeList
-		if err := mgr.GetClient().List(ctx, &nodes); err != nil {
-			klog.Errorf("Failed to list nodes for configmap change reconciliation: %v", err)
-			return nil
-		}
-		requests := make([]reconcile.Request, len(nodes.Items))
-		for i, node := range nodes.Items {
-			requests[i] = reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name: node.Name,
-				},
-			}
-		}
-		klog.Infof("ConfigMap changed, enqueuing reconciliation for %d nodes", len(requests))
-		return requests
+	eventHandler := &nodelabeler.ConfigMapEventHandler{
+		Client:     mgr.GetClient(),
+		Reconciler: reconciler,
 	}
 
 	err = builder.ControllerManagedBy(mgr).
@@ -117,7 +93,7 @@ func main() {
 					Namespace: *configmapNamespace,
 				},
 			},
-			handler.EnqueueRequestsFromMapFunc(mapFn),
+			handler.EnqueueRequestsFromMapFunc(eventHandler.Map),
 			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 				return obj.GetName() == *configmapName && obj.GetNamespace() == *configmapNamespace
 			})),
