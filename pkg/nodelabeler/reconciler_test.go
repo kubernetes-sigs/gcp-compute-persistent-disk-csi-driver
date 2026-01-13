@@ -264,8 +264,8 @@ func TestUpdateMachinePDCompatibility(t *testing.T) {
 			if tc.expectedMap != nil {
 				expectedJSON, _ := json.Marshal(tc.expectedMap)
 				gotJSON, _ := json.Marshal(tc.reconciler.compatibility)
-				if string(expectedJSON) != string(gotJSON) {
-					t.Errorf("UpdateMachinePDCompatibility() compatibility map = %v, want %v", string(gotJSON), string(expectedJSON))
+				if diff := cmp.Diff(expectedJSON, gotJSON); diff != "" {
+					t.Errorf("UpdateMachinePDCompatibility() mismatch (-want +got):\n%s", diff)
 				}
 			} else if tc.reconciler.compatibility != nil {
 				t.Errorf("UpdateMachinePDCompatibility() compatibility map = %v, want nil", tc.reconciler.compatibility)
