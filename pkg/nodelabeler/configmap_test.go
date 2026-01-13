@@ -41,8 +41,8 @@ func TestConfigMapEventHandler_Map(t *testing.T) {
 			},
 		},
 		{
-			name:      "no nodes exist",
-			nodes:     []client.Object{},
+			name:  "no nodes exist",
+			nodes: []client.Object{},
 			configMap: &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-cm",
