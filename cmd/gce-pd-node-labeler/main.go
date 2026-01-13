@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
@@ -39,6 +40,7 @@ import (
 var (
 	configmapName      = flag.String("configmap-name", "machine-pd-compatibility", "Name of the ConfigMap to use for machine & PD compatibility information.")
 	configmapNamespace = flag.String("configmap-namespace", "gce-pd-csi-driver", "Namespace of the ConfigMap to use for machine & PD compatibility information.")
+	httpEndpoint       = flag.String("http-endpoint", ":22015", "HTTP endpoint for health checks.")
 )
 
 func main() {
@@ -48,9 +50,15 @@ func main() {
 
 	ctx := signals.SetupSignalHandler()
 
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{})
+	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
+		HealthProbeBindAddress: *httpEndpoint,
+	})
 	if err != nil {
 		klog.Fatalf("Failed to create manager: %v", err)
+	}
+
+	if err := mgr.AddHealthzCheck("healthz/node-labeler", healthz.Ping); err != nil {
+		klog.Fatalf("Failed to set up health check: %v", err)
 	}
 
 	reconciler := &nodelabeler.Reconciler{
