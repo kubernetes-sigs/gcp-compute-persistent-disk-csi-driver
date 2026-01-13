@@ -12,3 +12,10 @@ spec:
           - "--v=5"
           - "--configmap-name=machine-pd-compatibility"
           - "--configmap-namespace=gce-pd-csi-driver"
+        resources:
+          requests:
+            cpu: 20m
+            memory: 50Mi
+          limits:
+            cpu: 50m
+            memory: 100Mi
