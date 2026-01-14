@@ -15,16 +15,16 @@ spec:
           - "--http-endpoint=:22015"
         ports:
           - containerPort: 22015
-              name: http-endpoint
-              protocol: TCP
-          livenessProbe:
-            failureThreshold: 1
-            httpGet:
-              path: /healthz/node-labeler
-              port: http-endpoint
-            initialDelaySeconds: 10
-            timeoutSeconds: 10
-            periodSeconds: 20
+            name: http-endpoint
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /healthz/node-labeler
+            port: http-endpoint
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          periodSeconds: 20
         resources:
           requests:
             cpu: 20m
