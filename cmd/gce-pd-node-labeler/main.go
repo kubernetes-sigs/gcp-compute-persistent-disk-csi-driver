@@ -16,8 +16,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
-	"errors"
 	"flag"
 
 	corev1 "k8s.io/api/core/v1"
@@ -62,19 +60,6 @@ func main() {
 		Client:             mgr.GetClient(),
 		ConfigMapName:      *configmapName,
 		ConfigMapNamespace: *configmapNamespace,
-	}
-
-	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		if !mgr.GetCache().WaitForCacheSync(ctx) {
-			return errors.New("failed to wait for cache sync")
-		}
-		if err := reconciler.UpdateMachinePDCompatibility(ctx); err != nil {
-			klog.Errorf("Failed to load initial machine and PD compatibility map: %v", err)
-			return err
-		}
-		return nil
-	})); err != nil {
-		klog.Fatalf("Failed to add runnable to manager: %v", err)
 	}
 
 	eventHandler := &nodelabeler.ConfigMapEventHandler{

@@ -19,6 +19,7 @@ package nodelabeler
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -182,12 +183,12 @@ func TestUpdateMachinePDCompatibility(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Data: map[string]string{
-					machinePDCompatibilityKey: `{"n2":{"pd-standard":true,"pd-ssd":true},"e2":{"pd-standard":true,"pd-balanced":true}}`,
+					machinePDCompatibilityKey: `{"e2":{"pd-balanced":true,"pd-standard":true},"n2":{"pd-standard":true,"pd-ssd":true}}`,
 				},
 			},
 			expectedMap: map[string][]string{
 				"n2": {"pd-standard", "pd-ssd"},
-				"e2": {"pd-standard", "pd-balanced"},
+				"e2": {"pd-balanced", "pd-standard"},
 			},
 			expectErr: false,
 			reconciler: &Reconciler{
@@ -262,9 +263,18 @@ func TestUpdateMachinePDCompatibility(t *testing.T) {
 			}
 
 			if tc.expectedMap != nil {
-				expectedJSON, _ := json.Marshal(tc.expectedMap)
-				gotJSON, _ := json.Marshal(tc.reconciler.compatibility)
-				if diff := cmp.Diff(expectedJSON, gotJSON); diff != "" {
+				expectedJSONBytes, _ := json.Marshal(tc.expectedMap)
+				gotJSONBytes, _ := json.Marshal(tc.reconciler.compatibility)
+				var want, got map[string][]string
+				json.Unmarshal(expectedJSONBytes, &want)
+				json.Unmarshal(gotJSONBytes, &got)
+				for _, v := range want {
+					sort.Strings(v)
+				}
+				for _, v := range got {
+					sort.Strings(v)
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("UpdateMachinePDCompatibility() mismatch (-want +got):\n%s", diff)
 				}
 			} else if tc.reconciler.compatibility != nil {
