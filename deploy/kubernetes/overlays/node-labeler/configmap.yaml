@@ -29,6 +29,13 @@ data:
         "hyperdisk-extreme": true,
         "hyperdisk-ml": true
       },
+      "a4x": {
+        "hyperdisk-balanced": true,
+        "hyperdisk-balanced-high-availability": true,
+        "hyperdisk-extreme": true,
+        "hyperdisk-ml": true,
+        "hyperdisk-throughput": true
+      },
       "c2": {
         "pd-balanced": true,
         "pd-extreme": true,
@@ -42,7 +49,14 @@ data:
         "pd-standard": true
       },
       "c3": {
-        "hyperdisk-extreme": true
+        "hyperdisk-balanced": true,
+        "hyperdisk-balanced-high-availability": true,
+        "hyperdisk-extreme": true,
+        "hyperdisk-ml": true,
+        "hyperdisk-throughput": true,
+        "pd-balanced": true,
+        "pd-extreme": true,
+        "pd-ssd": true
       },
       "c3d": {
         "hyperdisk-balanced": true,
@@ -55,18 +69,24 @@ data:
       },
       "c4": {
         "hyperdisk-balanced": true,
-        "hyperdisk-extreme": true
+        "hyperdisk-balanced-high-availability": true,
+        "hyperdisk-extreme": true,
+        "hyperdisk-throughput": true
       },
       "c4a": {
         "hyperdisk-balanced": true,
+        "hyperdisk-balanced-high-availability": true,
         "hyperdisk-extreme": true,
         "hyperdisk-ml": true,
-        "hyperdisk-throughput": true
+        "hyperdisk-throughput": true,
+        "pd-balanced": true,
+        "pd-ssd": true
       },
       "c4d": {
         "hyperdisk-balanced": true,
         "hyperdisk-balanced-high-availability": true,
-        "hyperdisk-extreme": true
+        "hyperdisk-extreme": true,
+        "hyperdisk-throughput": true
       },
       "ct3": {
         "pd-balanced": true,
