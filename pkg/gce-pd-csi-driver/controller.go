@@ -118,6 +118,9 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned with dynamic disk type selection.
 	enableDynamicVolumes bool
 
+	// If set to true, the CSI Driver will update volume publish status labels on GCE disks.
+	enableGCEDiskStatus bool
+
 	multiZoneVolumeHandleConfig MultiZoneVolumeHandleConfig
 
 	listVolumesConfig ListVolumesConfig
@@ -136,6 +139,7 @@ type GCEControllerServerArgs struct {
 	EnableDiskTopology       bool
 	EnableDiskSizeValidation bool
 	EnableDynamicVolumes     bool
+	EnableGCEDiskStatus      bool
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -581,6 +585,20 @@ func (gceCS *GCEControllerServer) updateAccessModeIfNecessary(ctx context.Contex
 	}
 
 	return gceCS.CloudProvider.SetDiskAccessMode(ctx, project, volKey, constants.GCEReadOnlyManyAccessMode)
+}
+
+func (gceCS *GCEControllerServer) updateVolumePublishStatusLabel(ctx context.Context, project string, volKey *meta.Key, disk *gce.CloudDisk, status string) error {
+	labels := disk.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[constants.VolumePublishStatus] = status
+
+	if err := gceCS.CloudProvider.SetDiskLabels(ctx, project, volKey, disk, labels); err != nil {
+		return fmt.Errorf("failed to set labels on disk %v: %w", volKey, err)
+	}
+
+	return nil
 }
 
 func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, req *csi.CreateVolumeRequest, params parameters.DiskParameters, dataCacheParams parameters.DataCacheParameters, enableDataCache bool) (*csi.CreateVolumeResponse, error) {
@@ -1209,6 +1227,12 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 		return nil, status.Errorf(codes.Internal, "error getting device name: %v", err.Error()), disk
 	}
 
+	if gceCS.enableGCEDiskStatus {
+		if err := gceCS.updateVolumePublishStatusLabel(ctx, project, volKey, disk, constants.AttachedStatus); err != nil {
+			klog.Warningf("Failed to update VolumePublishStatus label for disk %v: %v", volKey, err)
+		}
+	}
+
 	attached, err := diskIsAttachedAndCompatible(deviceName, instance, volumeCapability, readWrite)
 	if err != nil {
 		return nil, status.Errorf(codes.AlreadyExists, "Disk %v already published to node %v but incompatible: %v", volKey.Name, nodeID, err.Error()), disk
@@ -1367,6 +1391,7 @@ func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProc
 		EnableDataCache:      gceCS.enableDataCache,
 		ExtraTags:            gceCS.Driver.extraTags,
 		EnableDynamicVolumes: gceCS.enableDynamicVolumes,
+		EnableGCEDiskStatus:  gceCS.enableGCEDiskStatus,
 	}
 }
 

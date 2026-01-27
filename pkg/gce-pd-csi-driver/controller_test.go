@@ -5645,6 +5645,72 @@ func TestControllerPublishBackoff(t *testing.T) {
 	}
 }
 
+func TestControllerPublishVolumeWithGCEDiskStatus(t *testing.T) {
+	testCases := []struct {
+		name                string
+		enableGCEDiskStatus bool
+		want                map[string]string
+	}{
+		{
+			name:                "disk status disabled",
+			enableGCEDiskStatus: false,
+			want:                nil,
+		},
+		{
+			name:                "disk status enabled",
+			enableGCEDiskStatus: true,
+			want: map[string]string{
+				constants.VolumePublishStatus: constants.AttachedStatus,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			seedDisk := createZonalCloudDiskWithZone(name, zone)
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{seedDisk})
+			if err != nil {
+				t.Fatalf("Failed to created fake cloud provider: %v", err)
+			}
+			instance := &compute.Instance{
+				Name: node,
+				Zone: zone,
+			}
+			fcp.InsertInstance(instance, zone, node)
+
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{
+				EnableGCEDiskStatus: tc.enableGCEDiskStatus,
+			})
+
+			req := &csi.ControllerPublishVolumeRequest{
+				VolumeId: testVolumeID,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			}
+			if _, err := gceDriver.cs.ControllerPublishVolume(context.Background(), req); err != nil {
+				t.Fatalf("Failed to publish volume: %v", err)
+			}
+
+			disk, err := gceDriver.cs.CloudProvider.GetDisk(context.Background(), project, meta.ZonalKey(name, zone))
+			if err != nil {
+				t.Fatalf("Failed to get disk: %v", err)
+			}
+
+			got := disk.GetLabels()
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("Unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestGetResource(t *testing.T) {
 	testCases := []struct {
 		name  string

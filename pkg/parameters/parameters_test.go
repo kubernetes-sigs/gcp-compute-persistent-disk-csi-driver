@@ -35,6 +35,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		enableMultiZone       bool
 		enableHdHA            bool
 		enableDiskTopology    bool
+		enableGCEDiskStatus   bool
 		extraTags             map[string]string
 		expectParams          DiskParameters
 		expectDataCacheParams DataCacheParameters
@@ -533,19 +534,36 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 				UseAllowedDiskTopology: true,
 			},
 		},
+		{
+			name:                "GCE disk status enabled: VolumePublishStatus label added",
+			enableGCEDiskStatus: true,
+			parameters:          map[string]string{},
+			labels:              map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-standard",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "",
+				Tags:                 map[string]string{},
+				Labels: map[string]string{
+					constants.VolumePublishStatus: constants.ProvisioningStatus,
+				},
+				ResourceTags: map[string]string{},
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			pp := ParameterProcessor{
-				DriverName:         "testDriver",
-				EnableStoragePools: tc.enableStoragePools,
-				EnableMultiZone:    tc.enableMultiZone,
-				EnableHdHA:         tc.enableHdHA,
-				EnableDiskTopology: tc.enableDiskTopology,
-				ExtraVolumeLabels:  tc.labels,
-				EnableDataCache:    tc.enableDataCache,
-				ExtraTags:          tc.extraTags,
+				DriverName:          "testDriver",
+				EnableStoragePools:  tc.enableStoragePools,
+				EnableMultiZone:     tc.enableMultiZone,
+				EnableHdHA:          tc.enableHdHA,
+				EnableDiskTopology:  tc.enableDiskTopology,
+				EnableGCEDiskStatus: tc.enableGCEDiskStatus,
+				ExtraVolumeLabels:   tc.labels,
+				EnableDataCache:     tc.enableDataCache,
+				ExtraTags:           tc.extraTags,
 			}
 			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters)
 			if gotErr := err != nil; gotErr != tc.expectErr {

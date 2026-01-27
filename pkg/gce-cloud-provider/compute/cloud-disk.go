@@ -268,6 +268,17 @@ func (d *CloudDisk) GetLabels() map[string]string {
 	}
 }
 
+func (d *CloudDisk) GetLabelFingerprint() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.LabelFingerprint
+	case d.betaDisk != nil:
+		return d.betaDisk.LabelFingerprint
+	default:
+		return ""
+	}
+}
+
 func (d *CloudDisk) GetAccessMode() string {
 	switch {
 	case d.disk != nil:

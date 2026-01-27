@@ -111,6 +111,8 @@ var (
 
 	dynamicVolumes = flag.Bool("dynamic-volumes", false, "If set to true, the CSI driver will automatically select a compatible disk type based on the presence of the dynamic-volume parameter and disk types defined in the StorageClass. Disabled by default.")
 
+	gceDiskStatus = flag.Bool("gce-disk-status", false, "If set to true, the CSI driver will update the volume-publish-status-gke-io label on GCE disks after successful attachment to indicate the attachment status. Disabled by default.")
+
 	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
 
 	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
@@ -285,6 +287,7 @@ func handle() {
 			EnableDiskTopology:       *diskTopology,
 			EnableDiskSizeValidation: *enableDiskSizeValidation,
 			EnableDynamicVolumes:     *dynamicVolumes,
+			EnableGCEDiskStatus:      *gceDiskStatus,
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
