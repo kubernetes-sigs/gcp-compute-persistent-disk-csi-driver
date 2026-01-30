@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
 
 const (
@@ -71,7 +71,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 
 	labelsChanged := false
 	for _, diskType := range pds {
-		label := constants.DiskTypeKeyPrefix + "/" + diskType
+		label := common.DiskTypeLabelKey(diskType)
 		if val, ok := newLabels[label]; !ok || val != "true" {
 			newLabels[label] = "true"
 			labelsChanged = true
