@@ -1,0 +1,9 @@
+apiVersion: builtin
+kind: ImageTagTransformer
+metadata:
+  name: imagetag-gce-pd-node-labeler
+imageTag:
+  name: cloud-provider-gcp/gce-pd-node-labeler
+  # TODO: Update this to the correct image tag when available.
+  newName: registry.k8s.io/cloud-provider-gcp/gce-pd-node-labeler
+  newTag: "v0.1.0"
