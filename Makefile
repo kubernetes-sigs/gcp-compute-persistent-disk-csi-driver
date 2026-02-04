@@ -18,7 +18,9 @@ REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git r
 GCE_PD_CSI_STAGING_VERSION ?= ${REV}
 STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
+LABELERSTAGINGIMAGE?=${STAGINGIMAGE}/gce-pd-node-labeler
 DRIVERBINARY=gce-pd-csi-driver
+LABELERBINARY=gce-pd-node-labeler
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
@@ -39,6 +41,10 @@ all: gce-pd-driver gce-pd-driver-windows
 gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
 	CGO_ENABLED=0 go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-extldflags=static -X main.version=$(STAGINGVERSION)" -o bin/${DRIVERBINARY} ./cmd/gce-pd-csi-driver/
+
+gce-pd-node-labeler: require-GCE_PD_CSI_STAGING_VERSION
+	mkdir -p bin
+	CGO_ENABLED=0 go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-extldflags=static -X main.version=$(STAGINGVERSION)" -o bin/${LABELERBINARY} ./cmd/gce-pd-node-labeler/
 
 gce-pd-driver-windows: require-GCE_PD_CSI_STAGING_VERSION
 ifeq (${GOARCH}, amd64)
@@ -77,6 +83,10 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 	STAGINGIMAGE="$(STAGINGIMAGE)" STAGINGVERSION="$(STAGINGVERSION)" WINDOWS_IMAGE_TAGS="ltsc2019, ltsc2022" WINDOWS_BASE_IMAGES="$(BASE_IMAGE_LTSC2019), $(BASE_IMAGE_LTSC2022)" ./manifest_osversion.sh
 	$(DOCKER) manifest push -p $(STAGINGIMAGE):$(STAGINGVERSION)
 
+build-and-push-node-labeler-multi-arch: build-node-labeler-container-linux-amd64 build-node-labeler-container-linux-arm64
+	$(DOCKER) manifest create $(LABELERSTAGINGIMAGE):$(STAGINGVERSION) $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64
+	$(DOCKER) manifest push -p $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)
+
 push-container: build-container
 
 # Used by hack/verify-docker-deps.sh, not used for building artifacts
@@ -108,6 +118,18 @@ build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buil
 build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
+
+build-node-labeler-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.node-labeler --platform=linux/amd64 \
+		-t $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
+
+build-node-labeler-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.node-labeler --platform=linux/arm64 \
+		-t $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 

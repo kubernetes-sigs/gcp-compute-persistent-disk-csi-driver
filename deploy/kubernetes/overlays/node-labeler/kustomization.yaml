@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- configmap.yaml
+- rbac.yaml
+- image.yaml
+patchesStrategicMerge:
+- patch.yaml
