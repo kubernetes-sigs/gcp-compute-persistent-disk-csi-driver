@@ -29,6 +29,7 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/convert"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/deviceutils"
@@ -38,6 +39,15 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
+
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/controller/taint"
+	taintwebhook "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/webhook/taint"
 )
 
 var (
@@ -105,6 +115,11 @@ var (
 
 	enableDiskSizeValidation = flag.Bool("enable-disk-size-validation", false, "If set to true, the driver will validate that the requested disk size is matches the physical disk size. This flag is disabled by default.")
 
+	runTaintController = flag.Bool("run-taint-controller", false, "Enables the Taint Cleanup Controller (watches CSINodes and removes startup taints once CSINode resource is created)")
+	runTaintWebhook    = flag.Bool("run-taint-webhook", false, "Enables the Mutating Admission Webhook (adds startup taints to Nodes to delay workloads until the CSINode resource is created)")
+	webhookPort        = flag.Int("webhook-port", 9443, "The port for the admission webhook to listen on")
+	taintMetricsAddr   = flag.String("taint-metrics-addr", ":8081", "The address the taint controller metrics endpoint binds to.")
+
 	version string
 )
 
@@ -157,6 +172,16 @@ func handle() {
 				klog.Errorf("Could not shutdown otel exporter: %v", err.Error())
 			}
 		}()
+	}
+
+	// Run taint services if enabled
+	if *runTaintController || *runTaintWebhook {
+		// This blocks forever until the pod is killed.
+		if err := runTaintManager(*runTaintController, *runTaintWebhook); err != nil {
+			klog.Fatalf("Failed to run taint manager: %v", err)
+		}
+		// When manager stops, we return to main() and exit.
+		return
 	}
 
 	var metricsManager *metrics.MetricsManager = nil
@@ -471,4 +496,59 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 
 	klog.V(4).Infof("LSSD caching is setup for the Data Cache enabled node %s", nodeName)
 	return nil
+}
+
+func runTaintManager(enableController, enableWebhook bool) error {
+	klog.Info("Initializing Taint Feature Manager...")
+
+	kubeConfig, err := config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get kubeconfig: %v", err)
+	}
+
+	// Setup Manager
+	mgr, err := manager.New(kubeConfig, manager.Options{
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port: *webhookPort,
+		}),
+
+		Metrics: metricsserver.Options{
+			BindAddress: *taintMetricsAddr,
+		},
+
+		HealthProbeBindAddress: "0",
+		LeaderElection:         enableController,
+		LeaderElectionID:       "pd-csi-taint-controller-leader",
+	})
+	if err != nil {
+		return fmt.Errorf("unable to start manager: %v", err)
+	}
+
+	if enableWebhook {
+		klog.Infof("Registering Mutating Webhook on port %d...", *webhookPort)
+		hookServer := mgr.GetWebhookServer()
+		decoder := admission.NewDecoder(mgr.GetScheme())
+
+		taintHandler := &taintwebhook.NodeTainter{
+			Client: mgr.GetClient(),
+		}
+		if err := taintHandler.InjectDecoder(&decoder); err != nil {
+			return fmt.Errorf("failed to inject decoder: %v", err)
+		}
+
+		hookServer.Register("/mutate-v1-node", &webhook.Admission{
+			Handler: taintHandler,
+		})
+	}
+
+	if enableController {
+		klog.Info("Registering Taint Cleanup Controller...")
+		if err := taint.Add(mgr); err != nil {
+			return fmt.Errorf("unable to add taint controller: %v", err)
+		}
+	}
+
+	klog.Info("Starting Taint Manager...")
+	// This blocks until the pod is killed
+	return mgr.Start(signals.SetupSignalHandler())
 }

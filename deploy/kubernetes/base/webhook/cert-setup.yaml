@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pd-csi-webhook-cert-setup
+  namespace: gce-pd-csi-driver
+---
+# Role: Permission to create/update the Secret in the namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pd-csi-webhook-cert-setup-role
+  namespace: gce-pd-csi-driver
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pd-csi-webhook-cert-setup-binding
+  namespace: gce-pd-csi-driver
+subjects:
+  - kind: ServiceAccount
+    name: pd-csi-webhook-cert-setup
+    namespace: gce-pd-csi-driver
+roleRef:
+  kind: Role
+  name: pd-csi-webhook-cert-setup-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole: Permission to patch the Cluster-scoped MutatingWebhookConfiguration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pd-csi-webhook-cert-setup-cluster-role
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pd-csi-webhook-cert-setup-cluster-binding
+subjects:
+  - kind: ServiceAccount
+    name: pd-csi-webhook-cert-setup
+    namespace: gce-pd-csi-driver
+roleRef:
+  kind: ClusterRole
+  name: pd-csi-webhook-cert-setup-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# The Script that generates certs and patches K8s
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pd-csi-webhook-cert-script
+  namespace: gce-pd-csi-driver
+data:
+  gen-certs.sh: |
+    #!/bin/sh
+    set -e
+    
+    SERVICE="pd-csi-taint-webhook"
+    NAMESPACE="gce-pd-csi-driver"
+    SECRET="pd-csi-webhook-certs"
+    WEBHOOK_CONFIG="pd-csi-node-taint-webhook"
+    
+    echo "Generating Self-Signed Certificate..."
+    # Generate a self-signed cert valid for the Service DNS
+    openssl req -new -newkey rsa:2048 -x509 -sha256 -days 3650 -nodes \
+      -subj "/CN=${SERVICE}.${NAMESPACE}.svc" \
+      -addext "subjectAltName = DNS:${SERVICE}.${NAMESPACE}.svc" \
+      -keyout /tmp/tls.key -out /tmp/tls.crt
+    
+    echo "Creating Secret..."
+    # Create or Update the Secret
+    # We use dry-run + apply to make this idempotent
+    kubectl create secret tls ${SECRET} \
+      --cert=/tmp/tls.crt --key=/tmp/tls.key \
+      -n ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+    
+    echo "Patching MutatingWebhookConfiguration..."
+    # Get the base64 encoded CA Bundle (which is just the cert we generated)
+    CA_BUNDLE=$(cat /tmp/tls.crt | base64 | tr -d '\n')
+    
+    # Patch the API Object
+    kubectl patch mutatingwebhookconfiguration ${WEBHOOK_CONFIG} \
+      --type='json' \
+      -p="[{'op': 'replace', 'path': '/webhooks/0/clientConfig/caBundle', 'value':'${CA_BUNDLE}'}]"
+    
+    echo "Done."
+---
+# The Job that runs the script on startup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pd-csi-webhook-cert-setup
+  namespace: gce-pd-csi-driver
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+spec:
+  ttlSecondsAfterFinished: 600 # Auto-cleanup the pod after 10 mins
+  template:
+    spec:
+      serviceAccountName: pd-csi-webhook-cert-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          # We need an image that has both `kubectl` and `openssl`.
+          # bitnami/kubectl is a reliable standard choice.
+          image: bitnami/kubectl:latest
+          command: ["/bin/sh", "/scripts/gen-certs.sh"]
+          volumeMounts:
+            - name: script-vol
+              mountPath: /scripts
+      volumes:
+        - name: script-vol
+          configMap:
+            name: pd-csi-webhook-cert-script
+            defaultMode: 0755
