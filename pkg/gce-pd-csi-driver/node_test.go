@@ -1855,8 +1855,9 @@ func TestNodeGetInfo(t *testing.T) {
 		name        = "test-node"
 	)
 	tests := []struct {
-		desc string
-		want *csi.NodeGetInfoResponse
+		desc             string
+		nodeNameOverride string
+		want             *csi.NodeGetInfoResponse
 	}{
 		{
 			desc: "success",
@@ -1870,11 +1871,34 @@ func TestNodeGetInfo(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc:             "success with nodeNameOverride",
+			nodeNameOverride: "override-node-name",
+			want: &csi.NodeGetInfoResponse{
+				NodeId:            fmt.Sprintf("projects/test-project/zones/%s/instances/%s", zone, "override-node-name"),
+				MaxVolumesPerNode: volumeLimitBig,
+				AccessibleTopology: &csi.Topology{
+					Segments: map[string]string{
+						constants.TopologyKeyZone: zone,
+					},
+				},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			gceDriver := getTestGCEDriver(t)
-			ns := gceDriver.ns
+			var ns *GCENodeServer
+			if tc.nodeNameOverride != "" {
+				args := &NodeServerArgs{
+					DeviceCache: linkcache.NewTestDeviceCache(1*time.Minute, linkcache.NewTestNodeWithVolumes([]string{defaultVolumeID})),
+					NodeName:    tc.nodeNameOverride,
+				}
+				gceDriver := getTestGCEDriverWithCustomMounter(t, mountmanager.NewFakeSafeMounter(), args)
+				ns = gceDriver.ns
+			} else {
+				gceDriver := getTestGCEDriver(t)
+				ns = gceDriver.ns
+			}
 			req := &csi.NodeGetInfoRequest{}
 			metadataservice.SetMachineType(machineType)
 			metadataservice.SetZone(zone)
@@ -1887,6 +1911,40 @@ func TestNodeGetInfo(t *testing.T) {
 
 			if diff := cmp.Diff(tc.want, got, protocmp.Transform()); diff != "" {
 				t.Fatalf("NodeGetInfo() returned unexpected diff (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestGetNodeName(t *testing.T) {
+	tests := []struct {
+		desc             string
+		nodeNameOverride string
+		metadataName     string
+		want             string
+	}{
+		{
+			desc:         "returns metadata service name when override is empty",
+			metadataName: "metadata-node",
+			want:         "metadata-node",
+		},
+		{
+			desc:             "returns override when set",
+			nodeNameOverride: "override-node",
+			metadataName:     "metadata-node",
+			want:             "override-node",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			args := &NodeServerArgs{NodeName: tc.nodeNameOverride}
+			gceDriver := getTestGCEDriverWithCustomMounter(t, mountmanager.NewFakeSafeMounter(), args)
+			ns := gceDriver.ns
+			metadataservice.SetName(tc.metadataName)
+
+			got := ns.GetNodeName()
+			if got != tc.want {
+				t.Errorf("GetNodeName() = %q, want %q", got, tc.want)
 			}
 		})
 	}
