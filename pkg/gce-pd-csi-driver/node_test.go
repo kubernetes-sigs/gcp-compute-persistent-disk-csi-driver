@@ -1875,7 +1875,7 @@ func TestNodeGetInfo(t *testing.T) {
 			desc:             "success with nodeNameOverride",
 			nodeNameOverride: "override-node-name",
 			want: &csi.NodeGetInfoResponse{
-				NodeId:            fmt.Sprintf("projects/test-project/zones/%s/instances/%s", zone, "override-node-name"),
+				NodeId:            fmt.Sprintf("projects/test-project/zones/%s/instances/%s", zone, name),
 				MaxVolumesPerNode: volumeLimitBig,
 				AccessibleTopology: &csi.Topology{
 					Segments: map[string]string{

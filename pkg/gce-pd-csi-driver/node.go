@@ -759,7 +759,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		}
 	}
 
-	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.GetNodeName())
+	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
 	volumeLimits, err := ns.getVolumeLimits(ctx, node)
 	if err != nil {
