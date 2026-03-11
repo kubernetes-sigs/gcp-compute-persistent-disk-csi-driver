@@ -202,8 +202,8 @@ func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []param
 	if err != nil {
 		return err
 	}
-	if !common.UnorderedSlicesEqual(storagePoolZones, reqZones) {
-		return fmt.Errorf("requisite topologies must match storage pools zones. requisite zones: %v, storage pools zones: %v", reqZones, storagePoolZones)
+	if !common.IsSuperset(storagePoolZones, reqZones) {
+		return fmt.Errorf("requisite topologies must be a subset of storage pools zones. requisite zones: %v, storage pools zones: %v", reqZones, storagePoolZones)
 	}
 	return nil
 }

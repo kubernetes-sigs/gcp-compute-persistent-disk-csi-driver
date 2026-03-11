@@ -807,6 +807,61 @@ func TestUnorderedSlicesEqual(t *testing.T) {
 	}
 }
 
+func TestIsSubset(t *testing.T) {
+	testcases := []struct {
+		name             string
+		subset           []string
+		superset         []string
+		expectedSuperset bool
+	}{
+		{
+			name:             "EmptySubset_ReturnsTrue",
+			subset:           []string{},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: true,
+		},
+		{
+			name:             "EqualSlices_ReturnsTrue",
+			subset:           []string{"us-central1-a", "us-central1-b"},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: true,
+		},
+		{
+			name:             "EquivalentSlices_ReturnsTrue",
+			subset:           []string{"us-central1-b", "us-central1-a"},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: true,
+		},
+		{
+			name:             "ValidSubset_ReturnsTrue",
+			subset:           []string{"us-central1-a"},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: true,
+		},
+		{
+			name:             "InvalidSubset_ReturnsFalse",
+			subset:           []string{"us-central1-c"},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: false,
+		},
+		{
+			name:             "LargerSubset_ReturnsFalse",
+			subset:           []string{"us-central1-a", "us-central1-b", "us-central1-c"},
+			superset:         []string{"us-central1-a", "us-central1-b"},
+			expectedSuperset: false,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			isSuperset := IsSuperset(tc.superset, tc.subset)
+			input := fmt.Sprintf("IsSubset(%v, %v)", tc.subset, tc.superset)
+			if diff := cmp.Diff(tc.expectedSuperset, isSuperset); diff != "" {
+				t.Errorf("%s: -want, +got \n%s", input, diff)
+			}
+		})
+	}
+}
+
 func TestParseZoneFromURI(t *testing.T) {
 	testcases := []struct {
 		name      string

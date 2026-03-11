@@ -413,6 +413,12 @@ func UnorderedSlicesEqual(slice1 []string, slice2 []string) bool {
 	return true
 }
 
+func IsSuperset(superset []string, subset []string) bool {
+	subSetStr := sets.NewString(subset...)
+	supSetStr := sets.NewString(superset...)
+	return supSetStr.IsSuperset(subSetStr)
+}
+
 func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	splitId := strings.Split(volumeId, "/")
 	if len(splitId) != volIDTotalElements {

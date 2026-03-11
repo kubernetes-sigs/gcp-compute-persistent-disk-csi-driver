@@ -486,7 +486,7 @@ func TestValidateStoragePools(t *testing.T) {
 			expErr:  fmt.Errorf("storage pools do not support disk clones"),
 		},
 		{
-			name: "fail storage pools zones, requisite zones mismatch",
+			name: "success storage pools zones, requisite zones mismatch",
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 				AccessibilityRequirements: &csi.TopologyRequirement{
@@ -523,7 +523,6 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "test-project",
-			expErr:  fmt.Errorf("failed to validate storage pools zones: requisite topologies must match storage pools zones. requisite zones: [us-central1-a], storage pools zones: [us-central1-a us-central1-b]"),
 		},
 		{
 			name: "fail storage pools cross-project usage",
@@ -718,7 +717,7 @@ func TestValidateStoragePoolZones(t *testing.T) {
 					ResourceName: "projects/test-project/zones/us-central1-b/storagePools/storagePool-1",
 				},
 			},
-			expErr: fmt.Errorf("requisite topologies must match storage pools zones. requisite zones: [us-central1-a], storage pools zones: [us-central1-b]"),
+			expErr: fmt.Errorf("requisite topologies must be a subset of storage pools zones. requisite zones: [us-central1-a], storage pools zones: [us-central1-b]"),
 		},
 		{
 			name: "success validateStoragePoolZones",
