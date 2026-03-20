@@ -21,6 +21,10 @@ spec:
         kubernetes.io/os: linux
       serviceAccountName: csi-gce-pd-controller-sa
       priorityClassName: csi-gce-pd-controller
+      tolerations:
+      - key: "pd.csi.storage.gke.io/startup"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner
@@ -155,6 +159,26 @@ spec:
             - name: cloud-sa-volume
               readOnly: true
               mountPath: "/etc/cloud-sa"
+        - name: taint-controller
+          image: gke.gcr.io/gcp-compute-persistent-disk-csi-driver
+          imagePullPolicy: IfNotPresent
+          args:
+          - "--v=5"
+          - "--run-taint-controller=true"
+          - "--taint-metrics-addr=:8081" # Avoid conflict with main driver metrics
+          - --run-node-service=false
+          command:
+            - /gce-pd-csi-driver
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/cloud-sa/cloud-sa.json"
+          volumeMounts:
+            - name: cloud-sa-volume
+              readOnly: true
+              mountPath: "/etc/cloud-sa"
+          ports:
+          - name: metrics-taint
+            containerPort: 8081
       volumes:
         - name: socket-dir
           emptyDir: {}

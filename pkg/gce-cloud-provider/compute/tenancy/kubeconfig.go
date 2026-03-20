@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	kubeConfigFile = flag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
+	kubeConfigFile = flag.String("mt-kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
 )
 
 // GetKubeConfig returns kuberentes configuration based on flags.

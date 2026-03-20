@@ -16,6 +16,10 @@ limitations under the License.
 
 package constants
 
+import (
+	corev1 "k8s.io/api/core/v1"
+)
+
 const (
 	// Keys for Topology. This key will be shared amongst drivers from GCP
 	TopologyKeyZone = "topology.gke.io/zone"
@@ -67,6 +71,11 @@ const (
 	// Node label for attach limit override
 	NodeRestrictionLabelPrefix = "node-restriction.kubernetes.io/%s"
 	AttachLimitOverrideLabel   = "gke-volume-attach-limit-override"
+
+	// StartupTaintKey is the key that blocks scheduling until the driver is ready.
+	StartupTaintKey    = "pd.csi.storage.gke.io/not-ready"
+	StartupTaintValue  = "true"
+	StartupTaintEffect = corev1.TaintEffectNoSchedule
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines

@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pd-csi-taint-controller-role
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pd-csi-taint-controller-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-gce-pd-controller-sa 
+    namespace: gce-pd-csi-driver
+roleRef:
+  kind: ClusterRole
+  name: pd-csi-taint-controller-role
+  apiGroup: rbac.authorization.k8s.io
