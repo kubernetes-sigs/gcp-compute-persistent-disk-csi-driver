@@ -36,7 +36,7 @@ if [ "$use_kubetest2" = true ]; then
     go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@${kt2_version}
 fi
 
-if [ "$windows_distribution" != "win2019" -a "$windows_distribution" != "win2022"]; then
+if [ "$windows_distribution" != "win2019" -a "$windows_distribution" != "win2022" ]; then
     print "Invalid windows distribution $windows_distribution provided. Exiting."
     exit 1
 fi
