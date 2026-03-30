@@ -52,6 +52,7 @@ import (
 
 var (
 	cloudConfigFilePath  = flag.String("cloud-config", "", "Path to GCE cloud provider config")
+	failCloseOnAuthError = flag.Bool("fail-close-on-auth-error", false, "If set to true, the CSI driver will fail its controller service to start if it cannot fetch the initial authentication token during startup. Default is false (legacy behavior).")
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
@@ -267,7 +268,7 @@ func handle() {
 	// Initialize requirements for the controller service
 	var controllerServer *driver.GCEControllerServer
 	if *runControllerService {
-		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment, waitForAttachConfig, listInstancesConfig, *enableMultitenancyFlag)
+		cloudProvider, err := gce.CreateCloudProvider(ctx, version, *cloudConfigFilePath, computeEndpoint, computeEnvironment, waitForAttachConfig, listInstancesConfig, *enableMultitenancyFlag, *failCloseOnAuthError)
 		if err != nil {
 			klog.Fatalf("Failed to get cloud provider: %v", err.Error())
 		}
