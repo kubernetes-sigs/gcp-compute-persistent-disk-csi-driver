@@ -49,6 +49,10 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		p.Labels[k] = v
 	}
 
+	if pp.EnableGCEDiskStatus {
+		p.Labels[constants.VolumePublishStatus] = constants.ProvisioningStatus
+	}
+
 	for k, v := range pp.ExtraTags {
 		p.ResourceTags[k] = v
 	}

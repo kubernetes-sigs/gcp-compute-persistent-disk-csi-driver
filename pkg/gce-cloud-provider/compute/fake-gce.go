@@ -318,6 +318,17 @@ func (cloud *FakeCloudProvider) SetDiskAccessMode(ctx context.Context, project s
 	return nil
 }
 
+func (cloud *FakeCloudProvider) SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error {
+	if disk.disk != nil {
+		disk.disk.Labels = labels
+	}
+	if disk.betaDisk != nil {
+		disk.betaDisk.Labels = labels
+	}
+
+	return nil
+}
+
 func (cloud *FakeCloudProvider) GetDiskTypeURI(project string, volKey *meta.Key, diskType string) string {
 	switch volKey.Type() {
 	case meta.Zonal:

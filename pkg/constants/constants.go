@@ -76,6 +76,11 @@ const (
 	StartupTaintKey    = "pd.csi.storage.gke.io/not-ready"
 	StartupTaintValue  = "true"
 	StartupTaintEffect = corev1.TaintEffectNoSchedule
+
+	// VolumePublishStatus is the key in volume publish context to indicate the status of the volume.
+	VolumePublishStatus = "volume-publish-status-gke-io"
+	ProvisioningStatus  = "provisioning"
+	AttachedStatus      = "attaching"
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines
