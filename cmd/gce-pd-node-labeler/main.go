@@ -41,6 +41,12 @@ var (
 
 func main() {
 	klog.InitFlags(nil)
+
+	// Opt into the new klog behavior where -stderrthreshold is honored even
+	// when -logtostderr=true (see kubernetes/klog#212, kubernetes/klog#432).
+	flag.Set("legacy_stderr_threshold_behavior", "false") //nolint:errcheck
+	flag.Set("stderrthreshold", "INFO")                   //nolint:errcheck
+
 	flag.Parse()
 	log.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
