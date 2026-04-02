@@ -37,7 +37,13 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	clock "k8s.io/utils/clock/testing"
@@ -47,6 +53,7 @@ import (
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	gcecloudprovider "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
@@ -5706,6 +5713,199 @@ func TestControllerPublishVolumeWithGCEDiskStatus(t *testing.T) {
 			got := disk.GetLabels()
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("Unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestControllerPublishVolume_PDConversion(t *testing.T) {
+	const pdConversionAnnotation = "pd-conversion.gke.io/slow-conversion-opt-in"
+
+	basePVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+	}
+	basePod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "default"},
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "test-pvc",
+						},
+					},
+				},
+			},
+		},
+	}
+	baseSC := &storagev1.StorageClass{
+		ObjectMeta:  metav1.ObjectMeta{Name: "test-sc"},
+		Provisioner: "pd.csi.storage.gke.io",
+	}
+	baseNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: node},
+	}
+	basePV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: corev1.PersistentVolumeSpec{
+			PersistentVolumeSource: corev1.PersistentVolumeSource{
+				CSI: &corev1.CSIPersistentVolumeSource{
+					Driver:       "pd.csi.storage.gke.io",
+					VolumeHandle: testVolumeID,
+				},
+			},
+			ClaimRef: &corev1.ObjectReference{
+				Name:      "test-pvc",
+				Namespace: "default",
+			},
+			StorageClassName: "test-sc",
+		},
+	}
+
+	testCases := []struct {
+		name                 string
+		k8sObjects           []runtime.Object
+		conversionTestParams gcecloudprovider.ConversionTestParams
+		expectSlowConversion bool
+		expectAttachSuccess  bool
+		expErrCode           codes.Code
+	}{
+		{
+			name: "should opt-out by default with no annotations",
+			k8sObjects: []runtime.Object{
+				baseSC.DeepCopy(),
+				baseNode.DeepCopy(),
+				basePV.DeepCopy(),
+				basePod.DeepCopy(),
+				basePVC.DeepCopy(),
+			},
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+			},
+			expectSlowConversion: false,
+			expectAttachSuccess:  false,
+			expErrCode:           codes.FailedPrecondition,
+		},
+		{
+			name: "should opt-in with StorageClass annotation",
+			k8sObjects: func() []runtime.Object {
+				sc := baseSC.DeepCopy()
+				sc.Annotations = map[string]string{pdConversionAnnotation: "true"}
+				return []runtime.Object{sc, baseNode.DeepCopy(), basePV.DeepCopy(), basePod.DeepCopy(), basePVC.DeepCopy()}
+			}(),
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+			},
+			expectSlowConversion: true,
+			expectAttachSuccess:  true,
+			expErrCode:           codes.OK,
+		},
+		{
+			name: "should opt-out with explicit opt-out on Node",
+			k8sObjects: func() []runtime.Object {
+				sc := baseSC.DeepCopy()
+				sc.Annotations = map[string]string{pdConversionAnnotation: "true"}
+				nodeObj := baseNode.DeepCopy()
+				nodeObj.Annotations = map[string]string{pdConversionAnnotation: "false"}
+				return []runtime.Object{sc, nodeObj, basePV.DeepCopy(), basePod.DeepCopy(), basePVC.DeepCopy()}
+			}(),
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+			},
+			expectSlowConversion: false,
+			expectAttachSuccess:  false,
+			expErrCode:           codes.FailedPrecondition,
+		},
+		{
+			name:       "should succeed on fast conversion",
+			k8sObjects: []runtime.Object{baseSC.DeepCopy(), baseNode.DeepCopy(), basePV.DeepCopy(), basePod.DeepCopy(), basePVC.DeepCopy()},
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: false,
+			},
+			expectSlowConversion: false,
+			expectAttachSuccess:  true,
+			expErrCode:           codes.OK,
+		},
+		{
+			name: "should fail if slow conversion fails",
+			k8sObjects: func() []runtime.Object {
+				sc := baseSC.DeepCopy()
+				sc.Annotations = map[string]string{pdConversionAnnotation: "true"}
+				return []runtime.Object{sc, baseNode.DeepCopy(), basePV.DeepCopy(), basePod.DeepCopy(), basePVC.DeepCopy()}
+			}(),
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+				SlowConversionFails: true,
+			},
+			expectSlowConversion: true,
+			expectAttachSuccess:  false,
+			expErrCode:           codes.Internal,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Override the kubeclient getter for this test
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			k8sclient.GetClient = func() (kubernetes.Interface, error) {
+				return fake.NewSimpleClientset(tc.k8sObjects...), nil
+			}
+
+			// Create fake cloud provider
+			fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{createZonalCloudDisk(name)})
+			if err != nil {
+				t.Fatalf("failed to create fake cloud provider: %v", err)
+			}
+			fakeCloudProvider.ConversionTestParams = tc.conversionTestParams
+			instance := &compute.Instance{
+				Name: node,
+			}
+			fakeCloudProvider.InsertInstance(instance, zone, node)
+
+			// Create gce driver
+			gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{EnablePdConversion: true})
+			gceDriver.cs.CloudProvider = fakeCloudProvider
+
+			// Create publish request
+			req := &csi.ControllerPublishVolumeRequest{
+				VolumeId: testVolumeID,
+				NodeId:   testNodeID,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{},
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+				Readonly: false,
+			}
+
+			// Call ControllerPublishVolume
+			_, err, _ = gceDriver.cs.executeControllerPublishVolume(context.Background(), req)
+
+			// Assert results
+			if tc.expectAttachSuccess {
+				if err != nil {
+					t.Errorf("Expected attach to succeed, but got error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Expected attach to fail, but it succeeded")
+				} else if status.Code(err) != tc.expErrCode {
+					t.Errorf("Expected error code %v, but got %v, got err: %v", tc.expErrCode, status.Code(err), err)
+				}
+			}
+
+			if fakeCloudProvider.ConversionTestParams.SlowConversionCalled != tc.expectSlowConversion {
+				t.Errorf("Expected slow conversion to be %v, but was %v", tc.expectSlowConversion, fakeCloudProvider.ConversionTestParams.SlowConversionCalled)
 			}
 		})
 	}

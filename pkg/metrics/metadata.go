@@ -19,6 +19,7 @@ type RequestMetadata struct {
 	diskType                  string
 	enableConfidentialStorage string
 	enableStoragePools        string
+	conversionResult          string
 }
 
 func newRequestMetadata() *RequestMetadata {
@@ -26,6 +27,7 @@ func newRequestMetadata() *RequestMetadata {
 		diskType:                  DefaultDiskTypeForMetric,
 		enableConfidentialStorage: DefaultEnableConfidentialCompute,
 		enableStoragePools:        DefaultEnableStoragePools,
+		conversionResult:          DefaultConversionResult,
 	}
 }
 
@@ -51,5 +53,12 @@ func UpdateRequestMetadataFromDisk(ctx context.Context, disk *gce.CloudDisk) {
 		metadata.diskType = disk.GetPDType()
 		metadata.enableConfidentialStorage = strconv.FormatBool(disk.GetEnableConfidentialCompute())
 		metadata.enableStoragePools = strconv.FormatBool(disk.GetEnableStoragePools())
+	}
+}
+
+func SetConversionResult(ctx context.Context, result string) {
+	metadata := MetadataFromContext(ctx)
+	if metadata != nil {
+		metadata.conversionResult = result
 	}
 }

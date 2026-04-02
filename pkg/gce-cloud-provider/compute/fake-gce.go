@@ -62,8 +62,21 @@ type FakeCloudProvider struct {
 	snapshots  map[string]*computev1.Snapshot
 	images     map[string]*computev1.Image
 
+	// PD-on-Gen4 conversion testing fields
+	ConversionTestParams ConversionTestParams
+
 	// marker to set disk status during InsertDisk operation.
 	mockDiskStatus string
+}
+
+type ConversionTestParams struct {
+	InitialAttachFails   bool
+	FastConversionFails  bool
+	SlowConversionFails  bool
+	SecondAttachFails    bool
+	SlowConversionCalled bool
+	FastConversionCalled bool
+	AttachCallCount      int
 }
 
 var _ GCECompute = &FakeCloudProvider{}
@@ -267,6 +280,13 @@ func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, 
 }
 
 func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
+	cloud.ConversionTestParams.AttachCallCount++
+	if cloud.ConversionTestParams.AttachCallCount == 1 && cloud.ConversionTestParams.InitialAttachFails {
+		return fmt.Errorf("Please run the conversion tool to reset the supported VM families of this disk")
+	}
+	if cloud.ConversionTestParams.AttachCallCount == 2 && cloud.ConversionTestParams.SecondAttachFails {
+		return fmt.Errorf("internal test error")
+	}
 	source := cloud.GetDiskSourceURI(project, volKey)
 
 	attachedDiskV1 := &computev1.AttachedDisk{
@@ -279,9 +299,24 @@ func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, 
 	}
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
-		return fmt.Errorf("Failed to get instance %v", instanceName)
+		return fmt.Errorf("failed to get instance %v", instanceName)
 	}
 	instance.Disks = append(instance.Disks, attachedDiskV1)
+	return nil
+}
+
+func (cloud *FakeCloudProvider) ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error {
+	if quickConversionOnly {
+		cloud.ConversionTestParams.FastConversionCalled = true
+		if cloud.ConversionTestParams.FastConversionFails {
+			return fmt.Errorf("Quick conversion is not supported on disk")
+		}
+		return nil
+	}
+	cloud.ConversionTestParams.SlowConversionCalled = true
+	if cloud.ConversionTestParams.SlowConversionFails {
+		return fmt.Errorf("internal test error")
+	}
 	return nil
 }
 

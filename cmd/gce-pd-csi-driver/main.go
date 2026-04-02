@@ -90,6 +90,7 @@ var (
 	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with Data Cache configuration")
 	enableMultitenancyFlag      = flag.Bool("enable-multitenancy", false, "If set to true, the CSI Driver will support running on multitenant GKE clusters")
+	enablePdConversion          = flag.Bool("enable-pd-conversion", false, "If set to true, the CSI Driver will attempt to convert eligible PD disks to be compatible with attaching machine types during the attach operation")
 	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
@@ -289,6 +290,7 @@ func handle() {
 			EnableDiskSizeValidation: *enableDiskSizeValidation,
 			EnableDynamicVolumes:     *dynamicVolumes,
 			EnableGCEDiskStatus:      *gceDiskStatus,
+			EnablePdConversion:       *enablePdConversion,
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)

@@ -32,6 +32,7 @@ import (
 	"github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
 	"golang.org/x/oauth2"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -64,6 +65,8 @@ const (
 	GCEAPIVersionV1 GCEAPIVersion = "v1"
 	// Beta key type
 	GCEAPIVersionBeta GCEAPIVersion = "beta"
+	// Alpha key type
+	GCEAPIVersionAlpha GCEAPIVersion = "alpha"
 )
 
 var GCEAPIVersions = []GCEAPIVersion{GCEAPIVersionBeta, GCEAPIVersionV1}
@@ -81,6 +84,13 @@ var AttachDiskBackoff = wait.Backoff{
 // Default values are similar to Poll every 2 minutes with 6 minute timeout.
 var WaitForOpBackoff = wait.Backoff{
 	Duration: 2 * time.Minute,
+	Factor:   0.0,
+	Jitter:   0.0,
+	Steps:    3,
+	Cap:      0}
+
+var WaitForLongRunningOpBackoff = wait.Backoff{
+	Duration: 30 * time.Minute,
 	Factor:   0.0,
 	Jitter:   0.0,
 	Steps:    3,
@@ -107,6 +117,7 @@ type GCECompute interface {
 	UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
+	ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
 	SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error
 	ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error)
@@ -948,6 +959,34 @@ func (cloud *CloudProvider) DetachDisk(ctx context.Context, project, deviceName,
 	return nil
 }
 
+func (cloud *CloudProvider) ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error {
+	klog.V(5).Infof("Converting disk %v in instance %v zone %v", volKey.Name, instanceName, instanceZone)
+	service := cloud.alphaService
+
+	req := &computealpha.DisksConvertRequest{
+		Params: &computealpha.DiskConvertParams{
+			QuickConversionOnly:      quickConversionOnly,
+			ResetSupportedVmFamilies: true,
+		},
+	}
+	op, err := service.Disks.Convert(project, instanceZone, volKey.Name, req).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	klog.V(5).Infof("Convert operation %s for disk %s", op.Name, volKey.Name)
+
+	if quickConversionOnly {
+		err = cloud.waitForZonalOp(ctx, project, op.Name, volKey.Zone)
+	} else {
+		err = cloud.waitForLongRunningZonalOp(ctx, project, op.Name, volKey.Zone)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed while waiting for zonal conversion operation: %w", err)
+	}
+	return nil
+}
+
 func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {
 	diskMask := &computev1.Disk{
 		AccessMode: accessMode,
@@ -1101,7 +1140,15 @@ func (cloud *CloudProvider) getRegionalDiskTypeURI(project string, region, diskT
 }
 
 func (cloud *CloudProvider) waitForZonalOp(ctx context.Context, project, opName string, zone string) error {
-	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
+	return cloud.waitForZonalOpWithBackoff(ctx, project, opName, zone, WaitForOpBackoff)
+}
+
+func (cloud *CloudProvider) waitForLongRunningZonalOp(ctx context.Context, project, opName string, zone string) error {
+	return cloud.waitForZonalOpWithBackoff(ctx, project, opName, zone, WaitForLongRunningOpBackoff)
+}
+
+func (cloud *CloudProvider) waitForZonalOpWithBackoff(ctx context.Context, project, opName string, zone string, backoff wait.Backoff) error {
+	return wait.ExponentialBackoff(backoff, func() (bool, error) {
 		waitOp, err := cloud.service.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
 		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {

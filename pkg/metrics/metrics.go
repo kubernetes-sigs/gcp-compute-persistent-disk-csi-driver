@@ -37,6 +37,7 @@ const (
 	DefaultDiskTypeForMetric         = "unknownDiskType"
 	DefaultEnableConfidentialCompute = "unknownConfidentialMode"
 	DefaultEnableStoragePools        = "unknownStoragePools"
+	DefaultConversionResult          = "none"
 )
 
 var (
