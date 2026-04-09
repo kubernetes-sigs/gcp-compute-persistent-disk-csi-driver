@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func GetNodeWithRetry(ctx context.Context, nodeName string) (*v1.Node, error) {
+func GetNodeWithRetry(ctx context.Context, nodeName string, steps int) (*v1.Node, error) {
 	if nodeName == "" {
 		return nil, fmt.Errorf("node name is empty")
 	}
@@ -25,15 +25,15 @@ func GetNodeWithRetry(ctx context.Context, nodeName string) (*v1.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return getNodeWithRetry(ctx, kubeClient, nodeName)
+	return getNodeWithRetry(ctx, kubeClient, nodeName, steps)
 }
 
-func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string) (*v1.Node, error) {
+func getNodeWithRetry(ctx context.Context, kubeClient *kubernetes.Clientset, nodeName string, steps int) (*v1.Node, error) {
 	var nodeObj *v1.Node
 	backoff := wait.Backoff{
 		Duration: 1 * time.Second,
 		Factor:   2.0,
-		Steps:    5,
+		Steps:    steps,
 	}
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
 		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
