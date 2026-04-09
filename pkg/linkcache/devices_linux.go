@@ -18,7 +18,7 @@ import (
 const byIdDir = "/dev/disk/by-id"
 
 func NewDeviceCacheForNode(ctx context.Context, period time.Duration, nodeName string, driverName string, deviceUtils deviceutils.DeviceUtils, metricsManager *metrics.MetricsManager) (*DeviceCache, error) {
-	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName)
+	node, err := k8sclient.GetNodeWithRetry(ctx, nodeName, 10) // 10 steps to wait roughly 9 minutes
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}

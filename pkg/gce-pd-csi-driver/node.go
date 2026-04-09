@@ -743,7 +743,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 		Segments: map[string]string{constants.TopologyKeyZone: ns.MetadataService.GetZone()},
 	}
 
-	node, err := k8sclient.GetNodeWithRetry(ctx, ns.GetNodeName())
+	node, err := k8sclient.GetNodeWithRetry(ctx, ns.GetNodeName(), 5) // 5 steps to wait roughly 15 seconds
 	if err != nil {
 		klog.Errorf("Failed to get node %s: %v. The error is ignored so that the driver can register", ns.GetNodeName(), err.Error())
 	}
