@@ -36,6 +36,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	rscmgr "cloud.google.com/go/resourcemanager/apiv3"
 	"golang.org/x/oauth2"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	computev1 "google.golang.org/api/compute/v1"
@@ -101,11 +102,12 @@ var (
 // https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1524
 // for how to add GCE alpha Disk support.
 type CloudProvider struct {
-	service     *compute.Service
-	betaService *computebeta.Service
-	tokenSource oauth2.TokenSource
-	project     string
-	zone        string
+	service      *compute.Service
+	betaService  *computebeta.Service
+	alphaService *computealpha.Service
+	tokenSource  oauth2.TokenSource
+	project      string
+	zone         string
 
 	zonesCache map[string][]string
 
@@ -177,6 +179,12 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	}
 	klog.Infof("Compute endpoint for Beta version: %s", betasvc.BasePath)
 
+	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
+	if err != nil {
+		return nil, err
+	}
+	klog.Infof("Compute endpoint for Alpha version: %s", alphasvc.BasePath)
+
 	project, zone, err := getProjectAndZone(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting Project and Zone: %w", err)
@@ -185,6 +193,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	cp := &CloudProvider{
 		service:             svc,
 		betaService:         betasvc,
+		alphaService:        alphasvc,
 		tokenSource:         tokenSource,
 		project:             project,
 		zone:                zone,
@@ -199,7 +208,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	if multiTenancyEnabled {
 		klog.Info("Setting up multitenancy")
-		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, tenancy.GetKubeConfig())
+		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, common.GetKubeConfig())
 		if err != nil {
 			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
 		}
@@ -291,6 +300,22 @@ func readConfig(configPath string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("couldn't read cloud provider configuration at %s: %w", configPath, err)
 	}
 	return cfg, nil
+}
+
+func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*computealpha.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionAlpha, timeout)
+	if err != nil {
+		klog.Errorf("Failed to get compute endpoint: %s", err)
+		if failCloseOnAuthError {
+			return nil, err
+		}
+	}
+	service, err := computealpha.NewService(ctx, computeOpts...)
+	if err != nil {
+		return nil, err
+	}
+	service.UserAgent = fmt.Sprintf("GCE CSI Driver/%s (%s %s)", vendorVersion, runtime.GOOS, runtime.GOARCH)
+	return service, nil
 }
 
 func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*computebeta.Service, error) {
