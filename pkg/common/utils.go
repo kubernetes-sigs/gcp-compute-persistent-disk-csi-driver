@@ -70,8 +70,8 @@ const (
 	// Reference: https://cloud.google.com/storage/docs/locations
 	// Example: us
 	multiRegionalLocationFmt = "^[a-z]+$"
-	// Example: us-east1
-	regionalLocationFmt = "^[a-z]+-[a-z]+[0-9]$"
+	// Example: us-east1, europe-west10 (suffix may be one or two digits)
+	regionalLocationFmt = "^[a-z]+-[a-z]+[0-9]{1,2}$"
 
 	// Full or partial URL of the machine type resource, in the format:
 	//   zones/zone/machineTypes/machine-type

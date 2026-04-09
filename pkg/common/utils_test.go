@@ -805,6 +805,18 @@ func TestSnapshotStorageLocations(t *testing.T) {
 			false,
 		},
 		{
+			"valid region two-digit suffix (europe-west10)",
+			"europe-west10",
+			[]string{"europe-west10"},
+			false,
+		},
+		{
+			"valid region two-digit suffix (europe-west12)",
+			"EUROPE-WEST12",
+			[]string{"europe-west12"},
+			false,
+		},
+		{
 			// Zones are not valid bucket/snapshot locations.
 			"single zone",
 			"us-east1a",
