@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	DriverName = "pd.csi.storage.gke.io"
+
 	// Keys for Topology. This key will be shared amongst drivers from GCP
 	TopologyKeyZone = "topology.gke.io/zone"
 
@@ -80,6 +82,7 @@ const (
 	// VolumePublishStatus is the key in volume publish context to indicate the status of the volume.
 	VolumePublishStatus = "volume-publish-status-gke-io"
 	ProvisioningStatus  = "provisioning"
+	ProvisionedStatus   = "provisioned"
 	AttachedStatus      = "attaching"
 
 	// ClusterIDLabel is the key in disk labels to indicate the cluster identifier of the disk.
