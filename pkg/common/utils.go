@@ -184,17 +184,22 @@ func NodeIDToZoneAndName(id string) (string, string, error) {
 }
 
 func GetRegionFromZones(zones []string) (string, error) {
+	const tpcPrefix = "u"
 	regions := sets.String{}
 	if len(zones) < 1 {
 		return "", fmt.Errorf("no zones specified")
 	}
 	for _, zone := range zones {
 		// Zone expected format {locale}-{region}-{zone}
+		// TPC zone expected format is u-{}-{}-{}, e.g. u-europe-central2-a. See go/tpc-region-naming.
 		splitZone := strings.Split(zone, "-")
-		if len(splitZone) != 3 {
-			return "", fmt.Errorf("zone in unexpected format, expected: {locale}-{region}-{zone}, got: %v", zone)
+		if len(splitZone) == 3 {
+			regions.Insert(strings.Join(splitZone[0:2], "-"))
+		} else if len(splitZone) == 4 && splitZone[0] == tpcPrefix {
+			regions.Insert(strings.Join(splitZone[0:3], "-"))
+		} else {
+			return "", fmt.Errorf("zone in unexpected format, expected: {locale}-{region}-{zone} or u-{locale}-{region}-{zone}, got: %v", zone)
 		}
-		regions.Insert(strings.Join(splitZone[0:2], "-"))
 	}
 	if regions.Len() != 1 {
 		return "", fmt.Errorf("multiple or no regions gotten from zones, got: %v", regions)

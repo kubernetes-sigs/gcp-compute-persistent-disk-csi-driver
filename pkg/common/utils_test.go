@@ -293,6 +293,16 @@ func TestGetRegionFromZones(t *testing.T) {
 			zones:  []string{"blah/blooh"},
 			expErr: true,
 		},
+		{
+			name:      "tpc zone",
+			zones:     []string{"u-europe-central2-a"},
+			expRegion: "u-europe-central2",
+		},
+		{
+			name:   "malformed tpc zone",
+			zones:  []string{"us-europe-central2-a"},
+			expErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Logf("test case: %s", tc.name)
