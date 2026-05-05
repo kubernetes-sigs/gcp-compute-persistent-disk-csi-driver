@@ -30,6 +30,7 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
 	"gopkg.in/gcfg.v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute/tenancy"
 
@@ -208,7 +209,11 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	if multiTenancyEnabled {
 		klog.Info("Setting up multitenancy")
-		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, common.GetKubeConfig())
+		cfg, err := config.GetConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Kubernetes client configuration: %w", err)
+		}
+		ti, err := tenancy.NewTenantsInformer(multiTenancyEnabled, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed initializing tenant informer: %w", err)
 		}
