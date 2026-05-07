@@ -186,8 +186,8 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params parameters.DiskPa
 	}
 
 	// Check that Storage Pools are in same project as the GCEClient that creates the volume.
-	if err := validateStoragePoolProjects(project, params.StoragePools); err != nil {
-		return fmt.Errorf("failed to validate storage pools projects: %v", err)
+	if usingCrossProjectStoragePools(project, params.StoragePools) {
+		klog.V(4).Infof("cross project storage pool being used for volume provisioning. Volume: %q, Project: %q, StoragePools: %v", req.GetName(), project, params.StoragePools)
 	}
 
 	return nil
@@ -208,15 +208,15 @@ func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []param
 	return nil
 }
 
-func validateStoragePoolProjects(project string, storagePools []parameters.StoragePool) error {
+func usingCrossProjectStoragePools(project string, storagePools []parameters.StoragePool) bool {
 	spProjects := sets.String{}
 	for _, sp := range storagePools {
 		if sp.Project != project {
 			spProjects.Insert(sp.Project)
-			return fmt.Errorf("cross-project storage pools usage is not supported. Trying to CreateVolume in project %q with storage pools in projects %v", project, spProjects.UnsortedList())
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 func getMultiWriterFromCapability(vc *csi.VolumeCapability) (bool, error) {
