@@ -1,21 +1,19 @@
 reviewers:
-  - amacaskill
   - cemakd
   - hajiler
+  - hime
   - mattcary
   - msau42
-  - saikat-royc
   - sunnylovestiramisu
-  - tyuchn
 approvers:
-  - amacaskill
+  - hajiler
   - mattcary
   - msau42
-  - saikat-royc
   - sunnylovestiramisu
-  - tyuchn
-  - hajiler
 emeritus_reviewers:
+  - amacaskill
   - davidz627
   - jingxu97
   - saad-ali
+  - saikat-royc
+  - tyuchn
