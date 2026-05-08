@@ -24,3 +24,5 @@ PKG_ROOT=$(git rev-parse --show-toplevel)
 
 export GCE_PD_CSI_STAGING_IMAGE=validation-image
 make -C "${PKG_ROOT}" validate-container-linux
+
+echo "Successfully verified docker deps"
