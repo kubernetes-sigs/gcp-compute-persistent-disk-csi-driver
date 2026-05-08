@@ -198,6 +198,7 @@ func handle() {
 	runServiceWithMetrics := *runControllerService || *runNodeService
 	if runServiceWithMetrics && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
+		mm.RegisterRuntimeMetrics()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
 
 		switch {
