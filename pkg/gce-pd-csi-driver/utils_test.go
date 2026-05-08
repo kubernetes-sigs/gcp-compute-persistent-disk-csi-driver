@@ -525,7 +525,7 @@ func TestValidateStoragePools(t *testing.T) {
 			project: "test-project",
 		},
 		{
-			name: "fail storage pools cross-project usage",
+			name: "success storage pools cross-project usage when allowed",
 			req: &csi.CreateVolumeRequest{
 				Name: "test-name",
 				AccessibilityRequirements: &csi.TopologyRequirement{
@@ -565,7 +565,7 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "other-project",
-			expErr:  fmt.Errorf("failed to validate storage pools projects: cross-project storage pools usage is not supported. Trying to CreateVolume in project \"other-project\" with storage pools in projects [test-project]"),
+			expErr:  nil,
 		},
 		{
 			name: "success validateStoragePools",
