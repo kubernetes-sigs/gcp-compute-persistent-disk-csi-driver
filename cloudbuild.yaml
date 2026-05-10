@@ -6,7 +6,7 @@ options:
   substitution_option: ALLOW_LOOSE
 
 steps:
-  - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20250513-9264efb079"
+  - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20260205-38cfa9523f"
     entrypoint: make
     env:
       - GCE_PD_CSI_STAGING_IMAGE=gcr.io/${_STAGING_PROJECT}/gcp-compute-persistent-disk-csi-driver
@@ -16,7 +16,7 @@ steps:
       - HOME=/root
     args:
       - build-and-push-multi-arch
-  - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20250513-9264efb079"
+  - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20260205-38cfa9523f"
     entrypoint: make
     env:
       - GCE_PD_CSI_STAGING_IMAGE=gcr.io/${_STAGING_PROJECT}/gce-pd-node-labeler
