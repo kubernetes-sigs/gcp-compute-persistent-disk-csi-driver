@@ -22,7 +22,7 @@ For the PD CSI driver to accurately determine the appropriate disk type for a no
 
 The label format is: `"disk-type.gke.io/{DISK_TYPE}": "true"`. For example, a Node that supports hyperdisk-balanced should have the following label: `"disk-type.gke.io/hyperdisk-balanced": "true"`.
 
-> **Tip:** You can use the helper script located at [`deploy/disk_type_labels.sh`](../../../deploy/disk_type_labels.sh) to generate the correct labels for a specific machine type.
+> **Tip:** You can use the helper script located at [`deploy/disk_type_labels.sh`](../../../deploy/disk_type_labels.sh) to generate the correct labels for a specific machine type. Alternatively, deploy the [node labeler controller](../../../cmd/gce-pd-node-labeler/main.go) to automatically apply these labels.
 
 > **Recommendation**: Use these labels with the `disk-topology` feature enabled and [use-allowed-disk-topology](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/hyperdisk#supported_node_scheduling) parameter to improve stateful workload placement. 
 
