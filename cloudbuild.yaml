@@ -26,6 +26,16 @@ steps:
       - HOME=/root
     args:
       - build-and-push-node-labeler-multi-arch
+  - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20250513-9264efb079"
+    entrypoint: make
+    env:
+      - GCE_PD_CSI_STAGING_IMAGE=gcr.io/${_STAGING_PROJECT}/gce-pd-default-sc-rollback-handler
+      - GCE_PD_CSI_STAGING_VERSION=${_PULL_BASE_REF}
+      # default cloudbuild has HOME=/builder/home and docker buildx is in /root/.docker/cli-plugins/docker-buildx
+      # set the home to /root explicitly to if using docker buildx
+      - HOME=/root
+    args:
+      - build-and-push-default-sc-rollback-handler-multi-arch
 
 substitutions:
   _STAGING_PROJECT: "k8s-staging-cloud-provider-gcp"
@@ -34,4 +44,5 @@ substitutions:
 tags:
   - "gcp-compute-persistent-disk-csi-driver"
   - "gce-pd-node-labeler"
+  - "gce-pd-default-sc-rollback-handler"
   - ${_PULL_BASE_REF}
