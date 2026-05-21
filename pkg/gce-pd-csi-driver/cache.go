@@ -47,6 +47,9 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 
 	// We want to get the second element in the array (sample: ARRAY /dev/md126 metadata=1.2 name=csi-driver-data-cache UUID=*),
 	//  which is the path to the RAIDed device
+	if len(infoSlice) < 2 {
+		return "", fmt.Errorf("unexpected mdadm output format, expected at least 2 fields but got %d: %q", len(infoSlice), infoString)
+	}
 	return infoSlice[1], nil
 }
 
@@ -310,8 +313,12 @@ func FetchRaidedLssds() ([]string, error) {
 		for _, ssd := range infoList {
 			ssdInfo := strings.TrimSpace(ssd)
 			// SSD name comes after "=" on each output line (e.g. MD_DEVICE_dev_nvme3n1_DEV=/dev/nvme3n1)
-			ssdName := strings.Split(ssdInfo, "=")[1]
-			raidedLssdList = append(raidedLssdList, ssdName)
+			parts := strings.SplitN(ssdInfo, "=", 2)
+			if len(parts) < 2 {
+				klog.Warningf("skipping malformed mdadm output line (no '=' delimiter): %q", ssdInfo)
+				continue
+			}
+			raidedLssdList = append(raidedLssdList, parts[1])
 		}
 	}
 
