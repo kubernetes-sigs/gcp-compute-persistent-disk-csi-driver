@@ -6124,7 +6124,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				if !ok {
 					t.Fatalf("Could not get error status code from err: %v", serverError)
 				}
-				t.Errorf("Recieved error %v", serverError)
+				t.Errorf("Received error %v", serverError)
 			}
 
 			volumeId := resp.GetVolume().VolumeId
