@@ -114,6 +114,7 @@ var (
 	dynamicVolumes = flag.Bool("dynamic-volumes", false, "If set to true, the CSI driver will automatically select a compatible disk type based on the presence of the dynamic-volume parameter and disk types defined in the StorageClass. Disabled by default.")
 
 	gceDiskStatus      = flag.Bool("gce-disk-status", false, "If set to true, the CSI driver will update the volume-publish-status-gke-io label on the GCE disk resource after successful attachment to indicate the attachment status. Disabled by default.")
+	enableDiskCleanup  = flag.Bool("enable-disk-cleanup", false, "If set to true, the CSI driver will run a routine on startup to cleanup leaked GCE disks resources. Requires the cluster-ownership-id flag to be set. Disabled by default.")
 	clusterOwnershipID = flag.String("cluster-ownership-id", "", "The identifier for the cluster to which the CSI driver belongs. When specified, the id is applied to the GCE disk resource as a label")
 
 	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
@@ -126,10 +127,6 @@ var (
 	taintMetricsAddr   = flag.String("taint-metrics-addr", ":8081", "The address the taint controller metrics endpoint binds to.")
 
 	version string
-)
-
-const (
-	driverName = "pd.csi.storage.gke.io"
 )
 
 func init() {
@@ -305,6 +302,15 @@ func handle() {
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
+		if *gceDiskStatus {
+			// Block startup if configured incorrectly, but fail-open on the cleanup routine.
+			if *clusterOwnershipID == "" {
+				klog.Fatalf("Cannot enable cleanup routine without cluster ownership ID specified")
+			}
+			if err := controllerServer.VerifyClusterDisks(ctx, *enableDiskCleanup); err != nil {
+				klog.Errorf("Failed to verify cluster disks: %v", err)
+			}
+		}
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -328,7 +334,7 @@ func handle() {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
-		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils, metricsManager)
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, constants.DriverName, deviceUtils, metricsManager)
 		if err != nil {
 			klog.Warningf("Failed to create device cache: %v", err.Error())
 		} else {
@@ -366,7 +372,7 @@ func handle() {
 
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(constants.DriverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}
