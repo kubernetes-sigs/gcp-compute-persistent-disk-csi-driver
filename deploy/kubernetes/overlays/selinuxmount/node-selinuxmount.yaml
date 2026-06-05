@@ -1,0 +1,15 @@
+# Mount /etc/selinux from the host so mount(8) can read SELinux policy.
+# /sys/fs/selinux is already accessible via the existing /sys mount.
+- op: add
+  path: /spec/template/spec/containers/1/volumeMounts/-
+  value:
+    name: etc-selinux
+    mountPath: /etc/selinux
+    readOnly: true
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: etc-selinux
+    hostPath:
+      path: /etc/selinux
+      type: DirectoryOrCreate
