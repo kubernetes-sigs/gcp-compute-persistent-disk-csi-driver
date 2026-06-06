@@ -91,7 +91,9 @@ func (d *DeviceCache) Run(ctx context.Context) {
 		case <-ticker.C:
 			d.listAndUpdate()
 
+			d.mutex.Lock()
 			klog.Infof("Cache contents: %+v", d.symlinks)
+			d.mutex.Unlock()
 		}
 	}
 }
@@ -153,25 +155,46 @@ func (d *DeviceCache) RemoveVolume(volumeID string) {
 	}
 }
 
+func (d *DeviceCache) getSymlinks() []string {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	symlinks := make([]string, 0, len(d.symlinks))
+	for s := range d.symlinks {
+		symlinks = append(symlinks, s)
+	}
+	return symlinks
+}
+
 func (d *DeviceCache) listAndUpdate() {
-	for symlink, device := range d.symlinks {
-		// Evaluate the symlink
+	// 1. Copy symlinks keys under lock
+	symlinks := d.getSymlinks()
+
+	// 2. Perform filesystem I/O outside the lock
+	updates := make(map[string]string)
+	for _, symlink := range symlinks {
 		realPath, err := filepath.EvalSymlinks(symlink)
 		if err != nil {
-			klog.Warningf("Error evaluating symlink for volume %s: %v", device.volumeID, err)
+			klog.Warningf("Error evaluating symlink: %v", err)
 			continue
 		}
+		updates[symlink] = realPath
+	}
 
-		// Check if the realPath has changed
-		if realPath != device.realPath {
-			klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
-			if d.metricsManager != nil {
-				d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
+	// 3. Apply updates under lock
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	for symlink, realPath := range updates {
+		if device, ok := d.symlinks[symlink]; ok {
+			if realPath != device.realPath {
+				klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
+				if d.metricsManager != nil {
+					d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
+				}
+
+				// Update the cache with the new realPath
+				device.realPath = realPath
+				d.symlinks[symlink] = device
 			}
-
-			// Update the cache with the new realPath
-			device.realPath = realPath
-			d.symlinks[symlink] = device
 		}
 	}
 }
