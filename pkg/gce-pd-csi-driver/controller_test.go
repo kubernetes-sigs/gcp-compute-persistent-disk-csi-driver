@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -6221,4 +6222,117 @@ func mergeParameters(a map[string]string, b map[string]string) map[string]string
 		merged[k] = v
 	}
 	return merged
+}
+
+func TestListVolumes_Concurrent(t *testing.T) {
+	var d []*gce.CloudDisk
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("disk-%v", i)
+		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+			Name:     name,
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
+		}))
+	}
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
+
+	concurrency := 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(id int) {
+			defer wg.Done()
+			req := &csi.ListVolumesRequest{
+				MaxEntries: 10,
+			}
+			resp, err := gceDriver.cs.ListVolumes(context.TODO(), req)
+			if err != nil {
+				t.Errorf("worker %d: unexpected error: %v", id, err)
+				return
+			}
+			if resp.NextToken != "" {
+				req2 := &csi.ListVolumesRequest{
+					MaxEntries:    10,
+					StartingToken: resp.NextToken,
+				}
+				_, err2 := gceDriver.cs.ListVolumes(context.TODO(), req2)
+				if err2 != nil {
+					if !strings.Contains(err2.Error(), "invalid startingToken") {
+						t.Errorf("worker %d: unexpected error on page 2: %v", id, err2)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestListSnapshots_Concurrent(t *testing.T) {
+	// Create source disks in mock provider
+	var d []*gce.CloudDisk
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("disk-%v", i)
+		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+			Name:     name,
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
+		}))
+	}
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
+
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("snapshot-%v", i)
+		volumeID := fmt.Sprintf("projects/%s/zones/%s/disks/disk-%d", project, zone, i)
+		createReq := &csi.CreateSnapshotRequest{
+			Name:           name,
+			SourceVolumeId: volumeID,
+			Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskSnapshotType},
+		}
+		_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
+		if err != nil {
+			t.Fatalf("failed to create snapshot: %v", err)
+		}
+	}
+
+	concurrency := 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(id int) {
+			defer wg.Done()
+			req := &csi.ListSnapshotsRequest{
+				MaxEntries: 10,
+			}
+			resp, err := gceDriver.cs.ListSnapshots(context.TODO(), req)
+			if err != nil {
+				t.Errorf("worker %d: unexpected error: %v", id, err)
+				return
+			}
+			if resp.NextToken != "" {
+				req2 := &csi.ListSnapshotsRequest{
+					MaxEntries:    10,
+					StartingToken: resp.NextToken,
+				}
+				_, err2 := gceDriver.cs.ListSnapshots(context.TODO(), req2)
+				if err2 != nil {
+					if !strings.Contains(err2.Error(), "invalid startingToken") {
+						t.Errorf("worker %d: unexpected error on page 2: %v", id, err2)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }
