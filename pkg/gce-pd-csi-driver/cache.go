@@ -88,11 +88,20 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		info = nil
 	}
 
-	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
-	infoString = strings.ReplaceAll(infoString, ".", "")
-	infoString = strings.ReplaceAll(infoString, "\"", "")
-	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
-	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
+	var vgNameForPv string
+	lines := strings.Split(string(info), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "VG" {
+			continue
+		}
+		// A valid VG name must only contain LVM-allowed characters: a-zA-Z0-9+_.-
+		// If the line contains spaces, colons, slashes, or other warning characters, it is not a VG name.
+		if isValidVGName(line) {
+			vgNameForPv = line
+			break
+		}
+	}
 	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
 		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group %v", volumeGroupName)
@@ -103,7 +112,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
 		// CLean up volume group to remove any dangling PV refrences
-		reduceVolumeGroup(vgNameForPv, false)
+		reduceVolumeGroup(vgNameForPv, true)
 		_, isCached := isCachingSetup(mainLvName)
 		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
 
@@ -120,7 +129,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				return "", fmt.Errorf("errored while uncaching main LV. %v: %s", err, info)
 			}
 			// CLean up volume group to remove any dangling PV refrences
-			reduceVolumeGroup(vgNameForPv, false)
+			reduceVolumeGroup(vgNameForPv, true)
 		}
 		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
 		if err != nil {
@@ -529,11 +538,11 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		"pool_lv",
 	}
 	poolName, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lvs", args...)
-	if err != nil {
-		return fmt.Errorf("Failed to check if caching is setup %w", err), false
-	}
 	if strings.Contains(string(poolName), "csi-fast") {
 		return nil, true
+	}
+	if err != nil {
+		return fmt.Errorf("Failed to check if caching is setup %w", err), false
 	}
 	return nil, false
 }
@@ -700,4 +709,16 @@ func fetchNumberGiB(infoSlice []string) (string, error) {
 		return "", fmt.Errorf("Error while fetching PV size for cache %v", err)
 	}
 	return strconv.FormatInt(int64(math.Ceil(pvSizeInt/GiB)), 10) + "GiB", nil
+}
+
+func isValidVGName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' || r == '+') {
+			return false
+		}
+	}
+	return true
 }
