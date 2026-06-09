@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -190,6 +191,7 @@ func (c ListVolumesConfig) listDisksFields() []googleapi.Field {
 type csiErrorBackoffId string
 
 type csiErrorBackoff struct {
+	mu         sync.Mutex
 	backoff    *flowcontrol.Backoff
 	errorCodes map[csiErrorBackoffId]codes.Code
 }
@@ -2758,7 +2760,10 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 }
 
 func newCsiErrorBackoff(initialDuration, errorBackoffMaxDuration time.Duration) *csiErrorBackoff {
-	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration), make(map[csiErrorBackoffId]codes.Code)}
+	return &csiErrorBackoff{
+		backoff:    flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration),
+		errorCodes: make(map[csiErrorBackoffId]codes.Code),
+	}
 }
 
 func (_ *csiErrorBackoff) backoffId(nodeId, volumeId string) csiErrorBackoffId {
@@ -2771,6 +2776,8 @@ func (b *csiErrorBackoff) blocking(id csiErrorBackoffId) bool {
 }
 
 func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if code, ok := b.errorCodes[id]; ok {
 		return code
 	}
@@ -2782,10 +2789,16 @@ func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
 
 func (b *csiErrorBackoff) next(id csiErrorBackoffId, code codes.Code) {
 	b.backoff.Next(string(id), b.backoff.Clock.Now())
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.errorCodes[id] = code
 }
 
 func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
 	b.backoff.Reset(string(id))
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	delete(b.errorCodes, id)
 }

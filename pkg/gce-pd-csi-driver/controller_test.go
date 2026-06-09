@@ -5360,7 +5360,10 @@ type backoffDriverConfig struct {
 
 func newFakeCSIErrorBackoff(tc *clock.FakeClock) *csiErrorBackoff {
 	backoff := flowcontrol.NewFakeBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration, tc)
-	return &csiErrorBackoff{backoff, make(map[csiErrorBackoffId]codes.Code)}
+	return &csiErrorBackoff{
+		backoff:    backoff,
+		errorCodes: make(map[csiErrorBackoffId]codes.Code),
+	}
 }
 
 func TestControllerUnpublishBackoff(t *testing.T) {
