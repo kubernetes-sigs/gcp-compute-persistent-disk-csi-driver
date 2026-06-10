@@ -157,26 +157,26 @@ func (d *DeviceCache) RemoveVolume(volumeID string) {
 	}
 }
 
-func (d *DeviceCache) getSymlinks() []string {
+func (d *DeviceCache) getSymlinksMap() map[string]string {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	symlinks := make([]string, 0, len(d.symlinks))
-	for s := range d.symlinks {
-		symlinks = append(symlinks, s)
+	m := make(map[string]string, len(d.symlinks))
+	for s, device := range d.symlinks {
+		m[s] = device.volumeID
 	}
-	return symlinks
+	return m
 }
 
 func (d *DeviceCache) listAndUpdate() {
-	// 1. Copy symlinks keys under lock
-	symlinks := d.getSymlinks()
+	// 1. Copy symlinks to volume IDs map under lock
+	symlinksMap := d.getSymlinksMap()
 
 	// 2. Perform filesystem I/O outside the lock
 	updates := make(map[string]string)
-	for _, symlink := range symlinks {
+	for symlink, volumeID := range symlinksMap {
 		realPath, err := filepath.EvalSymlinks(symlink)
 		if err != nil {
-			klog.Warningf("Error evaluating symlink: %v", err)
+			klog.Warningf("Error evaluating symlink for volume %s: %v", volumeID, err)
 			continue
 		}
 		updates[symlink] = realPath
