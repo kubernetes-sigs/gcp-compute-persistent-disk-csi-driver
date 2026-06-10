@@ -55,9 +55,11 @@ type GCEControllerServer struct {
 
 	volumeEntries     []*csi.ListVolumesResponse_Entry
 	volumeEntriesSeen map[string]int
+	listVolumesLock   sync.Mutex
 
-	snapshots      []*csi.ListSnapshotsResponse_Entry
-	snapshotTokens map[string]int
+	snapshots         []*csi.ListSnapshotsResponse_Entry
+	snapshotTokens    map[string]int
+	listSnapshotsLock sync.Mutex
 
 	// A map storing all volumes with ongoing operations so that additional
 	// operations for that same volume (as defined by Volume Key) return an
@@ -1646,17 +1648,24 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 			"ListVolumes got max entries request %v. GCE only supports values >0", req.MaxEntries)
 	}
 
-	offsetLow := 0
-	var ok bool
+	var volumeEntries []*csi.ListVolumesResponse_Entry
+	var err error
 	if req.StartingToken == "" {
-		volumeEntries, err := gceCS.listVolumeEntries(ctx)
+		volumeEntries, err = gceCS.listVolumeEntries(ctx)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
 				return nil, status.Errorf(codes.Aborted, "ListVolumes error with invalid request: %v", err.Error())
 			}
 			return nil, common.LoggedError("Failed to list volumes: ", err)
 		}
+	}
 
+	gceCS.listVolumesLock.Lock()
+	defer gceCS.listVolumesLock.Unlock()
+
+	offsetLow := 0
+	var ok bool
+	if req.StartingToken == "" {
 		gceCS.volumeEntries = volumeEntries
 		gceCS.volumeEntriesSeen = map[string]int{}
 	} else {
@@ -1680,8 +1689,11 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 		offsetHigh = len(gceCS.volumeEntries)
 	}
 
+	entriesCopy := make([]*csi.ListVolumesResponse_Entry, offsetHigh-offsetLow)
+	copy(entriesCopy, gceCS.volumeEntries[offsetLow:offsetHigh])
+
 	return &csi.ListVolumesResponse{
-		Entries:   gceCS.volumeEntries[offsetLow:offsetHigh],
+		Entries:   entriesCopy,
 		NextToken: nextToken,
 	}, nil
 }
@@ -2100,18 +2112,26 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 			"ListSnapshots got max entries request %v. GCE only supports values >0", maxEntries)
 	}
 
-	var offset int
-	var length int
-	var ok bool
-	var nextToken string
+	var snapshotList []*csi.ListSnapshotsResponse_Entry
+	var err error
 	if req.StartingToken == "" {
-		snapshotList, err := gceCS.getSnapshots(ctx, req)
+		snapshotList, err = gceCS.getSnapshots(ctx, req)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
 				return nil, status.Errorf(codes.Aborted, "ListSnapshots error with invalid request: %v", err.Error())
 			}
 			return nil, common.LoggedError("Failed to list snapshots: ", err)
 		}
+	}
+
+	gceCS.listSnapshotsLock.Lock()
+	defer gceCS.listSnapshotsLock.Unlock()
+
+	var offset int
+	var length int
+	var ok bool
+	var nextToken string
+	if req.StartingToken == "" {
 		gceCS.snapshots = snapshotList
 		gceCS.snapshotTokens = map[string]int{}
 	} else {
@@ -2132,8 +2152,11 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 		length = len(gceCS.snapshots) - offset
 	}
 
+	entriesCopy := make([]*csi.ListSnapshotsResponse_Entry, length)
+	copy(entriesCopy, gceCS.snapshots[offset:offset+length])
+
 	return &csi.ListSnapshotsResponse{
-		Entries:   gceCS.snapshots[offset : offset+length],
+		Entries:   entriesCopy,
 		NextToken: nextToken,
 	}, nil
 }
