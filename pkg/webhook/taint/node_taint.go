@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 )
@@ -45,17 +47,60 @@ func (a *NodeTainter) Handle(ctx context.Context, req admission.Request) admissi
 		return admission.Allowed("Node already has startup taint")
 	}
 
-	// Apply taint
-	node.Spec.Taints = append(node.Spec.Taints, corev1.Taint{
+	// Apply taint via explicit JSON patch to avoid dropping unknown fields.
+	taintObj := corev1.Taint{
 		Key:    constants.StartupTaintKey,
 		Value:  constants.StartupTaintValue,
 		Effect: constants.StartupTaintEffect,
-	})
-	marshaledNode, err := json.Marshal(node)
+	}
+	patches := buildTaintPatches(node.Spec.Taints, taintObj)
+
+	return createPatchResponse(patches, "Applying startup taint")
+}
+
+// buildTaintPatches generates the JSON patch operations for adding the taint
+func buildTaintPatches(existingTaints []corev1.Taint, taintObj corev1.Taint) []map[string]interface{} {
+	hasExistingTaints := len(existingTaints) > 0
+	var patches []map[string]interface{}
+
+	if hasExistingTaints {
+		patches = append(patches, map[string]interface{}{
+			"op":    "add",
+			"path":  "/spec/taints/-",
+			"value": taintObj,
+		})
+	} else {
+		// Initialize null taint array.
+		patches = append(patches, map[string]interface{}{
+			"op":    "add",
+			"path":  "/spec/taints",
+			"value": []corev1.Taint{taintObj},
+		})
+	}
+
+	return patches
+}
+
+// createPatchResponse constructs a patch-based admission response.
+func createPatchResponse(patches []map[string]interface{}, message string) admission.Response {
+	patchBytes, err := json.Marshal(patches)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledNode)
+
+	patchType := admissionv1.PatchTypeJSONPatch
+
+	return admission.Response{
+		AdmissionResponse: admissionv1.AdmissionResponse{
+			Allowed:   true,
+			Patch:     patchBytes,
+			PatchType: &patchType,
+			Result: &metav1.Status{
+				Code:    http.StatusOK,
+				Message: message,
+			},
+		},
+	}
 }
 
 // InjectDecoder injects the decoder (required by controller-runtime)
