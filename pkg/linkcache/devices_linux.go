@@ -91,9 +91,11 @@ func (d *DeviceCache) Run(ctx context.Context) {
 		case <-ticker.C:
 			d.listAndUpdate()
 
-			d.mutex.Lock()
-			klog.Infof("Cache contents: %+v", d.symlinks)
-			d.mutex.Unlock()
+			func() {
+				d.mutex.Lock()
+				defer d.mutex.Unlock()
+				klog.Infof("Cache contents: %+v", d.symlinks)
+			}()
 		}
 	}
 }
