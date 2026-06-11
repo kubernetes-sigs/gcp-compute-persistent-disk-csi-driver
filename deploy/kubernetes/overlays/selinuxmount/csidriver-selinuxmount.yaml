@@ -1,0 +1,3 @@
+- op: add
+  path: /spec/seLinuxMount
+  value: true
