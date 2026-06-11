@@ -1748,6 +1748,10 @@ func (gceCS *GCEControllerServer) disksAndInstancesToVolumeEntries(disks []*comp
 			continue
 		}
 		for _, disk := range instance.Disks {
+			if disk.Source == "" {
+				klog.V(4).Infof("Skipping ListVolumes instance disk %s with empty source (instance %s)", disk.DeviceName, instance.Name)
+				continue
+			}
 			volumeId, err := getResourceId(disk.Source)
 			if err != nil {
 				klog.Warningf("Bad ListVolumes instance disk source %s, skipped: %v (%+v)", disk.Source, err, instance)
