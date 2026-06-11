@@ -3161,6 +3161,58 @@ func TestListVolumeResponse(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "attached disk with empty source",
+			disks: []compute.Disk{
+				{
+					Name:     "pv-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+				},
+			},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+						},
+						{
+							DeviceName: "local-ssd-0",
+							Source:     "", // Empty source link representing a scratch disk or confidential node disk
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone, "node-1")},
+					},
+				},
+			},
+		},
+		{
+			name:  "only attached disk with empty source",
+			disks: []compute.Disk{},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "local-ssd-0",
+							Source:     "",
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{},
+		},
 	}
 
 	for _, tc := range testCases {
