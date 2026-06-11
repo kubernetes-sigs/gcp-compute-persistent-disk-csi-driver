@@ -102,17 +102,20 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 			} else {
 				gkeVer = mustParseVersion(testParams.clusterVersion)
 			}
-			if gkeVer.lessThan(mustParseVersion("1.18.0")) {
-				// XFS is not supported on COS before 1.18.0
-			} else {
+
+			if gkeVer.atLeast(mustParseVersion("1.18.0")) {
 				fsTypes = append(fsTypes, "xfs")
 			}
+
+			if gkeVer.atLeast(mustParseVersion("1.34.0")) {
+				fsTypes = append(fsTypes, "btrfs")
+			}
 		} else {
-			// XFS is supported on all non-COS images.
-			fsTypes = append(fsTypes, "xfs")
+			// XFS and Btrfs are supported on all non-COS images.
+			fsTypes = append(fsTypes, "xfs", "btrfs")
 		}
 	case "gce":
-		fsTypes = append(fsTypes, "xfs")
+		fsTypes = append(fsTypes, "xfs", "btrfs")
 	default:
 		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", testParams.deploymentStrategy)
 	}
