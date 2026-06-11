@@ -1,5 +1,4 @@
 reviewers:
-  - cemakd
   - hajiler
   - hime
   - mattcary
@@ -11,6 +10,7 @@ approvers:
   - msau42
   - sunnylovestiramisu
 emeritus_reviewers:
+  - cemakd
   - amacaskill
   - davidz627
   - jingxu97
