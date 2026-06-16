@@ -70,35 +70,44 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	if err != nil {
 		klog.Errorf("Failed to check VG UUID for PV %v: %v", devicePath, err)
 	} else if staleVgUuid != "" {
-		configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
-
-		// 1. Uncache the volume FIRST to decouple the missing SSDs and preserve the origin data!
-		klog.Infof("Uncaching stale volume %s/%s using device filter to preserve data", volumeGroupName, mainLvName)
-		uncacheArgs := []string{"--uncache", volumeGroupName + "/" + mainLvName, "--force", "-y", "--config", configFilter}
-		uncacheInfo, uncacheErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
-		if uncacheErr != nil {
-			klog.Errorf("Failed to uncache stale volume: %v: %s", uncacheErr, uncacheInfo)
+		hasDuplicate, dupErr := hasDuplicateVgName(volumeGroupName)
+		if dupErr != nil {
+			klog.Errorf("Failed to check duplicate VG name for %s: %v", volumeGroupName, dupErr)
 		}
+		if hasDuplicate {
+			klog.Infof("Duplicate VG name conflict detected for %s. Resolving using stale VG UUID %s", volumeGroupName, staleVgUuid)
+			configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
 
-		// 2. Clean up missing PVs on the stale VG using the device filter.
-		klog.Infof("Cleaning up missing PVs on stale VG %s using device filter", volumeGroupName)
-		reduceArgs := []string{"--removemissing", volumeGroupName, "--force", "--config", configFilter}
-		reduceInfo, reduceErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
-		if reduceErr != nil {
-			klog.Errorf("Failed to reduce stale VG %s: %v: %s", volumeGroupName, reduceErr, reduceInfo)
-		}
+			// 1. Uncache the volume FIRST to decouple the missing SSDs and preserve the origin data!
+			klog.Infof("Uncaching stale volume %s/%s using device filter to preserve data", volumeGroupName, mainLvName)
+			uncacheArgs := []string{"--uncache", volumeGroupName + "/" + mainLvName, "--force", "-y", "--config", configFilter}
+			uncacheInfo, uncacheErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
+			if uncacheErr != nil {
+				klog.Errorf("Failed to uncache stale volume: %v: %s", uncacheErr, uncacheInfo)
+			}
 
-		// 3. Now rename the stale VG to a unique temporary name using the device filter.
-		shortUuid := staleVgUuid
-		if len(shortUuid) > 8 {
-			shortUuid = shortUuid[:8]
-		}
-		tempVgName := fmt.Sprintf("csi-vg-stale-%s", shortUuid)
-		klog.Infof("Renaming stale VG %s to %s using device filter", volumeGroupName, tempVgName)
-		renameArgs := []string{volumeGroupName, tempVgName, "--config", configFilter}
-		renameInfo, renameErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
-		if renameErr != nil {
-			klog.Errorf("Failed to rename stale VG %s to %s: %v: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
+			// 2. Clean up missing PVs on the stale VG using the device filter.
+			klog.Infof("Cleaning up missing PVs on stale VG %s using device filter", volumeGroupName)
+			reduceArgs := []string{"--removemissing", volumeGroupName, "--force", "--config", configFilter}
+			reduceInfo, reduceErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
+			if reduceErr != nil {
+				klog.Errorf("Failed to reduce stale VG %s: %v: %s", volumeGroupName, reduceErr, reduceInfo)
+			}
+
+			// 3. Now rename the stale VG to a unique temporary name using the device filter.
+			shortUuid := staleVgUuid
+			if len(shortUuid) > 8 {
+				shortUuid = shortUuid[:8]
+			}
+			tempVgName := fmt.Sprintf("csi-vg-stale-%s", shortUuid)
+			klog.Infof("Renaming stale VG %s to %s using device filter", volumeGroupName, tempVgName)
+			renameArgs := []string{volumeGroupName, tempVgName, "--config", configFilter}
+			renameInfo, renameErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
+			if renameErr != nil {
+				klog.Errorf("Failed to rename stale VG %s to %s: %v: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
+			}
+		} else {
+			klog.V(4).Infof("No duplicate VG name conflict detected for %s, skipping stale VG recovery", volumeGroupName)
 		}
 	}
 
@@ -500,6 +509,26 @@ func getVgUuidForPv(pvPath string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+func hasDuplicateVgName(vgName string) (bool, error) {
+	args := []string{"--noheadings", "-o", "vg_name"}
+	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+	if err != nil {
+		// If vgs fails, check if it's because of duplicate VGs (which returns exit status 5 but prints the warning!)
+		if strings.Contains(string(output), "is used by VGs") && strings.Contains(string(output), vgName) {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to run vgs: %w: %s", err, output)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == vgName {
+			count++
+		}
+	}
+	return count > 1, nil
 }
 
 func getLvName(suffix string, volumeId string) string {
