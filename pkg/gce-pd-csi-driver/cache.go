@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -83,7 +84,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			uncacheArgs := []string{"--uncache", volumeGroupName + "/" + mainLvName, "--force", "-y", "--config", configFilter}
 			uncacheInfo, uncacheErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
 			if uncacheErr != nil {
-				klog.Errorf("Failed to uncache stale volume: %v: %s", uncacheErr, uncacheInfo)
+				return "", fmt.Errorf("failed to uncache stale volume %s/%s during preemption recovery: %w: %s", volumeGroupName, mainLvName, uncacheErr, uncacheInfo)
 			}
 
 			// 2. Clean up missing PVs on the stale VG using the device filter.
@@ -91,7 +92,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			reduceArgs := []string{"--removemissing", volumeGroupName, "--force", "--config", configFilter}
 			reduceInfo, reduceErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
 			if reduceErr != nil {
-				klog.Errorf("Failed to reduce stale VG %s: %v: %s", volumeGroupName, reduceErr, reduceInfo)
+				return "", fmt.Errorf("failed to reduce stale VG %s during preemption recovery: %w: %s", volumeGroupName, reduceErr, reduceInfo)
 			}
 
 			// 3. Now rename the stale VG to a unique temporary name using the device filter.
@@ -104,7 +105,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			renameArgs := []string{volumeGroupName, tempVgName, "--config", configFilter}
 			renameInfo, renameErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
 			if renameErr != nil {
-				klog.Errorf("Failed to rename stale VG %s to %s: %v: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
+				return "", fmt.Errorf("failed to rename stale VG %s to %s during preemption recovery: %w: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
 			}
 		} else {
 			klog.V(4).Infof("No duplicate VG name conflict detected for %s, skipping stale VG recovery", volumeGroupName)
@@ -485,6 +486,11 @@ func getVolumeGroupName(nodePath string) string {
 }
 
 func getVgUuidForPv(pvPath string) (string, error) {
+	resolvedPvPath, err := filepath.EvalSymlinks(pvPath)
+	if err != nil {
+		resolvedPvPath = pvPath // Fallback
+	}
+
 	args := []string{
 		"--noheadings",
 		"-o",
@@ -501,11 +507,17 @@ func getVgUuidForPv(pvPath string) (string, error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[1] == pvPath {
-			if fields[0] == "" || fields[0] == "-" {
-				return "", nil
+		if len(fields) >= 2 {
+			resolvedFieldName, err := filepath.EvalSymlinks(fields[1])
+			if err != nil {
+				resolvedFieldName = fields[1] // Fallback
 			}
-			return fields[0], nil
+			if resolvedFieldName == resolvedPvPath {
+				if fields[0] == "" || fields[0] == "-" {
+					return "", nil
+				}
+				return fields[0], nil
+			}
 		}
 	}
 	return "", nil
