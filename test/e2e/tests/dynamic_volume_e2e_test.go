@@ -42,13 +42,14 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes HD Node Provisioning", func(
 			parameters.ParameterPDType:  "pd-balanced",
 		}
 
-		// Preferred topology includes hyperdisk-balanced label for GKE/OSS compatibility.
 		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							"topology.gke.io/zone": z,
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
 						},
 					},
 				},
@@ -101,13 +102,16 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes PD Fallback Provisioning", f
 			parameters.ParameterPDType:  "pd-balanced",
 		}
 
-		// Preferred topology has only pd-* labels (no hyperdisk), simulating a PD-only node.
 		volume, err := client.CreateVolume(volName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							"topology.gke.io/zone": z,
+							"topology.gke.io/zone":                 z,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
 						},
 					},
 				},
@@ -164,7 +168,14 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Default Parameters Provision
 		hdVolume, err := hdContext.Client.CreateVolume(hdVolName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": hdZone}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                          hdZone,
+							common.DiskTypeLabelKey("hyperdisk-balanced"):   "true",
+							common.DiskTypeLabelKey("hyperdisk-throughput"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):          "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -198,7 +209,15 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Default Parameters Provision
 		pdVolume, err := pdContext.Client.CreateVolume(pdVolName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": pdZone}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                 pdZone,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -253,7 +272,9 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Lifecycle", func() {
 				Requisite: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							"topology.gke.io/zone": z,
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
 						},
 					},
 				},
