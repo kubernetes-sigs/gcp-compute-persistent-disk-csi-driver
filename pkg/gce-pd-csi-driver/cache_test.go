@@ -120,3 +120,56 @@ func TestFetchNumberGiB(t *testing.T) {
 	}
 
 }
+
+func TestIsValidVGName(t *testing.T) {
+	testCases := []struct {
+		name     string
+		vgName   string
+		expected bool
+	}{
+		{
+			name:     "valid simple name",
+			vgName:   "csi-vg-nndw98vv",
+			expected: true,
+		},
+		{
+			name:     "valid name with all characters",
+			vgName:   "a-z_A-Z_0-9_._-_+",
+			expected: true,
+		},
+		{
+			name:     "empty name",
+			vgName:   "",
+			expected: false,
+		},
+		{
+			name:     "invalid name with spaces",
+			vgName:   "csi vg nndw98vv",
+			expected: false,
+		},
+		{
+			name:     "invalid name with warning prefix",
+			vgName:   "WARNING: VG csi-vg-nndw98vv is missing PV",
+			expected: false,
+		},
+		{
+			name:     "invalid name with slash",
+			vgName:   "/dev/md127",
+			expected: false,
+		},
+		{
+			name:     "invalid name with parenthesis",
+			vgName:   "md127)",
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := isValidVGName(tc.vgName)
+			if actual != tc.expected {
+				t.Errorf("isValidVGName(%q) = %v; want %v", tc.vgName, actual, tc.expected)
+			}
+		})
+	}
+}

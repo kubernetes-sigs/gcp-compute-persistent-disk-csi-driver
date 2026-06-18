@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -60,8 +61,57 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 
 	volumeId := req.GetVolumeId()
 	volumeGroupName := getVolumeGroupName(nodeId)
-	mainDevicePath := "/dev/" + volumeGroupName + "/" + getLvName(mainLvSuffix, volumeId)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
+	mainDevicePath := "/dev/" + volumeGroupName + "/" + mainLvName
+
+	// Resolve any stale duplicate Volume Group name conflicts using UUIDs and LVM device filtering.
+	// When a node is preempted and replaced, the GCE PD retains the old VG metadata/name.
+	// To prevent name conflicts, we use an LVM device filter to isolate commands to ONLY scan this GCE PD.
+	staleVgUuid, err := getVgUuidForPv(devicePath)
+	if err != nil {
+		klog.Errorf("Failed to check VG UUID for PV %v: %v", devicePath, err)
+	} else if staleVgUuid != "" {
+		hasDuplicate, dupErr := hasDuplicateVgName(volumeGroupName)
+		if dupErr != nil {
+			klog.Errorf("Failed to check duplicate VG name for %s: %v", volumeGroupName, dupErr)
+		}
+		if hasDuplicate {
+			klog.Infof("Duplicate VG name conflict detected for %s. Resolving using stale VG UUID %s", volumeGroupName, staleVgUuid)
+			configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
+
+			// 1. Uncache the volume FIRST to decouple the missing SSDs and preserve the origin data!
+			klog.Infof("Uncaching stale volume %s/%s using device filter to preserve data", volumeGroupName, mainLvName)
+			uncacheArgs := []string{"--uncache", volumeGroupName + "/" + mainLvName, "--force", "-y", "--config", configFilter}
+			uncacheInfo, uncacheErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
+			if uncacheErr != nil {
+				return "", fmt.Errorf("failed to uncache stale volume %s/%s during preemption recovery: %w: %s", volumeGroupName, mainLvName, uncacheErr, uncacheInfo)
+			}
+
+			// 2. Clean up missing PVs on the stale VG using the device filter.
+			klog.Infof("Cleaning up missing PVs on stale VG %s using device filter", volumeGroupName)
+			reduceArgs := []string{"--removemissing", volumeGroupName, "--force", "--config", configFilter}
+			reduceInfo, reduceErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
+			if reduceErr != nil {
+				return "", fmt.Errorf("failed to reduce stale VG %s during preemption recovery: %w: %s", volumeGroupName, reduceErr, reduceInfo)
+			}
+
+			// 3. Now rename the stale VG to a unique temporary name using the device filter.
+			shortUuid := staleVgUuid
+			if len(shortUuid) > 8 {
+				shortUuid = shortUuid[:8]
+			}
+			tempVgName := fmt.Sprintf("csi-vg-stale-%s", shortUuid)
+			klog.Infof("Renaming stale VG %s to %s using device filter", volumeGroupName, tempVgName)
+			renameArgs := []string{volumeGroupName, tempVgName, "--config", configFilter}
+			renameInfo, renameErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
+			if renameErr != nil {
+				return "", fmt.Errorf("failed to rename stale VG %s to %s during preemption recovery: %w: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
+			}
+		} else {
+			klog.V(4).Infof("No duplicate VG name conflict detected for %s, skipping stale VG recovery", volumeGroupName)
+		}
+	}
+
 	klog.V(4).Infof("Volume group available on node %v ", volumeGroupName)
 	vgExists := checkVgExists(volumeGroupName)
 	if vgExists {
@@ -88,11 +138,20 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		info = nil
 	}
 
-	infoString := strings.TrimSpace(strings.ReplaceAll(string(info), "\n", " "))
-	infoString = strings.ReplaceAll(infoString, ".", "")
-	infoString = strings.ReplaceAll(infoString, "\"", "")
-	infoSlice := strings.Split(strings.TrimSpace(infoString), " ")
-	vgNameForPv := strings.TrimSpace(infoSlice[(len(infoSlice) - 1)])
+	var vgNameForPv string
+	lines := strings.Split(string(info), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "VG" {
+			continue
+		}
+		// A valid VG name must only contain LVM-allowed characters: a-zA-Z0-9+_.-
+		// If the line contains spaces, colons, slashes, or other warning characters, it is not a VG name.
+		if isValidVGName(line) {
+			vgNameForPv = line
+			break
+		}
+	}
 	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
 		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group %v", volumeGroupName)
@@ -103,7 +162,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
 		}
 		// CLean up volume group to remove any dangling PV refrences
-		reduceVolumeGroup(vgNameForPv, false)
+		reduceVolumeGroup(vgNameForPv, true)
 		_, isCached := isCachingSetup(mainLvName)
 		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
 
@@ -120,7 +179,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				return "", fmt.Errorf("errored while uncaching main LV. %v: %s", err, info)
 			}
 			// CLean up volume group to remove any dangling PV refrences
-			reduceVolumeGroup(vgNameForPv, false)
+			reduceVolumeGroup(vgNameForPv, true)
 		}
 		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
 		if err != nil {
@@ -426,6 +485,64 @@ func getVolumeGroupName(nodePath string) string {
 	return fmt.Sprintf("csi-vg-%s", nodeHash)
 }
 
+func getVgUuidForPv(pvPath string) (string, error) {
+	resolvedPvPath, err := filepath.EvalSymlinks(pvPath)
+	if err != nil {
+		resolvedPvPath = pvPath // Fallback
+	}
+
+	args := []string{
+		"--noheadings",
+		"-o",
+		"vg_uuid,pv_name",
+	}
+	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to run pvs: %w: %s", err, info)
+	}
+	lines := strings.Split(string(info), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			resolvedFieldName, err := filepath.EvalSymlinks(fields[1])
+			if err != nil {
+				resolvedFieldName = fields[1] // Fallback
+			}
+			if resolvedFieldName == resolvedPvPath {
+				if fields[0] == "" || fields[0] == "-" {
+					return "", nil
+				}
+				return fields[0], nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func hasDuplicateVgName(vgName string) (bool, error) {
+	args := []string{"--noheadings", "-o", "vg_name"}
+	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+	if err != nil {
+		// If vgs fails, check if it's because of duplicate VGs (which returns exit status 5 but prints the warning!)
+		if strings.Contains(string(output), "is used by VGs") && strings.Contains(string(output), vgName) {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to run vgs: %w: %s", err, output)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == vgName {
+			count++
+		}
+	}
+	return count > 1, nil
+}
+
 func getLvName(suffix string, volumeId string) string {
 	pvcNameStringSlice := strings.Split(volumeId, "/")
 	pvcName := pvcNameStringSlice[len(pvcNameStringSlice)-1]
@@ -529,11 +646,11 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		"pool_lv",
 	}
 	poolName, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lvs", args...)
-	if err != nil {
-		return fmt.Errorf("Failed to check if caching is setup %w", err), false
-	}
 	if strings.Contains(string(poolName), "csi-fast") {
 		return nil, true
+	}
+	if err != nil {
+		return fmt.Errorf("Failed to check if caching is setup %w", err), false
 	}
 	return nil, false
 }
@@ -700,4 +817,16 @@ func fetchNumberGiB(infoSlice []string) (string, error) {
 		return "", fmt.Errorf("Error while fetching PV size for cache %v", err)
 	}
 	return strconv.FormatInt(int64(math.Ceil(pvSizeInt/GiB)), 10) + "GiB", nil
+}
+
+func isValidVGName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' || r == '+') {
+			return false
+		}
+	}
+	return true
 }
