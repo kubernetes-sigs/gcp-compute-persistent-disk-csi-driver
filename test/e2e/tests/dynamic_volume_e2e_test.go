@@ -838,3 +838,58 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore Snapshot to Larger S
 	})
 
 })
+
+// No Matching Node Labels
+//
+// When Preferred topology has no disk-type.gke.io/* labels (only zone),
+// selectDiskTypeFromTopologies() finds no HD or PD match and falls back
+// to the built-in default disk type (hyperdisk-balanced).
+var _ = Describe("GCE PD CSI Driver Dynamic Volumes No Matching Node Labels", func() {
+
+	It("Should fall back to default disk type when Preferred topology has no disk-type labels", func() {
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		// Preferred topology has only a zone label — no disk-type.gke.io/* labels.
+		// Driver falls back to dts.Default (hyperdisk-balanced).
+		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": z}},
+				},
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": z}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed: %v", err)
+		volID := volume.VolumeId
+
+		defer func() {
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volID)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+
+		klog.Infof("No-label fallback resolved to disk type: %s", cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected default hyperdisk-balanced fallback but got: %s", cloudDisk.Type)
+	})
+
+})
