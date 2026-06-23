@@ -623,3 +623,110 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Snapshot of HD Volume", func
 	})
 
 })
+
+var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore from Snapshot", func() {
+
+	It("Should restore a snapshot into a new dynamic volume with the correct resolved disk type", func() {
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		// Create source dynamic volume.
+		srcVolName := testNamePrefix + string(uuid.NewUUID())
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		srcVolume, err := client.CreateVolume(srcVolName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": z}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (source) failed: %v", err)
+		srcVolID := srcVolume.VolumeId
+
+		defer func() {
+			err := client.DeleteVolume(srcVolID)
+			Expect(err).To(BeNil(), "DeleteVolume (source) failed")
+			_, err = computeService.Disks.Get(p, z, srcVolName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected source disk to be deleted")
+		}()
+
+		// Verify source disk resolved to hyperdisk-balanced.
+		srcDisk, err := computeService.Disks.Get(p, z, srcVolName).Do()
+		Expect(err).To(BeNil(), "Could not get source disk from GCE API")
+		Expect(srcDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected hyperdisk-balanced source disk but got: %s", srcDisk.Type)
+
+		// Take a snapshot.
+		snapshotName := testNamePrefix + string(uuid.NewUUID())
+		snapshotID, err := client.CreateSnapshot(snapshotName, srcVolID, nil)
+		Expect(err).To(BeNil(), "CreateSnapshot failed: %v", err)
+
+		defer func() {
+			err := client.DeleteSnapshot(snapshotID)
+			Expect(err).To(BeNil(), "DeleteSnapshot failed")
+		}()
+
+		err = waitForSnapshotReady(p, snapshotName)
+		Expect(err).To(BeNil(), "Snapshot did not reach READY state: %v", err)
+
+		// Restore: create a new dynamic volume from the snapshot.
+		restoredVolName := testNamePrefix + string(uuid.NewUUID())
+		restoredVolume, err := client.CreateVolume(restoredVolName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": z}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			},
+			&csi.VolumeContentSource{
+				Type: &csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: snapshotID,
+					},
+				},
+			})
+		Expect(err).To(BeNil(), "CreateVolume (restore) failed: %v", err)
+
+		defer func() {
+			err := client.DeleteVolume(restoredVolume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume (restored) failed")
+			_, err = computeService.Disks.Get(p, z, restoredVolName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected restored disk to be deleted")
+		}()
+
+		// Verify restored disk has a concrete disk type — not "dynamic".
+		restoredDisk, err := computeService.Disks.Get(p, z, restoredVolName).Do()
+		Expect(err).To(BeNil(), "Could not get restored disk from GCE API")
+		Expect(restoredDisk.Status).To(Equal(readyState), "Restored disk not in READY state")
+
+		klog.Infof("Restored disk type: %s", restoredDisk.Type)
+		Expect(restoredDisk.Type).NotTo(ContainSubstring("dynamic"),
+			"Restored disk type should be resolved, not 'dynamic'")
+		Expect(restoredDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected restored disk to be hyperdisk-balanced but got: %s", restoredDisk.Type)
+	})
+
+})
