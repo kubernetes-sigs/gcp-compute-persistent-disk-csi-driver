@@ -893,3 +893,95 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes No Matching Node Labels", fu
 	})
 
 })
+
+// Mixed Node Pool Disk Selection
+//
+// In a cluster with both HD-capable and PD-only nodes, verifies that the driver
+// selects the correct disk type based on the topology of the node the pod is scheduled on.
+var _ = Describe("GCE PD CSI Driver Dynamic Volumes Mixed Node Pool Disk Selection", func() {
+
+	It("Should select hyperdisk-balanced on HD node and pd-balanced on PD node in a mixed pool", func() {
+		hdContext := getRandomMwTestContext()
+		pdContext := getRandomTestContext()
+
+		hdProject, hdZone, _ := hdContext.Instance.GetIdentity()
+		pdProject, pdZone, _ := pdContext.Instance.GetIdentity()
+
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		// --- HD node: pod scheduled on c3-standard-4 → expect hyperdisk-balanced ---
+		hdVolName := testNamePrefix + string(uuid.NewUUID())
+		hdVolume, err := hdContext.Client.CreateVolume(hdVolName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": hdZone}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        hdZone,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (HD node) failed: %v", err)
+		defer func() {
+			err := hdContext.Client.DeleteVolume(hdVolume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume (HD) failed")
+			project, key, err := common.VolumeIDToKey(hdVolume.VolumeId)
+			Expect(err).To(BeNil())
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected HD disk to be deleted")
+		}()
+
+		hdDisk, err := computeService.Disks.Get(hdProject, hdZone, hdVolName).Do()
+		Expect(err).To(BeNil(), "Could not get HD disk from GCE API")
+		Expect(hdDisk.Status).To(Equal(readyState))
+		klog.Infof("Mixed pool — HD node resolved to: %s", hdDisk.Type)
+		Expect(hdDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected hyperdisk-balanced on HD node but got: %s", hdDisk.Type)
+
+		// --- PD node: pod scheduled on n2d-standard-4 → expect pd-balanced ---
+		pdVolName := testNamePrefix + string(uuid.NewUUID())
+		pdVolume, err := pdContext.Client.CreateVolume(pdVolName, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": pdZone}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                 pdZone,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (PD node) failed: %v", err)
+		defer func() {
+			err := pdContext.Client.DeleteVolume(pdVolume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume (PD) failed")
+			project, key, err := common.VolumeIDToKey(pdVolume.VolumeId)
+			Expect(err).To(BeNil())
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected PD disk to be deleted")
+		}()
+
+		pdDisk, err := computeService.Disks.Get(pdProject, pdZone, pdVolName).Do()
+		Expect(err).To(BeNil(), "Could not get PD disk from GCE API")
+		Expect(pdDisk.Status).To(Equal(readyState))
+		klog.Infof("Mixed pool — PD node resolved to: %s", pdDisk.Type)
+		Expect(pdDisk.Type).To(ContainSubstring("pd-balanced"),
+			"Expected pd-balanced on PD node but got: %s", pdDisk.Type)
+	})
+
+})
