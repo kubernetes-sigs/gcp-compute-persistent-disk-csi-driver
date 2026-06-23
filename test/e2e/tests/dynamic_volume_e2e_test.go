@@ -355,7 +355,15 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
 		volume, err := clientA.CreateVolume(volName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": zA}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                 zA,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -458,7 +466,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Restart", func() {
 		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -562,7 +576,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Snapshot of HD Volume", func
 		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -643,7 +663,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore from Snapshot", func
 		srcVolume, err := client.CreateVolume(srcVolName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -689,7 +715,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore from Snapshot", func
 		restoredVolume, err := client.CreateVolume(restoredVolName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -750,7 +782,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore Snapshot to Larger S
 		srcVolume, err := client.CreateVolume(srcVolName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -796,7 +834,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Restore Snapshot to Larger S
 		restoredVolume, err := client.CreateVolume(restoredVolName, params, expandedSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": z}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -918,7 +962,13 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Mixed Node Pool Disk Selecti
 		hdVolume, err := hdContext.Client.CreateVolume(hdVolName, params, defaultHdBSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": hdZone}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        hdZone,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
@@ -952,7 +1002,15 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Mixed Node Pool Disk Selecti
 		pdVolume, err := pdContext.Client.CreateVolume(pdVolName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
-					{Segments: map[string]string{"topology.gke.io/zone": pdZone}},
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                 pdZone,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
+						},
+					},
 				},
 				Preferred: []*csi.Topology{
 					{
