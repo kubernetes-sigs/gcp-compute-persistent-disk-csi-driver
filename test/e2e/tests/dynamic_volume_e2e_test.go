@@ -15,11 +15,15 @@ limitations under the License.
 package tests
 
 import (
+	"fmt"
+	"path/filepath"
+
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
+	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo/v2"
@@ -313,6 +317,212 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Lifecycle", func() {
 			"Expected disk to be fully deleted but it still exists")
 
 		klog.Infof("Dynamic volume deleted successfully: name=%s — no orphaned resources", volName)
+	})
+
+})
+
+// Pod Migration with Dynamic PVC
+//
+// Verifies that data written on node A persists after the pod is migrated to node B,
+// and that the disk type remains unchanged throughout.
+var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
+
+	It("Should persist data and retain disk type after pod migration from node A to node B", func() {
+		Expect(hyperdiskTestContexts).To(HaveLen(2),
+			"Need at least 2 HD-capable nodes for pod migration test")
+
+		tcA := hyperdiskTestContexts[0]
+		tcB := hyperdiskTestContexts[1]
+
+		pA, zA, _ := tcA.Instance.GetIdentity()
+		instanceA := tcA.Instance
+		clientA := tcA.Client
+
+		instanceB := tcB.Instance
+		clientB := tcB.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		// Create dynamic volume on node A's zone.
+		volume, err := clientA.CreateVolume(volName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": zA}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        zA,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed: %v", err)
+		volID := volume.VolumeId
+
+		defer func() {
+			err := clientA.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volID)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		// Verify disk type resolved to hyperdisk-balanced.
+		cloudDisk, err := computeService.Disks.Get(pA, zA, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		initialDiskType := cloudDisk.Type
+		klog.Infof("Dynamic volume created: name=%s type=%s", volName, initialDiskType)
+		Expect(initialDiskType).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected hyperdisk-balanced but got: %s", initialDiskType)
+
+		mountArgs := attachAndMountArgs{readOnly: false, useBlock: false, forceAttach: false}
+
+		// Attach, stage, and mount on node A — then write a test file.
+		err, cleanupA, argsA := testAttachAndMount(volID, volName, instanceA, clientA, mountArgs)
+		Expect(err).To(BeNil(), "Failed to attach and mount on node A: %v", err)
+
+		writeFile, _ := testWriteAndReadFile(instanceA, false)
+		Expect(writeFile(argsA)).To(BeNil(), "Failed to write file on node A")
+
+		// Simulate pod deletion: unpublish → unstage → detach from node A.
+		err = clientA.NodeUnpublishVolume(volID, argsA.publishDir)
+		Expect(err).To(BeNil(), "NodeUnpublishVolume failed on node A")
+		err = clientA.NodeUnstageVolume(volID, argsA.stageDir)
+		Expect(err).To(BeNil(), "NodeUnstageVolume failed on node A")
+		_ = testutils.RmAll(instanceA, filepath.Join("/tmp/", volName))
+		cleanupA()
+
+		// Simulate pod rescheduling: attach, stage, and mount on node B.
+		err, cleanupB, stageDir := testAttach(volID, volName, instanceB, clientB, mountArgs)
+		Expect(err).To(BeNil(), "Failed to attach disk to node B: %v", err)
+		defer cleanupB()
+
+		err, _, argsB := testMount(volID, volName, instanceB, clientB, mountArgs, stageDir)
+		Expect(err).To(BeNil(), "Failed to mount disk on node B: %v", err)
+		defer func() {
+			_ = clientB.NodeUnpublishVolume(volID, argsB.publishDir)
+		}()
+
+		// Verify file written on node A is readable on node B.
+		_, readFile := testWriteAndReadFile(instanceB, false)
+		Expect(readFile(argsB)).To(BeNil(), "Data not persisted after pod migration to node B")
+
+		// Verify disk type is unchanged after migration.
+		cloudDiskAfter, err := computeService.Disks.Get(pA, zA, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk after migration")
+		Expect(cloudDiskAfter.Type).To(Equal(initialDiskType),
+			"Disk type changed after migration: was %s, now %s", initialDiskType, cloudDiskAfter.Type)
+
+		klog.Infof("Pod migration verified: data persisted and disk type unchanged (%s)", cloudDiskAfter.Type)
+	})
+
+})
+
+// Pod Restart with Dynamic Volume
+//
+// Verifies that after a pod restart the dynamic volume is reattached correctly
+// and data written before the restart is still intact.
+var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Restart", func() {
+
+	It("Should reattach dynamic volume correctly and maintain data integrity after pod restart", func() {
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		instance := testContext.Instance
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		// Create dynamic volume.
+		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{"topology.gke.io/zone": z}},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed: %v", err)
+		volID := volume.VolumeId
+
+		defer func() {
+			err := client.DeleteVolume(volID)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volID)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		// Verify disk resolved to hyperdisk-balanced.
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		klog.Infof("Dynamic volume created: name=%s type=%s", volName, cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected hyperdisk-balanced but got: %s", cloudDisk.Type)
+
+		mountArgs := attachAndMountArgs{readOnly: false, useBlock: false, forceAttach: false}
+
+		// First mount (pod start): attach → stage → mount → write file.
+		err, _, args := testAttachAndMount(volID, volName, instance, client, mountArgs)
+		Expect(err).To(BeNil(), "Failed to attach and mount (first): %v", err)
+
+		writeFile, _ := testWriteAndReadFile(instance, false)
+		Expect(writeFile(args)).To(BeNil(), "Failed to write file before pod restart")
+
+		// Simulate pod restart: unpublish → unstage → detach.
+		err = client.NodeUnpublishVolume(volID, args.publishDir)
+		Expect(err).To(BeNil(), "NodeUnpublishVolume failed during pod restart")
+		err = client.NodeUnstageVolume(volID, args.stageDir)
+		Expect(err).To(BeNil(), "NodeUnstageVolume failed during pod restart")
+		_ = testutils.RmAll(instance, filepath.Join("/tmp/", volName))
+		err = detach(volID, instance, client)
+		Expect(err).To(BeNil(), "Detach failed during pod restart")
+
+		// Second mount (pod restart): reattach → stage → mount → read file.
+		err, cleanup, stageDir := testAttach(volID, volName, instance, client, mountArgs)
+		Expect(err).To(BeNil(), "Failed to reattach disk after pod restart: %v", err)
+		defer cleanup()
+
+		err, _, argsRestart := testMount(volID, volName, instance, client, mountArgs, stageDir)
+		Expect(err).To(BeNil(), "Failed to mount disk after pod restart: %v", err)
+		defer func() {
+			_ = client.NodeUnpublishVolume(volID, argsRestart.publishDir)
+		}()
+
+		// Verify data written before restart is intact.
+		_, readFile := testWriteAndReadFile(instance, false)
+		err = readFile(argsRestart)
+		if err != nil {
+			Expect(err).To(BeNil(), fmt.Sprintf("Data integrity check failed after pod restart: %v", err))
+		}
+
+		klog.Infof("Pod restart verified: volume reattached and data integrity confirmed for %s", volName)
 	})
 
 })
