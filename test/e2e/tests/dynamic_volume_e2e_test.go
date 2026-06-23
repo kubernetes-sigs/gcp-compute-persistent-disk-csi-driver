@@ -328,11 +328,11 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Lifecycle", func() {
 var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
 
 	It("Should persist data and retain disk type after pod migration from node A to node B", func() {
-		Expect(hyperdiskTestContexts).To(HaveLen(2),
-			"Need at least 2 HD-capable nodes for pod migration test")
+		Expect(testContexts).To(HaveLen(2),
+			"Need at least 2 PD nodes for pod migration test")
 
-		tcA := hyperdiskTestContexts[0]
-		tcB := hyperdiskTestContexts[1]
+		tcA := testContexts[0]
+		tcB := testContexts[1]
 
 		pA, zA, _ := tcA.Instance.GetIdentity()
 		instanceA := tcA.Instance
@@ -349,8 +349,8 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
 			parameters.ParameterPDType:  "pd-balanced",
 		}
 
-		// Create dynamic volume on node A's zone.
-		volume, err := clientA.CreateVolume(volName, params, defaultHdBSizeGb,
+		// Create dynamic volume on node A's zone — PD-only topology resolves to pd-balanced.
+		volume, err := clientA.CreateVolume(volName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{Segments: map[string]string{"topology.gke.io/zone": zA}},
@@ -358,9 +358,11 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
 				Preferred: []*csi.Topology{
 					{
 						Segments: map[string]string{
-							"topology.gke.io/zone":                        zA,
-							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
-							common.DiskTypeLabelKey("pd-balanced"):        "true",
+							"topology.gke.io/zone":                 zA,
+							common.DiskTypeLabelKey("pd-balanced"): "true",
+							common.DiskTypeLabelKey("pd-standard"): "true",
+							common.DiskTypeLabelKey("pd-ssd"):      "true",
+							common.DiskTypeLabelKey("pd-extreme"):  "true",
 						},
 					},
 				},
@@ -377,14 +379,14 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Pod Migration", func() {
 			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
 		}()
 
-		// Verify disk type resolved to hyperdisk-balanced.
+		// Verify disk type resolved to pd-balanced.
 		cloudDisk, err := computeService.Disks.Get(pA, zA, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from GCE API")
 		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
 		initialDiskType := cloudDisk.Type
 		klog.Infof("Dynamic volume created: name=%s type=%s", volName, initialDiskType)
-		Expect(initialDiskType).To(ContainSubstring("hyperdisk-balanced"),
-			"Expected hyperdisk-balanced but got: %s", initialDiskType)
+		Expect(initialDiskType).To(ContainSubstring("pd-balanced"),
+			"Expected pd-balanced but got: %s", initialDiskType)
 
 		mountArgs := attachAndMountArgs{readOnly: false, useBlock: false, forceAttach: false}
 
