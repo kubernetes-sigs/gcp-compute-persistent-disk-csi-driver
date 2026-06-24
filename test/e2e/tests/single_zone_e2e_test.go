@@ -1500,6 +1500,162 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 	})
+	It("Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		zoneToContext := map[string][]*remote.TestContext{}
+		testZoneContexts := []*remote.TestContext{}
+		for _, tc := range testContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = []*remote.TestContext{tc}
+			} else {
+				zoneToContext[z] = append(zoneToContext[z], tc)
+			}
+			if len(zoneToContext[z]) >= 2 {
+				testZoneContexts = zoneToContext[z]
+				break
+			}
+		}
+		if len(testZoneContexts) < 2 {
+			Skip("Skipping preemption test as less than 2 VM instances are available in the same zone")
+		}
+
+		testContextForVm1 := testZoneContexts[0]
+		if testContextForVm1.Instance.GetLocalSSD() == 0 {
+			Skip("Skipping Data Cache preemption test as no local SSD is available in context")
+		}
+
+		p, z, _ := testContextForVm1.Instance.GetIdentity()
+		client1 := testContextForVm1.Client
+		firstInstance := testContextForVm1.Instance
+
+		testContextForVm2 := testZoneContexts[1]
+		client2 := testContextForVm2.Client
+		secondInstance := testContextForVm2.Instance
+
+		volName, volID := createAndValidateUniqueZonalDisk(client1, p, z, standardDiskType)
+		defer deleteVolumeOrError(client1, volID)
+
+		// State tracking for robust cleanup to avoid host VM contamination
+		var stageDir1, publishDir1 string
+		var stageDir2, publishDir2 string
+		var staged1, published1, attached1 bool
+		var staged2, published2, attached2 bool
+
+		defer func() {
+			klog.Infof("Cleaning up preemption test resources on VM1 %s...", firstInstance.GetName())
+			if published1 && publishDir1 != "" {
+				err := client1.NodeUnpublishVolume(volID, publishDir1)
+				if err != nil {
+					klog.Errorf("Cleanup NodeUnpublishVolume on VM1 failed: %v", err)
+				}
+			}
+			if staged1 && stageDir1 != "" {
+				err := client1.NodeUnstageVolume(volID, stageDir1)
+				if err != nil {
+					klog.Errorf("Cleanup NodeUnstageVolume on VM1 failed: %v", err)
+				}
+			}
+			if attached1 {
+				err := client1.ControllerUnpublishVolume(volID, firstInstance.GetNodeID())
+				if err != nil {
+					klog.Errorf("Cleanup ControllerUnpublishVolume (detach) on VM1 failed: %v", err)
+				}
+			}
+
+			klog.Infof("Cleaning up preemption test resources on VM2 %s...", secondInstance.GetName())
+			if published2 && publishDir2 != "" {
+				err := client2.NodeUnpublishVolume(volID, publishDir2)
+				if err != nil {
+					klog.Errorf("Cleanup NodeUnpublishVolume on VM2 failed: %v", err)
+				}
+			}
+			if staged2 && stageDir2 != "" {
+				err := client2.NodeUnstageVolume(volID, stageDir2)
+				if err != nil {
+					klog.Errorf("Cleanup NodeUnstageVolume on VM2 failed: %v", err)
+				}
+			}
+			if attached2 {
+				err := client2.ControllerUnpublishVolume(volID, secondInstance.GetNodeID())
+				if err != nil {
+					klog.Errorf("Cleanup ControllerUnpublishVolume (detach) on VM2 failed: %v", err)
+				}
+			}
+			klog.Infof("Cleanup completed for both VMs.")
+		}()
+
+		attachMountArgs := attachAndMountArgs{
+			readOnly:       false,
+			useBlock:       false,
+			forceAttach:    false,
+			setupDataCache: true,
+		}
+
+		// 1. Stage and Mount the volume with Data Cache enabled on VM1
+		klog.Infof("Step 1: Staging and mounting Data Cache volume %s on VM1 %s", volName, firstInstance.GetName())
+		err, _, args := testAttachAndMount(volID, volName, firstInstance, client1, attachMountArgs)
+		Expect(err).To(BeNil(), "Failed to stage and mount volume on VM1")
+		stageDir1 = args.stageDir
+		publishDir1 = args.publishDir
+		attached1 = true
+		staged1 = true
+		published1 = true
+
+		// 2. Write a verification file to prove data persistence on VM1
+		klog.Infof("Step 2: Writing verification file to volume on VM1")
+		writeVerifyFunc, readVerifyFunc := testWriteAndReadFile(firstInstance, false /* readOnly */)
+		err = writeVerifyFunc(args)
+		Expect(err).To(BeNil(), "Failed to write verification file to mounted volume on VM1")
+
+		// Verify we can read the file back immediately on VM1 before preemption
+		klog.Infof("Verifying we can read the file back on VM1 before preemption...")
+		err = readVerifyFunc(args)
+		Expect(err).To(BeNil(), "Failed to read verification file back on VM1 before preemption")
+
+		// Flush filesystem page cache to physical GCE PD before force-detaching!
+		klog.Infof("Flushing filesystem buffers to disk using sync on VM1...")
+		_, err = firstInstance.SSHNoSudo("sync")
+		Expect(err).To(BeNil(), "Failed to run sync command on VM1")
+
+		// Wait a bit to ensure GCE PD storage backend commits are fully settled
+		klog.Infof("Waiting 10 seconds to ensure storage backend commits are fully settled...")
+		time.Sleep(10 * time.Second)
+
+		// 3. Simulate hard preemption: Force-detach the GCE PD from VM1 WITHOUT unstaging!
+		// This leaves the LVM volume group metadata active on both VM1's local SSDs and the GCE PD.
+		klog.Infof("Step 3: Simulating preemption by force-detaching the disk from VM1 without unstaging...")
+		err = firstInstance.DetachDisk(volName)
+		Expect(err).To(BeNil(), "Failed to force-detach disk from VM1 to simulate preemption")
+		attached1 = true
+
+		// Wait a few seconds for the GCE control plane to register the detach
+		time.Sleep(10 * time.Second)
+
+		// 4. Attach the GCE PD to VM2 (re-triggering the duplicate conflict on stage because VM2 has its own csi-vg-node)
+		klog.Infof("Step 4: Attaching the disk to VM2 %s to trigger duplicate VG conflict...", secondInstance.GetName())
+		err, _, stageDir2 = testAttach(volID, volName, secondInstance, client2, attachMountArgs)
+		Expect(err).To(BeNil(), "Failed to attach disk to VM2 after simulated preemption")
+		attached2 = true
+
+		// 5. Run NodeStage and NodePublish on VM2.
+		// The driver must detect the duplicate VG csi-vg-node, deactivate the stale VG on the GCE PD,
+		// run vgreduce, rename it, merge it, and successfully mount the volume!
+		klog.Infof("Step 5: Staging and mounting on VM2 (recovering from duplicate VG conflict)...")
+		err, _, args = testMount(volID, volName, secondInstance, client2, attachMountArgs, stageDir2)
+		Expect(err).To(BeNil(), "Failed to recover and mount volume on VM2 after simulated preemption")
+		stageDir2 = args.stageDir
+		publishDir2 = args.publishDir
+		staged2 = true
+		published2 = true
+
+		// 6. Verify data integrity: Read the verification file back on VM2!
+		klog.Infof("Step 6: Verifying data integrity after preemption recovery on VM2")
+		_, readVerifyFunc = testWriteAndReadFile(secondInstance, false /* readOnly */)
+		err = readVerifyFunc(args)
+		Expect(err).To(BeNil(), "Data integrity verification failed on VM2 after preemption recovery! Potential data loss.")
+		klog.Infof("Success: Volume successfully recovered and verified with zero data loss on VM2 after preemption!")
+	})
 	It("Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		zoneToContext := map[string][]*remote.TestContext{}
