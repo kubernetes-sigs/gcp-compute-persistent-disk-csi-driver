@@ -51,6 +51,20 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 	return infoSlice[1], nil
 }
 
+func getVgUuid(vgName string) (string, error) {
+	args := []string{
+		"--noheadings",
+		"-o",
+		"vg_uuid",
+		vgName,
+	}
+	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
 
 	// The device path may have changed after rebooting, so we need to fetch the path again
@@ -64,51 +78,19 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	mainLvName := getLvName(mainLvSuffix, volumeId)
 	mainDevicePath := "/dev/" + volumeGroupName + "/" + mainLvName
 
-	// Resolve any stale duplicate Volume Group name conflicts using UUIDs and LVM device filtering.
-	// When a node is preempted and replaced, the GCE PD retains the old VG metadata/name.
-	// To prevent name conflicts, we use an LVM device filter to isolate commands to ONLY scan this GCE PD.
-	staleVgUuid, err := getVgUuidForPv(devicePath)
+	// Refresh LVM device cache to ensure newly attached GCE PD is fully scanned (Comment: Refresh LVM cache)
+	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvscan", []string{"--cache"}...)
+	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", []string{"--cache"}...)
+
+	// Resolve any stale duplicate Volume Group name conflicts from preemption events
+	hasConflict, staleVgUuid, err := detectPreemptionVgConflict(volumeGroupName, devicePath)
 	if err != nil {
-		klog.Errorf("Failed to check VG UUID for PV %v: %v", devicePath, err)
-	} else if staleVgUuid != "" {
-		hasDuplicate, dupErr := hasDuplicateVgName(volumeGroupName)
-		if dupErr != nil {
-			klog.Errorf("Failed to check duplicate VG name for %s: %v", volumeGroupName, dupErr)
-		}
-		if hasDuplicate {
-			klog.Infof("Duplicate VG name conflict detected for %s. Resolving using stale VG UUID %s", volumeGroupName, staleVgUuid)
-			configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
-
-			// 1. Uncache the volume FIRST to decouple the missing SSDs and preserve the origin data!
-			klog.Infof("Uncaching stale volume %s/%s using device filter to preserve data", volumeGroupName, mainLvName)
-			uncacheArgs := []string{"--uncache", volumeGroupName + "/" + mainLvName, "--force", "-y", "--config", configFilter}
-			uncacheInfo, uncacheErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
-			if uncacheErr != nil {
-				return "", fmt.Errorf("failed to uncache stale volume %s/%s during preemption recovery: %w: %s", volumeGroupName, mainLvName, uncacheErr, uncacheInfo)
-			}
-
-			// 2. Clean up missing PVs on the stale VG using the device filter.
-			klog.Infof("Cleaning up missing PVs on stale VG %s using device filter", volumeGroupName)
-			reduceArgs := []string{"--removemissing", volumeGroupName, "--force", "--config", configFilter}
-			reduceInfo, reduceErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
-			if reduceErr != nil {
-				return "", fmt.Errorf("failed to reduce stale VG %s during preemption recovery: %w: %s", volumeGroupName, reduceErr, reduceInfo)
-			}
-
-			// 3. Now rename the stale VG to a unique temporary name using the device filter.
-			shortUuid := staleVgUuid
-			if len(shortUuid) > 8 {
-				shortUuid = shortUuid[:8]
-			}
-			tempVgName := fmt.Sprintf("csi-vg-stale-%s", shortUuid)
-			klog.Infof("Renaming stale VG %s to %s using device filter", volumeGroupName, tempVgName)
-			renameArgs := []string{volumeGroupName, tempVgName, "--config", configFilter}
-			renameInfo, renameErr := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
-			if renameErr != nil {
-				return "", fmt.Errorf("failed to rename stale VG %s to %s during preemption recovery: %w: %s", volumeGroupName, tempVgName, renameErr, renameInfo)
-			}
-		} else {
-			klog.V(4).Infof("No duplicate VG name conflict detected for %s, skipping stale VG recovery", volumeGroupName)
+		klog.Errorf("Failed to check duplicate VG conflict for PV %v: %v", devicePath, err)
+	}
+	if hasConflict {
+		err = recoverPreemptionVgConflict(volumeGroupName, mainLvName, devicePath, staleVgUuid)
+		if err != nil {
+			return "", err
 		}
 	}
 
@@ -117,6 +99,12 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	if vgExists {
 		// Clean up Volume Group before adding the PD
 		reduceVolumeGroup(volumeGroupName, true)
+
+		// Ensure the local SSD cache PV is registered in the Volume Group
+		err = ensureLocalSsdInVolumeGroup(volumeGroupName, raidedLocalSsdPath)
+		if err != nil {
+			return mainDevicePath, err
+		}
 	} else {
 		err := createVg(volumeGroupName, raidedLocalSsdPath)
 		if err != nil {
@@ -125,76 +113,28 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 
 	// Check if the Physical Volume(PV) is part of some other volume group
-	args := []string{
-		"--select",
-		"pv_name=" + devicePath,
-		"-o",
-		"vg_name",
-	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	vgNameForPv, _, err := getVgInfoForPv(devicePath)
 	if err != nil {
-		klog.Errorf("errored while checking physical volume details %v: %s", err, info)
-		// On error info contains the error message which we cannot use for further steps
-		info = nil
-	}
-
-	var vgNameForPv string
-	lines := strings.Split(string(info), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "VG" {
-			continue
-		}
-		// A valid VG name must only contain LVM-allowed characters: a-zA-Z0-9+_.-
-		// If the line contains spaces, colons, slashes, or other warning characters, it is not a VG name.
-		if isValidVGName(line) {
-			vgNameForPv = line
-			break
-		}
+		return "", fmt.Errorf("failed to get VG name for PV %s: %w", devicePath, err)
 	}
 	klog.V(4).Infof("Physical volume is part of Volume group: %v", vgNameForPv)
 	if vgNameForPv == volumeGroupName {
 		klog.V(4).Infof("Physical Volume(PV) already exists in the Volume Group %v", volumeGroupName)
-	} else if vgNameForPv != "VG" && vgNameForPv != "" {
-
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
+	} else if vgNameForPv != "" {
+		err = mergeStaleVgIntoHost(vgNameForPv, volumeGroupName, mainLvName)
 		if err != nil {
-			klog.Errorf("Errored while deactivating VG %v: err: %v: %s", vgNameForPv, err, info)
-		}
-		// CLean up volume group to remove any dangling PV refrences
-		reduceVolumeGroup(vgNameForPv, true)
-		_, isCached := isCachingSetup(mainLvName)
-		// We will continue to uncache even if it errors to check caching as it is not a terminal issue.
-
-		if isCached {
-			// Uncache LV
-			args = []string{
-				"--uncache",
-				vgNameForPv + "/" + mainLvName,
-				"--force",
-				"-y", // force remove cache without flushing data
-			}
-			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
-			if err != nil {
-				return "", fmt.Errorf("errored while uncaching main LV. %v: %s", err, info)
-			}
-			// CLean up volume group to remove any dangling PV refrences
-			reduceVolumeGroup(vgNameForPv, true)
-		}
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
-		if err != nil {
-			return "", fmt.Errorf("Errored while merging the PV Volume group %s into %s %v: %s", vgNameForPv, volumeGroupName, err, info)
+			return "", err
 		}
 
 	} else {
-		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, devicePath}...)
+		_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, devicePath}...)
 		if err != nil {
-			return "", fmt.Errorf("Errored while extending Volume group to add PV %v, error: %v: %s", devicePath, err, info)
+			return "", fmt.Errorf("Errored while extending Volume group to add PV %v, error: %w", devicePath, err)
 		}
 	}
 
 	// Create LV if not already created
-	args = []string{
+	args := []string{
 		"--select",
 		"vg_name=" + volumeGroupName,
 		"-o",
@@ -202,7 +142,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	}
 	lvList, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 	if err != nil {
-		return mainDevicePath, fmt.Errorf("Errored while checking logical volume for the device %s %w: %s", devicePath, err, info)
+		return mainDevicePath, fmt.Errorf("Errored while checking logical volume for the device %s %w", devicePath, err)
 	}
 	if !strings.Contains(string(lvList), mainLvName) {
 		args = []string{
@@ -214,9 +154,9 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			volumeGroupName,
 			devicePath,
 		}
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 		if err != nil {
-			return mainDevicePath, fmt.Errorf("Errored setting up logical volume for the volume %s %w: %s", devicePath, err, info)
+			return mainDevicePath, fmt.Errorf("Errored setting up logical volume for the volume %s %w", devicePath, err)
 		}
 
 	}
@@ -244,7 +184,16 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			}
 		}
 		// Check if LV exists
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		args = []string{
+			"--select",
+			"vg_name=" + volumeGroupName,
+			"-o",
+			"lv_name",
+		}
+		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		if err != nil {
+			return mainDevicePath, fmt.Errorf("Errored while checking logical volume list %w", err)
+		}
 		lvExists := strings.Contains(string(info), cacheLvName)
 		if !lvExists {
 			args = []string{
@@ -257,12 +206,12 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				volumeGroupName,
 				raidedLocalSsdPath,
 			}
-			info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+			_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 			if err != nil {
 				if strings.Contains(err.Error(), "insufficient free space") {
 					return mainDevicePath, status.Error(codes.InvalidArgument, fmt.Sprintf("Error setting up cache: %v", err.Error()))
 				}
-				return mainDevicePath, fmt.Errorf("Errored while creating cache %w: %s", err, info)
+				return mainDevicePath, fmt.Errorf("Errored while creating cache %w", err)
 			}
 		}
 
@@ -273,7 +222,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--cachevol",
 			cacheLvName,
 			"--zero",
-			"y",
+			"n",
 			"--cachemode",
 			req.GetPublishContext()[constants.ContextDataCacheMode],
 			volumeGroupName + "/" + mainLvName,
@@ -282,19 +231,143 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"--force",
 			"-y",
 		}
-		info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 		if err != nil {
-			return mainDevicePath, fmt.Errorf("Errored while setting up caching for volume %s %w: %s", devicePath, err, info)
+			return mainDevicePath, fmt.Errorf("Errored while setting up caching for volume %s %w", devicePath, err)
 		}
 	}
 
 	// activate all the LVs in the Volume group
-	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", volumeGroupName}...)
+	_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", volumeGroupName}...)
 	if err != nil {
 		// The logical volumes would not be accessible if the group is not activated
-		return mainDevicePath, fmt.Errorf("Failed to activate volume group %v %v:%s", volumeGroupName, err, info)
+		return mainDevicePath, fmt.Errorf("Failed to activate volume group %v %w", volumeGroupName, err)
 	}
 	return mainDevicePath, nil
+}
+
+// detectPreemptionVgConflict checks if a stale duplicate Volume Group name conflict exists on the GCE PD.
+// A conflict occurs when a worker node is preempted and replaced: the GCE PD retains the old VG metadata/name,
+// which matches the new VG name initialized on the replacement node's local SSDs, but has a different VG UUID.
+// Returns true, the stale VG UUID, and nil if a conflict is detected; false, "", and nil/error otherwise.
+func detectPreemptionVgConflict(volumeGroupName, devicePath string) (bool, string, error) {
+	vgNameForPv, vgUuidForPv, err := getVgInfoForPv(devicePath)
+	if err != nil {
+		return false, "", err
+	}
+	if vgNameForPv != volumeGroupName || vgUuidForPv == "" {
+		klog.V(4).Infof("No duplicate VG name conflict detected for %s on PV %s", volumeGroupName, devicePath)
+		return false, "", nil
+	}
+
+	// Get the active VG UUID on the host to distinguish same-node reattachments from true conflicts
+	activeVgUuid, activeVgErr := getVgUuid(volumeGroupName)
+	if activeVgErr != nil {
+		klog.V(4).Infof("Failed to get active VG UUID for %s (it might not exist yet): %v. Proceeding with duplicate VG recovery.", volumeGroupName, activeVgErr)
+	}
+	if activeVgUuid == vgUuidForPv {
+		klog.Infof("No duplicate VG conflict: GCE PD's VG UUID %s matches the active host VG UUID. Skipping recovery.", vgUuidForPv)
+		return false, "", nil
+	}
+
+	return true, vgUuidForPv, nil
+}
+
+// recoverPreemptionVgConflict resolves the duplicate Volume Group name conflict on the GCE PD.
+// It isolates LVM commands to the GCE PD using a device filter, deactivates the stale VG,
+// dissociates the cache pool, prunes missing PV references, renames the stale VG, and
+// regenerates its UUID to completely break the conflict.
+func recoverPreemptionVgConflict(volumeGroupName, mainLvName, devicePath, staleVgUuid string) error {
+	klog.Infof("Resolving duplicate VG name conflict for %s using stale VG UUID %s", volumeGroupName, staleVgUuid)
+	configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
+
+	// Step 1: Deactivate the stale VG first under the device filter.
+	// If the GCE PD was automatically activated upon attachment, LVM will reject metadata edits
+	// because the logical volumes are "open" or "in use" (kernel-active). Deactivating them takes them offline safely.
+	klog.Infof("Step 1: Deactivating stale VG %s using device filter", volumeGroupName)
+	if err := deactivateVolumeGroup(volumeGroupName, configFilter); err != nil {
+		klog.Warningf("Failed to deactivate stale VG %s: %v. Attempting to proceed with recovery.", volumeGroupName, err)
+	}
+
+	// Step 2: Cleanly decouple (uncache) the caching layout first, BEFORE running vgreduce.
+	// WARNING: If we run vgreduce --removemissing first on a partial cached LV (missing local SSD),
+	// LVM will forcefully destroy/delete the entire logical volume, resulting in complete data loss!
+	// Dissociating the cache first preserves the origin volume (and user data) intact on the GCE PD.
+	isCached, err := isLvCachedOnDevice(volumeGroupName, mainLvName, devicePath)
+	if err != nil {
+		klog.Errorf("Failed to check if stale volume %s/%s is cached: %v", volumeGroupName, mainLvName, err)
+	}
+	if isCached {
+		klog.Infof("Step 2: Dissociating (uncaching) stale volume %s/%s using device filter to preserve data", volumeGroupName, mainLvName)
+		if err := uncacheLogicalVolume(volumeGroupName, mainLvName, configFilter); err != nil {
+			return fmt.Errorf("failed to uncache stale volume %s/%s during preemption recovery: %w", volumeGroupName, mainLvName, err)
+		}
+	} else {
+		klog.Infof("Stale volume %s/%s is not cached, skipping uncache step during preemption recovery", volumeGroupName, mainLvName)
+	}
+
+	// Step 3: Clean up missing PVs on the stale VG using the device filter.
+	// Since the cache has been dissociated, this safely removes the missing local SSD references from the VG metadata.
+	klog.Infof("Step 3: Cleaning up missing PVs on duplicate VG %s using device filter", volumeGroupName)
+	if err := reduceStaleVolumeGroup(volumeGroupName, configFilter); err != nil {
+		return fmt.Errorf("failed to reduce stale VG %s during preemption recovery: %w", volumeGroupName, err)
+	}
+
+	// Compute unique temporary name for the stale VG.
+	shortUuid := staleVgUuid
+	if len(shortUuid) > 8 {
+		shortUuid = shortUuid[:8]
+	}
+	tempVgName := fmt.Sprintf("csi-vg-stale-%s", shortUuid)
+
+	// Step 4: Rename the stale VG using the device filter to resolve the duplicate name conflict.
+	klog.Infof("Step 4: Renaming stale VG %s to %s using device filter", volumeGroupName, tempVgName)
+	if err := renameVolumeGroup(volumeGroupName, tempVgName, configFilter); err != nil {
+		return fmt.Errorf("failed to rename stale VG %s to %s during preemption recovery: %w", volumeGroupName, tempVgName, err)
+	}
+
+	// Step 5: Regenerate the UUID of the renamed VG to break the duplicate VGID conflict.
+	klog.Infof("Step 5: Regenerating UUID for stale VG %s to resolve duplicate VGID conflict", tempVgName)
+	if err := regenerateVolumeGroupUuid(tempVgName, configFilter); err != nil {
+		klog.Warningf("Failed to regenerate UUID for stale VG %s: %v. Continuing recovery.", tempVgName, err)
+	}
+
+	return nil
+}
+
+// deactivateVolumeGroup deactivates the Volume Group under the specified device filter to release kernel locks.
+func deactivateVolumeGroup(vgName, configFilter string) error {
+	deactivateArgs := []string{"-an", vgName, "--config", configFilter}
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", deactivateArgs...)
+	return err
+}
+
+// uncacheLogicalVolume dissociates (uncaches) the cache pool from the logical volume under the specified device filter.
+func uncacheLogicalVolume(vgName, lvName, configFilter string) error {
+	uncacheArgs := []string{"--uncache", vgName + "/" + lvName, "--force", "-y", "--config", configFilter}
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
+	return err
+}
+
+// reduceStaleVolumeGroup prunes missing physical volumes (references to local SSDs) from the VG metadata under the specified device filter.
+func reduceStaleVolumeGroup(vgName, configFilter string) error {
+	reduceArgs := []string{"--removemissing", vgName, "--force", "--config", configFilter}
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
+	return err
+}
+
+// renameVolumeGroup renames the Volume Group under the specified device filter to resolve the duplicate naming conflict.
+func renameVolumeGroup(oldName, newName, configFilter string) error {
+	renameArgs := []string{oldName, newName, "--config", configFilter}
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
+	return err
+}
+
+// regenerateVolumeGroupUuid regenerates the Volume Group UUID under the specified device filter to resolve the duplicate VGID conflict.
+func regenerateVolumeGroupUuid(vgName, configFilter string) error {
+	vgchangeArgs := []string{"-u", vgName, "--config", configFilter}
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", vgchangeArgs...)
+	return err
 }
 
 func ValidateDataCacheConfig(dataCacheMode string, dataCacheSize string, ctx context.Context) error {
@@ -387,6 +460,7 @@ func FetchAllLssds() ([]string, error) {
 		return nil, fmt.Errorf("errored while fetching NVME disks info: %v; err:%v", info, err)
 	}
 	infoList := strings.Split(strings.TrimSpace(string(info)), "\n")
+	// Compile regex to match GCE Local SSD model names (e.g., "nvme_card" or "nvme_card1")
 	re, err := regexp.Compile("nvme_card([0-9]+)?$")
 	if err != nil {
 		klog.V(4).ErrorS(err, "Errored while compiling to check PD or LSSD")
@@ -485,20 +559,25 @@ func getVolumeGroupName(nodePath string) string {
 	return fmt.Sprintf("csi-vg-%s", nodeHash)
 }
 
-func getVgUuidForPv(pvPath string) (string, error) {
+// getVgInfoForPv queries LVM metadata for the physical volume (PV) path under a device-specific filter.
+// It returns the associated Volume Group (VG) name, VG UUID, and any error.
+func getVgInfoForPv(pvPath string) (string, string, error) {
 	resolvedPvPath, err := filepath.EvalSymlinks(pvPath)
 	if err != nil {
 		resolvedPvPath = pvPath // Fallback
 	}
 
+	configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", resolvedPvPath)
 	args := []string{
 		"--noheadings",
 		"-o",
-		"vg_uuid,pv_name",
+		"vg_name,vg_uuid,pv_name",
+		"--config",
+		configFilter,
 	}
 	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
-		return "", fmt.Errorf("failed to run pvs: %w: %s", err, info)
+		return "", "", fmt.Errorf("failed to run pvs: %w", err)
 	}
 	lines := strings.Split(string(info), "\n")
 	for _, line := range lines {
@@ -507,40 +586,94 @@ func getVgUuidForPv(pvPath string) (string, error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			resolvedFieldName, err := filepath.EvalSymlinks(fields[1])
+		// The fields slice must contain at least 3 elements representing:
+		// fields[0] = vg_name, fields[1] = vg_uuid, fields[2] = pv_name
+		if len(fields) >= 3 {
+			resolvedFieldName, err := filepath.EvalSymlinks(fields[2])
 			if err != nil {
-				resolvedFieldName = fields[1] // Fallback
+				resolvedFieldName = fields[2]
 			}
 			if resolvedFieldName == resolvedPvPath {
-				if fields[0] == "" || fields[0] == "-" {
-					return "", nil
+				vgName := fields[0]
+				vgUuid := fields[1]
+				if vgName == "" || vgName == "-" {
+					vgName = ""
 				}
-				return fields[0], nil
+				if vgUuid == "" || vgUuid == "-" {
+					vgUuid = ""
+				}
+				return vgName, vgUuid, nil
 			}
 		}
 	}
-	return "", nil
+	return "", "", nil
 }
 
-func hasDuplicateVgName(vgName string) (bool, error) {
-	args := []string{"--noheadings", "-o", "vg_name"}
-	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+// isLvCachedOnDevice checks if the logical volume (LV) in the volume group (VG) is cached.
+// It queries LVM using 'lvs' with a custom field selection, returning true if the volume
+// is associated with a cache pool ('csi-fast'), and false otherwise.
+func isLvCachedOnDevice(vgName, lvName, pvPath string) (bool, error) {
+	resolvedPvPath, err := filepath.EvalSymlinks(pvPath)
 	if err != nil {
-		// If vgs fails, check if it's because of duplicate VGs (which returns exit status 5 but prints the warning!)
-		if strings.Contains(string(output), "is used by VGs") && strings.Contains(string(output), vgName) {
-			return true, nil
-		}
-		return false, fmt.Errorf("failed to run vgs: %w: %s", err, output)
+		resolvedPvPath = pvPath
 	}
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	count := 0
-	for _, line := range lines {
-		if strings.TrimSpace(line) == vgName {
-			count++
+
+	configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", resolvedPvPath)
+	args := []string{
+		"--noheadings",
+		"--select", "lv_name=" + lvName + " && vg_name=" + vgName,
+		"-o", "pool_lv",
+		"--config", configFilter,
+	}
+	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+	if err != nil {
+		// If lvs exits with a warning/error (which it always does when a PV is missing),
+		// we still want to parse the output. If the VG/LV genuinely doesn't exist,
+		// the output will be empty and we will correctly return false.
+		klog.V(4).Infof("lvs returned warning/error while checking cache on %s: %v. Parsing output anyway.", pvPath, err)
+	}
+	return strings.Contains(string(output), "csi-fast"), nil
+}
+
+// mergeStaleVgIntoHost deactivates, uncaches, and reduces a stale Volume Group on the GCE PD,
+// and merges its physical volume into the host's active Volume Group pool.
+// Encapsulates stale VG merging logic.
+func mergeStaleVgIntoHost(vgNameForPv, volumeGroupName, mainLvName string) error {
+	klog.Infof("Stale VG %s found on GCE PD. Activating it first to perform cleanup.", vgNameForPv)
+	// Ensure the stale VG is active so we can modify its metadata (Comment: Activate stale VG for cleanup)
+	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", vgNameForPv}...)
+	if err != nil {
+		klog.Errorf("Errored while activating stale VG %v: err: %v", vgNameForPv, err)
+	}
+
+	_, isCached := isCachingSetup(mainLvName)
+	if isCached {
+		klog.Infof("Stale volume %s/%s is cached. Dissociating (uncaching) cache pool to preserve data.", vgNameForPv, mainLvName)
+		args := []string{
+			"--uncache",
+			vgNameForPv + "/" + mainLvName,
+			"--force",
+			"-y", // force remove cache without flushing data
+		}
+		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+		if err != nil {
+			return fmt.Errorf("errored while uncaching main LV: %w", err)
 		}
 	}
-	return count > 1, nil
+
+	// Clean up the stale Volume Group to remove the missing local SSD PV references while it is active
+	reduceVolumeGroup(vgNameForPv, true)
+
+	// Deactivate ONLY the source VG to release its locks before running vgmerge (Comment: Release locks on source VG only)
+	klog.Infof("Deactivating source VG %s to release locks before merging...", vgNameForPv)
+	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
+
+	// Merge the GCE PD's VG into the host's VG (destination VG remains active/in-use!)
+	_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
+	if err != nil {
+		return fmt.Errorf("Errored while merging the PV Volume group %s into %s %w", vgNameForPv, volumeGroupName, err)
+	}
+	return nil
 }
 
 func getLvName(suffix string, volumeId string) string {
@@ -567,6 +700,23 @@ func createVg(volumeGroupName string, raidedLocalSsds string) error {
 	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
 	if err != nil {
 		klog.Errorf("Failed to scan for volume group post creation, continuing: %v: %s", err, info)
+	}
+	return nil
+}
+
+// ensureLocalSsdInVolumeGroup checks if the local SSD cache physical volume is registered
+// in the host Volume Group, and extends the VG to add it back if it is missing (e.g. after a node preemption reset).
+func ensureLocalSsdInVolumeGroup(volumeGroupName, raidedLocalSsdPath string) error {
+	ssdVgName, _, err := getVgInfoForPv(raidedLocalSsdPath)
+	if err != nil {
+		klog.Warningf("Local SSD PV %s is not registered in LVM (it might have been wiped): %v. Re-adding it to Volume Group %s.", raidedLocalSsdPath, err, volumeGroupName)
+	}
+	if ssdVgName != volumeGroupName {
+		klog.Infof("Extending Volume Group %s to include local SSD cache PV %s", volumeGroupName, raidedLocalSsdPath)
+		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, raidedLocalSsdPath}...)
+		if err != nil {
+			return fmt.Errorf("failed to extend VG %s with local SSD PV %s: %w (output: %s)", volumeGroupName, raidedLocalSsdPath, err, string(info))
+		}
 	}
 	return nil
 }

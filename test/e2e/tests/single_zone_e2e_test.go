@@ -1517,18 +1517,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			klog.Infof("Cleaning up preemption test resources on VM %s...", instance.GetName())
-			// Delete the isolated VM node completely to avoid host pollution
-			instance.DeleteInstance()
-			// Force-detach GCE PD from the deleted node using controller API
+			// Force-detach GCE PD using controller API
 			_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-
-			// Remove the deleted test context from the global pool so AfterSuite doesn't try to clean it up
-			for idx, tc := range testContexts {
-				if tc == testContextForVm {
-					testContexts = append(testContexts[:idx], testContexts[idx+1:]...)
-					break
-				}
-			}
 			klog.Infof("Cleanup completed.")
 		}()
 
@@ -1591,12 +1581,23 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		time.Sleep(10 * time.Second)
 
 		// 4. Attach and Stage the GCE PD back to the same VM.
-		// On unmodified code (PR-1), we EXPECT this staging to FAIL due to the duplicate VG conflict deadlock!
-		klog.Infof("Step 4: Attaching and staging the disk back to the same VM %s (expecting LVM conflict failure)...", instance.GetName())
-		err, _, _ = testAttach(volID, volName, instance, client, attachMountArgs)
-		Expect(err).ToNot(BeNil(), "Expected NodeStage to fail on VM due to duplicate VG name conflict under unmodified master code, but it succeeded")
-		Expect(err.Error()).To(ContainSubstring("not found in Volume Group"), "Expected error to indicate physical volume not found in Volume Group")
-		klog.Infof("Success: NodeStage failed on VM as expected under unmodified master code: %v", err)
+		klog.Infof("Step 4: Attaching the disk back to the same VM %s...", instance.GetName())
+		var stageDir string
+		err, _, stageDir = testAttach(volID, volName, instance, client, attachMountArgs)
+		Expect(err).To(BeNil(), "Failed to attach disk back to VM after simulated preemption")
+
+		// 5. Run NodeStage and NodePublish back on the VM.
+		// The driver must detect the duplicate VG conflict, rename the PD's VG, and merge it safely!
+		klog.Infof("Step 5: Staging and mounting back on VM (recovering from duplicate VG conflict)...")
+		err, _, args = testMount(volID, volName, instance, client, attachMountArgs, stageDir)
+		Expect(err).To(BeNil(), "Failed to recover and mount volume back on VM after simulated preemption")
+
+		// 6. Verify data integrity: Read the verification file back on the VM!
+		klog.Infof("Step 6: Verifying data integrity after preemption recovery on VM")
+		_, readVerifyFunc = testWriteAndReadFile(instance, false /* readOnly */)
+		err = readVerifyFunc(args)
+		Expect(err).To(BeNil(), "Data integrity verification failed on VM after preemption recovery! Potential data loss.")
+		klog.Infof("Success: Volume successfully recovered and verified with zero data loss on VM after preemption!")
 	})
 	It("Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
 		Expect(testContexts).ToNot(BeEmpty())
