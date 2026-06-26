@@ -1517,18 +1517,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		defer func() {
 			klog.Infof("Cleaning up preemption test resources on VM %s...", instance.GetName())
-			// Delete the isolated VM node completely to avoid host pollution
-			instance.DeleteInstance()
-			// Force-detach GCE PD from the deleted node using controller API
+			// Force-detach GCE PD using controller API
 			_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
-
-			// Remove the deleted test context from the global pool so AfterSuite doesn't try to clean it up
-			for idx, tc := range testContexts {
-				if tc == testContextForVm {
-					testContexts = append(testContexts[:idx], testContexts[idx+1:]...)
-					break
-				}
-			}
 			klog.Infof("Cleanup completed.")
 		}()
 
