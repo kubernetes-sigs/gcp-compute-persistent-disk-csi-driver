@@ -85,7 +85,7 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var err error
-	numberOfInstancesPerZone := 2
+	numberOfInstancesPerZone := 3
 	zones := strings.Split(*zones, ",")
 
 	rand.Seed(time.Now().UnixNano())
@@ -251,7 +251,8 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 
 func getRandomTestContext() *remote.TestContext {
 	Expect(testContexts).ToNot(BeEmpty())
-	rn := rand.Intn(len(testContexts))
+	// Exclude the last instance which is dedicated and isolated for the preemption deadlock test
+	rn := rand.Intn(len(testContexts) - 1)
 	return testContexts[rn]
 }
 func getRandomMwTestContext() *remote.TestContext {

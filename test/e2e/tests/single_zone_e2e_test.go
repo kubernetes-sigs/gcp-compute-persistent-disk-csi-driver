@@ -1502,15 +1502,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	})
 	It("Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
 		Expect(testContexts).ToNot(BeEmpty())
-		var testContextForVm *remote.TestContext
-		for _, tc := range testContexts {
-			if tc.Instance.GetLocalSSD() > 0 {
-				testContextForVm = tc
-				break
-			}
-		}
-		if testContextForVm == nil {
-			Skip("Skipping Data Cache preemption test as no VM instance with local SSD is available in context")
+		// Select the last instance in the pool which is isolated and reserved for this test case
+		testContextForVm := testContexts[len(testContexts)-1]
+		if testContextForVm.Instance.GetLocalSSD() == 0 {
+			Skip("Skipping Data Cache preemption test as isolated VM instance does not have local SSD")
 		}
 
 		p, z, _ := testContextForVm.Instance.GetIdentity()
@@ -1520,20 +1515,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
 		defer deleteVolumeOrError(client, volID)
 
-		// State tracking for robust cleanup to avoid host VM contamination
-		var stageDir, publishDir string
-		var staged, published, attached bool
-
 		defer func() {
 			klog.Infof("Cleaning up preemption test resources on VM %s...", instance.GetName())
-			if published && publishDir != "" {
-				_ = client.NodeUnpublishVolume(volID, publishDir)
-			}
-			if staged && stageDir != "" {
-				_ = client.NodeUnstageVolume(volID, stageDir)
-			}
-			if attached {
-				_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			// Delete the isolated VM node completely to avoid host pollution
+			instance.DeleteInstance()
+			// Force-detach GCE PD from the deleted node using controller API
+			_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+
+			// Remove the deleted test context from the global pool so AfterSuite doesn't try to clean it up
+			for idx, tc := range testContexts {
+				if tc == testContextForVm {
+					testContexts = append(testContexts[:idx], testContexts[idx+1:]...)
+					break
+				}
 			}
 			klog.Infof("Cleanup completed.")
 		}()
@@ -1549,11 +1543,6 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		klog.Infof("Step 1: Staging and mounting Data Cache volume %s on VM %s", volName, instance.GetName())
 		err, _, args := testAttachAndMount(volID, volName, instance, client, attachMountArgs)
 		Expect(err).To(BeNil(), "Failed to stage and mount volume on VM")
-		stageDir = args.stageDir
-		publishDir = args.publishDir
-		attached = true
-		staged = true
-		published = true
 
 		// 2. Write a verification file to prove data persistence on the VM
 		klog.Infof("Step 2: Writing verification file to volume on VM")
@@ -1601,18 +1590,17 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Wait a few seconds for the GCE control plane to register the detach
 		time.Sleep(10 * time.Second)
 
-		// 4. Attach the GCE PD back to the same VM (triggering the duplicate conflict because the VM still has its own active csi-vg-node)
+		// 4. Attach and Stage the GCE PD back to the same VM.
 		klog.Infof("Step 4: Attaching the disk back to the same VM %s...", instance.GetName())
+		var stageDir string
 		err, _, stageDir = testAttach(volID, volName, instance, client, attachMountArgs)
 		Expect(err).To(BeNil(), "Failed to attach disk back to VM after simulated preemption")
 
-		// 5. Run NodeStage back on the VM.
+		// 5. Run NodeStage and NodePublish back on the VM.
 		// The driver must detect the duplicate VG conflict, rename the PD's VG, and merge it safely!
 		klog.Infof("Step 5: Staging and mounting back on VM (recovering from duplicate VG conflict)...")
 		err, _, args = testMount(volID, volName, instance, client, attachMountArgs, stageDir)
 		Expect(err).To(BeNil(), "Failed to recover and mount volume back on VM after simulated preemption")
-		stageDir = args.stageDir
-		publishDir = args.publishDir
 
 		// 6. Verify data integrity: Read the verification file back on the VM!
 		klog.Infof("Step 6: Verifying data integrity after preemption recovery on VM")
