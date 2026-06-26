@@ -278,7 +278,11 @@ var _ = Describe("GCE PD CSI Driver Disk Type Selection", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{"topology.gke.io/zone": z},
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
 					},
 				},
 				Preferred: []*csi.Topology{
@@ -336,7 +340,11 @@ var _ = Describe("GCE PD CSI Driver Disk Type Selection", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{"topology.gke.io/zone": z},
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
 					},
 				},
 				Preferred: []*csi.Topology{
@@ -395,7 +403,11 @@ var _ = Describe("GCE PD CSI Driver Disk Type Selection", func() {
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{"topology.gke.io/zone": z},
+						Segments: map[string]string{
+							"topology.gke.io/zone":                          z,
+							common.DiskTypeLabelKey("hyperdisk-throughput"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):          "true",
+						},
 					},
 				},
 				Preferred: []*csi.Topology{
@@ -449,13 +461,16 @@ var _ = Describe("GCE PD CSI Driver Disk Type Selection", func() {
 			parameters.ParameterPDType:  "pd-ssd",
 		}
 
-		// Preferred topology carries only pd-ssd label — hyperdisk-balanced is intentionally
-		// absent to simulate a PD-only node so the driver falls back to pd-ssd via topology.
+		// Both Requisite and Preferred carry only pd-ssd label — hyperdisk-balanced is
+		// intentionally absent to simulate a PD-only node so the driver falls back to pd-ssd.
 		volume, err := client.CreateVolume(volName, params, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
 					{
-						Segments: map[string]string{"topology.gke.io/zone": z},
+						Segments: map[string]string{
+							"topology.gke.io/zone":            z,
+							common.DiskTypeLabelKey("pd-ssd"): "true",
+						},
 					},
 				},
 				Preferred: []*csi.Topology{
