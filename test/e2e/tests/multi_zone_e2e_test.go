@@ -1578,9 +1578,8 @@ func testMount(volID string, volName string, instance *remote.InstanceInfo, clie
 
 	unpublish := func() {
 		// Unpublish Disk
-		err = client.NodeUnpublishVolume(volID, publishDir)
-		if err != nil {
-			klog.Errorf("Failed to unpublish volume: %v", err)
+		if unpubErr := client.NodeUnpublishVolume(volID, publishDir); unpubErr != nil {
+			klog.Errorf("Failed to unpublish volume: %v", unpubErr)
 		}
 	}
 
