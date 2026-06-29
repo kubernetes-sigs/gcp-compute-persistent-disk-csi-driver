@@ -251,6 +251,260 @@ var _ = Describe("GCE PD CSI Driver Dynamic Volumes Default Parameters Provision
 
 })
 
+var _ = Describe("GCE PD CSI Driver Disk Type Selection", func() {
+
+	// Verifies that when disk-type-preference is set with hyperdisk-type on a node
+	// that supports both hyperdisk and PD, the driver selects hyperdisk-balanced
+	// over pd-balanced.
+	It("Should prefer hyperdisk-balanced over pd-balanced on a node supporting both HD and PD", func() {
+		// getRandomMwTestContext() returns a c3-standard-4 VM which supports both hyperdisk and PD
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		// disk-type-preference: hyperdisk-type is set, so driver must prefer hyperdisk-balanced
+		// over pd-balanced on a node that supports both
+		params := map[string]string{
+			parameters.ParameterKeyType:        parameters.DynamicVolumeType,
+			parameters.ParameterHDType:         "hyperdisk-balanced",
+			parameters.ParameterPDType:         "pd-balanced",
+			parameters.ParameterDiskPreference: parameters.ParameterHDType,
+		}
+
+		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		defer func() {
+			err := client.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volume.VolumeId)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		klog.Infof("Disk type selected on HD+PD capable node %s: %s", z, cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("hyperdisk-balanced"),
+			"Expected hyperdisk-balanced to be preferred over pd-balanced on HD+PD capable node, got: %s", cloudDisk.Type)
+	})
+
+	// Verifies that when disk-type-preference is set with pd-type on a node that supports
+	// both hyperdisk and PD, the driver selects pd-balanced even though HD is available.
+	It("Should prefer pd-balanced over hyperdisk-balanced on a node supporting both HD and PD when pd-type is set", func() {
+		// getRandomMwTestContext() returns a c3-standard-4 VM which supports both hyperdisk and PD
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		// disk-type-preference=pd-type forces the driver to default to pd-balanced
+		// even on a node that supports both HD and PD
+		params := map[string]string{
+			parameters.ParameterKeyType:        parameters.DynamicVolumeType,
+			parameters.ParameterHDType:         "hyperdisk-balanced",
+			parameters.ParameterPDType:         "pd-balanced",
+			parameters.ParameterDiskPreference: parameters.ParameterPDType,
+		}
+
+		volume, err := client.CreateVolume(volName, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                        z,
+							common.DiskTypeLabelKey("hyperdisk-balanced"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):        "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		defer func() {
+			err := client.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volume.VolumeId)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		klog.Infof("Disk type selected on HD+PD capable node %s: %s", z, cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("pd-balanced"),
+			"Expected pd-balanced to be selected over hyperdisk on HD+PD capable node, got: %s", cloudDisk.Type)
+	})
+
+	// Verifies that when hyperdisk-type is set to hyperdisk-throughput in the dynamic
+	// StorageClass, the driver provisions hyperdisk-throughput (not hyperdisk-balanced)
+	// on a node compatible with hyperdisk-throughput.
+	It("Should provision hyperdisk-throughput when hyperdisk-type is set to hyperdisk-throughput", func() {
+		// getRandomMwTestContext() returns a c3-standard-4 VM compatible with hyperdisk-throughput
+		testContext := getRandomMwTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		// hyperdisk-type explicitly set to hyperdisk-throughput — driver must use this
+		// exact type instead of defaulting to hyperdisk-balanced
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-throughput",
+			parameters.ParameterPDType:  "pd-balanced",
+		}
+
+		// defaultHdTSizeGb is the minimum size for hyperdisk-throughput
+		volume, err := client.CreateVolume(volName, params, defaultHdTSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                          z,
+							common.DiskTypeLabelKey("hyperdisk-throughput"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):          "true",
+						},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":                          z,
+							common.DiskTypeLabelKey("hyperdisk-throughput"): "true",
+							common.DiskTypeLabelKey("pd-balanced"):          "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		defer func() {
+			err := client.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volume.VolumeId)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		klog.Infof("Disk type provisioned on HD-capable node %s: %s", z, cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("hyperdisk-throughput"),
+			"Expected hyperdisk-throughput from custom hyperdisk-type param, got: %s", cloudDisk.Type)
+	})
+
+	// Verifies that when pd-type is set to pd-ssd in the dynamic StorageClass,
+	// the driver provisions pd-ssd when HD is not available on the scheduled node.
+	It("Should provision pd-ssd when pd-type is set to pd-ssd and HD is not available on the node", func() {
+		// getRandomTestContext() returns an n2-standard-4 VM which is PD-only (no hyperdisk support)
+		testContext := getRandomTestContext()
+
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		volName := testNamePrefix + string(uuid.NewUUID())
+
+		// No disk-type-preference is set. The driver reads Preferred topology labels
+		// to determine supported disk types. The PD-only node has pd-ssd label but no
+		// hyperdisk-balanced label, so the driver selects pd-ssd via topology.
+		params := map[string]string{
+			parameters.ParameterKeyType: parameters.DynamicVolumeType,
+			parameters.ParameterHDType:  "hyperdisk-balanced",
+			parameters.ParameterPDType:  "pd-ssd",
+		}
+
+		// Both Requisite and Preferred carry only pd-ssd label — hyperdisk-balanced is
+		// intentionally absent to simulate a PD-only node so the driver falls back to pd-ssd.
+		volume, err := client.CreateVolume(volName, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":            z,
+							common.DiskTypeLabelKey("pd-ssd"): "true",
+						},
+					},
+				},
+				Preferred: []*csi.Topology{
+					{
+						Segments: map[string]string{
+							"topology.gke.io/zone":            z,
+							common.DiskTypeLabelKey("pd-ssd"): "true",
+						},
+					},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
+
+		defer func() {
+			err := client.DeleteVolume(volume.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume failed")
+			project, key, err := common.VolumeIDToKey(volume.VolumeId)
+			Expect(err).To(BeNil(), "Failed to parse volume ID")
+			_, err = computeService.Disks.Get(project, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to be deleted")
+		}()
+
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState), "Disk not in READY state")
+		Expect(cloudDisk.Name).To(Equal(volName))
+
+		klog.Infof("Disk type provisioned on PD-only node %s: %s", z, cloudDisk.Type)
+		Expect(cloudDisk.Type).To(ContainSubstring("pd-ssd"),
+			"Expected pd-ssd on PD-only node detected via topology, got: %s", cloudDisk.Type)
+	})
+
+})
+
 var _ = Describe("GCE PD CSI Driver Dynamic Volumes Lifecycle", func() {
 
 	It("Should create a dynamic volume with correct disk type and delete it with no orphaned resources", func() {
