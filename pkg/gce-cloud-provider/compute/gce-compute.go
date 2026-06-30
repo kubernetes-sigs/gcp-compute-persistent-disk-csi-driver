@@ -476,6 +476,9 @@ func validAccessMode(want, got string) bool {
 		return true
 	}
 	switch want {
+	case "":
+		// Empty string defaults to RWO
+		return got == constants.GCEReadWriteOnceAccessMode
 	case constants.GCEReadOnlyManyAccessMode, constants.GCEReadWriteOnceAccessMode:
 		return got == constants.GCEReadWriteManyAccessMode
 	// For RWX, no other access mode is valid.

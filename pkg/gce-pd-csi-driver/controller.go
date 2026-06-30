@@ -687,8 +687,10 @@ func getAccessMode(req *csi.CreateVolumeRequest, params parameters.DiskParameter
 			// Disallow multi-attach for HdT and HdE. These checks were done in `createVolumeInternal`,
 			// but repeating them here future-proves us from possible refactors.
 			if am != constants.GCEReadWriteOnceAccessMode {
-				return "", status.Errorf(codes.Internal, "")
+				return "", status.Errorf(codes.InvalidArgument, "Hyperdisk Throughput and Extreme disks only support ReadWriteOnce access mode")
 			}
+			// Return empty string to indicate the default ReadWriteOnce access mode
+			return "", nil
 		} else {
 			return am, nil
 		}
