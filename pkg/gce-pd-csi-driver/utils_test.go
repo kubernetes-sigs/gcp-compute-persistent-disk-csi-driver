@@ -25,6 +25,8 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
@@ -908,5 +910,136 @@ func TestIsDataCacheEnabledNodePool(t *testing.T) {
 		if gotDataCacheEnabled != tc.wantDataCacheEnabled {
 			t.Errorf("want %t, got %t", tc.wantDataCacheEnabled, gotDataCacheEnabled)
 		}
+	}
+}
+
+func TestGetAccessMode(t *testing.T) {
+	testCases := []struct {
+		name        string
+		req         *csi.CreateVolumeRequest
+		diskType    string
+		want        string
+		wantErrCode codes.Code
+	}{
+		{
+			name: "Hyperdisk Balanced RWO capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			},
+			diskType:    "hyperdisk-balanced",
+			want:        constants.GCEReadWriteOnceAccessMode,
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Hyperdisk Balanced ROX capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			diskType:    "hyperdisk-balanced",
+			want:        constants.GCEReadOnlyManyAccessMode,
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Hyperdisk Balanced RWX capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+			},
+			diskType:    "hyperdisk-balanced",
+			want:        constants.GCEReadWriteManyAccessMode,
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Hyperdisk Balanced unsupported capability SINGLE_NODE_READER_ONLY",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY),
+			},
+			diskType:    "hyperdisk-balanced",
+			want:        "",
+			wantErrCode: codes.Unknown,
+		},
+		{
+			name: "Hyperdisk Extreme RWO capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			},
+			diskType:    "hyperdisk-extreme",
+			want:        "",
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Hyperdisk Extreme ROX capability (unsupported multi-attach)",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			diskType:    "hyperdisk-extreme",
+			want:        "",
+			wantErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Hyperdisk Extreme RWX capability (unsupported multi-attach)",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+			},
+			diskType:    "hyperdisk-extreme",
+			want:        "",
+			wantErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Hyperdisk Throughput RWO capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			},
+			diskType:    "hyperdisk-throughput",
+			want:        "",
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Hyperdisk Throughput ROX capability (unsupported multi-attach)",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			diskType:    "hyperdisk-throughput",
+			want:        "",
+			wantErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "Non-Hyperdisk PD balanced RWO capability",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+			},
+			diskType:    "pd-balanced",
+			want:        "",
+			wantErrCode: codes.OK,
+		},
+		{
+			name: "Non-Hyperdisk PD balanced ROX capability (not in modifiable list)",
+			req: &csi.CreateVolumeRequest{
+				VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY),
+			},
+			diskType:    "pd-balanced",
+			want:        "",
+			wantErrCode: codes.OK,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := getAccessMode(tc.req, parameters.DiskParameters{DiskType: tc.diskType})
+			if err != nil {
+				if tc.wantErrCode == codes.OK {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if status.Code(err) != tc.wantErrCode {
+					t.Fatalf("expected error code %v, got %v (error: %v)", tc.wantErrCode, status.Code(err), err)
+				}
+				return
+			}
+			if tc.wantErrCode != codes.OK {
+				t.Fatalf("expected error code %v, but got no error", tc.wantErrCode)
+			}
+			if got != tc.want {
+				t.Fatalf("expected access mode %q, got %q", tc.want, got)
+			}
+		})
 	}
 }
