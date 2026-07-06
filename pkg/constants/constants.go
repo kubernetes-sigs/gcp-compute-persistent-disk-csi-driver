@@ -121,12 +121,24 @@ var N4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
 	{Max: 80, Value: 31},
 }
 
+// N4D Machine Types - Hyperdisk Balanced Limits
+var N4DMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{Max: 8, Value: 15},
+	{Max: 96, Value: 31},
+}
+
 // C4A Machine Types - Hyperdisk Balanced Limits
 var C4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
 	{Max: 2, Value: 7},
 	{Max: 8, Value: 15},
 	{Max: 48, Value: 31},
 	{Max: 72, Value: 63},
+}
+
+// N4A Machine Types - Hyperdisk Balanced Limits
+var N4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{Max: 8, Value: 15},
+	{Max: 64, Value: 31},
 }
 
 // A4X Machine Types - Hyperdisk Balanced Limits. The max here is actually the GPU count (not CPU, like the others).
