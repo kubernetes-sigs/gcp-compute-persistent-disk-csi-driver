@@ -326,6 +326,56 @@ func TestNodeGetVolumeLimits(t *testing.T) {
 			expVolumeLimit: 31,
 		},
 		{
+			name:           "n4a-standard-4",
+			machineType:    "n4a-standard-4",
+			expVolumeLimit: 15,
+		},
+		{
+			name:           "n4a-standard-8",
+			machineType:    "n4a-standard-8",
+			expVolumeLimit: 15,
+		},
+		{
+			name:           "n4a-standard-32",
+			machineType:    "n4a-standard-32",
+			expVolumeLimit: 31,
+		},
+		{
+			name:           "n4a-standard-64",
+			machineType:    "n4a-standard-64",
+			expVolumeLimit: 31,
+		},
+		{
+			name:           "n4d-standard-2",
+			machineType:    "n4d-standard-2",
+			expVolumeLimit: 15,
+		},
+		{
+			name:           "n4d-standard-4",
+			machineType:    "n4d-standard-4",
+			expVolumeLimit: 15,
+		},
+		{
+			name:           "n4d-standard-8",
+			machineType:    "n4d-standard-8",
+			expVolumeLimit: 15,
+		},
+		{
+			name:           "n4d-standard-16",
+			machineType:    "n4d-standard-16",
+			expVolumeLimit: 31,
+		},
+		{
+			name:           "n4d-standard-32",
+			machineType:    "n4d-standard-32",
+			expVolumeLimit: 31,
+		},
+		{
+			name:           "n4d-standard-96",
+			machineType:    "n4d-standard-96",
+			expVolumeLimit: 31,
+		},
+		{
 			name:           "invalid gen4 machine type",
 			machineType:    "n4-highcpu-4xyz",
 			expVolumeLimit: volumeLimitBig,
