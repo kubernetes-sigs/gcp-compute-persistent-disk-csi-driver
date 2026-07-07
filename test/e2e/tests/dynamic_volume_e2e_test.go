@@ -545,3 +545,205 @@ var _ = Describe("GCE PD CSI Driver Topology Aware Scheduling", func() {
 	})
 
 })
+
+// Dynamic IOPS Provisioning on HD Test Suite
+//
+// Background:
+// hyperdisk-balanced supports custom IOPS and throughput values set at
+// provisioning time via StorageClass parameters:
+//   - provisioned-iops-on-create:       sets the IOPS for the disk
+//   - provisioned-throughput-on-create: sets the throughput (MiB/s) for the disk
+//
+// These values are applied at disk creation time and verified via the
+// GCE Disks API (disk.ProvisionedIops, disk.ProvisionedThroughput).
+//
+// Node type: HD-capable (c3-standard-4) via getRandomMwTestContext().
+// hyperdisk-balanced can only be attached to c3/c3d/c4 machine families —
+// this is a GCE infrastructure constraint, not a test constraint.
+//
+// This single test covers two scenarios in sequence:
+//
+//	Step 1-4: Create with standard IOPS (3000) and throughput (150 MiB/s)
+//	          → verify both values applied correctly via GCE API.
+//	Step 5-7: Create with non-default custom IOPS (12345)
+//	          → verify the driver passes user-specified value, not a default.
+var _ = Describe("GCE PD CSI Driver Dynamic IOPS Provisioning", func() {
+
+	It("Should apply specified IOPS and throughput values to hyperdisk-balanced on HD-capable node", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+
+		// HD-capable node (c3-standard-4) required for hyperdisk-balanced.
+		// getRandomMwTestContext() returns a context from hyperdiskTestContexts
+		// which are nodes created with -hyperdisk-machine-type=c3-standard-4.
+		testContext := getRandomMwTestContext()
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+
+		klog.Infof("[IOPS] Using HD-capable node in zone: %s project: %s", z, p)
+
+		// -----------------------------------------------------------------
+		// Step 1: Create hyperdisk-balanced with standard IOPS and throughput
+		//
+		// Simulates a dynamic StorageClass with:
+		//   type: hyperdisk-balanced
+		//   provisioned-iops-on-create: 3000
+		//   provisioned-throughput-on-create: 150Mi
+		// -----------------------------------------------------------------
+		By("Step 1: Creating hyperdisk-balanced with standard IOPS (3000) and throughput (150 MiB/s)")
+
+		volName1 := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[IOPS Step 1] Creating volume: %s", volName1)
+		klog.Infof("[IOPS Step 1] Params: type=%s iops=%s throughput=%s",
+			hdbDiskType, provisionedIOPSOnCreateHdb, provisionedThroughputOnCreateHdb)
+
+		// provisionedIOPSOnCreateHdb = "3000", provisionedThroughputOnCreateHdb = "150Mi"
+		// Both are mandatory for hyperdisk-balanced — omitting either causes
+		// an InvalidArgument error from the CSI driver.
+		params1 := map[string]string{
+			parameters.ParameterKeyType:                          hdbDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreateHdb,
+			parameters.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
+		}
+
+		volume1, err := client.CreateVolume(volName1, params1, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: z}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (standard IOPS) failed: %v", err)
+		klog.Infof("[IOPS Step 1] Volume created: %s", volume1.VolumeId)
+
+		defer func() {
+			klog.Infof("[IOPS Step 1] Deleting volume: %s", volume1.VolumeId)
+			err := client.DeleteVolume(volume1.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume (standard IOPS) failed")
+			_, err = computeService.Disks.Get(p, z, volName1).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected standard IOPS disk to be deleted")
+			klog.Infof("[IOPS Step 1] Volume deleted and confirmed gone")
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 2: Verify disk exists in GCE with correct type and status
+		// -----------------------------------------------------------------
+		By("Step 2: Verifying disk exists in GCE with correct type and status")
+
+		cloudDisk1, err := computeService.Disks.Get(p, z, volName1).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		klog.Infof("[IOPS Step 2] GCE disk: type=%s status=%s size=%d iops=%d throughput=%d",
+			cloudDisk1.Type, cloudDisk1.Status, cloudDisk1.SizeGb,
+			cloudDisk1.ProvisionedIops, cloudDisk1.ProvisionedThroughput)
+
+		Expect(cloudDisk1.Status).To(Equal(readyState),
+			"Disk should be in READY state")
+		Expect(cloudDisk1.Type).To(ContainSubstring(hdbDiskType),
+			"Disk type should be hyperdisk-balanced")
+		Expect(cloudDisk1.SizeGb).To(Equal(defaultHdBSizeGb),
+			"Disk size should be %d GiB", defaultHdBSizeGb)
+
+		// -----------------------------------------------------------------
+		// Step 3: Verify the specified IOPS value is applied
+		//
+		// Core assertion: ProvisionedIops on the GCE disk must match exactly
+		// what was set in provisioned-iops-on-create parameter.
+		// -----------------------------------------------------------------
+		By("Step 3: Verifying standard IOPS value (3000) is applied to hyperdisk")
+
+		klog.Infof("[IOPS Step 3] Expected IOPS: %d, Actual IOPS: %d",
+			provisionedIOPSOnCreateHdbInt, cloudDisk1.ProvisionedIops)
+		Expect(cloudDisk1.ProvisionedIops).To(Equal(provisionedIOPSOnCreateHdbInt),
+			"ProvisionedIops should be %d as set in provisioned-iops-on-create",
+			provisionedIOPSOnCreateHdbInt)
+		klog.Infof("[IOPS Step 3] PASSED — IOPS %d correctly applied",
+			cloudDisk1.ProvisionedIops)
+
+		// -----------------------------------------------------------------
+		// Step 4: Verify the specified throughput value is also applied
+		// -----------------------------------------------------------------
+		By("Step 4: Verifying standard throughput value (150 MiB/s) is applied to hyperdisk")
+
+		klog.Infof("[IOPS Step 4] Expected throughput: %d MiB/s, Actual: %d MiB/s",
+			provisionedThroughputOnCreateHdbInt, cloudDisk1.ProvisionedThroughput)
+		Expect(cloudDisk1.ProvisionedThroughput).To(Equal(provisionedThroughputOnCreateHdbInt),
+			"ProvisionedThroughput should be %d MiB/s as set in provisioned-throughput-on-create",
+			provisionedThroughputOnCreateHdbInt)
+		klog.Infof("[IOPS Step 4] PASSED — throughput %d MiB/s correctly applied",
+			cloudDisk1.ProvisionedThroughput)
+
+		// -----------------------------------------------------------------
+		// Step 5: Create hyperdisk-balanced with non-default custom IOPS
+		//
+		// Uses provisionedIOPSOnCreate (12345) — a deliberately unusual value
+		// that cannot match any GCE default, proving the driver honours the
+		// exact user-specified value from the StorageClass parameter rather
+		// than substituting a built-in default.
+		// -----------------------------------------------------------------
+		By("Step 5: Creating hyperdisk-balanced with non-default custom IOPS (12345)")
+
+		volName2 := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[IOPS Step 5] Creating volume: %s", volName2)
+		klog.Infof("[IOPS Step 5] Params: type=%s iops=%s (non-default) throughput=%s",
+			hdbDiskType, provisionedIOPSOnCreate, provisionedThroughputOnCreateHdb)
+
+		// provisionedIOPSOnCreate = "12345" — chosen specifically because it
+		// is not a round number and cannot be a coincidental default value.
+		params2 := map[string]string{
+			parameters.ParameterKeyType:                          hdbDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreate,
+			parameters.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
+		}
+
+		volume2, err := client.CreateVolume(volName2, params2, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: z}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (non-default IOPS) failed: %v", err)
+		klog.Infof("[IOPS Step 5] Volume created: %s", volume2.VolumeId)
+
+		defer func() {
+			klog.Infof("[IOPS Step 5] Deleting volume: %s", volume2.VolumeId)
+			err := client.DeleteVolume(volume2.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume (non-default IOPS) failed")
+			_, err = computeService.Disks.Get(p, z, volName2).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected non-default IOPS disk to be deleted")
+			klog.Infof("[IOPS Step 5] Volume deleted and confirmed gone")
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 6: Verify disk exists in GCE with correct type and status
+		// -----------------------------------------------------------------
+		By("Step 6: Verifying disk exists in GCE with correct type and status")
+
+		cloudDisk2, err := computeService.Disks.Get(p, z, volName2).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		klog.Infof("[IOPS Step 6] GCE disk: type=%s status=%s iops=%d throughput=%d",
+			cloudDisk2.Type, cloudDisk2.Status,
+			cloudDisk2.ProvisionedIops, cloudDisk2.ProvisionedThroughput)
+
+		Expect(cloudDisk2.Status).To(Equal(readyState))
+		Expect(cloudDisk2.Type).To(ContainSubstring(hdbDiskType))
+
+		// -----------------------------------------------------------------
+		// Step 7: Verify non-default custom IOPS value is applied exactly
+		// -----------------------------------------------------------------
+		By("Step 7: Verifying non-default custom IOPS value (12345) is applied exactly")
+
+		// The driver must pass the exact user-specified IOPS value to the
+		// GCE API — not substitute any default. If ProvisionedIops is 3000
+		// or any other value, it means the driver ignored the parameter.
+		klog.Infof("[IOPS Step 7] Expected IOPS: %d, Actual IOPS: %d",
+			provisionedIOPSOnCreateInt, cloudDisk2.ProvisionedIops)
+		Expect(cloudDisk2.ProvisionedIops).To(Equal(provisionedIOPSOnCreateInt),
+			"ProvisionedIops should be %d (non-default custom value) — driver must not substitute defaults",
+			provisionedIOPSOnCreateInt)
+		klog.Infof("[IOPS Step 7] PASSED — non-default IOPS %d correctly applied",
+			cloudDisk2.ProvisionedIops)
+
+		klog.Infof("[IOPS] ALL STEPS PASSED — both standard and custom IOPS values correctly applied to hyperdisk-balanced")
+	})
+
+})
