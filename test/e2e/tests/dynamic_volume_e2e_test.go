@@ -15,12 +15,15 @@ limitations under the License.
 package tests
 
 import (
+	"path/filepath"
+
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
+	testutils "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/test/e2e/utils"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo/v2"
@@ -955,6 +958,398 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone Dynamic Provisioning", func() {
 		klog.Infof("[Step 3] AccessibleTopology zone in response: %s (matches zone-2)", responseZone2)
 
 		klog.Infof("[DONE] Both disks provisioned in correct zones — zone1=%s zone2=%s", zone1, zone2)
+	})
+
+})
+
+// Online Resize Test Suite
+//
+// Background:
+// Online resize means expanding a volume while it is mounted and the pod is
+// still running — no pod restart required. The CSI flow is:
+//  1. ControllerExpandVolume — expands the disk at the GCE API level.
+//  2. NodeExpandVolume       — expands the filesystem to use the new space.
+//
+// After both steps, the new size must be visible inside the mounted filesystem
+// without any pod restart.
+//
+// Note on filesystem size vs disk size:
+// GetFSSizeInGb uses "df -BG" which reports usable filesystem space in GiB,
+// rounded down. For large disks (e.g. 100 GiB HD), ext4 metadata overhead
+// causes df to report ~98 GiB. For small disks (e.g. 5 GiB PD), the overhead
+// is negligible and df reports the exact size. We use BeNumerically for HD
+// sizes and Equal for small PD sizes to match this behaviour.
+//
+// This file covers:
+//
+//	TC-RESIZE-01: Online resize of a hyperdisk-balanced (HD) dynamic volume.
+//	TC-RESIZE-02: Online resize of a pd-balanced (PD fallback) dynamic volume.
+var _ = Describe("GCE PD CSI Driver Online Resize", func() {
+
+	// -------------------------------------------------------------------------
+	// TC-RESIZE-01: Online Resize of HD Dynamic Volume
+	//
+	// Goal: Expand a mounted hyperdisk-balanced PVC while the pod is running.
+	// Verify the new size is reflected inside the pod filesystem without restart.
+	//
+	// Node type: HD-capable (c3-standard-4) via getRandomMwTestContext().
+	// Initial size: defaultHdBSizeGb (100 GiB)
+	// Expanded size: 200 GiB
+	//
+	// Why BeNumerically: df -BG rounds down, so 100 GiB disk reports ~98 GiB
+	// and 200 GiB disk reports ~196 GiB due to ext4 metadata overhead.
+	// We allow up to 5 GiB tolerance for large HD disks.
+	// -------------------------------------------------------------------------
+	It("Should online resize a mounted hyperdisk-balanced volume without pod restart [TC-RESIZE-01]", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+
+		// HD-capable node required for hyperdisk-balanced.
+		testContext := getRandomMwTestContext()
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		klog.Infof("[TC-RESIZE-01] Using HD-capable node in zone: %s", z)
+
+		// -----------------------------------------------------------------
+		// Step 1: Create hyperdisk-balanced volume
+		// ProvisionedIOPS and ProvisionedThroughput are mandatory for HD.
+		// -----------------------------------------------------------------
+		By("Step 1: Creating hyperdisk-balanced volume")
+		volName := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[TC-RESIZE-01] Creating volume: %s", volName)
+
+		params := map[string]string{
+			parameters.ParameterKeyType:                          hdbDiskType,
+			parameters.ParameterKeyProvisionedIOPSOnCreate:       provisionedIOPSOnCreateHdb,
+			parameters.ParameterKeyProvisionedThroughputOnCreate: provisionedThroughputOnCreateHdb,
+		}
+
+		volume, err := client.CreateVolume(volName, params, defaultHdBSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: z}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (hyperdisk-balanced) failed: %v", err)
+		klog.Infof("[TC-RESIZE-01] Volume created: %s", volume.VolumeId)
+
+		// Verify disk exists in GCE with correct initial size.
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultHdBSizeGb),
+			"Initial GCE disk size should be %d GiB", defaultHdBSizeGb)
+		klog.Infof("[TC-RESIZE-01] Disk verified in GCE: size=%d GiB status=%s",
+			cloudDisk.SizeGb, cloudDisk.Status)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-01] Deleting volume: %s", volume.VolumeId)
+			client.DeleteVolume(volume.VolumeId)
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected disk to be deleted")
+			klog.Infof("[TC-RESIZE-01] Volume deleted and confirmed gone")
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 2: Attach (ControllerPublish) the disk to the node
+		// -----------------------------------------------------------------
+		By("Step 2: Attaching disk to node")
+		err = client.ControllerPublishVolumeReadWrite(volume.VolumeId,
+			instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed")
+		klog.Infof("[TC-RESIZE-01] Disk attached to node: %s", instance.GetNodeID())
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-01] Detaching disk from node")
+			err = client.ControllerUnpublishVolume(volume.VolumeId, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-01] Failed to detach disk: %v", err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 3: Stage the disk (formats and mounts to staging path)
+		// -----------------------------------------------------------------
+		By("Step 3: Staging disk")
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir,
+			false /* setupDataCache */)
+		Expect(err).To(BeNil(), "NodeStageVolume failed")
+		klog.Infof("[TC-RESIZE-01] Disk staged at: %s", stageDir)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-01] Unstaging disk")
+			err = client.NodeUnstageVolume(volume.VolumeId, stageDir)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-01] Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-01] Failed to rm %s: %v", fp, err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 4: Mount the disk (simulates pod starting to use the volume)
+		// -----------------------------------------------------------------
+		By("Step 4: Mounting disk (simulating pod start)")
+		publishDir := filepath.Join("/tmp/", volName, "mount")
+		err = client.NodePublishVolume(volume.VolumeId, stageDir, publishDir)
+		Expect(err).To(BeNil(), "NodePublishVolume failed")
+		klog.Infof("[TC-RESIZE-01] Disk mounted at: %s", publishDir)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-01] Unmounting disk")
+			err = client.NodeUnpublishVolume(volume.VolumeId, publishDir)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-01] NodeUnpublishVolume failed: %v", err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 5: Verify pre-resize filesystem size
+		// df -BG rounds down for large disks due to ext4 metadata overhead,
+		// so 100 GiB disk reports ~98 GiB. We allow up to 5 GiB tolerance.
+		// -----------------------------------------------------------------
+		By("Step 5: Verifying pre-resize filesystem size")
+		preSizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
+		Expect(err).To(BeNil(), "Failed to get filesystem size")
+		klog.Infof("[TC-RESIZE-01] Pre-resize filesystem size: %d GiB (disk: %d GiB, overhead: %d GiB)",
+			preSizeGb, defaultHdBSizeGb, defaultHdBSizeGb-preSizeGb)
+		// Allow up to 5 GiB difference for ext4 overhead on large HD disks.
+		Expect(preSizeGb).To(BeNumerically(">=", defaultHdBSizeGb-5),
+			"Pre-resize filesystem size should be within 5 GiB of disk size %d GiB", defaultHdBSizeGb)
+		Expect(preSizeGb).To(BeNumerically("<=", defaultHdBSizeGb),
+			"Pre-resize filesystem size should not exceed disk size %d GiB", defaultHdBSizeGb)
+		klog.Infof("[TC-RESIZE-01] Pre-resize size verified")
+
+		// -----------------------------------------------------------------
+		// Step 6: ControllerExpandVolume — expand disk at GCE API level
+		// The disk is expanded while the pod is still running (online resize).
+		// This is equivalent to the PVC resize request in Kubernetes.
+		// -----------------------------------------------------------------
+		By("Step 6: Expanding volume at controller level (online — pod still running)")
+		var newSizeGb int64 = 200 // expand from 100 GiB to 200 GiB
+		klog.Infof("[TC-RESIZE-01] Expanding volume: %d GiB → %d GiB",
+			defaultHdBSizeGb, newSizeGb)
+
+		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
+		Expect(err).To(BeNil(), "ControllerExpandVolume failed")
+
+		// Verify GCE disk reflects the new size immediately.
+		cloudDisk, err = computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk after ControllerExpand")
+		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb),
+			"GCE disk size should be %d GiB after ControllerExpand", newSizeGb)
+		klog.Infof("[TC-RESIZE-01] GCE disk size after ControllerExpand: %d GiB",
+			cloudDisk.SizeGb)
+
+		// -----------------------------------------------------------------
+		// Step 7: NodeExpandVolume — expand filesystem to use the new space
+		// This is the online filesystem resize — happens while pod is running.
+		// After this step the new space must be visible inside the pod.
+		// -----------------------------------------------------------------
+		By("Step 7: Expanding filesystem at node level (online — pod still running)")
+		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
+		Expect(err).To(BeNil(), "NodeExpandVolume failed")
+		klog.Infof("[TC-RESIZE-01] NodeExpandVolume completed")
+
+		// -----------------------------------------------------------------
+		// Step 8: Verify new filesystem size inside pod without restart
+		// Core assertion: pod sees expanded size without being restarted.
+		// Again using BeNumerically — 200 GiB disk reports ~196 GiB via df.
+		// -----------------------------------------------------------------
+		By("Step 8: Verifying new filesystem size is visible inside pod without restart")
+		postSizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
+		Expect(err).To(BeNil(), "Failed to get filesystem size after resize")
+		klog.Infof("[TC-RESIZE-01] Post-resize filesystem size: %d GiB (disk: %d GiB, overhead: %d GiB)",
+			postSizeGb, newSizeGb, newSizeGb-postSizeGb)
+		// Allow up to 5 GiB difference for ext4 overhead on large HD disks.
+		Expect(postSizeGb).To(BeNumerically(">=", newSizeGb-5),
+			"Post-resize filesystem size should be within 5 GiB of %d GiB", newSizeGb)
+		Expect(postSizeGb).To(BeNumerically("<=", newSizeGb),
+			"Post-resize filesystem size should not exceed %d GiB", newSizeGb)
+		klog.Infof("[TC-RESIZE-01] PASSED — hyperdisk-balanced volume resized %d→%d GiB online",
+			defaultHdBSizeGb, newSizeGb)
+	})
+
+	// -------------------------------------------------------------------------
+	// TC-RESIZE-02: Online Resize of PD Fallback Volume
+	//
+	// Goal: Expand a mounted pd-balanced PVC while the pod is running.
+	// Verify the new size is reflected inside the pod filesystem without restart.
+	//
+	// Node type: PD-only (n2d-standard-4) via getRandomTestContext().
+	// Initial size: defaultSizeGb (5 GiB)
+	// Expanded size: 10 GiB
+	//
+	// Why Equal: For small PD disks (5→10 GiB), df -BG reports exact size
+	// because ext4 overhead is negligible relative to disk size. This matches
+	// the existing resize_e2e_test.go pattern.
+	// -------------------------------------------------------------------------
+	It("Should online resize a mounted pd-balanced volume without pod restart [TC-RESIZE-02]", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+
+		// PD-only node — pd-balanced works on all node types.
+		testContext := getRandomTestContext()
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		klog.Infof("[TC-RESIZE-02] Using PD-only node in zone: %s", z)
+
+		// -----------------------------------------------------------------
+		// Step 1: Create pd-balanced volume
+		// pd-balanced is the fallback disk type when HD is not available.
+		// -----------------------------------------------------------------
+		By("Step 1: Creating pd-balanced volume")
+		volName := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[TC-RESIZE-02] Creating volume: %s", volName)
+
+		params := map[string]string{
+			parameters.ParameterKeyType: "pd-balanced",
+		}
+
+		volume, err := client.CreateVolume(volName, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: z}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume (pd-balanced) failed: %v", err)
+		klog.Infof("[TC-RESIZE-02] Volume created: %s", volume.VolumeId)
+
+		// Verify disk exists in GCE with correct initial size.
+		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Could not get disk from GCE API")
+		Expect(cloudDisk.Status).To(Equal(readyState))
+		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb),
+			"Initial GCE disk size should be %d GiB", defaultSizeGb)
+		klog.Infof("[TC-RESIZE-02] Disk verified in GCE: size=%d GiB status=%s",
+			cloudDisk.SizeGb, cloudDisk.Status)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-02] Deleting volume: %s", volume.VolumeId)
+			client.DeleteVolume(volume.VolumeId)
+			_, err = computeService.Disks.Get(p, z, volName).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected disk to be deleted")
+			klog.Infof("[TC-RESIZE-02] Volume deleted and confirmed gone")
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 2: Attach disk to node
+		// -----------------------------------------------------------------
+		By("Step 2: Attaching disk to node")
+		err = client.ControllerPublishVolumeReadWrite(volume.VolumeId,
+			instance.GetNodeID(), false /* forceAttach */)
+		Expect(err).To(BeNil(), "ControllerPublishVolume failed")
+		klog.Infof("[TC-RESIZE-02] Disk attached to node: %s", instance.GetNodeID())
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-02] Detaching disk from node")
+			err = client.ControllerUnpublishVolume(volume.VolumeId, instance.GetNodeID())
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-02] Failed to detach disk: %v", err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 3: Stage the disk
+		// -----------------------------------------------------------------
+		By("Step 3: Staging disk")
+		stageDir := filepath.Join("/tmp/", volName, "stage")
+		err = client.NodeStageExt4Volume(volume.VolumeId, stageDir,
+			false /* setupDataCache */)
+		Expect(err).To(BeNil(), "NodeStageVolume failed")
+		klog.Infof("[TC-RESIZE-02] Disk staged at: %s", stageDir)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-02] Unstaging disk")
+			err = client.NodeUnstageVolume(volume.VolumeId, stageDir)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-02] Failed to unstage volume: %v", err)
+			}
+			fp := filepath.Join("/tmp/", volName)
+			err = testutils.RmAll(instance, fp)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-02] Failed to rm %s: %v", fp, err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 4: Mount the disk (simulates pod starting to use the volume)
+		// -----------------------------------------------------------------
+		By("Step 4: Mounting disk (simulating pod start)")
+		publishDir := filepath.Join("/tmp/", volName, "mount")
+		err = client.NodePublishVolume(volume.VolumeId, stageDir, publishDir)
+		Expect(err).To(BeNil(), "NodePublishVolume failed")
+		klog.Infof("[TC-RESIZE-02] Disk mounted at: %s", publishDir)
+
+		defer func() {
+			klog.Infof("[TC-RESIZE-02] Unmounting disk")
+			err = client.NodeUnpublishVolume(volume.VolumeId, publishDir)
+			if err != nil {
+				klog.Errorf("[TC-RESIZE-02] NodeUnpublishVolume failed: %v", err)
+			}
+		}()
+
+		// -----------------------------------------------------------------
+		// Step 5: Verify pre-resize filesystem size
+		// For small PD disks, df -BG reports exact size (no rounding needed).
+		// -----------------------------------------------------------------
+		By("Step 5: Verifying pre-resize filesystem size")
+		preSizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
+		Expect(err).To(BeNil(), "Failed to get filesystem size")
+		klog.Infof("[TC-RESIZE-02] Pre-resize filesystem size: %d GiB (disk: %d GiB)",
+			preSizeGb, defaultSizeGb)
+		Expect(preSizeGb).To(Equal(defaultSizeGb),
+			"Pre-resize filesystem size should be %d GiB", defaultSizeGb)
+		klog.Infof("[TC-RESIZE-02] Pre-resize size verified")
+
+		// -----------------------------------------------------------------
+		// Step 6: ControllerExpandVolume — expand disk while pod is running
+		// -----------------------------------------------------------------
+		By("Step 6: Expanding volume at controller level (online — pod still running)")
+		var newSizeGb int64 = 10 // expand from 5 GiB to 10 GiB
+		klog.Infof("[TC-RESIZE-02] Expanding volume: %d GiB → %d GiB",
+			defaultSizeGb, newSizeGb)
+
+		err = client.ControllerExpandVolume(volume.VolumeId, newSizeGb)
+		Expect(err).To(BeNil(), "ControllerExpandVolume failed")
+
+		// Verify GCE disk reflects the new size.
+		cloudDisk, err = computeService.Disks.Get(p, z, volName).Do()
+		Expect(err).To(BeNil(), "Failed to get disk after ControllerExpand")
+		Expect(cloudDisk.SizeGb).To(Equal(newSizeGb),
+			"GCE disk size should be %d GiB after ControllerExpand", newSizeGb)
+		klog.Infof("[TC-RESIZE-02] GCE disk size after ControllerExpand: %d GiB",
+			cloudDisk.SizeGb)
+
+		// -----------------------------------------------------------------
+		// Step 7: NodeExpandVolume — expand filesystem while pod is running
+		// -----------------------------------------------------------------
+		By("Step 7: Expanding filesystem at node level (online — pod still running)")
+		_, err = client.NodeExpandVolume(volume.VolumeId, publishDir, newSizeGb)
+		Expect(err).To(BeNil(), "NodeExpandVolume failed")
+		klog.Infof("[TC-RESIZE-02] NodeExpandVolume completed")
+
+		// -----------------------------------------------------------------
+		// Step 8: Verify new size is visible inside pod without restart
+		// For small PD disks, df -BG reports exact size — using Equal.
+		// -----------------------------------------------------------------
+		By("Step 8: Verifying new filesystem size is visible inside pod without restart")
+		postSizeGb, err := testutils.GetFSSizeInGb(instance, publishDir)
+		Expect(err).To(BeNil(), "Failed to get filesystem size after resize")
+		klog.Infof("[TC-RESIZE-02] Post-resize filesystem size: %d GiB (disk: %d GiB)",
+			postSizeGb, newSizeGb)
+		Expect(postSizeGb).To(Equal(newSizeGb),
+			"Post-resize filesystem size should be %d GiB", newSizeGb)
+		klog.Infof("[TC-RESIZE-02] PASSED — pd-balanced volume resized %d→%d GiB online",
+			defaultSizeGb, newSizeGb)
 	})
 
 })
