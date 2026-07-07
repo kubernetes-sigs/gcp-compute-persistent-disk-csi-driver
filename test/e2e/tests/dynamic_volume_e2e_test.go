@@ -747,3 +747,214 @@ var _ = Describe("GCE PD CSI Driver Dynamic IOPS Provisioning", func() {
 	})
 
 })
+
+// Multi-Zone Dynamic Provisioning Test
+//
+// Background:
+// In a multi-zone Kubernetes cluster with WaitForFirstConsumer volume binding,
+// the scheduler picks a node first, then the CSI driver provisions the disk
+// in the same zone as the scheduled node. This ensures the pod can always
+// attach the volume — cross-zone attachment is not supported for zonal PDs.
+//
+// In this CSI e2e framework (no real pods/PVCs), WaitForFirstConsumer binding
+// is simulated by passing the target zone in the Preferred topology of the
+// TopologyRequirement. The driver must provision the disk in that preferred
+// zone, just as it would if a pod had been scheduled there.
+//
+// This test:
+//
+//	Step 1: Discover two distinct zones from testContexts (simulates multi-zone cluster).
+//	Step 2: Provision a pd-balanced volume with Preferred topology set to zone-1
+//	        (simulates WaitForFirstConsumer — pod scheduled in zone-1).
+//	        Verify the disk is created in zone-1 via the GCE API.
+//	Step 3: Provision a pd-balanced volume with Preferred topology set to zone-2
+//	        (simulates pod rescheduled to zone-2).
+//	        Verify the disk is created in zone-2 via the GCE API.
+//	Step 4: Cleanup — delete both volumes and confirm disks are gone.
+var _ = Describe("GCE PD CSI Driver Multi-Zone Dynamic Provisioning", func() {
+
+	It("Should provision disk in the correct zone matching where the pod is scheduled", func() {
+
+		// Require at least 2 test contexts to have a meaningful multi-zone test.
+		Expect(len(testContexts)).To(BeNumerically(">", 1),
+			"Need at least 2 test contexts for multi-zone test")
+
+		// -----------------------------------------------------------------
+		// Step 1: Discover two distinct zones from testContexts
+		//
+		// testContexts contains one context per node across all zones.
+		// We build a zoneToContext map to get one context per unique zone,
+		// then pick zone-1 and zone-2 for the test.
+		// This mirrors the pattern used in multi_zone_e2e_test.go.
+		// -----------------------------------------------------------------
+		By("Step 1: Discovering two distinct zones from test contexts")
+
+		// Build zone -> context map, one entry per unique zone.
+		zoneToContext := map[string]interface {
+			GetIdentity() (string, string, string)
+		}{}
+		zones := []string{}
+		for _, tc := range testContexts {
+			_, z, _ := tc.Instance.GetIdentity()
+			if _, ok := zoneToContext[z]; !ok {
+				zoneToContext[z] = tc.Instance
+				zones = append(zones, z)
+			}
+			if len(zones) == 2 {
+				break
+			}
+		}
+
+		Expect(len(zones)).To(Equal(2),
+			"Must have test contexts in at least 2 zones for multi-zone provisioning test")
+
+		zone1 := zones[0]
+		zone2 := zones[1]
+
+		// Use first context as the controller client for all CreateVolume calls.
+		controllerContext := testContexts[0]
+		p, _, _ := controllerContext.Instance.GetIdentity()
+
+		klog.Infof("[Step 1] Discovered zones: zone1=%s zone2=%s project=%s", zone1, zone2, p)
+
+		// -----------------------------------------------------------------
+		// Step 2: Provision volume in zone-1
+		//
+		// Simulates: pod scheduled on a node in zone-1 by the Kubernetes
+		// scheduler (WaitForFirstConsumer). The CSI driver must provision
+		// the disk in zone-1 so the pod can attach it.
+		//
+		// We pass zone-1 as both Requisite and Preferred topology.
+		// Requisite = allowed zones, Preferred = most desired zone.
+		// The driver picks the Preferred zone when available.
+		// -----------------------------------------------------------------
+		By("Step 2: Provisioning pd-balanced volume with Preferred topology in zone-1")
+
+		volName1 := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[Step 2] Creating volume %s with Preferred zone: %s", volName1, zone1)
+
+		// Parameters: pd-balanced is supported on all node types.
+		// No special flags needed — this tests pure zone-selection behaviour.
+		params := map[string]string{
+			parameters.ParameterKeyType: "pd-balanced",
+		}
+
+		volume1, err := controllerContext.Client.CreateVolume(volName1, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				// Requisite: the set of zones the driver is allowed to use.
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: zone1}},
+					{Segments: map[string]string{constants.TopologyKeyZone: zone2}},
+				},
+				// Preferred: the zone where the pod was scheduled.
+				// WaitForFirstConsumer sets this to the node's zone.
+				// The driver MUST honour this and provision in zone-1.
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: zone1}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume in zone-1 failed: %v", err)
+		klog.Infof("[Step 2] Volume created: %s", volume1.VolumeId)
+
+		defer func() {
+			klog.Infof("[Step 2] Deleting volume: %s", volume1.VolumeId)
+			err := controllerContext.Client.DeleteVolume(volume1.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume zone-1 failed")
+
+			// Verify disk is actually gone from GCE.
+			_, key, err := common.VolumeIDToKey(volume1.VolumeId)
+			Expect(err).To(BeNil())
+			_, err = computeService.Disks.Get(p, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected zone-1 disk to be deleted but it still exists")
+			klog.Infof("[Step 2] Volume deleted and confirmed gone from GCE")
+		}()
+
+		// Verify via GCE API that disk was created in zone-1.
+		// This is the core assertion: disk zone must match the Preferred zone
+		// (i.e. the zone where the pod would have been scheduled).
+		klog.Infof("[Step 2] Verifying disk exists in GCE zone: %s", zone1)
+		disk1, err := computeService.Disks.Get(p, zone1, volName1).Do()
+		Expect(err).To(BeNil(),
+			"Disk not found in zone-1 (%s) — driver did not honour Preferred topology", zone1)
+		Expect(disk1.Status).To(Equal(readyState),
+			"Disk in zone-1 is not in READY state")
+		Expect(disk1.Type).To(ContainSubstring("pd-balanced"),
+			"Disk type does not match requested pd-balanced")
+
+		klog.Infof("[Step 2] PASSED — disk %s created in correct zone: %s (type: %s)",
+			volName1, zone1, disk1.Type)
+
+		// Also verify AccessibleTopology in the response matches zone-1.
+		Expect(volume1.AccessibleTopology).ToNot(BeEmpty(),
+			"Volume should have accessible topologies")
+		responseZone1 := volume1.AccessibleTopology[0].Segments[constants.TopologyKeyZone]
+		Expect(responseZone1).To(Equal(zone1),
+			"AccessibleTopology zone in response does not match Preferred zone-1")
+		klog.Infof("[Step 2] AccessibleTopology zone in response: %s (matches zone-1)", responseZone1)
+
+		// -----------------------------------------------------------------
+		// Step 3: Provision volume in zone-2
+		//
+		// Simulates: a different pod scheduled on a node in zone-2.
+		// Verifies the driver correctly picks zone-2 when it is Preferred,
+		// demonstrating zone-aware dynamic provisioning works across zones.
+		// -----------------------------------------------------------------
+		By("Step 3: Provisioning pd-balanced volume with Preferred topology in zone-2")
+
+		volName2 := testNamePrefix + string(uuid.NewUUID())
+		klog.Infof("[Step 3] Creating volume %s with Preferred zone: %s", volName2, zone2)
+
+		volume2, err := controllerContext.Client.CreateVolume(volName2, params, defaultSizeGb,
+			&csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: zone1}},
+					{Segments: map[string]string{constants.TopologyKeyZone: zone2}},
+				},
+				// Preferred zone is now zone-2 — driver must provision there.
+				Preferred: []*csi.Topology{
+					{Segments: map[string]string{constants.TopologyKeyZone: zone2}},
+				},
+			}, nil)
+		Expect(err).To(BeNil(), "CreateVolume in zone-2 failed: %v", err)
+		klog.Infof("[Step 3] Volume created: %s", volume2.VolumeId)
+
+		defer func() {
+			klog.Infof("[Step 3] Deleting volume: %s", volume2.VolumeId)
+			err := controllerContext.Client.DeleteVolume(volume2.VolumeId)
+			Expect(err).To(BeNil(), "DeleteVolume zone-2 failed")
+
+			// Verify disk is actually gone from GCE.
+			_, key, err := common.VolumeIDToKey(volume2.VolumeId)
+			Expect(err).To(BeNil())
+			_, err = computeService.Disks.Get(p, key.Zone, key.Name).Do()
+			Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(),
+				"Expected zone-2 disk to be deleted but it still exists")
+			klog.Infof("[Step 3] Volume deleted and confirmed gone from GCE")
+		}()
+
+		// Verify via GCE API that disk was created in zone-2.
+		klog.Infof("[Step 3] Verifying disk exists in GCE zone: %s", zone2)
+		disk2, err := computeService.Disks.Get(p, zone2, volName2).Do()
+		Expect(err).To(BeNil(),
+			"Disk not found in zone-2 (%s) — driver did not honour Preferred topology", zone2)
+		Expect(disk2.Status).To(Equal(readyState),
+			"Disk in zone-2 is not in READY state")
+		Expect(disk2.Type).To(ContainSubstring("pd-balanced"),
+			"Disk type does not match requested pd-balanced")
+
+		klog.Infof("[Step 3] PASSED — disk %s created in correct zone: %s (type: %s)",
+			volName2, zone2, disk2.Type)
+
+		// Also verify AccessibleTopology in the response matches zone-2.
+		Expect(volume2.AccessibleTopology).ToNot(BeEmpty(),
+			"Volume should have accessible topologies")
+		responseZone2 := volume2.AccessibleTopology[0].Segments[constants.TopologyKeyZone]
+		Expect(responseZone2).To(Equal(zone2),
+			"AccessibleTopology zone in response does not match Preferred zone-2")
+		klog.Infof("[Step 3] AccessibleTopology zone in response: %s (matches zone-2)", responseZone2)
+
+		klog.Infof("[DONE] Both disks provisioned in correct zones — zone1=%s zone2=%s", zone1, zone2)
+	})
+
+})
