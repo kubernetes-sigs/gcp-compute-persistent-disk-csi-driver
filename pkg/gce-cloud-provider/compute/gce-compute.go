@@ -1153,7 +1153,7 @@ func (cloud *CloudProvider) waitForLongRunningZonalOp(ctx context.Context, proje
 func (cloud *CloudProvider) waitForZonalOpWithBackoff(ctx context.Context, project, opName string, zone string, backoff wait.Backoff) error {
 	return wait.ExponentialBackoff(backoff, func() (bool, error) {
 		waitOp, err := cloud.service.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForZonalOp(op: %s, zone: %#v, err: %v) failed to poll the operation", opName, zone, err)
 			return false, nil
@@ -1170,7 +1170,7 @@ func (cloud *CloudProvider) waitForZonalOpWithBackoff(ctx context.Context, proje
 func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opName string, region string) error {
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.RegionOperations.Wait(project, region, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForRegionalOp(op: %s, region: %#v, err: %v) failed to poll the operation", opName, region, err)
 			return false, nil
@@ -1191,7 +1191,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName string) error {
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.GlobalOperations.Wait(project, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForGlobalOp(op: %s, err: %v) failed to poll the operation", opName, err)
 			return false, nil
