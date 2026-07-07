@@ -67,7 +67,7 @@ type GCENodeServer struct {
 	// device is still in use (or until --device-in-use-timeout is reached, if specified)
 	enableDeviceInUseCheck bool
 	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
-	// encounted for that device
+	// encountered for that device
 	deviceInUseErrors *deviceErrMap
 
 	// If set, this semaphore will be used to serialize formatAndMount. It will be raised

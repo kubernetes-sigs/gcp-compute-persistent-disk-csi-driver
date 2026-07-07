@@ -53,7 +53,7 @@ func (ns *GCENodeServer) formatAndMount(source, target, fstype string, options [
 		done := make(chan any)
 		defer close(done)
 
-		// Aquire the semaphore. This will block if another formatAndMount has put an item
+		// Acquire the semaphore. This will block if another formatAndMount has put an item
 		// into the semaphore channel.
 		ns.formatAndMountSemaphore <- struct{}{}
 

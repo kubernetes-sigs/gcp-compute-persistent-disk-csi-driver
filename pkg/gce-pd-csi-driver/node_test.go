@@ -1454,7 +1454,7 @@ func TestNodeStageVolume(t *testing.T) {
 // to un-comment
 /*
 func TestNodeExpandVolume(t *testing.T) {
-	// TODO: Add tests/functionality for non-existant volume
+	// TODO: Add tests/functionality for non-existent volume
 	var resizedBytes int64 = 2000000000
 	volumeID := "project/test001/zones/c1/disks/testDisk"
 	testCases := []struct {
