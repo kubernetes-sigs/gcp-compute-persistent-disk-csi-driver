@@ -56,7 +56,7 @@ var (
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
-	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
+	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `127.0.0.1:8080`). The default is empty string, which means metrics endpoint is disabled. The endpoint contains internal system state (go runtime), which can help attackers better understand system internals, so should not be publicly exposed")
 	metricsPath          = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 	grpcLogCharCap       = flag.Int("grpc-log-char-cap", 10000, "The maximum amount of characters logged for every grpc responses")
 	enableOtelTracing    = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
@@ -195,6 +195,7 @@ func handle() {
 	runServiceWithMetrics := *runControllerService || *runNodeService
 	if runServiceWithMetrics && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
+		mm.RegisterRuntimeMetrics()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
 
 		switch {
