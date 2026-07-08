@@ -80,7 +80,7 @@ type GCEControllerServer struct {
 	// pair.
 	//
 	// An implication is that in the full operation queue situation, requests
-	// for new disks will not backoff the first time. This is acceptible as a
+	// for new disks will not backoff the first time. This is acceptable as a
 	// single spurious call will not cause problems for quota exhaustion or make
 	// the operation queue problem worse. This is well compensated by giving
 	// disks where no problems are ocurring a chance to be processed.
@@ -435,7 +435,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 
 	// Verify that the regional availability class is only used on regional disks.
 	if params.ForceAttach && !params.IsRegional() {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid availabilty class for zonal disk")
+		return nil, status.Errorf(codes.InvalidArgument, "invalid availability class for zonal disk")
 	}
 
 	if gceCS.multiZoneVolumeHandleConfig.Enable && params.MultiZoneProvisioning {

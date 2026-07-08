@@ -194,7 +194,7 @@ func dumpDriverLogs() (context.CancelFunc, error) {
 
 // mergeArtifacts merges the results of doing multiple gingko runs, taking all junit files
 // in the specified subdirectories of the artifacts directory and merging into a single
-// file at the artifcats root.  If artifacts are not saved (ie, ARTIFACTS is not set),
+// file at the artifacts root.  If artifacts are not saved (ie, ARTIFACTS is not set),
 // this is a no-op. See kubernetes-csi/csi-release-tools/prow.sh for the inspiration.
 func mergeArtifacts(subdirectories []string) error {
 	artifactsDir, ok := os.LookupEnv("ARTIFACTS")
