@@ -202,7 +202,7 @@ func TestGetComputeVersion(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		ctx := context.Background()
-		computeOpts, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion, 0)
+		computeOpts, err := getComputeVersion(ctx, nil, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion, 0, "")
 		service, _ := compute.NewService(ctx, computeOpts...)
 		gotEndpoint := service.BasePath
 		if err != nil && !tc.expectError {
