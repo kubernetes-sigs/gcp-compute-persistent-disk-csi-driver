@@ -208,7 +208,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		service:             svc,
 		betaService:         betasvc,
 		alphaService:        alphasvc,
-		credsJSON:            credsJSON,
+		credsJSON:           credsJSON,
 		tokenSource:         tokenSource,
 		universeDomain:      universeDomain,
 		project:             project,
