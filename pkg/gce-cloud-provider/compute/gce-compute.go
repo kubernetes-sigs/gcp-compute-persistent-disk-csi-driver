@@ -554,11 +554,16 @@ func (cloud *CloudProvider) constructDiskToCreate(
 	multiWriter bool,
 	accessMode string) (*computebeta.Disk, error) {
 
+	diskTypeToCreate := params.DiskType
+	if strings.HasPrefix(diskTypeToCreate, "exapool-") {
+		diskTypeToCreate = strings.TrimPrefix(diskTypeToCreate, "exapool-")
+	}
+
 	diskToCreate := &computebeta.Disk{
 		Name:        volKey.Name,
 		SizeGb:      common.BytesToGbRoundUp(capBytes),
 		Description: description,
-		Type:        cloud.GetDiskTypeURI(project, volKey, params.DiskType),
+		Type:        cloud.GetDiskTypeURI(project, volKey, diskTypeToCreate),
 		Labels:      params.Labels,
 	}
 
