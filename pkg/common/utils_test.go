@@ -1021,6 +1021,20 @@ func TestGetMinIopsThroughput(t *testing.T) {
 			expectMinThroughput: 0, // 0 indicates no change to throughput
 		},
 		{
+			name: "Exapool Hyperdisk Balanced 5 GiB to 6GiB",
+			existingDisk: &computev1.Disk{
+				Name:                  testDiskName,
+				Type:                  "exapool-hyperdisk-balanced",
+				ProvisionedIops:       2500,
+				ProvisionedThroughput: 145,
+				SizeGb:                5,
+			},
+			reqGb:               6,
+			expectResult:        true,
+			expectMinIops:       3000,
+			expectMinThroughput: 0, // 0 indicates no change to throughput
+		},
+		{
 			name: "Hyperdisk Balanced 6 GiB to 10GiB - no adjustment",
 			existingDisk: &computev1.Disk{
 				Name:                  testDiskName,
@@ -1136,6 +1150,58 @@ func TestGetMinIopsThroughput(t *testing.T) {
 
 			if gotMinThroughput != tc.expectMinThroughput {
 				t.Errorf("GetMinIopsThroughput Throughput: got %v, want %v", gotMinThroughput, tc.expectMinThroughput)
+			}
+		})
+	}
+}
+
+func TestIsHyperdisk(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		diskType             string
+		enableExapoolSupport bool
+		want                 bool
+	}{
+		{
+			name:     "hyperdisk-balanced",
+			diskType: "hyperdisk-balanced",
+			want:     true,
+		},
+		{
+			name:     "hyperdisk-extreme",
+			diskType: "hyperdisk-extreme",
+			want:     true,
+		},
+		{
+			name:     "pd-standard",
+			diskType: "pd-standard",
+			want:     false,
+		},
+		{
+			name:                 "exapool-hyperdisk-balanced with support enabled",
+			diskType:             "exapool-hyperdisk-balanced",
+			enableExapoolSupport: true,
+			want:                 true,
+		},
+		{
+			name:                 "exapool-hyperdisk-balanced with support disabled",
+			diskType:             "exapool-hyperdisk-balanced",
+			enableExapoolSupport: false,
+			want:                 false,
+		},
+		{
+			name:                 "random exapool prefix with support enabled",
+			diskType:             "exapool-hyperdisk-random",
+			enableExapoolSupport: true,
+			want:                 true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := IsHyperdisk(tc.diskType, tc.enableExapoolSupport)
+			if got != tc.want {
+				t.Errorf("IsHyperdisk(%q, %v) = %v; want %v", tc.diskType, tc.enableExapoolSupport, got, tc.want)
 			}
 		})
 	}

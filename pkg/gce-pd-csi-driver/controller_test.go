@@ -610,6 +610,7 @@ func TestCreateVolumeArguments(t *testing.T) {
 		expErrCode           codes.Code
 		enableDiskTopology   bool
 		enableDynamicVolumes bool
+		enableExapoolSupport bool
 	}{
 		{
 			name: "success default",
@@ -1515,6 +1516,62 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fail with exapool-hyperdisk-balanced and exapool support disabled",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"type": "exapool-hyperdisk-balanced"},
+			},
+			enableExapoolSupport: false,
+			expErrCode:           codes.InvalidArgument,
+		},
+		{
+			name: "fail with exapool-hyperdisk-balanced and exapool support enabled, but storage pools disabled",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"type": "exapool-hyperdisk-balanced"},
+			},
+			enableExapoolSupport: true,
+			enableStoragePools:   false,
+			expErrCode:           codes.InvalidArgument,
+		},
+		{
+			name: "success with exapool-hyperdisk-balanced and exapool support enabled, storage pools enabled",
+			req: &csi.CreateVolumeRequest{
+				Name:               "test-name",
+				CapacityRange:      stdCapRange,
+				VolumeCapabilities: stdVolCaps,
+				Parameters:         map[string]string{"type": "exapool-hyperdisk-balanced", "storage-pools": "projects/test-project/zones/us-central1-a/storagePools/storagePool-1"},
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
+						},
+					},
+				},
+			},
+			enableExapoolSupport: true,
+			enableStoragePools:   true,
+			expVol: &csi.Volume{
+				CapacityBytes: common.GbToBytes(20),
+				VolumeId:      "projects/test-project/zones/us-central1-a/disks/test-name",
+				VolumeContext: nil,
+				AccessibleTopology: []*csi.Topology{
+					{
+						Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
+					},
+				},
+			},
+		},
 	}
 
 	// Run test cases
@@ -1524,9 +1581,11 @@ func TestCreateVolumeArguments(t *testing.T) {
 			args := &GCEControllerServerArgs{
 				EnableDiskTopology:   tc.enableDiskTopology,
 				EnableDynamicVolumes: tc.enableDynamicVolumes,
+				EnableExapoolSupport: tc.enableExapoolSupport,
 			}
 			gceDriver := initGCEDriver(t, nil, args)
 			gceDriver.cs.enableStoragePools = tc.enableStoragePools
+			gceDriver.cs.enableExapoolSupport = tc.enableExapoolSupport
 
 			// Start Test
 			resp, err := gceDriver.cs.CreateVolume(context.Background(), tc.req)

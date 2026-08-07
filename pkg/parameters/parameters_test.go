@@ -35,6 +35,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 		enableDataCache       bool
 		enableMultiZone       bool
 		enableHdHA            bool
+		enableExapoolSupport  bool
 		enableDiskTopology    bool
 		enableGCEDiskStatus   bool
 		extraTags             map[string]string
@@ -489,6 +490,24 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			},
 		},
 		{
+			name:       "disk parameters, exapool disabled",
+			parameters: map[string]string{ParameterKeyType: "exapool-hyperdisk-balanced"},
+			expectErr:  true,
+		},
+		{
+			name:                 "disk parameters, exapool enabled",
+			parameters:           map[string]string{ParameterKeyType: "exapool-hyperdisk-balanced"},
+			enableExapoolSupport: true,
+			expectParams: DiskParameters{
+				DiskType:             "exapool-hyperdisk-balanced",
+				ReplicationType:      "none",
+				EnableExapoolSupport: true,
+				Tags:                 map[string]string{},
+				ResourceTags:         map[string]string{},
+				Labels:               map[string]string{},
+			},
+		},
+		{
 			// Disk topology feature shouldn't cause parameter parsing to fail, even when misconfigured.
 			name: "useAllowedDiskTopology specified, disk topology feature disabled",
 			parameters: map[string]string{
@@ -572,16 +591,17 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			pp := ParameterProcessor{
-				DriverName:          "testDriver",
-				ClusterOwnershipID:  tc.clusterID,
-				EnableStoragePools:  tc.enableStoragePools,
-				EnableMultiZone:     tc.enableMultiZone,
-				EnableHdHA:          tc.enableHdHA,
-				EnableDiskTopology:  tc.enableDiskTopology,
-				EnableGCEDiskStatus: tc.enableGCEDiskStatus,
-				ExtraVolumeLabels:   tc.labels,
-				EnableDataCache:     tc.enableDataCache,
-				ExtraTags:           tc.extraTags,
+				DriverName:           "testDriver",
+				ClusterOwnershipID:   tc.clusterID,
+				EnableStoragePools:   tc.enableStoragePools,
+				EnableMultiZone:      tc.enableMultiZone,
+				EnableHdHA:           tc.enableHdHA,
+				EnableExapoolSupport: tc.enableExapoolSupport,
+				EnableDiskTopology:   tc.enableDiskTopology,
+				EnableGCEDiskStatus:  tc.enableGCEDiskStatus,
+				ExtraVolumeLabels:    tc.labels,
+				EnableDataCache:      tc.enableDataCache,
+				ExtraTags:            tc.extraTags,
 			}
 			p, d, err := pp.ExtractAndDefaultParameters(tc.parameters)
 			if gotErr := err != nil; gotErr != tc.expectErr {

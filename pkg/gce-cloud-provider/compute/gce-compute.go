@@ -459,7 +459,7 @@ func ValidateExistingDisk(ctx context.Context, resp *CloudDisk, params parameter
 			reqBytes, common.GbToBytes(resp.GetSizeGb()), limBytes)
 	}
 
-	if common.IsHyperdisk(params.DiskType) {
+	if common.IsHyperdisk(params.DiskType, params.EnableExapoolSupport) {
 		if !validAccessMode(accessMode, resp.GetAccessMode()) {
 			return fmt.Errorf("disk already exists with incompatible capability. Need %s. Got %s", accessMode, resp.GetAccessMode())
 		}
@@ -623,7 +623,7 @@ func (cloud *CloudProvider) constructDiskToCreate(
 		}
 	}
 
-	if common.IsHyperdisk(params.DiskType) {
+	if common.IsHyperdisk(params.DiskType, params.EnableExapoolSupport) {
 		diskToCreate.AccessMode = accessMode
 	} else {
 		diskToCreate.MultiWriter = multiWriter

@@ -34,7 +34,7 @@ var sanitizers = map[string]sanitizer{
 }
 
 func isHD(diskType string) bool {
-	return strings.HasPrefix(diskType, "hyperdisk-")
+	return strings.HasPrefix(diskType, "hyperdisk-") || strings.HasPrefix(diskType, "exapool-hyperdisk-")
 }
 
 func isPD(diskType string) bool {

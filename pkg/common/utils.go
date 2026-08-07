@@ -446,7 +446,10 @@ func NewLimiter(limit, burst int, emptyBucket bool) *rate.Limiter {
 	return limiter
 }
 
-func IsHyperdisk(diskType string) bool {
+func IsHyperdisk(diskType string, enableExapoolSupport bool) bool {
+	if enableExapoolSupport && strings.HasPrefix(diskType, "exapool-hyperdisk-") {
+		return true
+	}
 	return strings.HasPrefix(diskType, "hyperdisk-")
 }
 
@@ -532,8 +535,8 @@ func IsUpdateIopsThroughputValuesAllowed(disk *computev1.Disk) bool {
 // https://cloud.google.com/compute/docs/disks/hyperdisks#limits-disk
 func GetMinIopsThroughput(disk *computev1.Disk, requestGb int64) (needed bool, minIops int64, minThroughput int64) {
 	switch {
-	case strings.Contains(disk.Type, parameters.DiskTypeHyperdiskBalanced):
-		// This includes types "hyperdisk-balanced" and "hyperdisk-balanced-high-availability"
+	case strings.Contains(disk.Type, parameters.DiskTypeHyperdiskBalanced) || strings.Contains(disk.Type, parameters.ExapoolHyperdiskBalanced):
+		// This includes types "hyperdisk-balanced", "hyperdisk-balanced-high-availability", and "exapool-hyperdisk-balanced"
 		return minIopsForBalanced(disk, requestGb)
 	case strings.Contains(disk.Type, parameters.DiskTypeHdE):
 		return minIopsForExtreme(disk, requestGb)

@@ -37,6 +37,7 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 		Tags:                 make(map[string]string), // Default
 		Labels:               make(map[string]string), // Default
 		ResourceTags:         make(map[string]string), // Default
+		EnableExapoolSupport: pp.EnableExapoolSupport,
 	}
 
 	// Set data cache mode default
@@ -71,6 +72,9 @@ func (pp *ParameterProcessor) ExtractAndDefaultParameters(parameters map[string]
 				p.DiskType = strings.ToLower(v)
 				if pp.isHDHADisabled() && p.DiskType == DiskTypeHdHA {
 					return p, d, fmt.Errorf("parameters contain invalid disk type %s", DiskTypeHdHA)
+				}
+				if pp.isExapoolDisabled() && p.DiskType == ExapoolHyperdiskBalanced {
+					return p, d, fmt.Errorf("parameters contain invalid disk type %s", ExapoolHyperdiskBalanced)
 				}
 				if p.DiskType == DynamicVolumeType {
 					if pp.isDynamicVolumesDisabled() {

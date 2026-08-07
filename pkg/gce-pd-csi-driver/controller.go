@@ -112,6 +112,9 @@ type GCEControllerServer struct {
 	// If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools.
 	enableStoragePools bool
 
+	// If set to true, the CSI Driver will allow volumes to be provisioned in Exapools.
+	enableExapoolSupport bool
+
 	// If set to true, the CSI Driver will allow Hyperdisk-balanced High Availability disks
 	// to be provisioned.
 	enableHdHA bool
@@ -141,7 +144,8 @@ type GCEControllerServer struct {
 	EnableDiskTopology       bool
 	EnableDiskSizeValidation bool
 
-	EnablePdConversion bool
+	EnablePdConversion   bool
+	EnableExapoolSupport bool
 }
 
 type GCEControllerServerArgs struct {
@@ -150,6 +154,7 @@ type GCEControllerServerArgs struct {
 	EnableDynamicVolumes     bool
 	EnableGCEDiskStatus      bool
 	EnablePdConversion       bool
+	EnableExapoolSupport     bool
 	ClusterOwnershipID       string
 }
 
@@ -680,7 +685,7 @@ func (gceCS *GCEControllerServer) createSingleDeviceDisk(ctx context.Context, re
 
 func getAccessMode(req *csi.CreateVolumeRequest, params parameters.DiskParameters) (string, error) {
 	readonly, _ := getReadOnlyFromCapabilities(req.GetVolumeCapabilities())
-	if common.IsHyperdisk(params.DiskType) {
+	if common.IsHyperdisk(params.DiskType, params.EnableExapoolSupport) {
 		if am, err := getHyperdiskAccessModeFromCapabilities(req.GetVolumeCapabilities()); err != nil {
 			return "", err
 		} else if disksWithUnsettableAccessMode[params.DiskType] {
@@ -708,7 +713,7 @@ func (gceCS *GCEControllerServer) createSingleDisk(ctx context.Context, req *csi
 	capBytes, _ := getRequestCapacity(capacityRange)
 
 	multiWriter := false
-	if !common.IsHyperdisk(params.DiskType) {
+	if !common.IsHyperdisk(params.DiskType, params.EnableExapoolSupport) {
 		multiWriter, _ = getMultiWriterFromCapabilities(req.GetVolumeCapabilities())
 	}
 
@@ -1538,6 +1543,7 @@ func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProc
 	return &parameters.ParameterProcessor{
 		DriverName:           gceCS.Driver.name,
 		EnableStoragePools:   gceCS.enableStoragePools,
+		EnableExapoolSupport: gceCS.enableExapoolSupport,
 		EnableMultiZone:      gceCS.multiZoneVolumeHandleConfig.Enable,
 		EnableHdHA:           gceCS.enableHdHA,
 		EnableDiskTopology:   gceCS.EnableDiskTopology,

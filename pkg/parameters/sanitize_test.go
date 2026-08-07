@@ -185,6 +185,60 @@ func TestSanitizeDiskParameters(t *testing.T) {
 				ForceAttach: true,
 			},
 		},
+		{
+			desc: "ReplicationType sanitized for exapool HD",
+			parameters: &DiskParameters{
+				DiskType:        "exapool-hyperdisk-balanced",
+				ReplicationType: "regional-pd",
+			},
+			want: &DiskParameters{
+				DiskType:        "exapool-hyperdisk-balanced",
+				ReplicationType: "none",
+			},
+		},
+		{
+			desc: "ForceAttach sanitized for exapool HD",
+			parameters: &DiskParameters{
+				DiskType:    "exapool-hyperdisk-balanced",
+				ForceAttach: true,
+			},
+			want: &DiskParameters{
+				DiskType: "exapool-hyperdisk-balanced",
+			},
+		},
+		{
+			desc: "ProvisionedIOPSOnCreate unchanged for exapool HD",
+			parameters: &DiskParameters{
+				DiskType:                "exapool-hyperdisk-balanced",
+				ProvisionedIOPSOnCreate: 5000,
+			},
+			want: &DiskParameters{
+				DiskType:                "exapool-hyperdisk-balanced",
+				ProvisionedIOPSOnCreate: 5000,
+			},
+		},
+		{
+			desc: "ProvisionedThroughputOnCreate unchanged for exapool HD",
+			parameters: &DiskParameters{
+				DiskType:                      "exapool-hyperdisk-balanced",
+				ProvisionedThroughputOnCreate: 200,
+			},
+			want: &DiskParameters{
+				DiskType:                      "exapool-hyperdisk-balanced",
+				ProvisionedThroughputOnCreate: 200,
+			},
+		},
+		{
+			desc: "StoragePools unchanged for exapool HD",
+			parameters: &DiskParameters{
+				DiskType:     "exapool-hyperdisk-balanced",
+				StoragePools: []StoragePool{{Name: "fake-pool"}},
+			},
+			want: &DiskParameters{
+				DiskType:     "exapool-hyperdisk-balanced",
+				StoragePools: []StoragePool{{Name: "fake-pool"}},
+			},
+		},
 	}
 
 	for _, tc := range tests {

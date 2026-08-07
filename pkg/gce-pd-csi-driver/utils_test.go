@@ -376,7 +376,7 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "test-project",
-			expErr:  fmt.Errorf("invalid disk-type: \"pd-balanced\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+			expErr:  fmt.Errorf("invalid disk-type: \"pd-balanced\". storage pools only support hyperdisk-balanced, hyperdisk-throughput, or exapool-hyperdisk-balanced"),
 		},
 		{
 			name: "fail storage pools with regional PD",
@@ -427,7 +427,7 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project:    "test-project",
-			expErr:     fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+			expErr:     fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced, hyperdisk-throughput, or exapool-hyperdisk-balanced"),
 			enableHdHA: true,
 		},
 		{
@@ -453,7 +453,7 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "test-project",
-			expErr:  fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+			expErr:  fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced, hyperdisk-throughput, or exapool-hyperdisk-balanced"),
 		},
 		{
 			name: "fail storage pools with disk clones",
@@ -594,6 +594,59 @@ func TestValidateStoragePools(t *testing.T) {
 			},
 			params: parameters.DiskParameters{
 				DiskType: "hyperdisk-balanced",
+				StoragePools: []parameters.StoragePool{
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-a",
+						Name:         "storagePool-1",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+					{
+						Project:      "test-project",
+						Zone:         "us-central1-b",
+						Name:         "storagePool-2",
+						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
+					},
+				},
+			},
+			project: "test-project",
+		},
+		{
+			name: "fail exapool-hyperdisk-balanced without storage pools parameter",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+			},
+			params: parameters.DiskParameters{
+				DiskType: "exapool-hyperdisk-balanced",
+			},
+			project: "test-project",
+			expErr:  fmt.Errorf("exapool-hyperdisk-balanced requires storage pools to be specified"),
+		},
+		{
+			name: "success exapool-hyperdisk-balanced with storage pools parameter",
+			req: &csi.CreateVolumeRequest{
+				Name: "test-name",
+				AccessibilityRequirements: &csi.TopologyRequirement{
+					Requisite: []*csi.Topology{
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+					Preferred: []*csi.Topology{
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-a"},
+						},
+						{
+							Segments: map[string]string{constants.TopologyKeyZone: "us-central1-b"},
+						},
+					},
+				},
+			},
+			params: parameters.DiskParameters{
+				DiskType: "exapool-hyperdisk-balanced",
 				StoragePools: []parameters.StoragePool{
 					{
 						Project:      "test-project",

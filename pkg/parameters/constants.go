@@ -60,6 +60,9 @@ const (
 	DiskTypeHdE               = "hyperdisk-extreme"
 	DiskTypeHdML              = "hyperdisk-ml"
 
+	// Exapool hyperdisk types
+	ExapoolHyperdiskBalanced = "exapool-hyperdisk-balanced"
+
 	// Parameters for VolumeSnapshotClass
 	DiskSnapshotType = "snapshots"
 	DiskImageType    = "images"

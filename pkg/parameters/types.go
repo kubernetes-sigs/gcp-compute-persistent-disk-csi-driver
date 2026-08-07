@@ -53,6 +53,9 @@ type DiskParameters struct {
 	EnableConfidentialCompute bool
 	// Values: {bool}
 	// Default: false
+	EnableExapoolSupport bool
+	// Values: {bool}
+	// Default: false
 	ForceAttach bool
 	// Values: {[]string}
 	// Default: ""
@@ -93,6 +96,7 @@ type ParameterProcessor struct {
 	DriverName           string
 	EnableStoragePools   bool
 	EnableMultiZone      bool
+	EnableExapoolSupport bool
 	EnableHdHA           bool
 	EnableDiskTopology   bool
 	EnableDataCache      bool
@@ -109,6 +113,10 @@ func (pp *ParameterProcessor) isHDHADisabled() bool {
 
 func (pp *ParameterProcessor) isStoragePoolDisabled() bool {
 	return !pp.EnableStoragePools
+}
+
+func (pp *ParameterProcessor) isExapoolDisabled() bool {
+	return !pp.EnableExapoolSupport
 }
 
 func (pp *ParameterProcessor) isDataCacheDisabled() bool {
