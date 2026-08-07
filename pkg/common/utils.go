@@ -17,6 +17,8 @@ limitations under the License.
 package common
 
 import (
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
+
 	"context"
 	"errors"
 	"fmt"
@@ -530,14 +532,14 @@ func IsUpdateIopsThroughputValuesAllowed(disk *computev1.Disk) bool {
 // https://cloud.google.com/compute/docs/disks/hyperdisks#limits-disk
 func GetMinIopsThroughput(disk *computev1.Disk, requestGb int64) (needed bool, minIops int64, minThroughput int64) {
 	switch {
-	case strings.Contains(disk.Type, "hyperdisk-balanced"):
+	case strings.Contains(disk.Type, parameters.DiskTypeHyperdiskBalanced):
 		// This includes types "hyperdisk-balanced" and "hyperdisk-balanced-high-availability"
 		return minIopsForBalanced(disk, requestGb)
-	case strings.Contains(disk.Type, "hyperdisk-extreme"):
+	case strings.Contains(disk.Type, parameters.DiskTypeHdE):
 		return minIopsForExtreme(disk, requestGb)
-	case strings.Contains(disk.Type, "hyperdisk-ml"):
+	case strings.Contains(disk.Type, parameters.DiskTypeHdML):
 		return minThroughputForML(disk, requestGb)
-	case strings.Contains(disk.Type, "hyperdisk-throughput"):
+	case strings.Contains(disk.Type, parameters.DiskTypeHdT):
 		return minThroughputForThroughput(disk, requestGb)
 	default:
 		return false, 0, 0
