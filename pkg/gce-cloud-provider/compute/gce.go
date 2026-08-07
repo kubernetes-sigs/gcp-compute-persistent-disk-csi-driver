@@ -62,15 +62,7 @@ const (
 	EnvironmentStaging               Environment = "staging"
 	EnvironmentProduction            Environment = "production"
 
-	// resourceManagerHostSubPath is the endpoint for tag requests.
-	resourceManagerHostSubPath = "cloudresourcemanager.googleapis.com"
-
-	// zonalOrRegionalComputeParentPathFmt is the string format for the full path of compute resource.
-	// belonging to a zone or a region
-	zonalOrRegionalComputeParentPathFmt = "//compute.googleapis.com/projects/%s/%s/%s/%s/%d"
-
-	// globalComputeParentPathFmt is the string format for the full path of global compute resource.
-	globalComputeParentPathFmt = "//compute.googleapis.com/projects/%s/global/%s/%d"
+	defaultUniverseDomain = "googleapis.com"
 
 	// gcpTagsRequestRateLimit is the tag request rate limit per second.
 	gcpTagsRequestRateLimit = 8
@@ -81,6 +73,25 @@ const (
 
 	pollTimeout = 30 * time.Second
 )
+
+func universeDomainOrDefault(ud string) string {
+	if ud == "" {
+		return defaultUniverseDomain
+	}
+	return ud
+}
+
+func resourceManagerHost(universeDomain string) string {
+	return "cloudresourcemanager." + universeDomainOrDefault(universeDomain)
+}
+
+func computeParentPath(universeDomain, project, scopeType, scope string, resourceType ResourceType, resourceID uint64) string {
+	ud := universeDomainOrDefault(universeDomain)
+	if scopeType != "" {
+		return fmt.Sprintf("//compute.%s/projects/%s/%s/%s/%s/%d", ud, project, scopeType, scope, resourceType, resourceID)
+	}
+	return fmt.Sprintf("//compute.%s/projects/%s/global/%s/%d", ud, project, resourceType, resourceID)
+}
 
 var (
 	ssAlreadyExistsRegex          = regexp.MustCompile("The resource [^']+ already exists")
@@ -103,12 +114,14 @@ var (
 // https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/pull/1524
 // for how to add GCE alpha Disk support.
 type CloudProvider struct {
-	service      *compute.Service
-	betaService  *computebeta.Service
-	alphaService *computealpha.Service
-	tokenSource  oauth2.TokenSource
-	project      string
-	zone         string
+	service        *compute.Service
+	betaService    *computebeta.Service
+	alphaService   *computealpha.Service
+	credsJSON      []byte
+	tokenSource    oauth2.TokenSource
+	universeDomain string
+	project        string
+	zone           string
 
 	zonesCache map[string][]string
 
@@ -163,24 +176,24 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 
 	klog.V(2).Infof("Using GCE provider config %+v", configFile)
 
-	tokenSource, err := generateTokenSource(ctx, configFile)
+	credsJSON, tokenSource, universeDomain, err := generateCredentials(ctx, configFile)
 	if err != nil {
 		return nil, err
 	}
 
-	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
+	svc, err := createCloudService(ctx, vendorVersion, credsJSON, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout, universeDomain)
 	if err != nil {
 		return nil, err
 	}
 	klog.Infof("Compute endpoint for V1 version: %s", svc.BasePath)
 
-	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
+	betasvc, err := createBetaCloudService(ctx, vendorVersion, credsJSON, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout, universeDomain)
 	if err != nil {
 		return nil, err
 	}
 	klog.Infof("Compute endpoint for Beta version: %s", betasvc.BasePath)
 
-	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
+	alphasvc, err := createAlphaCloudService(ctx, vendorVersion, credsJSON, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout, universeDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +208,9 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		service:             svc,
 		betaService:         betasvc,
 		alphaService:        alphasvc,
+		credsJSON:           credsJSON,
 		tokenSource:         tokenSource,
+		universeDomain:      universeDomain,
 		project:             project,
 		zone:                zone,
 		zonesCache:          make(map[string]([]string)),
@@ -233,7 +248,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 				return nil, fmt.Errorf("error during tenant token source generation: %w", err)
 			}
 
-			tenantComputeService, err := createCloudService(ctx, vendorVersion, tenantTokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
+			tenantComputeService, err := createCloudService(ctx, vendorVersion, nil, tenantTokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout, universeDomain)
 			if err != nil {
 				klog.Errorf("Error while creating compute service with tenant identity for %s: %v", tenantMeta.TenantName, err)
 				return nil, fmt.Errorf("error while creating compute service with tenant identity: %w", err)
@@ -261,32 +276,31 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 	return cp, nil
 }
 
-func generateTokenSource(ctx context.Context, configFile *ConfigFile) (oauth2.TokenSource, error) {
+func generateCredentials(ctx context.Context, configFile *ConfigFile) (credsJSON []byte, tokenSource oauth2.TokenSource, universeDomain string, err error) {
 	if configFile != nil && configFile.Global.TokenURL != "" && configFile.Global.TokenURL != "nil" {
-		// configFile.Global.TokenURL is defined
-		// Use AltTokenSource
-
 		tokenSource := NewAltTokenSource(configFile.Global.TokenURL, configFile.Global.TokenBody)
 		klog.V(2).Infof("Using AltTokenSource %#v", tokenSource)
-		return tokenSource, nil
+		return nil, tokenSource, "", nil
 	}
 
-	// Use DefaultTokenSource
+	creds, err := google.FindDefaultCredentials(ctx, compute.CloudPlatformScope, compute.ComputeScope)
+	if err != nil {
+		return nil, nil, "", err
+	}
 
-	tokenSource, err := google.DefaultTokenSource(
-		ctx,
-		compute.CloudPlatformScope,
-		compute.ComputeScope)
-
-	// DefaultTokenSource relies on GOOGLE_APPLICATION_CREDENTIALS env var being set.
 	if gac, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS"); ok {
 		klog.V(2).Infof("GOOGLE_APPLICATION_CREDENTIALS env var set %v", gac)
 	} else {
 		klog.Warningf("GOOGLE_APPLICATION_CREDENTIALS env var not set")
 	}
-	klog.V(2).Infof("Using DefaultTokenSource %#v", tokenSource)
 
-	return tokenSource, err
+	ud, err := creds.GetUniverseDomain()
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("failed to get universe domain: %w", err)
+	}
+	klog.V(2).Infof("Using DefaultCredentials, universe domain: %s", ud)
+
+	return creds.JSON, creds.TokenSource, ud, nil
 }
 
 func readConfig(configPath string) (*ConfigFile, error) {
@@ -307,8 +321,19 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*computealpha.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionAlpha, timeout)
+func authOpts(ctx context.Context, credsJSON []byte, tokenSource oauth2.TokenSource, timeout time.Duration) ([]option.ClientOption, error) {
+	if len(credsJSON) > 0 {
+		return []option.ClientOption{option.WithAuthCredentialsJSON(option.ServiceAccount, credsJSON)}, nil
+	}
+	client, err := newOauthClient(ctx, tokenSource, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return []option.ClientOption{option.WithHTTPClient(client)}, nil
+}
+
+func createAlphaCloudService(ctx context.Context, vendorVersion string, credsJSON []byte, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration, universeDomain string) (*computealpha.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, credsJSON, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionAlpha, timeout, universeDomain)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
 		if failCloseOnAuthError {
@@ -323,8 +348,8 @@ func createAlphaCloudService(ctx context.Context, vendorVersion string, tokenSou
 	return service, nil
 }
 
-func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*computebeta.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionBeta, timeout)
+func createBetaCloudService(ctx context.Context, vendorVersion string, credsJSON []byte, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration, universeDomain string) (*computebeta.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, credsJSON, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionBeta, timeout, universeDomain)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
 		if failCloseOnAuthError {
@@ -339,8 +364,8 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 	return service, nil
 }
 
-func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*compute.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionV1, timeout)
+func createCloudService(ctx context.Context, vendorVersion string, credsJSON []byte, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration, universeDomain string) (*compute.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, credsJSON, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionV1, timeout, universeDomain)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
 		if failCloseOnAuthError {
@@ -355,13 +380,15 @@ func createCloudService(ctx context.Context, vendorVersion string, tokenSource o
 	return service, nil
 }
 
-func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion GCEAPIVersion, timeout time.Duration) ([]option.ClientOption, error) {
-	client, err := newOauthClient(ctx, tokenSource, timeout)
+func getComputeVersion(ctx context.Context, credsJSON []byte, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion GCEAPIVersion, timeout time.Duration, universeDomain string) ([]option.ClientOption, error) {
+	computeOpts, err := authOpts(ctx, credsJSON, tokenSource, timeout)
 	if err != nil {
 		return nil, err
 	}
-	computeOpts := []option.ClientOption{option.WithHTTPClient(client)}
 
+	if universeDomain != "" {
+		computeOpts = append(computeOpts, option.WithUniverseDomain(universeDomain))
+	}
 	if computeEndpoint != nil {
 		computeEnvironmentSuffix := constructComputeEndpointPath(computeEnvironment, computeVersion)
 		computeEndpoint.Path = computeEnvironmentSuffix
@@ -379,36 +406,29 @@ func constructComputeEndpointPath(env Environment, version GCEAPIVersion) string
 	return fmt.Sprintf("compute/%s%s/", prefix, version)
 }
 
-func createTagValuesClient(ctx context.Context, tokenSource oauth2.TokenSource, resourceManagerHostSubPath string) (*rscmgr.TagValuesClient, error) {
-	client, err := newOauthClient(ctx, tokenSource, pollTimeout)
+func createTagValuesClient(ctx context.Context, credsJSON []byte, tokenSource oauth2.TokenSource, universeDomain string) (*rscmgr.TagValuesClient, error) {
+	opts, err := authOpts(ctx, credsJSON, tokenSource, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
-
-	endpoint := fmt.Sprintf("https://%s", resourceManagerHostSubPath)
-	opts := []option.ClientOption{
-		option.WithHTTPClient(client),
-		option.WithEndpoint(endpoint),
-	}
+	opts = append(opts, option.WithEndpoint(fmt.Sprintf("https://%s", resourceManagerHost(universeDomain))))
 	return rscmgr.NewTagValuesRESTClient(ctx, opts...)
 }
 
-func createTagBindingsClient(ctx context.Context, tokenSource oauth2.TokenSource, location string, resourceManagerHostSubPath string) (*rscmgr.TagBindingsClient, error) {
-	client, err := newOauthClient(ctx, tokenSource, pollTimeout)
+func createTagBindingsClient(ctx context.Context, credsJSON []byte, tokenSource oauth2.TokenSource, location string, universeDomain string) (*rscmgr.TagBindingsClient, error) {
+	opts, err := authOpts(ctx, credsJSON, tokenSource, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
 
+	host := resourceManagerHost(universeDomain)
 	var endpoint string
 	if location != "" {
-		endpoint = fmt.Sprintf("https://%s-%s", location, resourceManagerHostSubPath)
+		endpoint = fmt.Sprintf("https://%s-%s", location, host)
 	} else {
-		endpoint = fmt.Sprintf("https://%s", resourceManagerHostSubPath)
+		endpoint = fmt.Sprintf("https://%s", host)
 	}
-	opts := []option.ClientOption{
-		option.WithHTTPClient(client),
-		option.WithEndpoint(endpoint),
-	}
+	opts = append(opts, option.WithEndpoint(endpoint))
 	return rscmgr.NewTagBindingsRESTClient(ctx, opts...)
 }
 
