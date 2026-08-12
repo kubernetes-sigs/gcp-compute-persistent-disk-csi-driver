@@ -354,9 +354,6 @@ func IsDataCacheEnabledNodePool(ctx context.Context, nodeName string, enableData
 	if !enableDataCacheFlag {
 		return false, nil
 	}
-	if nodeName == constants.TestNode { // disregard logic below when E2E testing.
-		return true, nil
-	}
 	if len(nodeName) > 0 {
 		dataCacheLSSDCount, err := GetDataCacheCountFromNodeLabel(ctx, nodeName)
 		return dataCacheLSSDCount != 0, err
