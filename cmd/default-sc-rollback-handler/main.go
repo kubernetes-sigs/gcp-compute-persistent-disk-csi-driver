@@ -21,6 +21,8 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -32,6 +34,7 @@ func main() {
 
 	flag.StringVar(&config.StorageClassName, "storageclass-name", "standard-rwo", "Target StorageClass to restore default annotation for")
 	flag.DurationVar(&config.APITimeout, "api-timeout", 30*time.Second, "Maximum time to wait for API server readiness")
+	flag.DurationVar(&config.AccessTimeout, "access-timeout", 5*time.Minute, "Maximum time to wait for StorageClass read/patch access")
 
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -39,8 +42,25 @@ func main() {
 	klog.InfoS("Starting MAP default storageclass rollback handler")
 
 	restorer := scdefaultrestorer.New(config)
-	if err := restorer.Run(context.Background()); err != nil {
+	err := restorer.Run(context.Background())
+	if err != nil {
 		klog.ErrorS(err, "Failed to restore storage class defaults")
+	} else {
+		klog.InfoS("Successfully restored storage class defaults")
+	}
+
+	// Block here to prevent container from exiting and triggering restart loops
+	// in long-running pods (restartPolicy: Always).
+	klog.InfoS("Holding container active to satisfy restartPolicy")
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	// Block until a signal is received
+	<-sigCh
+	klog.InfoS("Received shutdown signal, exiting gracefully")
+
+	if err != nil {
 		os.Exit(1)
 	}
 }
