@@ -694,3 +694,59 @@ func TestExtractModifyVolumeParameters(t *testing.T) {
 		t.Errorf("Got ExtractModifyVolumeParameters(%+v) = %+v; want: %v", parameters, result, expected)
 	}
 }
+
+func TestExtractModifyVolumeParametersDiskType(t *testing.T) {
+	hyperdiskBalanced := "hyperdisk-balanced"
+	iops := int64(3000)
+
+	testCases := []struct {
+		name       string
+		parameters map[string]string
+		expected   ModifyVolumeParameters
+		expectErr  bool
+	}{
+		{
+			name:       "type only",
+			parameters: map[string]string{"type": "hyperdisk-balanced"},
+			expected:   ModifyVolumeParameters{DiskType: &hyperdiskBalanced},
+		},
+		{
+			name:       "type is case insensitive and trimmed",
+			parameters: map[string]string{"type": "  Hyperdisk-Balanced  "},
+			expected:   ModifyVolumeParameters{DiskType: &hyperdiskBalanced},
+		},
+		{
+			name:       "type alongside iops",
+			parameters: map[string]string{"type": "hyperdisk-balanced", "iops": "3000"},
+			expected:   ModifyVolumeParameters{DiskType: &hyperdiskBalanced, IOPS: &iops},
+		},
+		{
+			name:       "empty type is rejected",
+			parameters: map[string]string{"type": "  "},
+			expectErr:  true,
+		},
+		{
+			name:       "unknown parameter is still rejected",
+			parameters: map[string]string{"disktype": "hyperdisk-balanced"},
+			expectErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ExtractModifyVolumeParameters(tc.parameters)
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("ExtractModifyVolumeParameters(%+v) = %+v; want error", tc.parameters, result)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(result, tc.expected) {
+				t.Errorf("Got ExtractModifyVolumeParameters(%+v) = %+v; want: %+v", tc.parameters, result, tc.expected)
+			}
+		})
+	}
+}

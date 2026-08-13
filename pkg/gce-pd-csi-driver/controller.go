@@ -913,8 +913,19 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	// Check if the disk supports dynamic IOPS/Throughput provisioning
+	// If the VolumeAttributesClass requests a disk type, compare it against the
+	// disk's actual type. A mismatch means a disk type conversion is being
+	// requested, which is not supported yet.
 	diskType := existingDisk.GetPDType()
+	if volumeModifyParams.DiskType != nil && *volumeModifyParams.DiskType != diskType {
+		err = status.Errorf(codes.InvalidArgument,
+			"disk type mismatch for volume %s: disk is %q, VolumeAttributesClass requests %q; disk type conversion is not supported",
+			volumeID, diskType, *volumeModifyParams.DiskType)
+		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
+		return nil, err
+	}
+
+	// Check if the disk supports dynamic IOPS/Throughput provisioning
 	supportsIopsChange := gceCS.diskSupportsIopsChange(diskType)
 	supportsThroughputChange := gceCS.diskSupportsThroughputChange(diskType)
 	if !supportsIopsChange && !supportsThroughputChange {
