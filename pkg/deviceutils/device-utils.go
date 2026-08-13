@@ -239,7 +239,12 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 			// Couldn't find a /dev/disk/by-id path for this deviceName, so we need to
 			// find a /dev/* with a serial that matches deviceName. Then we attempt
 			// to repair the symlink.
-			klog.Warningf("For disk %s couldn't find a device path, calling udevadmTriggerForDiskIfExists", deviceName)
+			dirListing, err := os.ReadDir("/dev/disk/by-id")
+			if err != nil {
+				klog.Warningf("(will ignore) When checking for device paths, /dev/disk/by-id unreadable: %v", err)
+			} else {
+				klog.Warningf("For disk %s couldn't find a device path, calling udevadmTriggerForDiskIfExists. /dev/disk/by-id: %v", deviceName, dirListing)
+			}
 			innerErr := udevadmTriggerForDiskIfExists(deviceName)
 			if innerErr != nil {
 				e := fmt.Errorf("for disk %s failed to trigger udevadm fix of non existent device path: %w", deviceName, innerErr)
@@ -259,7 +264,6 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 			klog.Errorf("Error: %s", e.Error())
 			return false, e
 		}
-		klog.V(4).Infof("For disk %s the /dev/* path is %s for disk/by-id path %s", deviceName, devFsPath, devicePath)
 
 		devFsSerial, innerErr := getDevFsSerial(devFsPath)
 		if innerErr != nil {
@@ -291,9 +295,10 @@ func (m *deviceUtils) VerifyDevicePath(devicePaths []string, deviceName string) 
 
 	if err != nil {
 		klog.Warningf("For device %s udevadmin failed: %v. Trying to manually link", deviceName, err)
-		if err := manuallySetDevicePath(deviceName); err != nil {
+		if devicePath, err = manuallySetDevicePath(deviceName); err != nil {
 			return "", fmt.Errorf("failed to manually set link for disk %s: %w", deviceName, err)
 		}
+		klog.Infof("Manually set device path to %s", devicePath)
 	}
 
 	return devicePath, nil
@@ -364,12 +369,13 @@ func findDevice(deviceName string) (string, string, error) {
 	return "", "", fmt.Errorf("udevadm --trigger requested to fix disk %s but no such disk was found in device path %v", deviceName, devFsPathToSerial)
 }
 
-func manuallySetDevicePath(deviceName string) error {
+func manuallySetDevicePath(deviceName string) (string, error) {
 	devFsPath, devFsSerial, err := findDevice(deviceName)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return os.Symlink(devFsPath, path.Join(diskByIdPath, diskGooglePrefix+devFsSerial))
+	devicePath := path.Join(diskByIdPath, diskGooglePrefix+devFsSerial)
+	return devicePath, os.Symlink(devFsPath, devicePath)
 }
 
 func udevadmTriggerForDiskIfExists(deviceName string) error {
