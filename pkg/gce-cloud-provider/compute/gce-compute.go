@@ -1004,8 +1004,10 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 	}
 	klog.V(5).Infof("Converting disk %v in zone %v to type %s", volKey.Name, volKey.Zone, targetDiskType)
 
+	// TargetDiskType is the bare disk type name, not a disk type URI. Passing a
+	// URI is rejected with DISK_TYPE_CONVERSION_UNSUPPORTED.
 	params := &computealpha.DiskConvertParams{
-		TargetDiskType: cloud.GetDiskTypeURI(project, volKey, targetDiskType),
+		TargetDiskType: targetDiskType,
 	}
 	if provisionedIops != nil {
 		params.ProvisionedIops = *provisionedIops
