@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"net/http"
 	neturl "net/url"
 	"sort"
 	"strconv"
@@ -924,6 +923,14 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return gceCS.convertDiskType(ctx, project, volKey, volumeID, existingDisk, volumeModifyParams)
 	}
 
+	// The disk is already the requested type. If no other attributes were
+	// requested there is nothing left to do, which is also how a completed
+	// conversion is reported as successful on a subsequent retry.
+	if volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		klog.V(4).Infof("Volume %s already has the requested attributes", volumeID)
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
+
 	// Check if the disk supports dynamic IOPS/Throughput provisioning
 	supportsIopsChange := gceCS.diskSupportsIopsChange(diskType)
 	supportsThroughputChange := gceCS.diskSupportsThroughputChange(diskType)
@@ -980,10 +987,15 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	klog.V(4).Infof("Converting volume %s from %s to %s", volumeID, currentDiskType, targetDiskType)
 	if err := gceCS.CloudProvider.ConvertDiskType(ctx, project, volKey, targetDiskType, params.IOPS, params.Throughput); err != nil {
 		klog.Errorf("Failed to convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
-		if isUnsupportedConversionIntentError(err) {
+		switch {
+		case isConversionInProgressError(err):
+			// A conversion started by an earlier attempt is still running.
+			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
+		case isUnsupportedConversionIntentError(err):
 			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+		default:
+			return nil, status.Errorf(codes.Unavailable, "failed to start conversion of volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 		}
-		return nil, status.Errorf(codes.Unavailable, "failed to start conversion of volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 	}
 
 	// The conversion has started but is not finished, so the requested
@@ -991,16 +1003,54 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
 }
 
+// Reasons returned by the convert API that mean the requested conversion can
+// never succeed. Everything else, including errors that share their HTTP status
+// with these, is treated as transient and retried.
+var terminalConversionReasons = sets.NewString(
+	"DISK_TYPE_CONVERSION_UNSUPPORTED",
+)
+
+// conversionInProgressReason is returned when the disk is busy, which for a
+// conversion request means an earlier conversion is still running.
+const conversionInProgressReason = "resourceNotReady"
+
 // isUnsupportedConversionIntentError reports whether the conversion can never
 // succeed for the requested target configuration, meaning it should not be
-// retried. Anything else (unmet preconditions, quota and rate limits, failures
-// during execution) is transient and worth retrying.
+// retried. Note that the HTTP status alone cannot decide this: an in-progress
+// conversion is also reported as 400.
 func isUnsupportedConversionIntentError(err error) bool {
+	return terminalConversionReasons.Has(conversionErrorReason(err))
+}
+
+// isConversionInProgressError reports whether the error means a conversion of
+// this disk is already running.
+func isConversionInProgressError(err error) bool {
+	return conversionErrorReason(err) == conversionInProgressReason
+}
+
+// conversionErrorReason extracts the machine readable reason from a convert API
+// error, preferring the ErrorInfo detail over the top level error item because
+// the latter only carries generic reasons such as "badRequest".
+func conversionErrorReason(err error) string {
 	var apiErr *googleapi.Error
 	if !errors.As(err, &apiErr) {
-		return false
+		return ""
 	}
-	return apiErr.Code == http.StatusBadRequest
+	for _, detail := range apiErr.Details {
+		detailMap, ok := detail.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if reason, ok := detailMap["reason"].(string); ok && reason != "" {
+			return reason
+		}
+	}
+	for _, errItem := range apiErr.Errors {
+		if errItem.Reason != "" {
+			return errItem.Reason
+		}
+	}
+	return ""
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {

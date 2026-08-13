@@ -2594,10 +2594,25 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			volumeID:           testVolumeID,
 			mutableParameters:  map[string]string{"type": "hyperdisk-throughput"},
 			enablePdConversion: true,
-			convertErr:         &googleapi.Error{Code: http.StatusBadRequest, Message: "conversion from hyperdisk-balanced to hyperdisk-throughput is not supported"},
+			convertErr:         conversionAPIError(http.StatusBadRequest, "DISK_TYPE_CONVERSION_UNSUPPORTED", "Disk type hyperdisk-balanced does not support conversion to hyperdisk-throughput"),
 			expConvertCalled:   true,
 			expTargetDiskType:  "hyperdisk-throughput",
 			expErrCode:         codes.InvalidArgument,
+		},
+		{
+			// An already running conversion is reported with the same HTTP
+			// status as an unsupported conversion, so it must be told apart by
+			// reason or the modification is wrongly abandoned.
+			name:                "treats an in-progress conversion as retryable",
+			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200},
+			volumeID:            testVolumeID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion:  true,
+			convertErr:          conversionAPIError(http.StatusBadRequest, "resourceNotReady", "The resource is not ready"),
+			expConvertCalled:    true,
+			expTargetDiskType:   "hyperdisk-balanced",
+			expErrCode:          codes.Unavailable,
+			expErrMessageSubstr: "is in progress",
 		},
 		{
 			name:               "treats an unmet precondition as retryable",
@@ -2605,10 +2620,21 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			volumeID:           testVolumeID,
 			mutableParameters:  map[string]string{"type": "hyperdisk-balanced"},
 			enablePdConversion: true,
-			convertErr:         &googleapi.Error{Code: http.StatusTooManyRequests, Message: "too many concurrent conversion operations"},
+			convertErr:         conversionAPIError(http.StatusTooManyRequests, "rateLimitExceeded", "too many concurrent conversion operations"),
 			expConvertCalled:   true,
 			expTargetDiskType:  "hyperdisk-balanced",
 			expErrCode:         codes.Unavailable,
+		},
+		{
+			// How a completed conversion is reported as successful: the retry
+			// after the disk reports the new type has nothing left to do.
+			name:               "a completed conversion reports success",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion: true,
+			expConvertCalled:   false,
+			expErrCode:         codes.OK,
 		},
 		{
 			name:               "a matching disk type is not a conversion",
@@ -2660,6 +2686,24 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 				t.Errorf("Expected conversion throughput %v, got %v", int64PtrStr(tc.expThroughput), int64PtrStr(got))
 			}
 		})
+	}
+}
+
+// conversionAPIError builds an error shaped like the one the convert API
+// returns, where the machine readable reason is carried in an ErrorInfo detail
+// rather than in the top level error item.
+func conversionAPIError(code int, reason, message string) *googleapi.Error {
+	return &googleapi.Error{
+		Code:    code,
+		Message: message,
+		Errors:  []googleapi.ErrorItem{{Reason: "badRequest", Message: message}},
+		Details: []interface{}{
+			map[string]interface{}{
+				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": reason,
+				"domain": "compute.googleapis.com",
+			},
+		},
 	}
 }
 
