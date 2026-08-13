@@ -118,6 +118,7 @@ type GCECompute interface {
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error
+	ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) error
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
 	SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error
 	ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error)
@@ -987,6 +988,37 @@ func (cloud *CloudProvider) ConvertDisk(ctx context.Context, project string, vol
 	if err != nil {
 		return fmt.Errorf("failed while waiting for zonal conversion operation: %w", err)
 	}
+	return nil
+}
+
+// ConvertDiskType converts a disk to targetDiskType in place, optionally
+// applying the provisioned IOPS and throughput the target type should be
+// created with. The disk keeps its name and self link.
+//
+// Conversion can take from minutes to hours depending on disk size, so this
+// only starts the operation and returns as soon as the API accepts it. Callers
+// observe completion by re-reading the disk's type on a later reconcile.
+func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) error {
+	if volKey.Type() != meta.Zonal {
+		return fmt.Errorf("disk type conversion is not supported for regional disk %s", volKey.Name)
+	}
+	klog.V(5).Infof("Converting disk %v in zone %v to type %s", volKey.Name, volKey.Zone, targetDiskType)
+
+	params := &computealpha.DiskConvertParams{
+		TargetDiskType: cloud.GetDiskTypeURI(project, volKey, targetDiskType),
+	}
+	if provisionedIops != nil {
+		params.ProvisionedIops = *provisionedIops
+	}
+	if provisionedThroughput != nil {
+		params.ProvisionedThroughput = *provisionedThroughput
+	}
+
+	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	klog.V(4).Infof("Started convert operation %s for disk %s to type %s", op.Name, volKey.Name, targetDiskType)
 	return nil
 }
 

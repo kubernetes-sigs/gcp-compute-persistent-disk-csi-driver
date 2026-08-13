@@ -2514,6 +2514,169 @@ func TestCreateVolumeWithVolumeAttributeClassParameters(t *testing.T) {
 
 }
 
+func TestVolumeModifyDiskTypeConversion(t *testing.T) {
+	iops := int64(3000)
+	throughput := int64(188)
+
+	testCases := []struct {
+		name string
+		// disk is the disk the volume is backed by, inserted into the fake.
+		disk                *compute.Disk
+		volumeID            string
+		mutableParameters   map[string]string
+		enablePdConversion  bool
+		convertErr          error
+		expConvertCalled    bool
+		expTargetDiskType   string
+		expIops             *int64
+		expThroughput       *int64
+		expErrCode          codes.Code
+		expErrMessageSubstr string
+	}{
+		{
+			name:               "converts a detached pd disk to hyperdisk",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion: true,
+			expConvertCalled:   true,
+			expTargetDiskType:  "hyperdisk-balanced",
+			// The conversion runs asynchronously, so the modification is not
+			// complete when the call returns.
+			expErrCode:          codes.Unavailable,
+			expErrMessageSubstr: "conversion of volume",
+		},
+		{
+			name:               "passes iops and throughput as the target configuration",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-balanced", "iops": "3000", "throughput": "188Mi"},
+			enablePdConversion: true,
+			expConvertCalled:   true,
+			expTargetDiskType:  "hyperdisk-balanced",
+			expIops:            &iops,
+			expThroughput:      &throughput,
+			expErrCode:         codes.Unavailable,
+		},
+		{
+			name:                "rejects conversion while the disk is attached",
+			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200, Users: []string{"instance-1"}},
+			volumeID:            testVolumeID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion:  true,
+			expConvertCalled:    false,
+			expErrCode:          codes.FailedPrecondition,
+			expErrMessageSubstr: "detach the volume",
+		},
+		{
+			name:                "rejects conversion of a regional disk",
+			disk:                &compute.Disk{Name: name, Region: region, SelfLink: testRegionalID, Type: "pd-standard", SizeGb: 200},
+			volumeID:            testRegionalID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion:  true,
+			expConvertCalled:    false,
+			expErrCode:          codes.InvalidArgument,
+			expErrMessageSubstr: "not supported for regional disks",
+		},
+		{
+			name:                "rejects conversion when the feature is disabled",
+			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:            testVolumeID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion:  false,
+			expConvertCalled:    false,
+			expErrCode:          codes.InvalidArgument,
+			expErrMessageSubstr: "not enabled",
+		},
+		{
+			name:               "treats an unsupported conversion intent as terminal",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-throughput"},
+			enablePdConversion: true,
+			convertErr:         &googleapi.Error{Code: http.StatusBadRequest, Message: "conversion from hyperdisk-balanced to hyperdisk-throughput is not supported"},
+			expConvertCalled:   true,
+			expTargetDiskType:  "hyperdisk-throughput",
+			expErrCode:         codes.InvalidArgument,
+		},
+		{
+			name:               "treats an unmet precondition as retryable",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-balanced"},
+			enablePdConversion: true,
+			convertErr:         &googleapi.Error{Code: http.StatusTooManyRequests, Message: "too many concurrent conversion operations"},
+			expConvertCalled:   true,
+			expTargetDiskType:  "hyperdisk-balanced",
+			expErrCode:         codes.Unavailable,
+		},
+		{
+			name:               "a matching disk type is not a conversion",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200},
+			volumeID:           testVolumeID,
+			mutableParameters:  map[string]string{"type": "hyperdisk-balanced", "iops": "3000"},
+			enablePdConversion: true,
+			expConvertCalled:   false,
+			expErrCode:         codes.OK,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(tc.disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			fcp.ConversionTestParams.TypeConversionErr = tc.convertErr
+
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+
+			_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+				VolumeId:          tc.volumeID,
+				MutableParameters: tc.mutableParameters,
+			})
+
+			if gotCode := status.Code(err); gotCode != tc.expErrCode {
+				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
+			}
+			if tc.expErrMessageSubstr != "" && (err == nil || !strings.Contains(err.Error(), tc.expErrMessageSubstr)) {
+				t.Errorf("Expected error containing %q, got: %v", tc.expErrMessageSubstr, err)
+			}
+
+			gotCalled := fcp.ConversionTestParams.TypeConversionCalled
+			if gotCalled != tc.expConvertCalled {
+				t.Errorf("Expected conversion called to be %v, got %v", tc.expConvertCalled, gotCalled)
+			}
+			if !tc.expConvertCalled {
+				return
+			}
+			if got := fcp.ConversionTestParams.TypeConversionTargetType; got != tc.expTargetDiskType {
+				t.Errorf("Expected conversion target type %q, got %q", tc.expTargetDiskType, got)
+			}
+			if got := fcp.ConversionTestParams.TypeConversionIops; !equalInt64Ptr(got, tc.expIops) {
+				t.Errorf("Expected conversion IOPS %v, got %v", int64PtrStr(tc.expIops), int64PtrStr(got))
+			}
+			if got := fcp.ConversionTestParams.TypeConversionThroughput; !equalInt64Ptr(got, tc.expThroughput) {
+				t.Errorf("Expected conversion throughput %v, got %v", int64PtrStr(tc.expThroughput), int64PtrStr(got))
+			}
+		})
+	}
+}
+
+func equalInt64Ptr(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func int64PtrStr(v *int64) string {
+	if v == nil {
+		return "<nil>"
+	}
+	return strconv.FormatInt(*v, 10)
+}
+
 func TestVolumeModifyOperation(t *testing.T) {
 	testCases := []struct {
 		name          string

@@ -77,6 +77,14 @@ type ConversionTestParams struct {
 	SlowConversionCalled bool
 	FastConversionCalled bool
 	AttachCallCount      int
+
+	// Disk type conversion (ConvertDiskType).
+	TypeConversionCalled     bool
+	TypeConversionCallCount  int
+	TypeConversionErr        error
+	TypeConversionTargetType string
+	TypeConversionIops       *int64
+	TypeConversionThroughput *int64
 }
 
 var _ GCECompute = &FakeCloudProvider{}
@@ -334,6 +342,33 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceN
 	}
 	instance.Disks[found] = instance.Disks[len(instance.Disks)-1]
 	instance.Disks = instance.Disks[:len(instance.Disks)-1]
+	return nil
+}
+
+func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) error {
+	cloud.ConversionTestParams.TypeConversionCalled = true
+	cloud.ConversionTestParams.TypeConversionCallCount++
+	cloud.ConversionTestParams.TypeConversionTargetType = targetDiskType
+	cloud.ConversionTestParams.TypeConversionIops = provisionedIops
+	cloud.ConversionTestParams.TypeConversionThroughput = provisionedThroughput
+
+	if cloud.ConversionTestParams.TypeConversionErr != nil {
+		return cloud.ConversionTestParams.TypeConversionErr
+	}
+
+	// The real API converts asynchronously, but the fake applies the new type
+	// immediately so tests can observe the end state.
+	disk, ok := cloud.disks[volKey.String()]
+	if !ok {
+		return notFoundError()
+	}
+	typeURI := cloud.GetDiskTypeURI(project, volKey, targetDiskType)
+	if disk.disk != nil {
+		disk.disk.Type = typeURI
+	}
+	if disk.betaDisk != nil {
+		disk.betaDisk.Type = typeURI
+	}
 	return nil
 }
 

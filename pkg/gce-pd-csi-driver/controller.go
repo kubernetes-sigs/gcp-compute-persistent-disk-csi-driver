@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	neturl "net/url"
 	"sort"
 	"strconv"
@@ -913,16 +914,14 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	// If the VolumeAttributesClass requests a disk type, compare it against the
-	// disk's actual type. A mismatch means a disk type conversion is being
-	// requested, which is not supported yet.
+	// If the VolumeAttributesClass requests a disk type that doesn't match the
+	// disk's actual type, this is a disk type conversion request rather than an
+	// IOPS/throughput update. This must be handled before the checks below,
+	// which are keyed on the disk's current type and would reject types that
+	// are valid conversion sources.
 	diskType := existingDisk.GetPDType()
 	if volumeModifyParams.DiskType != nil && *volumeModifyParams.DiskType != diskType {
-		err = status.Errorf(codes.InvalidArgument,
-			"disk type mismatch for volume %s: disk is %q, VolumeAttributesClass requests %q; disk type conversion is not supported",
-			volumeID, diskType, *volumeModifyParams.DiskType)
-		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
-		return nil, err
+		return gceCS.convertDiskType(ctx, project, volKey, volumeID, existingDisk, volumeModifyParams)
 	}
 
 	// Check if the disk supports dynamic IOPS/Throughput provisioning
@@ -949,6 +948,59 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	}
 
 	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
+// convertDiskType starts an in-place disk type conversion for a volume whose
+// VolumeAttributesClass requests a type different from the disk's current type.
+//
+// The GCE conversion can run for minutes to hours, far longer than a single
+// ModifyVolume call may block, so this returns as soon as the operation has
+// been accepted. The modification stays pending and is retried; once the disk
+// reports the target type, the retry falls through to the regular
+// IOPS/throughput path and the modification completes.
+func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project string, volKey *meta.Key, volumeID string, existingDisk *gce.CloudDisk, params parameters.ModifyVolumeParameters) (*csi.ControllerModifyVolumeResponse, error) {
+	targetDiskType := *params.DiskType
+	currentDiskType := existingDisk.GetPDType()
+
+	if !gceCS.EnablePdConversion {
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: disk conversion is not enabled on this driver", volumeID, currentDiskType, targetDiskType)
+	}
+
+	// Regional disks have no conversion API, so this can never succeed.
+	if volKey.Type() != meta.Zonal {
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: disk type conversion is not supported for regional disks", volumeID, currentDiskType, targetDiskType)
+	}
+
+	// Conversion requires the disk to be detached. Report this as retryable so
+	// the conversion starts once the workload using the volume is scaled down.
+	if users := existingDisk.GetUsers(); len(users) > 0 {
+		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
+	}
+
+	klog.V(4).Infof("Converting volume %s from %s to %s", volumeID, currentDiskType, targetDiskType)
+	if err := gceCS.CloudProvider.ConvertDiskType(ctx, project, volKey, targetDiskType, params.IOPS, params.Throughput); err != nil {
+		klog.Errorf("Failed to convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+		if isUnsupportedConversionIntentError(err) {
+			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+		}
+		return nil, status.Errorf(codes.Unavailable, "failed to start conversion of volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+	}
+
+	// The conversion has started but is not finished, so the requested
+	// attributes are not in effect yet.
+	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
+}
+
+// isUnsupportedConversionIntentError reports whether the conversion can never
+// succeed for the requested target configuration, meaning it should not be
+// retried. Anything else (unmet preconditions, quota and rate limits, failures
+// during execution) is transient and worth retrying.
+func isUnsupportedConversionIntentError(err error) bool {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Code == http.StatusBadRequest
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
