@@ -923,6 +923,14 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return gceCS.convertDiskType(ctx, project, volKey, volumeID, existingDisk, volumeModifyParams)
 	}
 
+	if volumeModifyParams.DiskType != nil {
+		// 1. Write the success note (Converted-To)
+		_ = k8sclient.UpdatePVAnnotation(ctx, volKey.Name, constants.DiskTypeConvertedToKey, *volumeModifyParams.DiskType)
+
+		// 2. Erase the "Pending" or "Operation" note by passing "null"
+		_ = k8sclient.UpdatePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, "null")
+	}
+
 	// The disk is already the requested type. If no other attributes were
 	// requested there is nothing left to do, which is also how a completed
 	// conversion is reported as successful on a subsequent retry.
@@ -981,15 +989,22 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// Conversion requires the disk to be detached. Report this as retryable so
 	// the conversion starts once the workload using the volume is scaled down.
 	if users := existingDisk.GetUsers(); len(users) > 0 {
+		err := k8sclient.UpdatePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, constants.ConversionStatePending)
+		if err != nil {
+			klog.Warningf("Failed to annotate PV %s with Pending state: %v", volKey.Name, err)
+		}
+		// ------------
 		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
 	}
 
 	klog.V(4).Infof("Converting volume %s from %s to %s", volumeID, currentDiskType, targetDiskType)
+
 	if err := gceCS.CloudProvider.ConvertDiskType(ctx, project, volKey, targetDiskType, params.IOPS, params.Throughput); err != nil {
 		klog.Errorf("Failed to convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 		switch {
 		case isConversionInProgressError(err):
 			// A conversion started by an earlier attempt is still running.
+			_ = k8sclient.UpdatePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, constants.ConversionStatePending)
 			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
 		case isUnsupportedConversionIntentError(err):
 			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)

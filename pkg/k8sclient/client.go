@@ -145,7 +145,15 @@ func listPodsInNamespace(ctx context.Context, kubeClient kubernetes.Interface, n
 	return podList, err
 }
 
-func updatePVAnnotation(ctx context.Context, kubeClient kubernetes.Interface, pvName string, annotationKey string, annotationValue string) error {
+// UpdatePVAnnotation safely adds, updates, or removes an annotation on a PersistentVolume.
+// Pass "" or "null" as the annotationValue to remove the annotation.
+func UpdatePVAnnotation(ctx context.Context, pvName string, annotationKey string, annotationValue string) error {
+	// 1. Fetch the kubeClient automatically (Matches the pattern of this file!)
+	kubeClient, err := GetClient()
+	if err != nil {
+		return fmt.Errorf("failed to get kubernetes client: %w", err)
+	}
+
 	var patchPayload []byte
 	var patchType types.PatchType
 
@@ -169,10 +177,11 @@ func updatePVAnnotation(ctx context.Context, kubeClient kubernetes.Interface, pv
 		patchType = types.MergePatchType
 	}
 
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
-		_, err := kubeClient.CoreV1().PersistentVolumes().Patch(ctx, pvName, patchType, patchPayload, metav1.PatchOptions{})
-		if err != nil {
-			klog.Warningf("Error patching annotation %s on PersistentVolume %s: %v, retrying...\n", annotationKey, pvName, err)
+	// 2. Execute the patch with Exponential Backoff
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		_, patchErr := kubeClient.CoreV1().PersistentVolumes().Patch(ctx, pvName, patchType, patchPayload, metav1.PatchOptions{})
+		if patchErr != nil {
+			klog.Warningf("Error patching annotation %s on PersistentVolume %s: %v, retrying...\n", annotationKey, pvName, patchErr)
 			return false, nil // returning false causes it to retry
 		}
 		klog.V(4).Infof("Successfully patched annotation %s on PersistentVolume %s\n", annotationKey, pvName)
