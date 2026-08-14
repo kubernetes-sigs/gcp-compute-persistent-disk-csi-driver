@@ -87,6 +87,14 @@ const (
 
 	// ClusterIDLabel is the key in disk labels to indicate the cluster identifier of the disk.
 	ClusterIDLabel = "cluster-id-gke-io"
+
+	// Annotations for Disk Type Conversion
+	DiskTypeConversionOperationKey = "pdcsi.gke.io/disk-type-conversion-operation"
+	DiskTypeConvertedFromKey       = "pdcsi.gke.io/disk-type-converted-from"
+	DiskTypeConvertedToKey         = "pdcsi.gke.io/disk-type-converted-to"
+
+	// Conversion States
+	ConversionStatePending = "Pending"
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines

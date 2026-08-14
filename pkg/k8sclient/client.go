@@ -2,12 +2,15 @@ package k8sclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -140,4 +143,44 @@ func listPodsInNamespace(ctx context.Context, kubeClient kubernetes.Interface, n
 		klog.Errorf("Failed to list pods in namespace %s after retries: %v\n", namespace, err)
 	}
 	return podList, err
+}
+
+func updatePVAnnotation(ctx context.Context, kubeClient kubernetes.Interface, pvName string, annotationKey string, annotationValue string) error {
+	var patchPayload []byte
+	var patchType types.PatchType
+
+	if annotationValue == "" || annotationValue == "null" {
+		// Remove the annotation using JSON Patch (RFC 6902)
+		// We must escape '/' characters as '~1' per JSON pointer syntax
+		escapedKey := strings.ReplaceAll(annotationKey, "/", "~1")
+		patchStr := fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"}]`, escapedKey)
+		patchPayload = []byte(patchStr)
+		patchType = types.JSONPatchType
+	} else {
+		// Add or update the annotation using Merge Patch (RFC 7386)
+		patchMap := map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]string{
+					annotationKey: annotationValue,
+				},
+			},
+		}
+		patchPayload, _ = json.Marshal(patchMap)
+		patchType = types.MergePatchType
+	}
+
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		_, err := kubeClient.CoreV1().PersistentVolumes().Patch(ctx, pvName, patchType, patchPayload, metav1.PatchOptions{})
+		if err != nil {
+			klog.Warningf("Error patching annotation %s on PersistentVolume %s: %v, retrying...\n", annotationKey, pvName, err)
+			return false, nil // returning false causes it to retry
+		}
+		klog.V(4).Infof("Successfully patched annotation %s on PersistentVolume %s\n", annotationKey, pvName)
+		return true, nil
+	})
+
+	if err != nil {
+		klog.Errorf("Failed to patch PersistentVolume %s after retries: %v\n", pvName, err)
+	}
+	return err
 }
