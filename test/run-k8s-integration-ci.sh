@@ -43,7 +43,7 @@ rm -rf /usr/local/go && tar -xzf go_tar.tar.gz -C /usr/local
 # to run go commands with this go version.
 export PATH=$PATH:/usr/local/go/bin && go version && rm go_tar.tar.gz
 
-storage_classes=sc-ssd.yaml,sc-xfs.yaml
+storage_classes=sc-ssd.yaml,sc-xfs.yaml,sc-btrfs.yaml
 
 if [[ $test_pd_labels = true ]] ; then
   storage_classes=${storage_classes},sc-balanced.yaml
