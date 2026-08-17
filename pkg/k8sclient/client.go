@@ -2,12 +2,15 @@ package k8sclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -140,4 +143,53 @@ func listPodsInNamespace(ctx context.Context, kubeClient kubernetes.Interface, n
 		klog.Errorf("Failed to list pods in namespace %s after retries: %v\n", namespace, err)
 	}
 	return podList, err
+}
+
+// UpdatePVAnnotation safely adds, updates, or removes an annotation on a PersistentVolume.
+// Pass "" or "null" as the annotationValue to remove the annotation.
+func UpdatePVAnnotation(ctx context.Context, pvName string, annotationKey string, annotationValue string) error {
+	// 1. Fetch the kubeClient automatically (Matches the pattern of this file!)
+	kubeClient, err := GetClient()
+	if err != nil {
+		return fmt.Errorf("failed to get kubernetes client: %w", err)
+	}
+
+	var patchPayload []byte
+	var patchType types.PatchType
+
+	if annotationValue == "" || annotationValue == "null" {
+		// Remove the annotation using JSON Patch (RFC 6902)
+		// We must escape '/' characters as '~1' per JSON pointer syntax
+		escapedKey := strings.ReplaceAll(annotationKey, "/", "~1")
+		patchStr := fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"}]`, escapedKey)
+		patchPayload = []byte(patchStr)
+		patchType = types.JSONPatchType
+	} else {
+		// Add or update the annotation using Merge Patch (RFC 7386)
+		patchMap := map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]string{
+					annotationKey: annotationValue,
+				},
+			},
+		}
+		patchPayload, _ = json.Marshal(patchMap)
+		patchType = types.MergePatchType
+	}
+
+	// 2. Execute the patch with Exponential Backoff
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		_, patchErr := kubeClient.CoreV1().PersistentVolumes().Patch(ctx, pvName, patchType, patchPayload, metav1.PatchOptions{})
+		if patchErr != nil {
+			klog.Warningf("Error patching annotation %s on PersistentVolume %s: %v, retrying...\n", annotationKey, pvName, patchErr)
+			return false, nil // returning false causes it to retry
+		}
+		klog.V(4).Infof("Successfully patched annotation %s on PersistentVolume %s\n", annotationKey, pvName)
+		return true, nil
+	})
+
+	if err != nil {
+		klog.Errorf("Failed to patch PersistentVolume %s after retries: %v\n", pvName, err)
+	}
+	return err
 }
