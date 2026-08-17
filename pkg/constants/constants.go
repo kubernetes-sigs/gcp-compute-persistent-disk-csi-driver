@@ -95,6 +95,13 @@ const (
 
 	// Conversion States
 	ConversionStatePending = "Pending"
+
+	// Reasons and actions for the events emitted while converting a disk type.
+	DiskTypeConversionStartReason    = "DiskTypeConversionStart"
+	DiskTypeConversionCompleteReason = "DiskTypeConversionComplete"
+	DiskTypeConversionRetryReason    = "DiskTypeConversionRetry"
+	DiskTypeConversionCancelReason   = "DiskTypeConversionCancelled"
+	DiskTypeConversionAction         = "ConvertDiskType"
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines
