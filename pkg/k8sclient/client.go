@@ -204,14 +204,35 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 	}
 
 	vacName := *pvc.Spec.VolumeAttributesClassName
+	return getVolumeAttributesClassParameters(ctx, kubeClient, vacName)
+}
+
+// getVolumeAttributesClassParameters reads a VolumeAttributesClass, from
+// whichever version of the API the cluster serves it at.
+//
+// VolumeAttributesClass reached storage.k8s.io/v1 in Kubernetes 1.34, and
+// clusters before that serve it at v1beta1 only. Asking the unserved version
+// returns the same not found as a class that does not exist, so both versions
+// have to be tried before concluding there is no class: treating an unserved API
+// as a missing class would silently withdraw every conversion on those clusters.
+func getVolumeAttributesClassParameters(ctx context.Context, kubeClient kubernetes.Interface, vacName string) (map[string]string, bool, error) {
 	vac, err := kubeClient.StorageV1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, false, nil
-		}
+	if err == nil {
+		return vac.Parameters, true, nil
+	}
+	if !apierrors.IsNotFound(err) {
 		return nil, false, fmt.Errorf("failed to get VolumeAttributesClass %s: %w", vacName, err)
 	}
-	return vac.Parameters, true, nil
+
+	betaVac, betaErr := kubeClient.StorageV1beta1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+	if betaErr == nil {
+		return betaVac.Parameters, true, nil
+	}
+	if !apierrors.IsNotFound(betaErr) {
+		return nil, false, fmt.Errorf("failed to get VolumeAttributesClass %s: %w", vacName, betaErr)
+	}
+	// Neither version has it, so the class really is gone.
+	return nil, false, nil
 }
 
 // EmitPVEvent records an event against a PersistentVolume, so that the progress

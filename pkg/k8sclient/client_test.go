@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -427,6 +428,78 @@ func TestGetVolumeAttributesClassForPV(t *testing.T) {
 			}
 			if !reflect.DeepEqual(params, tc.expParams) {
 				t.Errorf("Got parameters %v; want %v", params, tc.expParams)
+			}
+		})
+	}
+}
+
+func TestGetVolumeAttributesClassForPVAPIVersions(t *testing.T) {
+	boundPV := func() *v1.PersistentVolume {
+		pv := newPV("test-pv", nil)
+		pv.Spec.ClaimRef = &v1.ObjectReference{Name: "test-pvc", Namespace: "default"}
+		return pv
+	}
+	className := "vac-hyperdisk"
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+		Spec:       v1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+	}
+	params := map[string]string{"type": "hyperdisk-balanced"}
+
+	testCases := []struct {
+		name      string
+		vac       runtime.Object
+		expParams map[string]string
+		expExists bool
+	}{
+		{
+			name: "reads the class from storage v1",
+			vac: &storagev1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{Name: className},
+				DriverName: "pd.csi.storage.gke.io",
+				Parameters: params,
+			},
+			expParams: params,
+			expExists: true,
+		},
+		{
+			// Clusters before Kubernetes 1.34 serve the class at v1beta1 only.
+			// Reading the unserved v1 as a missing class would cancel every
+			// conversion on those clusters.
+			name: "falls back to storage v1beta1",
+			vac: &storagev1beta1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{Name: className},
+				DriverName: "pd.csi.storage.gke.io",
+				Parameters: params,
+			},
+			expParams: params,
+			expExists: true,
+		},
+		{
+			name:      "reports no class when neither version has it",
+			vac:       nil,
+			expExists: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			objects := []runtime.Object{boundPV(), pvc}
+			if tc.vac != nil {
+				objects = append(objects, tc.vac)
+			}
+			clientset := fake.NewSimpleClientset(objects...)
+			withFakeClient(t, clientset)
+
+			gotParams, exists, err := GetVolumeAttributesClassForPV(context.Background(), "test-pv")
+			if err != nil {
+				t.Fatalf("GetVolumeAttributesClassForPV failed: %v", err)
+			}
+			if exists != tc.expExists {
+				t.Errorf("Got exists %v; want %v", exists, tc.expExists)
+			}
+			if !reflect.DeepEqual(gotParams, tc.expParams) {
+				t.Errorf("Got parameters %v; want %v", gotParams, tc.expParams)
 			}
 		})
 	}
