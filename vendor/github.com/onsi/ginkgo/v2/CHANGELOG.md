@@ -1,3 +1,13 @@
+## 2.32.1
+
+### Fixes
+- Defer AfterAll until repeated spec completes [e647b3b]
+
+## 2.32.0
+
+`-fd` generate RSpec-style documentation output.  Thank @woodie !
+--sleep-on-failure pauses a failed spec before teardown. Thanks @qinqon !
+
 ## 2.31.0
 
 Add a bunch of Claude Skills via the marketplace:
