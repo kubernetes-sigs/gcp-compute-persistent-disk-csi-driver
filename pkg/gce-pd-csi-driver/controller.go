@@ -1104,6 +1104,18 @@ func (gceCS *GCEControllerServer) completeConversionIfInProgress(ctx context.Con
 		return nil
 	}
 
+	// A conversion that was only ever queued never ran, so the disk having the
+	// requested type means the volume no longer needs one, not that one happened.
+	// Recording it as converted would claim a migration that never took place.
+	if operation == constants.ConversionStatePending {
+		klog.V(4).Infof("Volume %s is already %s, dropping its queued disk type conversion", volumeID, diskType)
+		if err := k8sclient.RemovePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey); err != nil {
+			klog.Errorf("Failed to clear the queued conversion of volume %s, attaches stay blocked until this succeeds: %v", volumeID, err)
+			return status.Errorf(codes.Unavailable, "cannot complete the modification of volume %s: could not clear its queued conversion: %v", volumeID, err)
+		}
+		return nil
+	}
+
 	klog.V(4).Infof("Disk type conversion %s of volume %s to %s is complete", operation, volumeID, diskType)
 
 	// Clearing the annotation is what unblocks attaches, so a volume whose state

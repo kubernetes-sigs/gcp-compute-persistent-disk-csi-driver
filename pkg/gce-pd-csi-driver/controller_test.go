@@ -2660,10 +2660,13 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			},
 		},
 		{
-			name:               "a queued conversion that completed before it started is recorded",
-			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200},
+			// Switching to a class naming the type the disk already has is how a
+			// user drops a queued conversion, since Kubernetes forbids clearing
+			// the class. Nothing was converted, so nothing may claim it was.
+			name:               "a queued conversion that never ran is dropped, not recorded",
+			disk:               &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200},
 			volumeID:           testVolumeID,
-			mutableParameters:  map[string]string{"type": "hyperdisk-balanced"},
+			mutableParameters:  map[string]string{"type": "pd-balanced"},
 			enablePdConversion: true,
 			expConvertCalled:   false,
 			expErrCode:         codes.OK,
@@ -2672,7 +2675,8 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			},
 			expPVAnnotations: map[string]string{
 				constants.DiskTypeConversionOperationKey: "",
-				constants.DiskTypeConvertedToKey:         "hyperdisk-balanced",
+				constants.DiskTypeConvertedFromKey:       "",
+				constants.DiskTypeConvertedToKey:         "",
 			},
 		},
 		{
