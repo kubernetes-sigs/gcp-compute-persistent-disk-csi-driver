@@ -1391,6 +1391,22 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), disk
 	}
+
+	// ====================================================================
+	// ATTACH-TIME FALLBACK SAFETY
+	// ====================================================================
+
+	pv, pvErr := k8sclient.GetPersistentVolumeWithRetry(ctx, volKey.Name)
+	if pvErr == nil && pv.Annotations != nil {
+		opVal, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]
+
+		// If it says Pending or has a GCP URL, block the attach!
+		if exists && opVal != "null" && opVal != "" {
+			klog.Errorf("Prevented unsafe attach for disk %s. Conversion is in progress: %s", volKey.Name, opVal)
+			return nil, status.Errorf(codes.Unavailable, "Cannot attach disk: Type conversion is currently in progress"), nil
+		}
+	}
+
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName, pdcsiContext.ForceAttach)
 	if err != nil {
 		var udErr *gce.UnsupportedDiskError
@@ -1658,8 +1674,28 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		return nil, common.LoggedError("Failed to detach: ", err), diskToUnpublish
 	}
 
+	// ====================================================================
+	//WAKE UP QUEUED CONVERSIONS ON DETACH
+	// ====================================================================
+
+	pv, pvErr := k8sclient.GetPersistentVolumeWithRetry(ctx, volKey.Name)
+	if pvErr == nil && pv.Annotations != nil {
+		opVal, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]
+		if exists && opVal == constants.ConversionStatePending {
+			klog.V(4).Infof("Disk %s successfully detached. Waking up queued conversion.", volKey.Name)
+			// Spawn background worker!
+			go gceCS.conversionWorkerLoop(context.Background(), volKey.Name, volKey)
+		}
+	}
+
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil, diskToUnpublish
+}
+
+// conversionWorkerLoop is a placeholder for the async GCP polling loop.
+// TODO: Implement the actual GCP Alpha API calls and Exponential Backoff here.
+func (gceCS *GCEControllerServer) conversionWorkerLoop(ctx context.Context, volName string, volKey *meta.Key) {
+	klog.Infof("Dummy background worker triggered for disk %s", volName)
 }
 
 func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProcessor {
@@ -2327,6 +2363,19 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
+
+	// ====================================================================
+	// BLOCK RESIZE DURING CONVERSION
+	// ====================================================================
+
+	pv, pvErr := k8sclient.GetPersistentVolumeWithRetry(ctx, volKey.Name)
+	if pvErr == nil && pv.Annotations != nil {
+		opVal, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]
+		if exists && opVal != "null" && opVal != "" {
+			return nil, status.Errorf(codes.FailedPrecondition, "Cannot expand volume %s while a disk type conversion is in progress", volKey.Name)
+		}
+	}
+
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
 
 	if err != nil {
