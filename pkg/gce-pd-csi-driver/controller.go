@@ -1009,9 +1009,7 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 		// The annotation is what makes the detach hook start this conversion, so
 		// losing it means the conversion never resumes. The error returned below
 		// is retryable, and the next attempt writes the annotation again.
-		if err := k8sclient.SetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, constants.ConversionStatePending); err != nil {
-			klog.Warningf("Failed to mark volume %s as pending conversion, the conversion will not start on detach until this succeeds: %v", volumeID, err)
-		}
+		gceCS.markConversionPending(ctx, volKey, volumeID)
 		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
 	}
 
@@ -1022,9 +1020,7 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 		}
 		// The conversion will be retried, so the volume has to stay blocked in
 		// the meantime.
-		if err := k8sclient.SetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, constants.ConversionStatePending); err != nil {
-			klog.Warningf("Failed to mark volume %s as pending conversion, the conversion will not start on detach until this succeeds: %v", volumeID, err)
-		}
+		gceCS.markConversionPending(ctx, volKey, volumeID)
 		if isConversionInProgressError(err) {
 			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
 		}
@@ -1037,6 +1033,32 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// The conversion has started but is not finished, so the requested
 	// attributes are not in effect yet.
 	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress (%s)", volumeID, currentDiskType, targetDiskType, operation)
+}
+
+// markConversionPending records that a volume is waiting for a conversion that
+// has not started, so that the volume stays blocked and the conversion is
+// attempted again.
+//
+// A conversion that is already running keeps its operation instead. Replacing
+// the operation with Pending would lose the only record of which conversion is
+// running: a user could no longer track it, a restarted driver would have
+// nothing to poll, and the completion checks treat Pending as a conversion that
+// never ran, so the finished conversion would go unrecorded and leave the volume
+// blocked.
+func (gceCS *GCEControllerServer) markConversionPending(ctx context.Context, volKey *meta.Key, volumeID string) {
+	operation, exists, err := k8sclient.GetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		// The state could not be read. Blocking the volume matters more than
+		// keeping the operation, so fall through and mark it pending.
+		klog.Warningf("Could not read the conversion state of volume %s before marking it pending: %v", volumeID, err)
+	} else if exists && operation != "" && operation != "null" && operation != constants.ConversionStatePending {
+		klog.V(4).Infof("Volume %s is already being converted by operation %s, leaving it recorded", volumeID, operation)
+		return
+	}
+
+	if err := k8sclient.SetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey, constants.ConversionStatePending); err != nil {
+		klog.Warningf("Failed to mark volume %s as pending conversion, the conversion will not start on detach until this succeeds: %v", volumeID, err)
+	}
 }
 
 // startDiskTypeConversion asks GCE to convert a disk and records the state that

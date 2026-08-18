@@ -7749,3 +7749,112 @@ func waitForCondition(timeout time.Duration, cond func() bool) bool {
 	}
 	return cond()
 }
+
+func TestMarkConversionPendingKeepsRunningOperation(t *testing.T) {
+	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-running"
+
+	testCases := []struct {
+		name string
+		// existing is the conversion annotation the volume starts with.
+		existing string
+		expected string
+	}{
+		{
+			// Losing the operation would leave nothing to track or poll, and the
+			// completion checks would treat the finished conversion as one that
+			// never ran.
+			name:     "a running conversion keeps its operation",
+			existing: operation,
+			expected: operation,
+		},
+		{
+			name:     "a queued conversion stays queued",
+			existing: constants.ConversionStatePending,
+			expected: constants.ConversionStatePending,
+		},
+		{
+			name:     "a volume with no conversion is marked pending",
+			existing: "",
+			expected: constants.ConversionStatePending,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			annotations := map[string]string{}
+			if tc.existing != "" {
+				annotations[constants.DiskTypeConversionOperationKey] = tc.existing
+			}
+			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: annotations},
+			})
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{createZonalCloudDisk(name)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			_, volKey, err := common.VolumeIDToKey(testVolumeID)
+			if err != nil {
+				t.Fatalf("Failed to convert volume id to key: %v", err)
+			}
+
+			gceDriver.cs.markConversionPending(context.Background(), volKey, testVolumeID)
+
+			pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get PersistentVolume: %v", err)
+			}
+			if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != tc.expected {
+				t.Errorf("Got conversion annotation %q; want %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestConversionInProgressKeepsOperation(t *testing.T) {
+	// A retry that races a conversion the driver already started gets
+	// resourceNotReady back. The operation already recorded must survive it.
+	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-running"
+
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: operation,
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
+			},
+		},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	fcp.ConversionTestParams.TypeConversionErr = conversionAPIError(400, "resourceNotReady", "disk is busy")
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+
+	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          testVolumeID,
+		MutableParameters: map[string]string{"type": "hyperdisk-balanced"},
+	})
+	if gotCode := status.Code(err); gotCode != codes.Unavailable {
+		t.Errorf("Expected Unavailable, got %v (err: %v)", gotCode, err)
+	}
+
+	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+	}
+	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != operation {
+		t.Errorf("Got conversion annotation %q; want the running operation %q", got, operation)
+	}
+}
