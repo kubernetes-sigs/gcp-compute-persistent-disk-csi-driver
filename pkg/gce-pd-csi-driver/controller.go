@@ -67,6 +67,10 @@ type GCEControllerServer struct {
 	conversionWatchers     map[string]*conversionWatcher
 	conversionWatchersLock sync.Mutex
 
+	// Tracks the background conversions started on detach, so that they can be
+	// waited for rather than assumed finished.
+	conversionWorkers sync.WaitGroup
+
 	// How often a running conversion is checked. Zero means the default,
 	// conversionPollBackoff. Tests set it so they need not wait minutes.
 	conversionPollBackoffOverride wait.Backoff
@@ -2114,7 +2118,18 @@ func (gceCS *GCEControllerServer) startQueuedConversionOnDetach(ctx context.Cont
 	klog.V(4).Infof("Disk %s detached with a conversion queued, starting it", volKey.Name)
 	// The detach's context is cancelled when this call returns, so the
 	// conversion gets one that outlives it.
-	go gceCS.runQueuedConversion(context.Background(), project, volKey)
+	gceCS.conversionWorkers.Add(1)
+	go func() {
+		defer gceCS.conversionWorkers.Done()
+		gceCS.runQueuedConversion(context.Background(), project, volKey)
+	}()
+}
+
+// WaitForConversionWorkers blocks until the conversions started on detach have
+// finished. The work happens in the background, so this is how a caller that
+// needs it settled, such as a test, can wait for it.
+func (gceCS *GCEControllerServer) WaitForConversionWorkers() {
+	gceCS.conversionWorkers.Wait()
 }
 
 // runQueuedConversion starts the conversion a volume's VolumeAttributesClass

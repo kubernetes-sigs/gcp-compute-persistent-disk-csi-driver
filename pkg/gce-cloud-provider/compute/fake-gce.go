@@ -357,6 +357,11 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceN
 }
 
 func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error) {
+	// Conversions can be started from a background worker, so the record of
+	// what was asked for is shared with whoever is checking it.
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+
 	cloud.ConversionTestParams.TypeConversionCalled = true
 	cloud.ConversionTestParams.TypeConversionCallCount++
 	cloud.ConversionTestParams.TypeConversionTargetType = targetDiskType
@@ -403,6 +408,13 @@ func (cloud *FakeCloudProvider) IsConvertOperationDone(ctx context.Context, proj
 		return true, cloud.PollOperationErr
 	}
 	return true, nil
+}
+
+// ConversionCalled reports whether a disk type conversion was requested.
+func (cloud *FakeCloudProvider) ConversionCalled() bool {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.ConversionTestParams.TypeConversionCalled
 }
 
 // PollCalls reports how many times the conversion operation has been checked.

@@ -35,12 +35,14 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -7367,4 +7369,383 @@ func TestConversionWatcherReplacesExisting(t *testing.T) {
 		defer gceDriver.cs.conversionWatchersLock.Unlock()
 		return len(gceDriver.cs.conversionWatchers) == 0
 	})
+}
+
+func TestConversionOperationName(t *testing.T) {
+	testCases := []struct {
+		name      string
+		operation string
+		expected  string
+	}{
+		{
+			// What the annotation holds while a conversion runs.
+			name:      "self link yields the operation name",
+			operation: "https://www.googleapis.com/compute/alpha/projects/p/zones/us-central1-b/operations/operation-1785623095260-658404f80mm8e",
+			expected:  "operation-1785623095260-658404f80mm8e",
+		},
+		{
+			name:      "a bare operation name is returned unchanged",
+			operation: "operation-1785623095260",
+			expected:  "operation-1785623095260",
+		},
+		{
+			// A queued conversion has no operation to poll.
+			name:      "pending is not an operation",
+			operation: constants.ConversionStatePending,
+			expected:  "",
+		},
+		{
+			name:      "empty is not an operation",
+			operation: "",
+			expected:  "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := conversionOperationName(tc.operation); got != tc.expected {
+				t.Errorf("conversionOperationName(%q) = %q; want %q", tc.operation, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestUnsupportedConversionReason(t *testing.T) {
+	zonalKey := meta.ZonalKey(name, zone)
+	regionalKey := meta.RegionalKey(name, region)
+
+	testCases := []struct {
+		name           string
+		volKey         *meta.Key
+		disk           *gce.CloudDisk
+		expUnsupported bool
+		expSubstr      string
+	}{
+		{
+			name:   "a zonal single writer disk can be converted",
+			volKey: zonalKey,
+			disk:   gce.CloudDiskFromV1(&compute.Disk{Name: name, Type: "pd-balanced"}),
+		},
+		{
+			// There is no conversion API for regional disks.
+			name:           "regional disks cannot be converted",
+			volKey:         regionalKey,
+			disk:           gce.CloudDiskFromV1(&compute.Disk{Name: name, Type: "pd-balanced"}),
+			expUnsupported: true,
+			expSubstr:      "regional",
+		},
+		{
+			// The access mode is how a v1 disk reports shared write access.
+			name:           "disks with many writers cannot be converted",
+			volKey:         zonalKey,
+			disk:           gce.CloudDiskFromV1(&compute.Disk{Name: name, Type: "pd-balanced", AccessMode: constants.GCEReadWriteManyAccessMode}),
+			expUnsupported: true,
+			expSubstr:      "multi-writer",
+		},
+		{
+			// A beta disk reports the same thing through multiWriter instead.
+			name:           "multi writer beta disks cannot be converted",
+			volKey:         zonalKey,
+			disk:           gce.CloudDiskFromBeta(&computebeta.Disk{Name: name, Type: "pd-balanced", MultiWriter: true}),
+			expUnsupported: true,
+			expSubstr:      "multi-writer",
+		},
+		{
+			// The zone check must not depend on having read the disk.
+			name:           "regional is rejected even without a disk",
+			volKey:         regionalKey,
+			disk:           nil,
+			expUnsupported: true,
+			expSubstr:      "regional",
+		},
+		{
+			name:   "a missing disk is not itself a reason to refuse",
+			volKey: zonalKey,
+			disk:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := unsupportedConversionReason(tc.volKey, tc.disk)
+			if tc.expUnsupported {
+				if got == "" {
+					t.Fatalf("unsupportedConversionReason = \"\"; want a reason")
+				}
+				if !strings.Contains(got, tc.expSubstr) {
+					t.Errorf("Got reason %q; want it to mention %q", got, tc.expSubstr)
+				}
+				return
+			}
+			if got != "" {
+				t.Errorf("unsupportedConversionReason = %q; want \"\"", got)
+			}
+		})
+	}
+}
+
+func TestConversionErrorClassification(t *testing.T) {
+	testCases := []struct {
+		name           string
+		err            error
+		expTerminal    bool
+		expInProgress  bool
+		expRetrySubstr string
+	}{
+		{
+			// The only reason that means the conversion can never succeed.
+			name:        "unsupported conversion intent is terminal",
+			err:         conversionAPIError(400, "DISK_TYPE_CONVERSION_UNSUPPORTED", "unsupported"),
+			expTerminal: true,
+		},
+		{
+			// Shares its status with the terminal case, so the reason decides.
+			name:           "a busy disk means a conversion is already running",
+			err:            conversionAPIError(400, "resourceNotReady", "disk is busy"),
+			expInProgress:  true,
+			expRetrySubstr: "not ready",
+		},
+		{
+			name:           "a rate limit is explained and retried",
+			err:            conversionAPIError(429, "rateLimitExceeded", "too many requests"),
+			expRetrySubstr: "limit on disk conversion calls",
+		},
+		{
+			name:           "an instant snapshot is explained and retried",
+			err:            conversionAPIError(400, "RESOURCE_IN_USE_BY_ANOTHER_RESOURCE", "in use"),
+			expRetrySubstr: "instant snapshot",
+		},
+		{
+			name:           "a stockout is explained and retried",
+			err:            conversionAPIError(503, "ZONE_RESOURCE_POOL_EXHAUSTED", "no capacity"),
+			expRetrySubstr: "capacity",
+		},
+		{
+			// The 412 seen when the project is not allowed to convert disks. It
+			// has no specific explanation but must not be treated as terminal,
+			// or the volume would give up on a conversion that can still happen.
+			name: "an unrecognised reason is retried without an explanation",
+			err:  conversionAPIError(412, "conditionNotMet", "feature is not available for this project"),
+		},
+		{
+			name: "an error that is not from the API is retried",
+			err:  fmt.Errorf("connection refused"),
+		},
+		{
+			name: "no error is not a failure",
+			err:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isUnsupportedConversionIntentError(tc.err); got != tc.expTerminal {
+				t.Errorf("isUnsupportedConversionIntentError = %v; want %v", got, tc.expTerminal)
+			}
+			if got := isConversionInProgressError(tc.err); got != tc.expInProgress {
+				t.Errorf("isConversionInProgressError = %v; want %v", got, tc.expInProgress)
+			}
+			got := conversionRetryReason(tc.err)
+			if tc.expRetrySubstr == "" {
+				if got != "" {
+					t.Errorf("conversionRetryReason = %q; want \"\"", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.expRetrySubstr) {
+				t.Errorf("Got retry reason %q; want it to mention %q", got, tc.expRetrySubstr)
+			}
+		})
+	}
+}
+
+func TestConversionErrorReasonPrefersErrorInfo(t *testing.T) {
+	// The top level error item carries only a generic reason, so the machine
+	// readable one in the details has to win.
+	err := conversionAPIError(400, "DISK_TYPE_CONVERSION_UNSUPPORTED", "unsupported")
+	if got := conversionErrorReason(err); got != "DISK_TYPE_CONVERSION_UNSUPPORTED" {
+		t.Errorf("Got reason %q; want the ErrorInfo reason", got)
+	}
+
+	// With no details the top level reason is all there is.
+	onlyTopLevel := &googleapi.Error{
+		Code:   400,
+		Errors: []googleapi.ErrorItem{{Reason: "badRequest", Message: "bad"}},
+	}
+	if got := conversionErrorReason(onlyTopLevel); got != "badRequest" {
+		t.Errorf("Got reason %q; want badRequest", got)
+	}
+
+	if got := conversionErrorReason(fmt.Errorf("not an api error")); got != "" {
+		t.Errorf("Got reason %q; want \"\" for a non API error", got)
+	}
+}
+
+func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
+	testCases := []struct {
+		name               string
+		enablePdConversion bool
+		annotations        map[string]string
+		expErrCode         codes.Code
+	}{
+		{
+			name:               "expands when no conversion is recorded",
+			enablePdConversion: true,
+			expErrCode:         codes.OK,
+		},
+		{
+			// Resizing mid conversion races the copy the conversion is making.
+			name:               "blocks expand while a conversion is queued",
+			enablePdConversion: true,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+			expErrCode:         codes.Unavailable,
+		},
+		{
+			name:               "blocks expand while a conversion is running",
+			enablePdConversion: true,
+			annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
+			},
+			expErrCode: codes.Unavailable,
+		},
+		{
+			// The conversion finished unobserved, so the volume is usable again.
+			name:               "expands once the conversion has finished",
+			enablePdConversion: true,
+			annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
+				constants.DiskTypeConvertedFromKey:       "pd-standard",
+			},
+			expErrCode: codes.OK,
+		},
+		{
+			name:               "does not consult the PV when conversion is disabled",
+			enablePdConversion: false,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+			expErrCode:         codes.OK,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: tc.annotations},
+			})
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 20}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+
+			_, err = gceDriver.cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+				VolumeId:      testVolumeID,
+				CapacityRange: &csi.CapacityRange{RequiredBytes: common.GbToBytes(30)},
+			})
+
+			if gotCode := status.Code(err); gotCode != tc.expErrCode {
+				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
+			}
+		})
+	}
+}
+
+func TestStartQueuedConversionOnDetach(t *testing.T) {
+	testCases := []struct {
+		name               string
+		enablePdConversion bool
+		annotations        map[string]string
+		// expStarted is whether the queued conversion should be acted on.
+		expStarted bool
+	}{
+		{
+			name:               "starts a queued conversion",
+			enablePdConversion: true,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+			expStarted:         true,
+		},
+		{
+			name:               "does nothing when no conversion is queued",
+			enablePdConversion: true,
+			annotations:        nil,
+		},
+		{
+			// A self link means a conversion is already running, so starting
+			// another would convert the disk twice.
+			name:               "does not restart a conversion that is already running",
+			enablePdConversion: true,
+			annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
+			},
+		},
+		{
+			name:               "does nothing when conversion is disabled",
+			enablePdConversion: false,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+		},
+	}
+
+	className := "vac-hyperdisk"
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			kubeClient := fake.NewSimpleClientset(
+				&corev1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: tc.annotations},
+					Spec: corev1.PersistentVolumeSpec{
+						ClaimRef: &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"},
+					},
+				},
+				&corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+					Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+				},
+				&storagev1beta1.VolumeAttributesClass{
+					ObjectMeta: metav1.ObjectMeta{Name: className},
+					DriverName: "pd.csi.storage.gke.io",
+					Parameters: map[string]string{"type": "hyperdisk-balanced"},
+				},
+			)
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+			_, volKey, err := common.VolumeIDToKey(testVolumeID)
+			if err != nil {
+				t.Fatalf("Failed to convert volume id to key: %v", err)
+			}
+
+			gceDriver.cs.startQueuedConversionOnDetach(context.Background(), project, volKey)
+			// The conversion runs in the background, so wait for it rather than
+			// guessing how long it needs.
+			gceDriver.cs.WaitForConversionWorkers()
+			defer gceDriver.cs.stopConversionWatcher(volKey)
+
+			if started := fcp.ConversionCalled(); started != tc.expStarted {
+				t.Errorf("Conversion started = %v; want %v", started, tc.expStarted)
+			}
+		})
+	}
+}
+
+// waitForCondition reports whether cond became true within timeout.
+func waitForCondition(timeout time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return cond()
 }
