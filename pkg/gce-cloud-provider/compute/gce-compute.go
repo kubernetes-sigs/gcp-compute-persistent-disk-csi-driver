@@ -720,7 +720,11 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 		paths = append(paths, "provisionedThroughput")
 	}
 
-	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	diskUpdateOp := service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
 	diskUpdateOp.Paths(paths...)
 	_, err := diskUpdateOp.Context(ctx).Do()
 
@@ -871,7 +875,11 @@ func (cloud *CloudProvider) DeleteDisk(ctx context.Context, project string, volK
 }
 
 func (cloud *CloudProvider) deleteZonalDisk(ctx context.Context, project, zone, name string) error {
-	op, err := cloud.service.Disks.Delete(project, zone, name).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.Disks.Delete(project, zone, name).Context(ctx).Do()
 	if err != nil {
 		if IsGCEError(err, "notFound") {
 			// Already deleted
@@ -889,7 +897,11 @@ func (cloud *CloudProvider) deleteZonalDisk(ctx context.Context, project, zone, 
 }
 
 func (cloud *CloudProvider) deleteRegionalDisk(ctx context.Context, project, region, name string) error {
-	op, err := cloud.service.RegionDisks.Delete(project, region, name).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.RegionDisks.Delete(project, region, name).Context(ctx).Do()
 	if err != nil {
 		if IsGCEError(err, "notFound") {
 			// Already deleted
@@ -997,7 +1009,11 @@ func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project strin
 	}
 	switch volKey.Type() {
 	case meta.Zonal:
-		op, err := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
+		service := cloud.service
+		if _, ok := cloud.tenantServiceMap[project]; ok {
+			service = cloud.tenantServiceMap[project]
+		}
+		op, err := service.Disks.Update(project, volKey.Zone, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
 		if err != nil {
 			return fmt.Errorf("failed to set access mode for zonal volume %v: %w", volKey, err)
 		}
@@ -1008,7 +1024,11 @@ func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project strin
 			return fmt.Errorf("failed waiting for op for zonal disk update for %v: %w", volKey, err)
 		}
 	case meta.Regional:
-		op, err := cloud.service.RegionDisks.Update(project, volKey.Region, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
+		service := cloud.service
+		if _, ok := cloud.tenantServiceMap[project]; ok {
+			service = cloud.tenantServiceMap[project]
+		}
+		op, err := service.RegionDisks.Update(project, volKey.Region, volKey.Name, diskMask).Context(ctx).Paths("accessMode").Do()
 		if err != nil {
 			return fmt.Errorf("failed to set access mode for regional volume %v: %w", volKey, err)
 		}
@@ -1032,7 +1052,11 @@ func (cloud *CloudProvider) SetDiskLabels(ctx context.Context, project string, v
 			Labels:           labels,
 			LabelFingerprint: disk.GetLabelFingerprint(),
 		}
-		op, err := cloud.service.Disks.SetLabels(project, volKey.Zone, volKey.Name, setLabelsReq).Context(ctx).Do()
+		service := cloud.service
+		if _, ok := cloud.tenantServiceMap[project]; ok {
+			service = cloud.tenantServiceMap[project]
+		}
+		op, err := service.Disks.SetLabels(project, volKey.Zone, volKey.Name, setLabelsReq).Context(ctx).Do()
 		if err != nil {
 			return fmt.Errorf("failed to set labels for zonal disk %v: %w", volKey, err)
 		}
@@ -1047,7 +1071,11 @@ func (cloud *CloudProvider) SetDiskLabels(ctx context.Context, project string, v
 			Labels:           labels,
 			LabelFingerprint: disk.GetLabelFingerprint(),
 		}
-		op, err := cloud.service.RegionDisks.SetLabels(project, volKey.Region, volKey.Name, setLabelsReq).Context(ctx).Do()
+		service := cloud.service
+		if _, ok := cloud.tenantServiceMap[project]; ok {
+			service = cloud.tenantServiceMap[project]
+		}
+		op, err := service.RegionDisks.SetLabels(project, volKey.Region, volKey.Name, setLabelsReq).Context(ctx).Do()
 		if err != nil {
 			return fmt.Errorf("failed to set labels for regional disk %v: %w", volKey, err)
 		}
@@ -1067,7 +1095,11 @@ func (cloud *CloudProvider) SetDiskLabels(ctx context.Context, project string, v
 func (cloud *CloudProvider) ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error) {
 	diskTypeFilter := fmt.Sprintf("name=%s", diskType)
 	filters := []string{diskTypeFilter}
-	diskTypeListCall := cloud.service.DiskTypes.AggregatedList(project).Context(ctx).Filter(strings.Join(filters, " "))
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	diskTypeListCall := service.DiskTypes.AggregatedList(project).Context(ctx).Filter(strings.Join(filters, " "))
 
 	supportedZones := []string{}
 	nextPageToken := "pageToken"
@@ -1330,7 +1362,11 @@ func (cloud *CloudProvider) GetInstanceOrError(ctx context.Context, project, ins
 
 func (cloud *CloudProvider) GetSnapshot(ctx context.Context, project, snapshotName string) (*computev1.Snapshot, error) {
 	klog.V(5).Infof("Getting snapshot %v", snapshotName)
-	snapshot, err := cloud.service.Snapshots.Get(project, snapshotName).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	snapshot, err := service.Snapshots.Get(project, snapshotName).Context(ctx).Do()
 	if err != nil {
 		klog.V(5).Infof("Error getting snapshot %v: %v", snapshotName, err)
 		return nil, err
@@ -1340,7 +1376,11 @@ func (cloud *CloudProvider) GetSnapshot(ctx context.Context, project, snapshotNa
 
 func (cloud *CloudProvider) DeleteSnapshot(ctx context.Context, project, snapshotName string) error {
 	klog.V(5).Infof("Deleting snapshot %v", snapshotName)
-	op, err := cloud.service.Snapshots.Delete(project, snapshotName).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.Snapshots.Delete(project, snapshotName).Context(ctx).Do()
 	if err != nil {
 		if IsGCEError(err, "notFound") {
 			// Already deleted
@@ -1383,7 +1423,11 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, 
 		Labels:           snapshotParams.Labels,
 		SourceDisk:       cloud.GetDiskSourceURI(project, volKey),
 	}
-	_, err = cloud.service.Snapshots.Insert(project, snapshotToCreate).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	_, err = service.Snapshots.Insert(project, snapshotToCreate).Context(ctx).Do()
 
 	if err != nil {
 		return nil, err
@@ -1423,7 +1467,11 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 		Labels:           snapshotParams.Labels,
 	}
 
-	_, err = cloud.service.Images.Insert(project, image).Context(ctx).ForceCreate(true).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	_, err = service.Images.Insert(project, image).Context(ctx).ForceCreate(true).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -1466,7 +1514,11 @@ func (cloud *CloudProvider) waitForImageCreation(ctx context.Context, project, i
 
 func (cloud *CloudProvider) GetImage(ctx context.Context, project, imageName string) (*computev1.Image, error) {
 	klog.V(5).Infof("Getting image %v", imageName)
-	image, err := cloud.service.Images.Get(project, imageName).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	image, err := service.Images.Get(project, imageName).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -1491,7 +1543,11 @@ func (cloud *CloudProvider) ListImages(ctx context.Context, filter string) ([]*c
 
 func (cloud *CloudProvider) DeleteImage(ctx context.Context, project, imageName string) error {
 	klog.V(5).Infof("Deleting image %v", imageName)
-	op, err := cloud.service.Images.Delete(cloud.project, imageName).Context(ctx).Do()
+	service := cloud.service
+	if _, ok := cloud.tenantServiceMap[project]; ok {
+		service = cloud.tenantServiceMap[project]
+	}
+	op, err := service.Images.Delete(project, imageName).Context(ctx).Do()
 	if err != nil {
 		if IsGCEError(err, "notFound") {
 			return nil
