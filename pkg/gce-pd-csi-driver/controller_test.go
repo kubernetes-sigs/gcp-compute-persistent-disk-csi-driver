@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"net/http"
 	"reflect"
@@ -43,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/flowcontrol"
@@ -7129,4 +7131,240 @@ func TestRunQueuedConversion(t *testing.T) {
 			}
 		})
 	}
+}
+
+// waitFor polls a condition, so that tests do not depend on how quickly a
+// background watcher runs.
+func waitFor(t *testing.T, timeout time.Duration, desc string, cond func() bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("Timed out waiting for %s", desc)
+	return false
+}
+
+func TestConversionWatcher(t *testing.T) {
+	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-convert-1"
+
+	testCases := []struct {
+		name string
+		// notDoneTimes is how many checks report the conversion as running.
+		notDoneTimes int
+		// pollErr fails the check itself, which must not be mistaken for the
+		// conversion failing.
+		pollErr error
+		// operationErr is the conversion's own failure.
+		operationErr error
+		// diskTypeAfter is the type the disk reports once the conversion ends.
+		diskTypeAfter    string
+		expConvertedTo   string
+		expConvertedFrom string
+		// expOperationCleared is whether the volume ends up unblocked.
+		expOperationCleared bool
+	}{
+		{
+			name:                "records the conversion when the operation finishes",
+			diskTypeAfter:       "hyperdisk-balanced",
+			expConvertedTo:      "hyperdisk-balanced",
+			expConvertedFrom:    "pd-balanced",
+			expOperationCleared: true,
+		},
+		{
+			// The watcher has to keep checking rather than treating the first
+			// unfinished answer as the end of the conversion.
+			name:                "keeps checking while the operation is running",
+			notDoneTimes:        3,
+			diskTypeAfter:       "hyperdisk-balanced",
+			expConvertedTo:      "hyperdisk-balanced",
+			expConvertedFrom:    "pd-balanced",
+			expOperationCleared: true,
+		},
+		{
+			// A conversion that ran and failed leaves the disk as it was, so the
+			// volume is unblocked and nothing claims it was converted.
+			name:                "clears the state when the conversion fails",
+			operationErr:        fmt.Errorf("operation op-convert-1 failed: INTERNAL_ERROR: conversion failed"),
+			diskTypeAfter:       "pd-balanced",
+			expConvertedTo:      "",
+			expConvertedFrom:    "",
+			expOperationCleared: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: name,
+					Annotations: map[string]string{
+						constants.DiskTypeConversionOperationKey: operation,
+						constants.DiskTypeConvertedFromKey:       "pd-balanced",
+					},
+				},
+			})
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: tc.diskTypeAfter, SizeGb: 200}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			fcp.PollNotDoneTimes = tc.notDoneTimes
+			fcp.PollErr = tc.pollErr
+			fcp.PollOperationErr = tc.operationErr
+
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			_, volKey, err := common.VolumeIDToKey(testVolumeID)
+			if err != nil {
+				t.Fatalf("Failed to convert volume id to key: %v", err)
+			}
+
+			// Keep the test quick; the real interval is minutes.
+			gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+
+			gceDriver.cs.watchConversion(project, volKey, operation)
+
+			waitFor(t, 5*time.Second, "the conversion state to be cleared", func() bool {
+				pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+				if err != nil {
+					return false
+				}
+				_, stillSet := pv.Annotations[constants.DiskTypeConversionOperationKey]
+				return !stillSet
+			})
+
+			pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get PersistentVolume: %v", err)
+			}
+			if _, ok := pv.Annotations[constants.DiskTypeConversionOperationKey]; ok != !tc.expOperationCleared {
+				t.Errorf("Operation annotation present=%v; want cleared=%v", ok, tc.expOperationCleared)
+			}
+			if got := pv.Annotations[constants.DiskTypeConvertedToKey]; got != tc.expConvertedTo {
+				t.Errorf("Got converted-to %q; want %q", got, tc.expConvertedTo)
+			}
+			if got := pv.Annotations[constants.DiskTypeConvertedFromKey]; got != tc.expConvertedFrom {
+				t.Errorf("Got converted-from %q; want %q", got, tc.expConvertedFrom)
+			}
+			// The watcher must only poll the operation, not the self link.
+			if got := fcp.PolledOperation(); got != "op-convert-1" {
+				t.Errorf("Polled operation %q; want op-convert-1", got)
+			}
+			if tc.notDoneTimes > 0 && fcp.PollCalls() <= tc.notDoneTimes {
+				t.Errorf("Made %d checks; want more than %d", fcp.PollCalls(), tc.notDoneTimes)
+			}
+			// The watcher must not outlive the conversion it was following.
+			waitFor(t, 2*time.Second, "the watcher to deregister", func() bool {
+				gceDriver.cs.conversionWatchersLock.Lock()
+				defer gceDriver.cs.conversionWatchersLock.Unlock()
+				return len(gceDriver.cs.conversionWatchers) == 0
+			})
+		})
+	}
+}
+
+func TestConversionWatcherStopsOnVolumeDelete(t *testing.T) {
+	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-convert-2"
+
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Annotations: map[string]string{constants.DiskTypeConversionOperationKey: operation},
+		},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	// The conversion never finishes, so only a cancellation can end the watcher.
+	fcp.PollNotDoneTimes = math.MaxInt32
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	_, volKey, err := common.VolumeIDToKey(testVolumeID)
+	if err != nil {
+		t.Fatalf("Failed to convert volume id to key: %v", err)
+	}
+
+	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+
+	gceDriver.cs.watchConversion(project, volKey, operation)
+	waitFor(t, 5*time.Second, "the watcher to start polling", func() bool { return fcp.PollCalls() > 0 })
+
+	// Deleting the volume must stop the watcher, or it polls an operation for a
+	// disk that no longer exists for as long as the driver runs.
+	if _, err := gceDriver.cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: testVolumeID}); err != nil {
+		t.Fatalf("DeleteVolume failed: %v", err)
+	}
+
+	if !waitFor(t, 5*time.Second, "the watcher to deregister", func() bool {
+		gceDriver.cs.conversionWatchersLock.Lock()
+		defer gceDriver.cs.conversionWatchersLock.Unlock()
+		return len(gceDriver.cs.conversionWatchers) == 0
+	}) {
+		return
+	}
+
+	// Once cancelled the watcher must stop making calls entirely.
+	settled := fcp.PollCalls()
+	time.Sleep(100 * time.Millisecond)
+	if after := fcp.PollCalls(); after != settled {
+		t.Errorf("Watcher kept polling after the volume was deleted: %d then %d checks", settled, after)
+	}
+}
+
+func TestConversionWatcherReplacesExisting(t *testing.T) {
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	fcp.PollNotDoneTimes = math.MaxInt32
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	_, volKey, err := common.VolumeIDToKey(testVolumeID)
+	if err != nil {
+		t.Fatalf("Failed to convert volume id to key: %v", err)
+	}
+
+	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+
+	// Retries can start a second conversion for the same volume. Only one
+	// watcher may survive, or each retry leaks another goroutine.
+	for i := 0; i < 5; i++ {
+		gceDriver.cs.watchConversion(project, volKey, fmt.Sprintf("https://example.com/operations/op-%d", i))
+	}
+	waitFor(t, 5*time.Second, "the watcher to start polling", func() bool { return fcp.PollCalls() > 0 })
+
+	gceDriver.cs.conversionWatchersLock.Lock()
+	watchers := len(gceDriver.cs.conversionWatchers)
+	gceDriver.cs.conversionWatchersLock.Unlock()
+	if watchers != 1 {
+		t.Errorf("Got %d watchers for one volume; want 1", watchers)
+	}
+
+	gceDriver.cs.stopConversionWatcher(volKey)
+	waitFor(t, 2*time.Second, "the watcher to deregister", func() bool {
+		gceDriver.cs.conversionWatchersLock.Lock()
+		defer gceDriver.cs.conversionWatchersLock.Unlock()
+		return len(gceDriver.cs.conversionWatchers) == 0
+	})
 }

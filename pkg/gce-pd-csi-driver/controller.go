@@ -18,8 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	neturl "net/url"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +38,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
@@ -57,6 +60,16 @@ type GCEControllerServer struct {
 	volumeEntries     []*csi.ListVolumesResponse_Entry
 	volumeEntriesSeen map[string]int
 	listVolumesLock   sync.Mutex
+
+	// The background watchers following disk type conversions, keyed by volume
+	// key. A watcher outlives the call that started it, so it has to be
+	// stoppable when the volume goes away.
+	conversionWatchers     map[string]*conversionWatcher
+	conversionWatchersLock sync.Mutex
+
+	// How often a running conversion is checked. Zero means the default,
+	// conversionPollBackoff. Tests set it so they need not wait minutes.
+	conversionPollBackoffOverride wait.Backoff
 
 	snapshots         []*csi.ListSnapshotsResponse_Entry
 	snapshotTokens    map[string]int
@@ -1056,7 +1069,177 @@ func (gceCS *GCEControllerServer) startDiskTypeConversion(ctx context.Context, p
 	k8sclient.EmitPVEvent(ctx, volKey.Name, v1.EventTypeNormal, constants.DiskTypeConversionStartReason, constants.DiskTypeConversionAction,
 		fmt.Sprintf("Disk type conversion started for volume %q from %s to %s", volKey.Name, currentDiskType, targetDiskType))
 
+	// Follow the conversion so that its completion is recorded when it happens
+	// rather than at the next operation on the volume. This is an optimisation:
+	// losing the watcher costs promptness, not correctness.
+	gceCS.watchConversion(project, volKey, operation)
+
 	return operation, nil
+}
+
+// conversionPollBackoff paces the checks on a running conversion. Conversions
+// take from minutes to hours, so the interval grows to a cap rather than
+// polling at a fixed rate, and is capped so that a conversion which finishes
+// early is still noticed promptly.
+var conversionPollBackoff = wait.Backoff{
+	Duration: 10 * time.Second,
+	Factor:   1.5,
+	Jitter:   0.1,
+	Cap:      2 * time.Minute,
+	Steps:    math.MaxInt32,
+}
+
+// conversionOperationName extracts the operation name from the value recorded in
+// the conversion annotation, which is normally a self link.
+func conversionOperationName(operation string) string {
+	if operation == "" || operation == constants.ConversionStatePending {
+		return ""
+	}
+	return path.Base(operation)
+}
+
+// watchConversion follows a running conversion in the background and records the
+// outcome when it finishes.
+//
+// This is only a way to notice a conversion promptly, never the record of one.
+// The state that matters is on the PersistentVolume, so a conversion whose
+// watcher is lost to a restart is still completed correctly by the next attach
+// or expand. That is why nothing here fails an operation.
+func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.Key, operation string) {
+	opName := conversionOperationName(operation)
+	if opName == "" {
+		return
+	}
+
+	// The request that started the conversion is finished long before the
+	// conversion is, so the watcher gets a context that outlives it and is
+	// cancelled explicitly instead.
+	ctx, cancel := context.WithCancel(context.Background())
+	watcher := &conversionWatcher{cancel: cancel}
+	gceCS.registerConversionWatcher(volKey, watcher)
+
+	go func() {
+		defer gceCS.unregisterConversionWatcher(volKey, watcher)
+		gceCS.pollConversion(ctx, project, volKey, opName)
+	}()
+}
+
+// conversionWatcher is a running watcher, identified by its own pointer so that
+// a watcher which has been replaced cannot deregister its replacement.
+type conversionWatcher struct {
+	cancel context.CancelFunc
+}
+
+// registerConversionWatcher records a watcher, stopping any watcher already
+// following this volume.
+func (gceCS *GCEControllerServer) registerConversionWatcher(volKey *meta.Key, watcher *conversionWatcher) {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if gceCS.conversionWatchers == nil {
+		gceCS.conversionWatchers = map[string]*conversionWatcher{}
+	}
+	// A volume has at most one conversion, so an existing watcher is following
+	// an attempt that has been superseded. Leaving it running would poll an
+	// operation nobody is waiting for.
+	if previous, ok := gceCS.conversionWatchers[volKey.String()]; ok {
+		previous.cancel()
+	}
+	gceCS.conversionWatchers[volKey.String()] = watcher
+}
+
+// unregisterConversionWatcher removes a watcher, but only if it is still the
+// registered one. A watcher that has been replaced must not remove the watcher
+// that replaced it, which it would otherwise do on its way out.
+func (gceCS *GCEControllerServer) unregisterConversionWatcher(volKey *meta.Key, watcher *conversionWatcher) {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if current, ok := gceCS.conversionWatchers[volKey.String()]; ok && current == watcher {
+		delete(gceCS.conversionWatchers, volKey.String())
+	}
+}
+
+// stopConversionWatcher stops following a volume's conversion. It is called when
+// the volume is deleted, so that a watcher does not outlive the disk it is
+// polling.
+func (gceCS *GCEControllerServer) stopConversionWatcher(volKey *meta.Key) {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if watcher, ok := gceCS.conversionWatchers[volKey.String()]; ok {
+		klog.V(4).Infof("Stopping the disk type conversion watcher for volume %s", volKey.Name)
+		watcher.cancel()
+		delete(gceCS.conversionWatchers, volKey.String())
+	}
+}
+
+// pollConversion checks a conversion until it finishes, the volume stops needing
+// it, or the watcher is cancelled.
+func (gceCS *GCEControllerServer) pollConversion(ctx context.Context, project string, volKey *meta.Key, opName string) {
+	klog.V(4).Infof("Watching disk type conversion %s of volume %s", opName, volKey.Name)
+	backoff := conversionPollBackoff
+	if gceCS.conversionPollBackoffOverride.Duration > 0 {
+		backoff = gceCS.conversionPollBackoffOverride
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			klog.V(4).Infof("Stopped watching disk type conversion %s of volume %s", opName, volKey.Name)
+			return
+		case <-time.After(backoff.Step()):
+		}
+
+		done, err := gceCS.CloudProvider.IsConvertOperationDone(ctx, project, volKey.Zone, opName)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if done {
+				// The conversion ran and failed. Clearing the state lets the
+				// volume be used again, and lets the modification be retried,
+				// which starts a new conversion if one is still wanted.
+				klog.Errorf("Disk type conversion %s of volume %s failed: %v", opName, volKey.Name, err)
+				gceCS.recordFailedConversion(ctx, volKey, err)
+				return
+			}
+			// The operation could not be read. Keep watching, because the
+			// conversion itself is unaffected by a failure to look at it.
+			klog.Warningf("Could not check disk type conversion %s of volume %s, still watching: %v", opName, volKey.Name, err)
+			continue
+		}
+		if !done {
+			continue
+		}
+
+		disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+		if err != nil {
+			klog.Warningf("Disk type conversion %s of volume %s finished but the disk could not be read, leaving it to be recorded at the next attach: %v", opName, volKey.Name, err)
+			return
+		}
+		klog.V(4).Infof("Disk type conversion %s of volume %s finished", opName, volKey.Name)
+		if err := gceCS.recordCompletedConversion(ctx, volKey, disk.GetPDType()); err != nil {
+			klog.Warningf("Failed to record the completed conversion of volume %s, it will be recorded at the next attach: %v", volKey.Name, err)
+		}
+		return
+	}
+}
+
+// recordFailedConversion clears the state of a conversion that ran and failed,
+// so that the volume is usable and the modification can be attempted again.
+func (gceCS *GCEControllerServer) recordFailedConversion(ctx context.Context, volKey *meta.Key, conversionErr error) {
+	if err := k8sclient.RemovePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey); err != nil {
+		klog.Errorf("Failed to clear the conversion state of volume %s after it failed, operations on it stay blocked until this succeeds: %v", volKey.Name, err)
+		return
+	}
+	// The disk keeps its original type, so what was recorded about converting
+	// away from it is no longer true.
+	if err := k8sclient.RemovePVAnnotation(ctx, volKey.Name, constants.DiskTypeConvertedFromKey); err != nil {
+		klog.Warningf("Failed to clear the original type recorded for volume %s: %v", volKey.Name, err)
+	}
+	k8sclient.EmitPVEvent(ctx, volKey.Name, v1.EventTypeWarning, constants.DiskTypeConversionFailedReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion of volume %q failed: %v", volKey.Name, conversionErr))
 }
 
 // unsupportedConversionReason describes why a disk can never be converted, or
@@ -1313,6 +1496,10 @@ func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.Del
 		klog.Warningf("DeleteVolume treating volume as deleted because volume id %s is invalid: %v", volumeID, err.Error())
 		return &csi.DeleteVolumeResponse{}, nil
 	}
+
+	// The disk is going away, so anything still following a conversion of it is
+	// polling an operation whose result nobody can use.
+	gceCS.stopConversionWatcher(volKey)
 
 	volumeIsMultiZone := isMultiZoneVolKey(volKey)
 	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {

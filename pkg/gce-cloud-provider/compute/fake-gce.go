@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -64,6 +65,16 @@ type FakeCloudProvider struct {
 
 	// PD-on-Gen4 conversion testing fields
 	ConversionTestParams ConversionTestParams
+
+	// Controls for IsConvertOperationDone. PollNotDoneTimes is how many checks
+	// report the conversion as still running before it finishes, so a test can
+	// exercise a conversion that takes more than one check.
+	PollNotDoneTimes  int
+	PollErr           error
+	PollOperationErr  error
+	pollCallCount     int
+	pollOperationName string
+	pollLock          sync.Mutex
 
 	// marker to set disk status during InsertDisk operation.
 	mockDiskStatus string
@@ -370,6 +381,42 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 		disk.betaDisk.Type = typeURI
 	}
 	return fmt.Sprintf("https://www.googleapis.com/compute/alpha/projects/%s/zones/%s/operations/operation-convert-%s", project, volKey.Zone, volKey.Name), nil
+}
+
+// IsConvertOperationDone reports the conversion as still running for the first
+// ConversionTestParams.PollNotDoneTimes calls, so that a test can exercise a
+// conversion that takes more than one check to finish.
+func (cloud *FakeCloudProvider) IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error) {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+
+	cloud.pollCallCount++
+	cloud.pollOperationName = operationName
+
+	if cloud.PollErr != nil {
+		return false, cloud.PollErr
+	}
+	if cloud.pollCallCount <= cloud.PollNotDoneTimes {
+		return false, nil
+	}
+	if cloud.PollOperationErr != nil {
+		return true, cloud.PollOperationErr
+	}
+	return true, nil
+}
+
+// PollCalls reports how many times the conversion operation has been checked.
+func (cloud *FakeCloudProvider) PollCalls() int {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.pollCallCount
+}
+
+// PolledOperation reports the operation name that was last checked.
+func (cloud *FakeCloudProvider) PolledOperation() string {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.pollOperationName
 }
 
 func (cloud *FakeCloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {

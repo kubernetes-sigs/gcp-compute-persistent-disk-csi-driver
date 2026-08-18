@@ -119,6 +119,7 @@ type GCECompute interface {
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error
 	ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error)
+	IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error)
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
 	SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error
 	ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error)
@@ -1029,6 +1030,31 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 		return op.SelfLink, nil
 	}
 	return op.Name, nil
+}
+
+// IsConvertOperationDone reports whether a disk type conversion has finished,
+// and returns the conversion's own error if it finished by failing.
+//
+// The operation is read from the alpha API, because that is where a conversion
+// started by disks.convert exists. Conversions are zonal, so there is no
+// regional equivalent of this call.
+//
+// This checks the operation once rather than waiting for it. A conversion can
+// run for hours, far longer than a request should be held open, so the caller
+// decides how often to ask.
+func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error) {
+	op, err := cloud.alphaService.ZoneOperations.Get(project, zone, operationName).Context(ctx).Do()
+	if err != nil {
+		return false, err
+	}
+	if op == nil || op.Status != operationStatusDone {
+		return false, nil
+	}
+	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
+		opErr := op.Error.Errors[0]
+		return true, fmt.Errorf("operation %s failed: %s: %s", operationName, opErr.Code, opErr.Message)
+	}
+	return true, nil
 }
 
 func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {
