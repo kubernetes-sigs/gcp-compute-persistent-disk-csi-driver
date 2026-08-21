@@ -1473,7 +1473,24 @@ const conversionInProgressReason = "resourceNotReady"
 // retried. Note that the HTTP status alone cannot decide this: an in-progress
 // conversion is also reported as 400.
 func isUnsupportedConversionIntentError(err error) bool {
-	return terminalConversionReasons.Has(conversionErrorReason(err))
+	// 1. Check for specific terminal strings
+	if terminalConversionReasons.Has(conversionErrorReason(err)) {
+		return true
+	}
+
+	// ====================================================================
+	// TERMINAL ERROR CLASSIFICATION FOR BAD PARAMS
+	// ====================================================================
+	// 2. Catch generic GCP 400 Bad Request (e.g., "IOPS cannot be smaller than 3000")
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) {
+		// HTTP 400 is a Bad Request (Invalid parameters)
+		// HTTP 403 is Forbidden (Permissions)
+		if apiErr.Code == 400 || apiErr.Code == 403 {
+			return true
+		}
+	}
+	return false
 }
 
 // isConversionInProgressError reports whether the error means a conversion of
