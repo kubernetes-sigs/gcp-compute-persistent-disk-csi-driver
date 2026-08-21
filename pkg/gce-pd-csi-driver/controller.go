@@ -2204,12 +2204,35 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 		gceCS.cancelQueuedConversion(ctx, volKey, reason)
 		return
 	}
-	// Something attached the disk again between the detach and now. The
-	// conversion stays queued for the next detach.
+	// [FIX] GCP EVENTUAL CONSISTENCY ("GHOST ATTACHMENT") RACE CONDITION
+	// ====================================================================
+	// Something attached the disk again between the detach and now, OR GCP
+	// is exhibiting eventual consistency and hasn't cleared the Users array yet.
 	if users := disk.GetUsers(); len(users) > 0 {
-		klog.V(4).Infof("Disk %s was attached again before its conversion could start, leaving it queued", volKey.Name)
-		return
+		klog.V(4).Infof("Disk %s shows users %v. Waiting briefly for GCP eventual consistency to clear...", volKey.Name, users)
+
+		// Give GCP up to 10 seconds to sync its backend database
+		pollErr := wait.PollImmediate(1*time.Second, 10*time.Second, func() (bool, error) {
+			refetchedDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+			if err != nil {
+				return false, err // Abort polling on real API error
+			}
+			if len(refetchedDisk.GetUsers()) == 0 {
+				disk = refetchedDisk // Update our main disk variable!
+				return true, nil     // Detach fully synced!
+			}
+			return false, nil // Still attached, keep checking
+		})
+
+		// If 10 seconds pass and it STILL has users, it is genuinely attached to a new pod.
+		if pollErr != nil {
+			klog.V(4).Infof("Disk %s still shows active users after detach window, leaving it queued", volKey.Name)
+			return
+		}
+		
+		klog.V(4).Infof("Ghost attachment cleared for disk %s, proceeding with conversion.", volKey.Name)
 	}
+	// ====================================================================
 
 	if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, *params.DiskType, params); err != nil {
 		if isUnsupportedConversionIntentError(err) {
