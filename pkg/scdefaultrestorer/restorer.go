@@ -42,6 +42,7 @@ const (
 type Config struct {
 	StorageClassName string
 	APITimeout       time.Duration
+	AccessTimeout    time.Duration
 }
 
 type Restorer struct {
@@ -90,16 +91,58 @@ func (r *Restorer) waitForAPIServer(ctx context.Context, client kubernetes.Inter
 	return nil
 }
 
-func (r *Restorer) restoreDefaultAnnotation(ctx context.Context, client kubernetes.Interface) error {
+// waitForStorageClassAccess waits for the RBAC permissions required to access the
+// StorageClass to be fully applied.
+// Note: This restorer is only used to update pre-existing storage classes. We are
+// only concerned with resolving RBAC race conditions during cluster updates, not
+// waiting for resource creation. Therefore, if the StorageClass does not exist
+// (NotFound error), this function exits immediately rather than retrying.
+func (r *Restorer) waitForStorageClassAccess(ctx context.Context, client kubernetes.Interface, targetSCName string) (bool, error) {
 	scClient := client.StorageV1().StorageClasses()
+	var exists bool
+
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, r.config.AccessTimeout, true, func(ctx context.Context) (bool, error) {
+		_, err := scClient.Get(ctx, targetSCName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				exists = false
+				return true, nil // Stop polling, it definitely doesn't exist
+			}
+			if apierrors.IsForbidden(err) {
+				klog.Warningf("Permission denied when getting StorageClass %s, waiting for access/RBAC to be applied: %v", targetSCName, err)
+				return false, nil // Keep retrying, waiting for Addon Manager
+			}
+			return false, err // Stop on other fatal errors
+		}
+		exists = true
+		return true, nil // Success! Permissions are good and SC exists
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("failed while waiting for StorageClass %s access: %w", targetSCName, err)
+	}
+
+	return exists, nil
+}
+
+func (r *Restorer) restoreDefaultAnnotation(ctx context.Context, client kubernetes.Interface) error {
 	targetSCName := r.config.StorageClassName
 
+	// Wait for permissions and check existence
+	exists, err := r.waitForStorageClassAccess(ctx, client, targetSCName)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		klog.Warningf("StorageClass not found, skipping restoration: %s", targetSCName)
+		return nil
+	}
+
+	// Clear to proceed, get the actual object
+	scClient := client.StorageV1().StorageClasses()
 	targetSC, err := scClient.Get(ctx, targetSCName, metav1.GetOptions{})
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			klog.Warningf("StorageClass not found, skipping restoration: %s", targetSCName)
-			return nil
-		}
 		return fmt.Errorf("failed to get StorageClass %s: %w", targetSCName, err)
 	}
 
