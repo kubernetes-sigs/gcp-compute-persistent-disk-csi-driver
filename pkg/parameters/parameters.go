@@ -312,8 +312,12 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
 			}
-			if iops < 0 {
-				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %d must not be negative", iops)
+			// A value at or below zero is rejected by the API whatever the disk
+			// is, so it is refused here rather than sent and retried. What
+			// counts as too low for a given type and size is left to the API,
+			// which is the only thing that knows.
+			if iops <= 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %d, must be greater than zero", iops)
 			}
 			modifyVolumeParams.IOPS = &iops
 		case "throughput":
@@ -321,8 +325,8 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
 			}
-			if throughput < 0 {
-				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %d must not be negative", throughput)
+			if throughput <= 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %d, must be greater than zero", throughput)
 			}
 			modifyVolumeParams.Throughput = &throughput
 		case "type":

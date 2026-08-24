@@ -705,8 +705,16 @@ func TestExtractModifyVolumeParametersNegativeValues(t *testing.T) {
 			parameters: map[string]string{"iops": "-1000"},
 		},
 		{
+			name:       "zero iops",
+			parameters: map[string]string{"iops": "0"},
+		},
+		{
 			name:       "negative throughput",
 			parameters: map[string]string{"throughput": "-500Mi"},
+		},
+		{
+			name:       "zero throughput",
+			parameters: map[string]string{"throughput": "0Mi"},
 		},
 	}
 
@@ -714,7 +722,7 @@ func TestExtractModifyVolumeParametersNegativeValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ExtractModifyVolumeParameters(tc.parameters)
 			if err == nil {
-				t.Errorf("ExtractModifyVolumeParameters(%+v) succeeded, expected an error rejecting the negative value", tc.parameters)
+				t.Errorf("ExtractModifyVolumeParameters(%+v) succeeded, expected an error rejecting the value", tc.parameters)
 			}
 		})
 	}
