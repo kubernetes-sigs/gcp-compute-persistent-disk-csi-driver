@@ -2575,6 +2575,19 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			expErrCode:         codes.Unavailable,
 		},
 		{
+			// GCE's ceiling for hyperdisk-balanced IOPS at 200 GiB is
+			// 500 * 200 = 100,000; this asks for the target type's cap to be
+			// enforced client-side rather than sent and rejected by the API.
+			name:                "rejects conversion when the target IOPS exceeds the max for the target type and size",
+			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:            testVolumeID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-balanced", "iops": "100001"},
+			enablePdConversion:  true,
+			expConvertCalled:    false,
+			expErrCode:          codes.InvalidArgument,
+			expErrMessageSubstr: "exceeds the maximum",
+		},
+		{
 			name:                "rejects conversion while the disk is attached",
 			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200, Users: []string{"instance-1"}},
 			volumeID:            testVolumeID,

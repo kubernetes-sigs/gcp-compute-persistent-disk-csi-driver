@@ -991,6 +991,10 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
+	if err := common.ValidateMaxProvisioned(diskType, existingDisk.GetSizeGb(), existingDisk.GetProvisionedIops(), volumeModifyParams.IOPS, volumeModifyParams.Throughput); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed to modify volume %s: %v", volumeID, err)
+	}
+
 	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
 	if err != nil {
 		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
@@ -1019,6 +1023,13 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 
 	if reason := unsupportedConversionReason(volKey, existingDisk); reason != "" {
 		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
+	}
+
+	// Conversion does not change disk size, so the target type's ceilings are
+	// checked against the disk's current size and IOPS, same as the plain
+	// IOPS/throughput update path below.
+	if err := common.ValidateMaxProvisioned(targetDiskType, existingDisk.GetSizeGb(), existingDisk.GetProvisionedIops(), params.IOPS, params.Throughput); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 	}
 
 	// Conversion requires the disk to be detached. Report this as retryable so
