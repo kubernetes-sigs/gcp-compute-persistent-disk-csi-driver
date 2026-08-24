@@ -695,6 +695,39 @@ func TestExtractModifyVolumeParameters(t *testing.T) {
 	}
 }
 
+func TestExtractModifyVolumeParametersNegativeValues(t *testing.T) {
+	testCases := []struct {
+		name       string
+		parameters map[string]string
+	}{
+		{
+			name:       "negative iops",
+			parameters: map[string]string{"iops": "-1000"},
+		},
+		{
+			name:       "zero iops",
+			parameters: map[string]string{"iops": "0"},
+		},
+		{
+			name:       "negative throughput",
+			parameters: map[string]string{"throughput": "-500Mi"},
+		},
+		{
+			name:       "zero throughput",
+			parameters: map[string]string{"throughput": "0Mi"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ExtractModifyVolumeParameters(tc.parameters)
+			if err == nil {
+				t.Errorf("ExtractModifyVolumeParameters(%+v) succeeded, expected an error rejecting the value", tc.parameters)
+			}
+		})
+	}
+}
+
 func TestExtractModifyVolumeParametersDiskType(t *testing.T) {
 	hyperdiskBalanced := "hyperdisk-balanced"
 	iops := int64(3000)
