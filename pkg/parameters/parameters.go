@@ -312,11 +312,17 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
 			}
+			if iops < 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %d must not be negative", iops)
+			}
 			modifyVolumeParams.IOPS = &iops
 		case "throughput":
 			throughput, err := convert.ConvertMiStringToInt64(value)
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
+			}
+			if throughput < 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %d must not be negative", throughput)
 			}
 			modifyVolumeParams.Throughput = &throughput
 		case "type":

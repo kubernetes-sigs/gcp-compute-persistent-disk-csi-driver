@@ -727,6 +727,13 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 	_, err := diskUpdateOp.Context(ctx).Do()
 
 	if err != nil {
+		// GCE rejects out-of-range or unsupported IOPS/throughput values (e.g.
+		// "IOPS cannot be smaller than 3000") with a 400/403; surface those as
+		// InvalidArgument instead of an unclassified error.
+		var apiErr *googleapi.Error
+		if errors.As(err, &apiErr) && (apiErr.Code == 400 || apiErr.Code == 403) {
+			return status.Errorf(codes.InvalidArgument, "error updating disk %v: %v", volKey, err)
+		}
 		return fmt.Errorf("error updating disk %v: %w", volKey, err)
 	}
 
