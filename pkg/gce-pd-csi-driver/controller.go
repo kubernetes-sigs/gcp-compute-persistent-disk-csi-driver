@@ -931,6 +931,24 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
+	// ====================================================================
+	// [FIX] CANCELLATION CLEANUP
+	// If the user completely removes the VAC (or the VAC is deleted),
+	// ensure no orphaned "Pending" states are left behind to brick the disk.
+	// ====================================================================
+	if volumeModifyParams.DiskType == nil && volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		opVal, exists, _ := k8sclient.GetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey)
+		if exists && opVal == constants.ConversionStatePending {
+			klog.V(4).Infof("VAC cleared for volume %s. Cancelling queued conversion.", volumeID)
+			_ = k8sclient.RemovePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey)
+			k8sclient.EmitPVEvent(ctx, volKey.Name, v1.EventTypeNormal, constants.DiskTypeConversionCancelReason, constants.DiskTypeConversionAction, "Disk type conversion cancelled by user")
+		}
+
+		klog.V(4).Infof("Volume %s has empty parameters, nothing to modify.", volumeID)
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
+	// ====================================================================
+
 	// If the VolumeAttributesClass requests a disk type that doesn't match the
 	// disk's actual type, this is a disk type conversion request rather than an
 	// IOPS/throughput update. This must be handled before the checks below,
@@ -2246,7 +2264,7 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 			klog.V(4).Infof("Disk %s still shows active users after detach window, leaving it queued", volKey.Name)
 			return
 		}
-		
+
 		klog.V(4).Infof("Ghost attachment cleared for disk %s, proceeding with conversion.", volKey.Name)
 	}
 	// ====================================================================
