@@ -750,3 +750,42 @@ func TestExtractModifyVolumeParametersDiskType(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractModifyVolumeParametersRejectsInvalidValues(t *testing.T) {
+	testCases := []struct {
+		name       string
+		parameters map[string]string
+	}{
+		// Sent to the API these come back as a 400 the driver would otherwise
+		// keep retrying, leaving the volume queued behind a request that can
+		// never succeed.
+		{name: "zero iops", parameters: map[string]string{"iops": "0"}},
+		{name: "negative iops", parameters: map[string]string{"iops": "-1"}},
+		{name: "zero throughput", parameters: map[string]string{"throughput": "0"}},
+		{name: "negative throughput", parameters: map[string]string{"throughput": "-5"}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ExtractModifyVolumeParameters(tc.parameters)
+			if err == nil {
+				t.Errorf("ExtractModifyVolumeParameters(%v) = %+v, nil; want an error", tc.parameters, got)
+			}
+		})
+	}
+}
+
+func TestExtractModifyVolumeParametersAcceptsValidValues(t *testing.T) {
+	// Whether a positive value is high enough for a given disk type and size is
+	// for the API to decide, so anything above zero is passed through.
+	params, err := ExtractModifyVolumeParameters(map[string]string{"iops": "1", "throughput": "1Mi"})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if params.IOPS == nil || *params.IOPS != 1 {
+		t.Errorf("Got iops %v; want 1", params.IOPS)
+	}
+	if params.Throughput == nil || *params.Throughput != 1 {
+		t.Errorf("Got throughput %v; want 1", params.Throughput)
+	}
+}

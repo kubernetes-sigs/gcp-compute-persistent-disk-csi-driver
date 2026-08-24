@@ -1033,15 +1033,22 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 
 	operation, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, targetDiskType, params)
 	if err != nil {
+		// Whether a conversion is already running is asked first, and separately
+		// from whether this one should be retried. The first is about the disk's
+		// safety: a conversion in flight means the disk is being rebuilt, so the
+		// volume must stay blocked no matter how the failure is classified. The
+		// second is only retry policy. Letting policy answer first risks
+		// releasing a volume whose disk GCE is still rewriting.
+		if isConversionInProgressError(err) {
+			gceCS.markConversionPending(ctx, volKey, volumeID)
+			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
+		}
 		if isUnsupportedConversionIntentError(err) {
 			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 		}
 		// The conversion will be retried, so the volume has to stay blocked in
 		// the meantime.
 		gceCS.markConversionPending(ctx, volKey, volumeID)
-		if isConversionInProgressError(err) {
-			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
-		}
 		if reason := conversionRetryReason(err); reason != "" {
 			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s will be retried: %s: %v", volumeID, currentDiskType, targetDiskType, reason, err)
 		}
@@ -1162,7 +1169,13 @@ func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.K
 	watcher := &conversionWatcher{cancel: cancel}
 	gceCS.registerConversionWatcher(volKey, watcher)
 
+	// Counted alongside the conversions started on detach, so that a caller which
+	// needs the background work settled can wait for all of it. Cancelling a
+	// watcher removes it from the registry at once, but the goroutine only stops
+	// a moment later, so the registry alone does not say when it is done.
+	gceCS.conversionWorkers.Add(1)
 	go func() {
+		defer gceCS.conversionWorkers.Done()
 		defer gceCS.unregisterConversionWatcher(volKey, watcher)
 		gceCS.pollConversion(ctx, project, volKey, opName)
 	}()
@@ -1498,6 +1511,12 @@ func (gceCS *GCEControllerServer) recordCompletedConversion(ctx context.Context,
 // with these, is treated as transient and retried.
 var terminalConversionReasons = sets.NewString(
 	"DISK_TYPE_CONVERSION_UNSUPPORTED",
+	// Values the API rejects outright, such as an IOPS figure below the
+	// minimum for the target type. Retrying sends the same rejected request
+	// again and leaves the volume queued behind a conversion that can never run.
+	"badRequest",
+	"invalidParameter",
+	"invalid",
 )
 
 // Reasons returned by the convert API that describe a condition the user or the
@@ -1535,24 +1554,16 @@ const conversionInProgressReason = "resourceNotReady"
 // retried. Note that the HTTP status alone cannot decide this: an in-progress
 // conversion is also reported as 400.
 func isUnsupportedConversionIntentError(err error) bool {
-	// 1. Check for specific terminal strings
-	if terminalConversionReasons.Has(conversionErrorReason(err)) {
-		return true
-	}
-
-	// ====================================================================
-	// TERMINAL ERROR CLASSIFICATION FOR BAD PARAMS
-	// ====================================================================
-	// 2. Catch generic GCP 400 Bad Request (e.g., "IOPS cannot be smaller than 3000")
-	var apiErr *googleapi.Error
-	if errors.As(err, &apiErr) {
-		// HTTP 400 is a Bad Request (Invalid parameters)
-		// HTTP 403 is Forbidden (Permissions)
-		if apiErr.Code == 400 || apiErr.Code == 403 {
-			return true
-		}
-	}
-	return false
+	// Classified by the reason rather than the HTTP status, because the status
+	// does not separate the cases. A conversion that is already running, a disk
+	// held by an instant snapshot and an IOPS value below the minimum are all
+	// reported as 400, and only the first two are worth retrying. Quota and rate
+	// limits arrive as 403, which the PRD requires be retried until they clear.
+	//
+	// An unrecognised reason is not treated as terminal: giving up releases the
+	// volume, and releasing one whose conversion is merely delayed is worse than
+	// retrying one that will not succeed.
+	return terminalConversionReasons.Has(conversionErrorReason(err))
 }
 
 // isConversionInProgressError reports whether the error means a conversion of
@@ -2226,8 +2237,9 @@ func (gceCS *GCEControllerServer) startQueuedConversionOnDetach(ctx context.Cont
 	}()
 }
 
-// WaitForConversionWorkers blocks until the conversions started on detach have
-// finished. The work happens in the background, so this is how a caller that
+// WaitForConversionWorkers blocks until the background conversion work has
+// finished, both the conversions started on detach and the watchers following
+// running ones. The work happens in the background, so this is how a caller that
 // needs it settled, such as a test, can wait for it.
 func (gceCS *GCEControllerServer) WaitForConversionWorkers() {
 	gceCS.conversionWorkers.Wait()

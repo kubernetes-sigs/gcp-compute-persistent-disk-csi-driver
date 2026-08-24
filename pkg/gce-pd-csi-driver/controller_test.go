@@ -2733,6 +2733,7 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
 
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+			defer gceDriver.cs.WaitForConversionWorkers()
 
 			_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 				VolumeId:          tc.volumeID,
@@ -6981,6 +6982,7 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 			fcp.InsertInstance(&compute.Instance{Name: node}, zone, node)
 
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer gceDriver.cs.WaitForConversionWorkers()
 
 			_, err, _ = gceDriver.cs.executeControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
 				VolumeId: testVolumeID,
@@ -7158,6 +7160,7 @@ func TestRunQueuedConversion(t *testing.T) {
 			fcp.ConversionTestParams.TypeConversionErr = tc.convertErr
 
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer gceDriver.cs.WaitForConversionWorkers()
 			_, volKey, err := common.VolumeIDToKey(testVolumeID)
 			if err != nil {
 				t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7283,6 +7286,7 @@ func TestConversionWatcher(t *testing.T) {
 			fcp.PollOperationErr = tc.operationErr
 
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer waitForNoConversionWatchers(gceDriver.cs)
 			_, volKey, err := common.VolumeIDToKey(testVolumeID)
 			if err != nil {
 				t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7354,6 +7358,7 @@ func TestConversionWatcherStopsOnVolumeDelete(t *testing.T) {
 	fcp.PollNotDoneTimes = math.MaxInt32
 
 	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer waitForNoConversionWatchers(gceDriver.cs)
 	_, volKey, err := common.VolumeIDToKey(testVolumeID)
 	if err != nil {
 		t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7402,6 +7407,7 @@ func TestConversionWatcherReplacesExisting(t *testing.T) {
 	fcp.PollNotDoneTimes = math.MaxInt32
 
 	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer waitForNoConversionWatchers(gceDriver.cs)
 	_, volKey, err := common.VolumeIDToKey(testVolumeID)
 	if err != nil {
 		t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7755,6 +7761,7 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+			defer gceDriver.cs.WaitForConversionWorkers()
 
 			_, err = gceDriver.cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
 				VolumeId:      testVolumeID,
@@ -7833,6 +7840,7 @@ func TestStartQueuedConversionOnDetach(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+			defer gceDriver.cs.WaitForConversionWorkers()
 			_, volKey, err := common.VolumeIDToKey(testVolumeID)
 			if err != nil {
 				t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7910,6 +7918,7 @@ func TestMarkConversionPendingKeepsRunningOperation(t *testing.T) {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer gceDriver.cs.WaitForConversionWorkers()
 			_, volKey, err := common.VolumeIDToKey(testVolumeID)
 			if err != nil {
 				t.Fatalf("Failed to convert volume id to key: %v", err)
@@ -7954,6 +7963,7 @@ func TestConversionInProgressKeepsOperation(t *testing.T) {
 	fcp.ConversionTestParams.TypeConversionErr = conversionAPIError(400, "resourceNotReady", "disk is busy")
 
 	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer gceDriver.cs.WaitForConversionWorkers()
 
 	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          testVolumeID,
@@ -7970,4 +7980,103 @@ func TestConversionInProgressKeepsOperation(t *testing.T) {
 	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != operation {
 		t.Errorf("Got conversion annotation %q; want the running operation %q", got, operation)
 	}
+}
+
+func TestConversionClassificationIsByReasonNotStatus(t *testing.T) {
+	// Every case here is an HTTP 400 or 403, so classifying on the status alone
+	// cannot tell them apart. Only the first can never succeed.
+	testCases := []struct {
+		name        string
+		err         error
+		expTerminal bool
+		reason      string
+	}{
+		{
+			name:        "a rejected parameter value is terminal",
+			err:         conversionAPIError(400, "badRequest", "Requested provisioned IOPS cannot be smaller than 3000."),
+			expTerminal: true,
+			reason:      "retrying sends the same rejected value again",
+		},
+		{
+			name:        "a conversion already running is not terminal",
+			err:         conversionAPIError(400, "resourceNotReady", "disk is busy"),
+			expTerminal: false,
+			reason:      "the disk is being rebuilt and the volume must stay blocked",
+		},
+		{
+			name:        "an instant snapshot is not terminal",
+			err:         conversionAPIError(400, "RESOURCE_IN_USE_BY_ANOTHER_RESOURCE", "in use"),
+			expTerminal: false,
+			reason:      "the user can delete the snapshot and the conversion then proceeds",
+		},
+		{
+			name:        "a quota denial is not terminal",
+			err:         conversionAPIError(403, "quotaExceeded", "Quota exceeded"),
+			expTerminal: false,
+			reason:      "the PRD requires retrying until the limit clears",
+		},
+		{
+			name:        "a rate limit is not terminal",
+			err:         conversionAPIError(403, "rateLimitExceeded", "too many requests"),
+			expTerminal: false,
+			reason:      "the PRD requires retrying until the limit clears",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isUnsupportedConversionIntentError(tc.err); got != tc.expTerminal {
+				t.Errorf("isUnsupportedConversionIntentError = %v; want %v because %s", got, tc.expTerminal, tc.reason)
+			}
+		})
+	}
+}
+
+func TestInProgressIsCheckedBeforeTerminal(t *testing.T) {
+	// resourceNotReady shares its status with the terminal cases, so if the
+	// terminal check ran first the volume would be released while GCE was still
+	// rebuilding its disk.
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+	fcp.ConversionTestParams.TypeConversionErr = conversionAPIError(400, "resourceNotReady", "disk is busy")
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer gceDriver.cs.WaitForConversionWorkers()
+	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          testVolumeID,
+		MutableParameters: map[string]string{"type": "hyperdisk-balanced"},
+	})
+
+	// Unavailable means "still going, ask again"; InvalidArgument would mean the
+	// modification had been abandoned.
+	if gotCode := status.Code(err); gotCode != codes.Unavailable {
+		t.Errorf("Expected Unavailable for a conversion already running, got %v (err: %v)", gotCode, err)
+	}
+
+	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+	}
+	// The volume has to stay blocked while the disk is being rebuilt.
+	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got == "" {
+		t.Errorf("Volume was left unblocked while a conversion was running")
+	}
+}
+
+// waitForNoConversionWatchers blocks until no conversion watcher is running, so
+// that a test does not restore package globals while a watcher is still using
+// them. A watcher deregisters only after it has finished, including the event it
+// emits after clearing the annotation.
+func waitForNoConversionWatchers(cs *GCEControllerServer) {
+	cs.WaitForConversionWorkers()
 }
