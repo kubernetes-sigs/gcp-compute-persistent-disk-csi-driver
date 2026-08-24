@@ -6696,6 +6696,7 @@ func TestListSnapshots_Concurrent(t *testing.T) {
 }
 
 func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
+	className := "vac-hyperdisk"
 	conversionPV := func(annotations map[string]string) *corev1.PersistentVolume {
 		return &corev1.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: annotations},
@@ -6709,11 +6710,29 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 			},
 		}
 	}
+	// conversionPVWithClaim is conversionPV plus a claimRef, for cases that need
+	// a VAC to still be resolvable from the PV.
+	conversionPVWithClaim := func(annotations map[string]string) *corev1.PersistentVolume {
+		pv := conversionPV(annotations)
+		pv.Spec.ClaimRef = &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"}
+		return pv
+	}
+	requestsHyperdisk := &storagev1beta1.VolumeAttributesClass{
+		ObjectMeta: metav1.ObjectMeta{Name: className},
+		DriverName: "pd.csi.storage.gke.io",
+		Parameters: map[string]string{"type": "hyperdisk-balanced"},
+	}
+	pvcWithClass := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+		Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+	}
 
 	testCases := []struct {
 		name               string
 		enablePdConversion bool
 		pv                 *corev1.PersistentVolume
+		pvc                *corev1.PersistentVolumeClaim
+		vac                *storagev1beta1.VolumeAttributesClass
 		// getClientErr makes the conversion state unreadable, standing in for an
 		// unreachable API server or missing RBAC.
 		getClientErr error
@@ -6732,10 +6751,21 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 			expErrCode:         codes.OK,
 		},
 		{
-			name:               "blocks attach while a conversion is queued",
+			name:               "blocks attach while a conversion is queued and still requested",
+			enablePdConversion: true,
+			pv:                 conversionPVWithClaim(map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending}),
+			pvc:                pvcWithClass,
+			vac:                requestsHyperdisk,
+			expErrCode:         codes.Unavailable,
+		},
+		{
+			// The VAC was removed while the conversion was still queued and the
+			// volume never detached to reconcile it there, so this is the only
+			// place left that notices the conversion is no longer wanted.
+			name:               "unblocks attach when a queued conversion's VolumeAttributesClass was removed",
 			enablePdConversion: true,
 			pv:                 conversionPV(map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending}),
-			expErrCode:         codes.Unavailable,
+			expErrCode:         codes.OK,
 		},
 		{
 			name:               "blocks attach while a conversion is running",
@@ -6781,6 +6811,12 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 				var objects []runtime.Object
 				if tc.pv != nil {
 					objects = append(objects, tc.pv)
+				}
+				if tc.pvc != nil {
+					objects = append(objects, tc.pvc)
+				}
+				if tc.vac != nil {
+					objects = append(objects, tc.vac)
 				}
 				return fake.NewSimpleClientset(objects...), nil
 			}
@@ -6830,13 +6866,18 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 
 func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1"
+	className := "vac-hyperdisk-extreme"
 
 	testCases := []struct {
 		name string
 		// diskType is the type the disk reports in GCE now.
 		diskType      string
 		pvAnnotations map[string]string
-		expErrCode    codes.Code
+		// withVACRequesting, if set, gives the PV a claimRef to a PVC whose
+		// VolumeAttributesClass still requests this type, so a queued
+		// conversion is still wanted rather than reconciled away.
+		withVACRequesting string
+		expErrCode        codes.Code
 		// expPVAnnotations are the annotations the PersistentVolume is expected
 		// to end with. A key mapped to the empty string is expected to be absent.
 		expPVAnnotations map[string]string
@@ -6875,14 +6916,17 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 		},
 		{
 			// A conversion waiting for a detach has not started, so a changed
-			// type cannot be attributed to it.
+			// type cannot be attributed to it. The class still asks for a type
+			// other than what the disk already reports, so the conversion also
+			// stays genuinely queued rather than being reconciled away.
 			name:     "does not complete a conversion that is only queued",
 			diskType: "hyperdisk-balanced",
 			pvAnnotations: map[string]string{
 				constants.DiskTypeConversionOperationKey: constants.ConversionStatePending,
 				constants.DiskTypeConvertedFromKey:       "pd-balanced",
 			},
-			expErrCode: codes.Unavailable,
+			withVACRequesting: "hyperdisk-extreme",
+			expErrCode:        codes.Unavailable,
 			expPVAnnotations: map[string]string{
 				constants.DiskTypeConversionOperationKey: constants.ConversionStatePending,
 				constants.DiskTypeConvertedToKey:         "",
@@ -6908,9 +6952,25 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			oldGetKubeClient := k8sclient.GetClient
 			defer func() { k8sclient.GetClient = oldGetKubeClient }()
-			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+			pv := &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: tc.pvAnnotations},
-			})
+			}
+			objects := []runtime.Object{pv}
+			if tc.withVACRequesting != "" {
+				pv.Spec.ClaimRef = &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"}
+				objects = append(objects,
+					&corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+						Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+					},
+					&storagev1beta1.VolumeAttributesClass{
+						ObjectMeta: metav1.ObjectMeta{Name: className},
+						DriverName: "pd.csi.storage.gke.io",
+						Parameters: map[string]string{"type": tc.withVACRequesting},
+					},
+				)
+			}
+			kubeClient := fake.NewSimpleClientset(objects...)
 			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
 
 			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: tc.diskType, SizeGb: 200}
@@ -7582,11 +7642,22 @@ func TestConversionErrorReasonPrefersErrorInfo(t *testing.T) {
 }
 
 func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
+	className := "vac-hyperdisk"
+	requestsHyperdisk := &storagev1beta1.VolumeAttributesClass{
+		ObjectMeta: metav1.ObjectMeta{Name: className},
+		DriverName: "pd.csi.storage.gke.io",
+		Parameters: map[string]string{"type": "hyperdisk-balanced"},
+	}
+
 	testCases := []struct {
 		name               string
 		enablePdConversion bool
 		annotations        map[string]string
-		expErrCode         codes.Code
+		// pvc is the PVC the PV's claimRef points at, or nil if the PV should
+		// have no claimRef, as if the PVC or its VAC reference were removed.
+		pvc        *corev1.PersistentVolumeClaim
+		vac        *storagev1beta1.VolumeAttributesClass
+		expErrCode codes.Code
 	}{
 		{
 			name:               "expands when no conversion is recorded",
@@ -7595,10 +7666,42 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 		},
 		{
 			// Resizing mid conversion races the copy the conversion is making.
-			name:               "blocks expand while a conversion is queued",
+			name:               "blocks expand while a conversion is queued and still requested",
 			enablePdConversion: true,
 			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
-			expErrCode:         codes.Unavailable,
+			pvc: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+				Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+			},
+			vac:        requestsHyperdisk,
+			expErrCode: codes.Unavailable,
+		},
+		{
+			// The VAC was deleted (or the PVC no longer references one) while
+			// the conversion was still queued, and the volume never detached
+			// to run startQueuedConversionOnDetach. Without this reconciling
+			// here too, the volume would stay blocked forever.
+			name:               "unblocks expand when a queued conversion's VolumeAttributesClass was removed",
+			enablePdConversion: true,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+			expErrCode:         codes.OK,
+		},
+		{
+			// The VAC still exists but no longer asks for a different type,
+			// e.g. it was edited back to the disk's current type.
+			name:               "unblocks expand when a queued conversion's VolumeAttributesClass no longer requests a different type",
+			enablePdConversion: true,
+			annotations:        map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending},
+			pvc: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+				Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+			},
+			vac: &storagev1beta1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{Name: className},
+				DriverName: "pd.csi.storage.gke.io",
+				Parameters: map[string]string{"type": "pd-balanced"},
+			},
+			expErrCode: codes.OK,
 		},
 		{
 			name:               "blocks expand while a conversion is running",
@@ -7631,9 +7734,19 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			oldGetKubeClient := k8sclient.GetClient
 			defer func() { k8sclient.GetClient = oldGetKubeClient }()
-			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+
+			pv := &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: tc.annotations},
-			})
+			}
+			objects := []runtime.Object{pv}
+			if tc.pvc != nil {
+				pv.Spec.ClaimRef = &corev1.ObjectReference{Name: tc.pvc.Name, Namespace: tc.pvc.Namespace}
+				objects = append(objects, tc.pvc)
+			}
+			if tc.vac != nil {
+				objects = append(objects, tc.vac)
+			}
+			kubeClient := fake.NewSimpleClientset(objects...)
 			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
 
 			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 20}

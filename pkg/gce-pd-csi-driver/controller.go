@@ -1385,9 +1385,21 @@ func (gceCS *GCEControllerServer) checkNoConversionInProgress(ctx context.Contex
 		return nil
 	}
 
-	// A conversion that never started cannot have finished, so there is nothing
-	// to reconcile and the volume stays blocked until it runs.
-	if opVal != constants.ConversionStatePending {
+	// A conversion that never started cannot have finished, but it can have
+	// been abandoned: the detach that would run it may never come, so this is
+	// also checked here rather than only when the volume finally detaches.
+	if opVal == constants.ConversionStatePending {
+		_, cancelReason, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
+		if err != nil {
+			klog.Errorf("Refusing to %s disk %s: could not tell whether its queued disk type conversion is still requested: %v", operation, volKey.Name, err)
+			return status.Errorf(codes.Unavailable, "cannot %s disk %s: could not determine whether the queued disk type conversion is still requested: %v", operation, volKey.Name, err)
+		}
+		if cancelReason != "" {
+			klog.V(4).Infof("Disk %s has a queued disk type conversion that is no longer requested, unblocking the %s: %s", volKey.Name, operation, cancelReason)
+			gceCS.cancelQueuedConversion(ctx, volKey, cancelReason)
+			return nil
+		}
+	} else {
 		done, err := gceCS.conversionHasCompleted(ctx, volKey, disk)
 		if err != nil {
 			klog.Errorf("Refusing to %s disk %s: could not tell whether its disk type conversion finished: %v", operation, volKey.Name, err)
@@ -1404,6 +1416,38 @@ func (gceCS *GCEControllerServer) checkNoConversionInProgress(ctx context.Contex
 
 	klog.Errorf("Refusing to %s disk %s: disk type conversion is in progress: %s", operation, volKey.Name, opVal)
 	return status.Errorf(codes.Unavailable, "cannot %s disk %s: a disk type conversion is in progress (%s)", operation, volKey.Name, opVal)
+}
+
+// queuedConversionOutcome reports whether a queued (Pending) disk type
+// conversion is still requested by the volume's current
+// VolumeAttributesClass. A non-empty cancelReason means the conversion
+// should be abandoned rather than run; params is only meaningful when
+// cancelReason is empty and err is nil, in which case params.DiskType is
+// guaranteed to be set.
+//
+// disk may be nil, in which case the disk's current type cannot be checked
+// against the class and the conversion is treated as still wanted rather
+// than cancelled without proof.
+func (gceCS *GCEControllerServer) queuedConversionOutcome(ctx context.Context, volKey *meta.Key, disk *gce.CloudDisk) (params parameters.ModifyVolumeParameters, cancelReason string, err error) {
+	parameterMap, exists, err := k8sclient.GetVolumeAttributesClassForPV(ctx, volKey.Name)
+	if err != nil {
+		return parameters.ModifyVolumeParameters{}, "", err
+	}
+	if !exists {
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass was removed", nil
+	}
+
+	extracted, err := parameters.ExtractModifyVolumeParameters(parameterMap)
+	if err != nil {
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err), nil
+	}
+	if extracted.DiskType == nil {
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass no longer asks for a disk type", nil
+	}
+	if disk != nil && disk.GetPDType() == *extracted.DiskType {
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("it is already %s", disk.GetPDType()), nil
+	}
+	return extracted, "", nil
 }
 
 // conversionHasCompleted reports whether the conversion recorded for a volume
@@ -2197,43 +2241,27 @@ func (gceCS *GCEControllerServer) WaitForConversionWorkers() {
 // actually run. A user who no longer wants the conversion clears the class on
 // their claim, and this is where that takes effect.
 func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, project string, volKey *meta.Key) {
-	parameterMap, exists, err := k8sclient.GetVolumeAttributesClassForPV(ctx, volKey.Name)
-	if err != nil {
-		klog.Warningf("Could not read the VolumeAttributesClass of disk %s, leaving its conversion queued: %v", volKey.Name, err)
-		return
-	}
-	if !exists {
-		// The user withdrew the conversion by clearing the class on their claim.
-		klog.V(4).Infof("Disk %s no longer has a VolumeAttributesClass, cancelling its queued conversion", volKey.Name)
-		gceCS.cancelQueuedConversion(ctx, volKey, "its VolumeAttributesClass was removed")
-		return
-	}
-
-	params, err := parameters.ExtractModifyVolumeParameters(parameterMap)
-	if err != nil {
-		klog.Errorf("Cannot convert disk %s, its VolumeAttributesClass is invalid: %v", volKey.Name, err)
-		gceCS.cancelQueuedConversion(ctx, volKey, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err))
-		return
-	}
-	if params.DiskType == nil {
-		// The class only tunes IOPS and throughput, which is not a conversion.
-		gceCS.cancelQueuedConversion(ctx, volKey, "its VolumeAttributesClass no longer asks for a disk type")
-		return
-	}
-
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	if err != nil {
 		klog.Warningf("Could not read disk %s to convert it, leaving its conversion queued: %v", volKey.Name, err)
 		return
 	}
-	currentDiskType := disk.GetPDType()
-	if currentDiskType == *params.DiskType {
-		// The disk is already what the class asks for, so there is nothing to
-		// convert. This is also how a conversion that completed elsewhere is
-		// noticed.
-		gceCS.cancelQueuedConversion(ctx, volKey, fmt.Sprintf("it is already %s", currentDiskType))
+
+	params, cancelReason, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
+	if err != nil {
+		klog.Warningf("Could not read the VolumeAttributesClass of disk %s, leaving its conversion queued: %v", volKey.Name, err)
 		return
 	}
+	if cancelReason != "" {
+		// The user withdrew the conversion, its class is invalid, or the disk is
+		// already the requested type, which is also how a conversion that
+		// completed elsewhere is noticed.
+		klog.V(4).Infof("Cancelling the queued conversion of disk %s: %s", volKey.Name, cancelReason)
+		gceCS.cancelQueuedConversion(ctx, volKey, cancelReason)
+		return
+	}
+
+	currentDiskType := disk.GetPDType()
 	if reason := unsupportedConversionReason(volKey, disk); reason != "" {
 		klog.Errorf("Cannot convert disk %s from %s to %s: %s", volKey.Name, currentDiskType, *params.DiskType, reason)
 		gceCS.cancelQueuedConversion(ctx, volKey, reason)
