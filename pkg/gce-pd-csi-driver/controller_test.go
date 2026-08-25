@@ -2588,6 +2588,19 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			expErrMessageSubstr: "exceeds the maximum",
 		},
 		{
+			// hyperdisk-extreme supports IOPS but not throughput in the test's
+			// ProvisionableDisksConfig; this asks for that to be enforced
+			// client-side rather than sent and rejected by the API.
+			name:                "rejects conversion when the target type does not support throughput",
+			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200},
+			volumeID:            testVolumeID,
+			mutableParameters:   map[string]string{"type": "hyperdisk-extreme", "throughput": "188Mi"},
+			enablePdConversion:  true,
+			expConvertCalled:    false,
+			expErrCode:          codes.InvalidArgument,
+			expErrMessageSubstr: "cannot specify throughput",
+		},
+		{
 			name:                "rejects conversion while the disk is attached",
 			disk:                &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-standard", SizeGb: 200, Users: []string{"instance-1"}},
 			volumeID:            testVolumeID,
@@ -7779,6 +7792,71 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 			_, err = gceDriver.cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
 				VolumeId:      testVolumeID,
 				CapacityRange: &csi.CapacityRange{RequiredBytes: common.GbToBytes(30)},
+			})
+
+			if gotCode := status.Code(err); gotCode != tc.expErrCode {
+				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
+			}
+		})
+	}
+}
+
+func TestCreateSnapshot_ConversionGuard(t *testing.T) {
+	testCases := []struct {
+		name               string
+		enablePdConversion bool
+		annotations        map[string]string
+		expErrCode         codes.Code
+	}{
+		{
+			name:               "creates a snapshot when no conversion is recorded",
+			enablePdConversion: true,
+			expErrCode:         codes.OK,
+		},
+		{
+			// The conversion snapshots the disk behind the scenes, so a
+			// concurrent snapshot request races it for the same resource.
+			name:               "blocks snapshot while a conversion is running",
+			enablePdConversion: true,
+			annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
+			},
+			expErrCode: codes.Unavailable,
+		},
+		{
+			name:               "does not consult the PV when conversion is disabled",
+			enablePdConversion: false,
+			annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
+			},
+			expErrCode: codes.OK,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+
+			pv := &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: tc.annotations},
+			}
+			kubeClient := fake.NewSimpleClientset(pv)
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 20}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
+			defer gceDriver.cs.WaitForConversionWorkers()
+
+			_, err = gceDriver.cs.CreateSnapshot(context.Background(), &csi.CreateSnapshotRequest{
+				Name:           name,
+				SourceVolumeId: testVolumeID,
 			})
 
 			if gotCode := status.Code(err); gotCode != tc.expErrCode {

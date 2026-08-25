@@ -1032,6 +1032,16 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 	}
 
+	// An IOPS or throughput value that the target type does not support is
+	// rejected here rather than sent to the convert API, the same way it is
+	// rejected on the plain IOPS/throughput update path below.
+	if params.IOPS != nil && !gceCS.diskSupportsIopsChange(targetDiskType) {
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: cannot specify IOPS for disk type %s", volumeID, currentDiskType, targetDiskType, targetDiskType)
+	}
+	if params.Throughput != nil && !gceCS.diskSupportsThroughputChange(targetDiskType) {
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: cannot specify throughput for disk type %s", volumeID, currentDiskType, targetDiskType, targetDiskType)
+	}
+
 	// Conversion requires the disk to be detached. Report this as retryable so
 	// the conversion starts once the workload using the volume is scaled down.
 	if users := existingDisk.GetUsers(); len(users) > 0 {
@@ -2659,6 +2669,14 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			return nil, status.Errorf(codes.NotFound, "CreateSnapshot could not find disk %v: %v", volKey.String(), err.Error())
 		}
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
+	}
+
+	// A disk type conversion snapshots the disk behind the scenes, so a
+	// concurrent snapshot request would race it for the same underlying
+	// resource. Serializing behind the conversion here means the caller sees
+	// a clear, retryable error instead of a GCE-side conflict.
+	if err := gceCS.checkNoConversionInProgress(ctx, volKey, disk, "snapshot"); err != nil {
+		return nil, err
 	}
 
 	snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)
