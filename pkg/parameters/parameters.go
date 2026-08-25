@@ -312,10 +312,8 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
 			}
-			// A value at or below zero is rejected by the API whatever the disk
-			// is, so it is refused here rather than sent and retried. What
-			// counts as too low for a given type and size is left to the API,
-			// which is the only thing that knows.
+			// A value at or below zero is invalid for every disk type. What
+			// counts as too low for a given type and size is left to the API.
 			if iops <= 0 {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %d, must be greater than zero", iops)
 			}

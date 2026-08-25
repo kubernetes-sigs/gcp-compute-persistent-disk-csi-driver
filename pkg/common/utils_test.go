@@ -1227,7 +1227,7 @@ func TestValidateMaxProvisioned(t *testing.T) {
 		{
 			name:       "hyperdisk-throughput within max",
 			diskType:   "hyperdisk-throughput",
-			sizeGb:     10240, // 10 TiB
+			sizeGb:     10240,             // 10 TiB
 			throughput: iopsInt64Ptr(900), // max is 90 * 10 = 900
 		},
 		{
