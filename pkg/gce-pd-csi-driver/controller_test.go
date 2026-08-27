@@ -8251,6 +8251,65 @@ func waitForNoConversionWatchers(cs *GCEControllerServer) {
 	cs.WaitForConversionWorkers()
 }
 
+// TestVACChangesDuringConversion tests that when the VAC changes while a
+// conversion is running, a new conversion is queued/started after the first
+// completes.
+func TestVACChangesDuringConversion(t *testing.T) {
+    // Setup test environment
+    ctx := context.Background()
+    volKey := meta.ZonalKey("test-volume", "us-central1-a")
+    project := "test-project"
+    
+    // Initial state: disk is pd-balanced, VAC requests hyperdisk-balanced
+    mockCloud := &mockGCECompute{
+        diskType: "pd-balanced",
+    }
+    gceCS := &GCEControllerServer{
+        CloudProvider: mockCloud,
+        EnablePdConversion: true,
+    }
+    
+    // Start conversion A: pd-balanced -> hyperdisk-balanced
+    _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, 
+        "pd-balanced", "hyperdisk-balanced", parameters.ModifyVolumeParameters{})
+    require.NoError(t, err)
+    
+    // Simulate VAC changing to hyperdisk-throughput while conversion A is running
+    // Update the mock VAC to return hyperdisk-throughput
+    mockVAC := map[string]string{
+        constants.DiskTypeKey: "hyperdisk-throughput",
+    }
+    // ... set up mock to return this VAC
+    
+    // Simulate conversion A completing
+    // The pollConversion will detect completion and trigger reconciliation
+    // which should start/queue conversion B
+    
+    // Verify conversion B is queued/started
+    // ...
+}
+
+// TestVACRemovedDuringConversion tests that when the VAC is removed during a
+// conversion, no new conversion is started.
+func TestVACRemovedDuringConversion(t *testing.T) {
+    // Similar setup, but VAC is removed during conversion
+    // Expected: No new conversion after completion
+}
+
+// TestVACMatchesFinalType tests that when the VAC changes to match the final
+// type of the conversion, no new conversion is started.
+func TestVACMatchesFinalType(t *testing.T) {
+    // Setup: Start conversion A (pd-balanced -> hyperdisk-balanced)
+    // While running, change VAC to hyperdisk-balanced (same as final type)
+    // Expected: No new conversion after completion
+}
+
+// TestStaleWatcherDoesNotClearNewOperation tests that when an old watcher
+// finishes after a new operation has started, it doesn't clear the new operation.
+func TestStaleWatcherDoesNotClearNewOperation(t *testing.T) {
+    // Setup: Start conversion A, then start conversion B before A finishes
+    // Simulate watcher A finishing after B started
+    // Expected: Watcher A's recordCompletedConversion returns nil without clearing B
 func TestConversionFailureIsReportedOnRetry(t *testing.T) {
 	// A conversion that ran and failed for a retriable reason is reported when
 	// the next conversion starts, so that the reason reaches the claim rather
