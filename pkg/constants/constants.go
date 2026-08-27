@@ -106,6 +106,7 @@ const (
 	DiskTypeConversionCompleteReason = "DiskTypeConversionComplete"
 	DiskTypeConversionRetryReason    = "DiskTypeConversionRetry"
 	DiskTypeConversionCancelReason   = "DiskTypeConversionCancelled"
+	DiskTypeConversionQueuedReason   = "DiskTypeConversionQueued"
 	DiskTypeConversionFailedReason   = "DiskTypeConversionFailed"
 	DiskTypeConversionAction         = "ConvertDiskType"
 )

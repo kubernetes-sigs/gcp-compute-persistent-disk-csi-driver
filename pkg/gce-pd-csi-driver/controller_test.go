@@ -8393,3 +8393,146 @@ func TestConversionSlotsAreNotOverhanded(t *testing.T) {
 		t.Errorf("Handed out %d slots to %d simultaneous requests; want 10", got, requests)
 	}
 }
+
+func TestStaleWatcherDoesNotClearNewerConversion(t *testing.T) {
+	// A conversion that has been superseded must not write its outcome: doing so
+	// would release a volume whose newer conversion is still running.
+	const oldOp = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-old"
+	const newOp = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-new"
+
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				constants.DiskTypeConversionOperationKey: newOp,
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
+			},
+		},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{EnablePdConversion: true})
+	_, volKey, err := common.VolumeIDToKey(testVolumeID)
+	if err != nil {
+		t.Fatalf("Failed to convert volume id to key: %v", err)
+	}
+
+	// The superseded conversion reports its outcome and must be ignored.
+	if err := gceDriver.cs.recordCompletedConversion(context.Background(), volKey, oldOp, "hyperdisk-balanced"); err != nil {
+		t.Fatalf("recordCompletedConversion returned an error: %v", err)
+	}
+
+	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+	}
+	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != newOp {
+		t.Errorf("The running conversion was cleared by a superseded one: got %q; want %q", got, newOp)
+	}
+	if _, ok := pv.Annotations[constants.DiskTypeConvertedToKey]; ok {
+		t.Errorf("A superseded conversion recorded converted-to")
+	}
+
+	// The conversion the volume is actually on still records normally.
+	if err := gceDriver.cs.recordCompletedConversion(context.Background(), volKey, newOp, "hyperdisk-balanced"); err != nil {
+		t.Fatalf("recordCompletedConversion returned an error: %v", err)
+	}
+	pv, getErr = kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+	}
+	if _, ok := pv.Annotations[constants.DiskTypeConversionOperationKey]; ok {
+		t.Errorf("The current conversion did not clear the operation annotation")
+	}
+	if got := pv.Annotations[constants.DiskTypeConvertedToKey]; got != "hyperdisk-balanced" {
+		t.Errorf("Got converted-to %q; want hyperdisk-balanced", got)
+	}
+	// The PRD requires both annotations after a conversion, so the record of
+	// what the disk was converted from has to survive.
+	if got := pv.Annotations[constants.DiskTypeConvertedFromKey]; got != "pd-balanced" {
+		t.Errorf("Got converted-from %q; want pd-balanced", got)
+	}
+}
+
+func TestVACChangedDuringConversionStartsAnother(t *testing.T) {
+	// The class can be changed while a conversion is running, so what it asks
+	// for when the conversion ends decides whether another one follows.
+	className := "vac-hd-extreme"
+	testCases := []struct {
+		name string
+		// vacType is what the class asks for once the first conversion ends.
+		vacType string
+		// diskTypeAfter is what the disk is after the first conversion.
+		diskTypeAfter  string
+		expectSecond   bool
+		expectedTarget string
+	}{
+		{
+			name:           "a class asking for a different type starts another conversion",
+			vacType:        "hyperdisk-extreme",
+			diskTypeAfter:  "hyperdisk-balanced",
+			expectSecond:   true,
+			expectedTarget: "hyperdisk-extreme",
+		},
+		{
+			name:          "a class matching the disk starts nothing",
+			vacType:       "hyperdisk-balanced",
+			diskTypeAfter: "hyperdisk-balanced",
+			expectSecond:  false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+			kubeClient := fake.NewSimpleClientset(
+				&corev1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{Name: name},
+					Spec: corev1.PersistentVolumeSpec{
+						ClaimRef: &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"},
+					},
+				},
+				&corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+					Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+				},
+				&storagev1beta1.VolumeAttributesClass{
+					ObjectMeta: metav1.ObjectMeta{Name: className},
+					DriverName: "pd.csi.storage.gke.io",
+					Parameters: map[string]string{"type": tc.vacType},
+				},
+			)
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: tc.diskTypeAfter, SizeGb: 200}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer gceDriver.cs.WaitForConversionWorkers()
+			_, volKey, err := common.VolumeIDToKey(testVolumeID)
+			if err != nil {
+				t.Fatalf("Failed to convert volume id to key: %v", err)
+			}
+
+			if err := gceDriver.cs.reconcileLatestVACAfterConversion(context.Background(), project, volKey, gce.CloudDiskFromV1(disk)); err != nil {
+				t.Fatalf("reconcileLatestVACAfterConversion returned an error: %v", err)
+			}
+
+			if got := fcp.ConversionTestParams.TypeConversionCalled; got != tc.expectSecond {
+				t.Errorf("Second conversion started=%v; want %v", got, tc.expectSecond)
+			}
+			if tc.expectSecond {
+				if got := fcp.ConversionTestParams.TypeConversionTargetType; got != tc.expectedTarget {
+					t.Errorf("Second conversion targeted %q; want %q", got, tc.expectedTarget)
+				}
+			}
+			gceDriver.cs.stopConversionWatcher(volKey)
+		})
+	}
+}
