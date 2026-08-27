@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -8326,12 +8327,14 @@ func TestConversionConcurrencyLimit(t *testing.T) {
 	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
 
 	// Two conversions already in flight fills the limit.
-	for _, op := range []string{"op-a", "op-b"} {
-		gceDriver.cs.registerConversionWatcher(&meta.Key{Name: op, Zone: zone}, &conversionWatcher{cancel: func() {}})
+	for i := 0; i < 2; i++ {
+		if _, ok := gceDriver.cs.acquireConversionSlot(); !ok {
+			t.Fatalf("Could not take slot %d of 2", i+1)
+		}
 	}
 
-	if running, ok := gceDriver.cs.conversionSlotAvailable(); ok {
-		t.Errorf("Slot reported available with %d conversions running and a limit of 2", running)
+	if running, ok := gceDriver.cs.acquireConversionSlot(); ok {
+		t.Errorf("Slot handed out with %d conversions running and a limit of 2", running)
 	}
 
 	// A conversion asked for now must be deferred, not sent to the API.
@@ -8356,8 +8359,37 @@ func TestConversionConcurrencyLimit(t *testing.T) {
 	}
 
 	// Freeing a slot lets the conversion through.
-	gceDriver.cs.stopConversionWatcher(&meta.Key{Name: "op-a", Zone: zone})
-	if _, ok := gceDriver.cs.conversionSlotAvailable(); !ok {
+	gceDriver.cs.releaseConversionSlot()
+	if _, ok := gceDriver.cs.acquireConversionSlot(); !ok {
 		t.Errorf("No slot available after one conversion finished")
+	}
+}
+
+func TestConversionSlotsAreNotOverhanded(t *testing.T) {
+	// Conversion requests arrive together, so slots have to be handed out one at
+	// a time. A check that read the count and acted on it separately would let
+	// every request through at the moment none of them had started yet.
+	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{EnablePdConversion: true})
+	gceDriver.cs.maxConcurrentConversionsOverride = 10
+
+	const requests = 200
+	var granted int64
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if _, ok := gceDriver.cs.acquireConversionSlot(); ok {
+				atomic.AddInt64(&granted, 1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&granted); got != 10 {
+		t.Errorf("Handed out %d slots to %d simultaneous requests; want 10", got, requests)
 	}
 }

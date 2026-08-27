@@ -79,6 +79,10 @@ type GCEControllerServer struct {
 	// default, maxConcurrentConversions.
 	maxConcurrentConversionsOverride int
 
+	// How many conversion slots are currently held. Guarded by
+	// conversionWatchersLock.
+	conversionSlotsInUse int
+
 	snapshots         []*csi.ListSnapshotsResponse_Entry
 	snapshotTokens    map[string]int
 	listSnapshotsLock sync.Mutex
@@ -1059,7 +1063,8 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// Held back rather than started, so that a migration of many volumes does not
 	// exceed the limit on concurrent conversions. The volume stays queued and the
 	// conversion is attempted again once a conversion in flight finishes.
-	if running, ok := gceCS.conversionSlotAvailable(); !ok {
+	running, admitted := gceCS.acquireConversionSlot()
+	if !admitted {
 		klog.V(4).Infof("Deferring the conversion of volume %s, %d conversions are already running", volumeID, running)
 		gceCS.markConversionPending(ctx, volKey, volumeID)
 		return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is waiting for one of the %d conversions already running to finish", volumeID, currentDiskType, targetDiskType, running)
@@ -1067,6 +1072,8 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 
 	operation, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, targetDiskType, params)
 	if err != nil {
+		// The conversion never started, so the slot it reserved goes back.
+		gceCS.releaseConversionSlot()
 		// A conversion already running means the disk is being rebuilt, so the
 		// volume stays blocked whatever the failure is classified as.
 		if isConversionInProgressError(err) {
@@ -1109,15 +1116,20 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 // requests that come back as a quota failure.
 const maxConcurrentConversions = 10
 
-// conversionSlotAvailable reports whether another conversion can be started now.
+// acquireConversionSlot reserves one of the conversions this driver runs at
+// once, reporting how many are now held and whether a slot was free.
 //
-// The count is of the conversions this driver is following, which is a floor
-// rather than the true number: conversions started by another cluster in the
-// same project, or by this driver before it restarted, are not counted. Going
-// over the limit is therefore still possible and is handled where it surfaces,
-// as a retriable quota failure from the API. Counting here keeps a migration of
-// many volumes from spending its calls on requests that are certain to fail.
-func (gceCS *GCEControllerServer) conversionSlotAvailable() (int, bool) {
+// The slot is taken before the conversion is requested rather than once it is
+// running, because requests arrive together: a check that only counted
+// conversions already started would let every request through at the moment
+// none of them had started yet. A caller that takes a slot owns it until it is
+// released, which happens when the conversion ends or when it fails to start.
+//
+// The count covers this driver only. Conversions started by another cluster in
+// the same project, or by this driver before it restarted, are not counted, so
+// the limit can still be exceeded. That is handled where it surfaces, as a
+// retriable quota failure from the API.
+func (gceCS *GCEControllerServer) acquireConversionSlot() (int, bool) {
 	limit := maxConcurrentConversions
 	if gceCS.maxConcurrentConversionsOverride > 0 {
 		limit = gceCS.maxConcurrentConversionsOverride
@@ -1126,8 +1138,22 @@ func (gceCS *GCEControllerServer) conversionSlotAvailable() (int, bool) {
 	gceCS.conversionWatchersLock.Lock()
 	defer gceCS.conversionWatchersLock.Unlock()
 
-	running := len(gceCS.conversionWatchers)
-	return running, running < limit
+	if gceCS.conversionSlotsInUse >= limit {
+		return gceCS.conversionSlotsInUse, false
+	}
+	gceCS.conversionSlotsInUse++
+	return gceCS.conversionSlotsInUse, true
+}
+
+// releaseConversionSlot gives back a slot taken by acquireConversionSlot, so
+// that a conversion waiting for one can start.
+func (gceCS *GCEControllerServer) releaseConversionSlot() {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if gceCS.conversionSlotsInUse > 0 {
+		gceCS.conversionSlotsInUse--
+	}
 }
 
 // markConversionPending records that a volume is waiting for a conversion that
@@ -1227,6 +1253,9 @@ func conversionOperationName(operation string) string {
 func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.Key, operation string) {
 	opName := conversionOperationName(operation)
 	if opName == "" {
+		// Nothing will follow this conversion, so the slot it holds goes back
+		// rather than staying held for a watcher that never runs.
+		gceCS.releaseConversionSlot()
 		return
 	}
 
@@ -1244,6 +1273,9 @@ func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.K
 	gceCS.conversionWorkers.Add(1)
 	go func() {
 		defer gceCS.conversionWorkers.Done()
+		// The conversion is over once the watcher stops following it, whether it
+		// finished, failed or was cancelled, so this is where its slot goes back.
+		defer gceCS.releaseConversionSlot()
 		defer gceCS.unregisterConversionWatcher(volKey, watcher)
 		gceCS.pollConversion(ctx, project, volKey, opName)
 	}()
@@ -2453,12 +2485,15 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 
 	// The volume stays queued when there is no slot, so the conversion is started
 	// by the next detach or the next time the class is applied.
-	if running, ok := gceCS.conversionSlotAvailable(); !ok {
+	running, admitted := gceCS.acquireConversionSlot()
+	if !admitted {
 		klog.V(4).Infof("Leaving the conversion of disk %s queued, %d conversions are already running", volKey.Name, running)
 		return
 	}
 
 	if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, *params.DiskType, params); err != nil {
+		// The conversion never started, so the slot it reserved goes back.
+		gceCS.releaseConversionSlot()
 		if isUnsupportedConversionIntentError(err) {
 			// Retrying cannot help, and leaving the volume queued would block it
 			// on a conversion that will never run.
