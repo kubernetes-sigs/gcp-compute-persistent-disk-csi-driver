@@ -8536,3 +8536,66 @@ func TestVACChangedDuringConversionStartsAnother(t *testing.T) {
 		})
 	}
 }
+
+func TestReconcileAfterConversionSurvivesWatcherCancellation(t *testing.T) {
+	// Recording a completion stops the watcher, which cancels the context the
+	// poll was using. The work that follows has to run on a context that
+	// outlives it, or it fails before it reads the class.
+	className := "vac-hd-extreme-reconcile"
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(
+		&corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: corev1.PersistentVolumeSpec{
+				ClaimRef: &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+			Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+		},
+		&storagev1beta1.VolumeAttributesClass{
+			ObjectMeta: metav1.ObjectMeta{Name: className},
+			DriverName: "pd.csi.storage.gke.io",
+			Parameters: map[string]string{"type": "hyperdisk-extreme"},
+		},
+	)
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer gceDriver.cs.WaitForConversionWorkers()
+	_, volKey, err := common.VolumeIDToKey(testVolumeID)
+	if err != nil {
+		t.Fatalf("Failed to convert volume id to key: %v", err)
+	}
+
+	// A context in the state the watcher's own context is left in.
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := gceDriver.cs.reconcileLatestVACAfterConversion(cancelledCtx, project, volKey, gce.CloudDiskFromV1(disk)); err == nil {
+		t.Log("reconcile on a cancelled context returned no error")
+	}
+	if fcp.ConversionTestParams.TypeConversionCalled {
+		t.Errorf("A cancelled context started a conversion")
+	}
+
+	// The same call on a live context must reach the class and act on it.
+	if err := gceDriver.cs.reconcileLatestVACAfterConversion(context.Background(), project, volKey, gce.CloudDiskFromV1(disk)); err != nil {
+		t.Fatalf("reconcile on a live context failed: %v", err)
+	}
+	if !fcp.ConversionTestParams.TypeConversionCalled {
+		t.Errorf("The class asked for hyperdisk-extreme but no conversion was started")
+	}
+	if got := fcp.ConversionTestParams.TypeConversionTargetType; got != "hyperdisk-extreme" {
+		t.Errorf("Conversion targeted %q; want hyperdisk-extreme", got)
+	}
+	gceDriver.cs.stopConversionWatcher(volKey)
+}

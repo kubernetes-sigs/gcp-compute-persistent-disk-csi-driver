@@ -1393,7 +1393,11 @@ func (gceCS *GCEControllerServer) pollConversion(ctx context.Context, project st
 
 		// The class may have been changed while this conversion was running, so
 		// what it asks for now decides whether another conversion follows.
-		if err := gceCS.reconcileLatestVACAfterConversion(ctx, project, volKey, disk); err != nil {
+		//
+		// Recording the completion stops this watcher, which cancels the context
+		// the poll was using, so the work that follows gets one that outlives it.
+		reconcileCtx := context.Background()
+		if err := gceCS.reconcileLatestVACAfterConversion(reconcileCtx, project, volKey, disk); err != nil {
 			klog.Warningf("Failed to act on the VolumeAttributesClass of volume %s after its conversion: %v", volKey.Name, err)
 		}
 		return
