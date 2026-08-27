@@ -8303,3 +8303,61 @@ func TestConversionFailureIsReportedOnRetry(t *testing.T) {
 	}
 	gceDriver.cs.stopConversionWatcher(volKey)
 }
+
+func TestConversionConcurrencyLimit(t *testing.T) {
+	// GCE rejects conversions past its concurrency limit, so the driver holds
+	// them back rather than spending calls on requests that cannot succeed.
+	oldGetKubeClient := k8sclient.GetClient
+	defer func() { k8sclient.GetClient = oldGetKubeClient }()
+	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+	})
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+	defer gceDriver.cs.WaitForConversionWorkers()
+	gceDriver.cs.maxConcurrentConversionsOverride = 2
+	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+
+	// Two conversions already in flight fills the limit.
+	for _, op := range []string{"op-a", "op-b"} {
+		gceDriver.cs.registerConversionWatcher(&meta.Key{Name: op, Zone: zone}, &conversionWatcher{cancel: func() {}})
+	}
+
+	if running, ok := gceDriver.cs.conversionSlotAvailable(); ok {
+		t.Errorf("Slot reported available with %d conversions running and a limit of 2", running)
+	}
+
+	// A conversion asked for now must be deferred, not sent to the API.
+	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          testVolumeID,
+		MutableParameters: map[string]string{"type": "hyperdisk-balanced"},
+	})
+	if gotCode := status.Code(err); gotCode != codes.Unavailable {
+		t.Errorf("Expected Unavailable while at the limit, got %v (err: %v)", gotCode, err)
+	}
+	if fcp.ConversionTestParams.TypeConversionCallCount != 0 {
+		t.Errorf("Made %d conversion calls while at the limit; want 0", fcp.ConversionTestParams.TypeConversionCallCount)
+	}
+
+	// The volume stays queued, so it is converted once a slot frees.
+	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+	}
+	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != constants.ConversionStatePending {
+		t.Errorf("Got conversion annotation %q; want %q", got, constants.ConversionStatePending)
+	}
+
+	// Freeing a slot lets the conversion through.
+	gceDriver.cs.stopConversionWatcher(&meta.Key{Name: "op-a", Zone: zone})
+	if _, ok := gceDriver.cs.conversionSlotAvailable(); !ok {
+		t.Errorf("No slot available after one conversion finished")
+	}
+}

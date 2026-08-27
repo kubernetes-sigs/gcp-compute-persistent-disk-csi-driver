@@ -67,6 +67,16 @@ const (
 	// gcpTagsRequestRateLimit is the tag request rate limit per second.
 	gcpTagsRequestRateLimit = 8
 
+	// gceConvertRequestRateLimit is the disk conversion request rate limit per
+	// second. GCE allows 375 disk conversion calls per minute per region, so
+	// this stays under that with room for the calls a retry makes.
+	gceConvertRequestRateLimit = 5
+
+	// gceConvertRequestTokenBucketSize is the burst size for disk conversion
+	// requests, so that a batch of volumes being converted together is not
+	// spread out any more than the limit requires.
+	gceConvertRequestTokenBucketSize = 5
+
 	// gcpTagsRequestTokenBucketSize is the burst/token bucket size used
 	// for limiting API requests.
 	gcpTagsRequestTokenBucketSize = 8
@@ -128,6 +138,11 @@ type CloudProvider struct {
 	waitForAttachConfig WaitForAttachConfig
 
 	tagsRateLimiter *rate.Limiter
+
+	// convertRateLimiter paces calls to the disk conversion API, so that a large
+	// migration does not spend its calls on requests the API would reject for
+	// exceeding the per-region rate.
+	convertRateLimiter *rate.Limiter
 
 	listInstancesConfig ListInstancesConfig
 
@@ -218,8 +233,11 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		listInstancesConfig: listInstancesConfig,
 		// GCP has a rate limit of 600 requests per minute, restricting
 		// here to 8 requests per second.
-		tagsRateLimiter:  common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
-		tenantServiceMap: make(map[string]*compute.Service),
+		tagsRateLimiter: common.NewLimiter(gcpTagsRequestRateLimit, gcpTagsRequestTokenBucketSize, true),
+		// GCE allows 375 disk conversion calls per minute per region, restricting
+		// here to 5 requests per second.
+		convertRateLimiter: common.NewLimiter(gceConvertRequestRateLimit, gceConvertRequestTokenBucketSize, true),
+		tenantServiceMap:   make(map[string]*compute.Service),
 	}
 
 	if multiTenancyEnabled {

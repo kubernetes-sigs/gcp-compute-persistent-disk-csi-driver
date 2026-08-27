@@ -75,6 +75,10 @@ type GCEControllerServer struct {
 	// conversionPollBackoff. Tests set it so they need not wait minutes.
 	conversionPollBackoffOverride wait.Backoff
 
+	// The most conversions this driver will have running at once. Zero means the
+	// default, maxConcurrentConversions.
+	maxConcurrentConversionsOverride int
+
 	snapshots         []*csi.ListSnapshotsResponse_Entry
 	snapshotTokens    map[string]int
 	listSnapshotsLock sync.Mutex
@@ -1052,6 +1056,15 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
 	}
 
+	// Held back rather than started, so that a migration of many volumes does not
+	// exceed the limit on concurrent conversions. The volume stays queued and the
+	// conversion is attempted again once a conversion in flight finishes.
+	if running, ok := gceCS.conversionSlotAvailable(); !ok {
+		klog.V(4).Infof("Deferring the conversion of volume %s, %d conversions are already running", volumeID, running)
+		gceCS.markConversionPending(ctx, volKey, volumeID)
+		return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is waiting for one of the %d conversions already running to finish", volumeID, currentDiskType, targetDiskType, running)
+	}
+
 	operation, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, targetDiskType, params)
 	if err != nil {
 		// A conversion already running means the disk is being rebuilt, so the
@@ -1088,6 +1101,33 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// The conversion has started but is not finished, so the requested
 	// attributes are not in effect yet.
 	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress (%s)", volumeID, currentDiskType, targetDiskType, operation)
+}
+
+// maxConcurrentConversions is how many disk type conversions this driver will
+// have running at once. GCE allows 10 concurrent conversion operations per
+// project per region and rejects the rest, so starting more only spends calls on
+// requests that come back as a quota failure.
+const maxConcurrentConversions = 10
+
+// conversionSlotAvailable reports whether another conversion can be started now.
+//
+// The count is of the conversions this driver is following, which is a floor
+// rather than the true number: conversions started by another cluster in the
+// same project, or by this driver before it restarted, are not counted. Going
+// over the limit is therefore still possible and is handled where it surfaces,
+// as a retriable quota failure from the API. Counting here keeps a migration of
+// many volumes from spending its calls on requests that are certain to fail.
+func (gceCS *GCEControllerServer) conversionSlotAvailable() (int, bool) {
+	limit := maxConcurrentConversions
+	if gceCS.maxConcurrentConversionsOverride > 0 {
+		limit = gceCS.maxConcurrentConversionsOverride
+	}
+
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	running := len(gceCS.conversionWatchers)
+	return running, running < limit
 }
 
 // markConversionPending records that a volume is waiting for a conversion that
@@ -2410,6 +2450,13 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 		klog.V(4).Infof("Ghost attachment cleared for disk %s, proceeding with conversion.", volKey.Name)
 	}
 	// ====================================================================
+
+	// The volume stays queued when there is no slot, so the conversion is started
+	// by the next detach or the next time the class is applied.
+	if running, ok := gceCS.conversionSlotAvailable(); !ok {
+		klog.V(4).Infof("Leaving the conversion of disk %s queued, %d conversions are already running", volKey.Name, running)
+		return
+	}
 
 	if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, *params.DiskType, params); err != nil {
 		if isUnsupportedConversionIntentError(err) {

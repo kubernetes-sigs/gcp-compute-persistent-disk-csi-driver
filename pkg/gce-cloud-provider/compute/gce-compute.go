@@ -1025,6 +1025,13 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 		params.ProvisionedThroughput = *provisionedThroughput
 	}
 
+	// Paced so that a migration of many volumes does not exceed the per-region
+	// limit on conversion calls. Waiting here costs a moment on a call whose
+	// operation runs for minutes, and saves a rejected request.
+	if err := cloud.convertRateLimiter.Wait(ctx); err != nil {
+		return "", fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err)
+	}
+
 	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).Context(ctx).Do()
 	if err != nil {
 		return "", err
