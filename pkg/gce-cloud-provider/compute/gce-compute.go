@@ -1059,7 +1059,17 @@ func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project,
 	}
 	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
 		opErr := op.Error.Errors[0]
-		return true, fmt.Errorf("operation %s failed: %s: %s", operationName, opErr.Code, opErr.Message)
+		// Returned as a googleapi.Error carrying the operation's own error code
+		// as the reason, so that the caller can classify the failure the same
+		// way it classifies one returned when the operation was requested.
+		return true, &googleapi.Error{
+			Code:    int(op.HttpErrorStatusCode),
+			Message: fmt.Sprintf("operation %s failed: %s: %s", operationName, opErr.Code, opErr.Message),
+			Errors: []googleapi.ErrorItem{{
+				Reason:  opErr.Code,
+				Message: opErr.Message,
+			}},
+		}
 	}
 	return true, nil
 }
