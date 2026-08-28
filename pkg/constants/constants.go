@@ -92,9 +92,23 @@ const (
 	DiskTypeConversionOperationKey = "pdcsi.gke.io/disk-type-conversion-operation"
 	DiskTypeConvertedFromKey       = "pdcsi.gke.io/disk-type-converted-from"
 	DiskTypeConvertedToKey         = "pdcsi.gke.io/disk-type-converted-to"
+	// DiskTypeConversionLastErrorKey holds the error reported by a conversion
+	// that ran and failed but will be retried, so that the failure can be
+	// passed through to the claim on the next attempt rather than being visible
+	// only as an event.
+	DiskTypeConversionLastErrorKey = "pdcsi.gke.io/disk-type-conversion-last-error"
 
 	// Conversion States
 	ConversionStatePending = "Pending"
+
+	// Reasons and actions for the events emitted while converting a disk type.
+	DiskTypeConversionStartReason    = "DiskTypeConversionStart"
+	DiskTypeConversionCompleteReason = "DiskTypeConversionComplete"
+	DiskTypeConversionRetryReason    = "DiskTypeConversionRetry"
+	DiskTypeConversionCancelReason   = "DiskTypeConversionCancelled"
+	DiskTypeConversionQueuedReason   = "DiskTypeConversionQueued"
+	DiskTypeConversionFailedReason   = "DiskTypeConversionFailed"
+	DiskTypeConversionAction         = "ConvertDiskType"
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines

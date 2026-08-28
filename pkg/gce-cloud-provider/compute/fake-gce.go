@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -64,6 +65,16 @@ type FakeCloudProvider struct {
 
 	// PD-on-Gen4 conversion testing fields
 	ConversionTestParams ConversionTestParams
+
+	// Controls for IsConvertOperationDone. PollNotDoneTimes is how many checks
+	// report the conversion as still running before it finishes, so a test can
+	// exercise a conversion that takes more than one check.
+	PollNotDoneTimes  int
+	PollErr           error
+	PollOperationErr  error
+	pollCallCount     int
+	pollOperationName string
+	pollLock          sync.Mutex
 
 	// marker to set disk status during InsertDisk operation.
 	mockDiskStatus string
@@ -345,7 +356,12 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceN
 	return nil
 }
 
-func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) error {
+func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error) {
+	// Conversions can be started from a background worker, so the record of
+	// what was asked for is shared with whoever is checking it.
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+
 	cloud.ConversionTestParams.TypeConversionCalled = true
 	cloud.ConversionTestParams.TypeConversionCallCount++
 	cloud.ConversionTestParams.TypeConversionTargetType = targetDiskType
@@ -353,14 +369,14 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	cloud.ConversionTestParams.TypeConversionThroughput = provisionedThroughput
 
 	if cloud.ConversionTestParams.TypeConversionErr != nil {
-		return cloud.ConversionTestParams.TypeConversionErr
+		return "", cloud.ConversionTestParams.TypeConversionErr
 	}
 
 	// The real API converts asynchronously, but the fake applies the new type
 	// immediately so tests can observe the end state.
 	disk, ok := cloud.disks[volKey.String()]
 	if !ok {
-		return notFoundError()
+		return "", notFoundError()
 	}
 	typeURI := cloud.GetDiskTypeURI(project, volKey, targetDiskType)
 	if disk.disk != nil {
@@ -369,7 +385,50 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	if disk.betaDisk != nil {
 		disk.betaDisk.Type = typeURI
 	}
-	return nil
+	return fmt.Sprintf("https://www.googleapis.com/compute/alpha/projects/%s/zones/%s/operations/operation-convert-%s", project, volKey.Zone, volKey.Name), nil
+}
+
+// IsConvertOperationDone reports the conversion as still running for the first
+// ConversionTestParams.PollNotDoneTimes calls, so that a test can exercise a
+// conversion that takes more than one check to finish.
+func (cloud *FakeCloudProvider) IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error) {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+
+	cloud.pollCallCount++
+	cloud.pollOperationName = operationName
+
+	if cloud.PollErr != nil {
+		return false, cloud.PollErr
+	}
+	if cloud.pollCallCount <= cloud.PollNotDoneTimes {
+		return false, nil
+	}
+	if cloud.PollOperationErr != nil {
+		return true, cloud.PollOperationErr
+	}
+	return true, nil
+}
+
+// ConversionCalled reports whether a disk type conversion was requested.
+func (cloud *FakeCloudProvider) ConversionCalled() bool {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.ConversionTestParams.TypeConversionCalled
+}
+
+// PollCalls reports how many times the conversion operation has been checked.
+func (cloud *FakeCloudProvider) PollCalls() int {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.pollCallCount
+}
+
+// PolledOperation reports the operation name that was last checked.
+func (cloud *FakeCloudProvider) PolledOperation() string {
+	cloud.pollLock.Lock()
+	defer cloud.pollLock.Unlock()
+	return cloud.pollOperationName
 }
 
 func (cloud *FakeCloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {

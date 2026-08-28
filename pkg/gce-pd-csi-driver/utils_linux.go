@@ -24,6 +24,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 )
@@ -39,11 +40,12 @@ func getDevicePath(ns *GCENodeServer, volumeID, partition string) (string, error
 	}
 	devicePaths := ns.DeviceUtils.GetDiskByIdPaths(deviceName, partition)
 	devicePath, err := ns.DeviceUtils.VerifyDevicePath(devicePaths, deviceName)
-	if err != nil {
+	if devicePath == "" || err != nil {
+		klog.Errorf("VerifyDevicePath failed for %q: %v", deviceName, err)
+		if err == nil {
+			return "", status.Error(codes.Internal, fmt.Sprintf("error verifying GCE PD (%q) is attached: unexpected empty devicePath", deviceName))
+		}
 		return "", status.Error(codes.Internal, fmt.Sprintf("error verifying GCE PD (%q) is attached: %v", deviceName, err.Error()))
-	}
-	if devicePath == "" {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Unable to find device path out of attempted paths: %v", devicePaths))
 	}
 	return devicePath, nil
 }
