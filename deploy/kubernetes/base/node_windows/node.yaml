@@ -29,6 +29,18 @@ spec:
             - --v=5
             - --csi-address=unix://C:\\csi\\csi.sock
             - --kubelet-registration-path=C:\\var\\lib\\kubelet\\plugins\\pd.csi.storage.gke.io\\csi.sock
+            - --http-endpoint=:9931
+          ports:
+            - containerPort: 9931
+              name: healthz
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 3
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
