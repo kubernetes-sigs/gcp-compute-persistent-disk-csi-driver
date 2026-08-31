@@ -97,12 +97,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should attach ROX 'multi-zone' PV instances to two separate VMs", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -189,12 +189,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create RWO 'multi-zone' PV instances from a previously created disk", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -288,12 +288,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create ROX 'multi-zone' PV from existing snapshot", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -436,12 +436,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create ROX 'multi-zone' PV from existing snapshot with no topology", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -575,12 +575,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create ROX 'multi-zone' PV from existing disk image", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -720,12 +720,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 		checkSkipMultiZoneTests()
 
 		// Create new driver and client
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -836,12 +836,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	It("Should create ROX 'multi-zone' PV that has empty disks in RWO mode", func() {
 		checkSkipMultiZoneTests()
 
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -949,12 +949,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should create ROX 'single-zone' PV that has empty disks in RWO mode", func() {
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -1236,12 +1236,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 
 	It("Should successfully run through entire lifecycle of a HdHA volume on instances in 2 zones", func() {
 		// Create new driver and client
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {
@@ -1322,12 +1322,12 @@ var _ = Describe("GCE PD CSI Driver Multi-Zone", func() {
 	})
 
 	It("Should create a HdHA instance, write to it, force-attach it to another instance, and read the same data", func() {
-		Expect(hyperdiskTestContexts).NotTo(BeEmpty())
+		Expect(mwTestContexts).NotTo(BeEmpty())
 
 		zoneToContext := map[string]*remote.TestContext{}
 		zones := []string{}
 
-		for _, tc := range hyperdiskTestContexts {
+		for _, tc := range mwTestContexts {
 			_, z, _ := tc.Instance.GetIdentity()
 			// Zone hasn't been seen before
 			if _, ok := zoneToContext[z]; !ok {

@@ -53,13 +53,14 @@ func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (st
 }
 
 func setupBinaries(architecture, tarDir, pkgPath, binPath string) error {
-	klog.V(4).Infof("Making binaries and copying to temp dir...")
+	klog.V(4).Infof("Setting up binaries at %s", binPath)
 	out, err := exec.Command("make", "-C", pkgPath, "GOARCH="+architecture).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err.Error())
 	}
 
 	// Copy binaries
+	klog.V(4).Infof("Copying binaries...")
 	if _, err := os.Stat(binPath); err != nil {
 		return fmt.Errorf("failed to locate test binary %s: %v", binPath, err.Error())
 	}

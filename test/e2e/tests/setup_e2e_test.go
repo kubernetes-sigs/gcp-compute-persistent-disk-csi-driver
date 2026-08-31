@@ -49,8 +49,11 @@ var (
 	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
 	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Rome", "Minimum CPU architecture")
 	mwMinCpuPlatform          = flag.String("min-cpu-platform-mw", "Intel Sapphire Rapids", "Minimum CPU architecture for multiwriter tests")
-	zones                     = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	zonesFlag                 = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	subnetwork                = flag.String("subnetwork", "", "Subnetwork to use. Must already exist in the region of a zone used for an instance. Ignored if empty")
 	machineType               = flag.String("machine-type", "n2d-standard-4", "Type of machine to provision instance on")
+	diskTypeDefault           = flag.String("disk-type-default", "pd-balanced", "Default disk type to use for --machine-type if not specified by the test.")
+	supportedDiskTypesFlag    = flag.String("supported-disk-types", "pd-standard,pd-balanced,pd-extreme,pd-ssd", "Supported disk types for --machine-type (comma-separated)")
 	imageURL                  = flag.String("image-url", "projects/ubuntu-os-cloud/global/images/family/ubuntu-minimal-2404-lts-amd64", "OS image url to get image from")
 	runInProw                 = flag.Bool("run-in-prow", false, "If true, use a Boskos loaned project and special CI service accounts and ssh keys")
 	deleteInstances           = flag.Bool("delete-instances", false, "Delete the instances after tests run")
@@ -59,18 +62,20 @@ var (
 	enableConfidentialCompute = flag.Bool("enable-confidential-compute", false, "Create VMs with confidential compute mode. This uses NVMe devices")
 	// Multi-writer is only supported on M3, C3, and N4
 	// https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#hd-multi-writer
-	hdMachineType    = flag.String("hyperdisk-machine-type", "c3-standard-4", "Type of machine to provision instance on, or `none' to skip")
-	hdMinCpuPlatform = flag.String("hyperdisk-min-cpu-platform", "Intel Sapphire Rapids", "Minimum CPU architecture")
+	mwMachineType = flag.String("machine-type-mw", "c3-standard-4", "Type of multiwriter machine to provision instance on, or `none' to skip")
 
 	// Some architectures don't have local ssd. Give way to opt out of tests like datacache.
 	skipLocalSsdTests = flag.Bool("skip-local-ssd-tests", false, "Skip local ssd tests like datacache")
 
-	testContexts          []*remote.TestContext
-	hyperdiskTestContexts []*remote.TestContext
-	computeService        *compute.Service
-	computeAlphaService   *computealpha.Service
-	computeBetaService    *computebeta.Service
-	kmsClient             *cloudkms.KeyManagementClient
+	testContexts        []*remote.TestContext
+	mwTestContexts      []*remote.TestContext
+	computeService      *compute.Service
+	computeAlphaService *computealpha.Service
+	computeBetaService  *computebeta.Service
+	kmsClient           *cloudkms.KeyManagementClient
+
+	zones              []string
+	supportedDiskTypes []string
 )
 
 func init() {
@@ -86,7 +91,8 @@ func TestE2E(t *testing.T) {
 var _ = BeforeSuite(func() {
 	var err error
 	numberOfInstancesPerZone := 3
-	zones := strings.Split(*zones, ",")
+	zones = strings.Split(*zonesFlag, ",")
+	supportedDiskTypes = strings.Split(*supportedDiskTypesFlag, ",")
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -113,8 +119,8 @@ var _ = BeforeSuite(func() {
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
 	testContexts = make([]*remote.TestContext, numberOfInstancesPerZone*len(zones))
-	if *hdMachineType != noMachineType {
-		hyperdiskTestContexts = make([]*remote.TestContext, len(zones))
+	if *mwMachineType != noMachineType {
+		mwTestContexts = make([]*remote.TestContext, len(zones))
 	}
 	var wg sync.WaitGroup
 	setupContext := func(idx int, zone string) {
@@ -130,13 +136,13 @@ var _ = BeforeSuite(func() {
 				klog.Infof("Added TestContext for node %s at %d", tc.Instance.GetName(), k)
 			}(zone, j)
 		}
-		if hyperdiskTestContexts != nil {
+		if mwTestContexts != nil {
 			wg.Add(1)
 			go func(curZone string) {
 				defer GinkgoRecover()
 				defer wg.Done()
-				tc := NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
-				hyperdiskTestContexts[idx] = tc
+				tc := NewTestContext(curZone, *mwMinCpuPlatform, *mwMachineType, 0, "0")
+				mwTestContexts[idx] = tc
 				klog.Infof("Added hyperdisk TestContext for node %s at %d", tc.Instance.GetName(), idx)
 			}(zone)
 		}
@@ -156,7 +162,7 @@ var _ = AfterSuite(func() {
 			tc.Instance.DeleteInstance()
 		}
 	}
-	for _, mwTc := range hyperdiskTestContexts {
+	for _, mwTc := range mwTestContexts {
 		err := remote.TeardownDriverAndClient(mwTc)
 		Expect(err).To(BeNil(), "Multiwriter Teardown Driver and Client failed with error")
 		if *deleteInstances {
@@ -172,22 +178,27 @@ func notEmpty(v string) bool {
 func getDriverConfig() testutils.DriverConfig {
 	return testutils.DriverConfig{
 		ExtraFlags: slices.Filter(nil, strings.Split(*extraDriverFlags, ","), notEmpty),
-		Zones:      strings.Split(*zones, ","),
+		Zones:      zones,
 	}
 }
 
-func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
-	return NewTestContext(zone, *minCpuPlatform, *machineType, instanceNumber)
-}
-
+// getLocalSsdCount returns the local ssd count to use for the test configuration.
+// If the machine type used for the test has a fixed number of local ssds (eg, the
+// gen4 *-lssd types), this will be ignored.
 func getLocalSsdCount() int64 {
 	if *skipLocalSsdTests {
 		return 0
 	}
+	// If in the future we want to test variable local ssd counts, this would be the
+	// place to plumb it through.
 	return constants.LocalSSDCountForDataCache
 }
 
-func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber string) *remote.TestContext {
+func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestContext {
+	return NewTestContext(zone, *minCpuPlatform, *machineType, getLocalSsdCount(), instanceNumber)
+}
+
+func NewTestContext(zone, minCpuPlatform, machineType string, localSsdCount int64, instanceNumber string) *remote.TestContext {
 	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
@@ -198,18 +209,17 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 		Zone:                      zone,
 		Name:                      nodeID,
 		MachineType:               machineType,
+		DiskTypeDefault:           *diskTypeDefault,
+		SupportedDiskTypes:        supportedDiskTypes,
 		ServiceAccount:            *serviceAccount,
 		ImageURL:                  *imageURL,
 		CloudtopHost:              *cloudtopHost,
 		EnableConfidentialCompute: *enableConfidentialCompute,
 		ComputeService:            computeService,
-		LocalSSDCount:             getLocalSsdCount(),
+		LocalSSDCount:             localSsdCount,
+		Subnetwork:                *subnetwork,
 	}
 
-	if machineType == *hdMachineType {
-		// Machine type is defaulted to c3-standard-2 which doesn't support LSSD and we don't need LSSD for HdHA test context
-		instanceConfig.LocalSSDCount = 0
-	}
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
 		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
@@ -244,6 +254,7 @@ func NewTestContext(zone, minCpuPlatform, machineType string, instanceNumber str
 	if err != nil {
 		klog.Fatalf("Failed to set up TestContext for instance %v: %v", i.GetName(), err)
 	}
+	tc.TestZones = zones
 
 	klog.Infof("Finished creating TestContext for node %s", tc.Instance.GetName())
 	return tc
@@ -255,8 +266,9 @@ func getRandomTestContext() *remote.TestContext {
 	rn := rand.Intn(len(testContexts) - 1)
 	return testContexts[rn]
 }
+
 func getRandomMwTestContext() *remote.TestContext {
-	Expect(hyperdiskTestContexts).ToNot(BeEmpty())
-	rn := rand.Intn(len(hyperdiskTestContexts))
-	return hyperdiskTestContexts[rn]
+	Expect(mwTestContexts).ToNot(BeEmpty())
+	rn := rand.Intn(len(mwTestContexts))
+	return mwTestContexts[rn]
 }

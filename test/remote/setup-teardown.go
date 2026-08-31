@@ -27,9 +27,10 @@ import (
 // TestContext holds the CSI Client handle to a remotely connected Driver
 // as well as a handle to the Instance that the driver is running on
 type TestContext struct {
-	Instance *InstanceInfo
-	Client   *CsiClient
-	proc     *processes
+	Instance  *InstanceInfo
+	Client    *CsiClient
+	TestZones []string
+	proc      *processes
 }
 
 // ClientConfig contains all the parameters required to package a new
@@ -59,7 +60,7 @@ func SetupInstance(cfg InstanceConfig) (*InstanceInfo, error) {
 		cfg: cfg,
 	}
 
-	err := instance.CreateOrGetInstance(int(cfg.LocalSSDCount))
+	err := instance.CreateOrGetInstance()
 	if err != nil {
 		return nil, err
 	}

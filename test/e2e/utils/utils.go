@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -50,13 +51,44 @@ type DriverConfig struct {
 	Zones           []string
 }
 
+// getPackageRoot starts in the current working directory and searches upwards
+// through parent directories until it finds the first directory containing "go.mod".
+// It returns the absolute path of that directory.
+func getPackageRoot() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current working directory: %w", err)
+	}
+
+	for {
+		goModPath := filepath.Join(currentDir, "go.mod")
+		info, err := os.Stat(goModPath)
+		if err == nil && !info.IsDir() {
+			return currentDir, nil
+		}
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			break
+		}
+		currentDir = parentDir
+	}
+
+	return "", fmt.Errorf("Could not find package root: go.mod not found in current or any parent directories")
+}
+
 func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverConfig) (*remote.TestContext, error) {
 	port := fmt.Sprintf("%v", 1024+rand.Intn(10000))
+	var pkgPath string
 	goPath, ok := os.LookupEnv("GOPATH")
-	if !ok {
-		return nil, fmt.Errorf("Could not find environment variable GOPATH")
+	if ok {
+		pkgPath = path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
+	} else {
+		var err error
+		if pkgPath, err = getPackageRoot(); err != nil {
+			return nil, err
+		}
 	}
-	pkgPath := path.Join(goPath, "src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/")
+
 	binPath := path.Join(pkgPath, "bin/gce-pd-csi-driver")
 
 	endpoint := fmt.Sprintf("tcp://localhost:%s", port)
@@ -77,7 +109,7 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 	}
 
 	extra_flags = append(extra_flags, fmt.Sprintf("--node-name=%s", constants.TestNode))
-	if instance.GetLocalSSD() > 0 {
+	if instance.HasLocalSSD() {
 		extra_flags = append(extra_flags, "--enable-data-cache")
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
@@ -279,7 +311,7 @@ func MkdirAll(instance *remote.InstanceInfo, dir string) error {
 }
 
 func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
-	output, err := instance.SSH("cp", src, dest)
+	output, err := instance.SSH("cp", "-f", src, dest)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s. Output: %v, errror: %v", src, dest, output, err.Error())
 	}
@@ -288,11 +320,11 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 
 func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
 	_, _ = instance.SSH("apt-get", "update")
-	for _, pkg := range pkgs {
-		output, err := instance.SSH("apt-get", "install", "-y", pkg)
-		if err != nil {
-			return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
-		}
+	cmdline := []string{"apt-get", "install", "-y"}
+	cmdline = append(cmdline, pkgs...)
+	output, err := instance.SSH(cmdline...)
+	if err != nil {
+		return fmt.Errorf("failed to install package %v. Output: %v, errror: %v", pkgs, output, err.Error())
 	}
 	return nil
 }
