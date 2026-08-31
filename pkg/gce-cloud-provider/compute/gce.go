@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -443,7 +444,28 @@ func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource, timeout
 		return nil, err
 	}
 
-	return oauth2.NewClient(ctx, tokenSource), nil
+	// Configure custom transport with ResponseHeaderTimeout to ensure hung GCE API
+	// socket reads fail fast and release driver volume locks.
+	baseTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+	}
+
+	customClient := &http.Client{
+		Transport: baseTransport,
+	}
+
+	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, customClient)
+	return oauth2.NewClient(ctxWithClient, tokenSource), nil
 }
 
 func getProjectAndZone(config *ConfigFile) (string, string, error) {
