@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -8303,95 +8302,6 @@ func TestConversionFailureIsReportedOnRetry(t *testing.T) {
 		t.Fatalf("Failed to convert volume id to key: %v", keyErr)
 	}
 	gceDriver.cs.stopConversionWatcher(volKey)
-}
-
-func TestConversionConcurrencyLimit(t *testing.T) {
-	// GCE rejects conversions past its concurrency limit, so the driver holds
-	// them back rather than spending calls on requests that cannot succeed.
-	oldGetKubeClient := k8sclient.GetClient
-	defer func() { k8sclient.GetClient = oldGetKubeClient }()
-	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-	})
-	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
-
-	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
-	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
-	}
-
-	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
-	defer gceDriver.cs.WaitForConversionWorkers()
-	gceDriver.cs.maxConcurrentConversionsOverride = 2
-	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
-
-	// Two conversions already in flight fills the limit.
-	for i := 0; i < 2; i++ {
-		if _, ok := gceDriver.cs.acquireConversionSlot(); !ok {
-			t.Fatalf("Could not take slot %d of 2", i+1)
-		}
-	}
-
-	if running, ok := gceDriver.cs.acquireConversionSlot(); ok {
-		t.Errorf("Slot handed out with %d conversions running and a limit of 2", running)
-	}
-
-	// A conversion asked for now must be deferred, not sent to the API.
-	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
-		VolumeId:          testVolumeID,
-		MutableParameters: map[string]string{"type": "hyperdisk-balanced"},
-	})
-	if gotCode := status.Code(err); gotCode != codes.Unavailable {
-		t.Errorf("Expected Unavailable while at the limit, got %v (err: %v)", gotCode, err)
-	}
-	if fcp.ConversionTestParams.TypeConversionCallCount != 0 {
-		t.Errorf("Made %d conversion calls while at the limit; want 0", fcp.ConversionTestParams.TypeConversionCallCount)
-	}
-
-	// The volume stays queued, so it is converted once a slot frees.
-	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if getErr != nil {
-		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != constants.ConversionStatePending {
-		t.Errorf("Got conversion annotation %q; want %q", got, constants.ConversionStatePending)
-	}
-
-	// Freeing a slot lets the conversion through.
-	gceDriver.cs.releaseConversionSlot()
-	if _, ok := gceDriver.cs.acquireConversionSlot(); !ok {
-		t.Errorf("No slot available after one conversion finished")
-	}
-}
-
-func TestConversionSlotsAreNotOverhanded(t *testing.T) {
-	// Conversion requests arrive together, so slots have to be handed out one at
-	// a time. A check that read the count and acted on it separately would let
-	// every request through at the moment none of them had started yet.
-	gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{EnablePdConversion: true})
-	gceDriver.cs.maxConcurrentConversionsOverride = 10
-
-	const requests = 200
-	var granted int64
-	var wg sync.WaitGroup
-	start := make(chan struct{})
-	for i := 0; i < requests; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			if _, ok := gceDriver.cs.acquireConversionSlot(); ok {
-				atomic.AddInt64(&granted, 1)
-			}
-		}()
-	}
-	close(start)
-	wg.Wait()
-
-	if got := atomic.LoadInt64(&granted); got != 10 {
-		t.Errorf("Handed out %d slots to %d simultaneous requests; want 10", got, requests)
-	}
 }
 
 func TestStaleWatcherDoesNotClearNewerConversion(t *testing.T) {

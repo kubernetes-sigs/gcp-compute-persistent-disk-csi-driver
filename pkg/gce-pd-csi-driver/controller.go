@@ -75,14 +75,6 @@ type GCEControllerServer struct {
 	// conversionPollBackoff. Tests set it so they need not wait minutes.
 	conversionPollBackoffOverride wait.Backoff
 
-	// The most conversions this driver will have running at once. Zero means the
-	// default, maxConcurrentConversions.
-	maxConcurrentConversionsOverride int
-
-	// How many conversion slots are currently held. Guarded by
-	// conversionWatchersLock.
-	conversionSlotsInUse int
-
 	snapshots         []*csi.ListSnapshotsResponse_Entry
 	snapshotTokens    map[string]int
 	listSnapshotsLock sync.Mutex
@@ -939,11 +931,9 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	// ====================================================================
-	// [FIX] CANCELLATION CLEANUP
-	// If the user completely removes the VAC (or the VAC is deleted),
-	// ensure no orphaned "Pending" states are left behind to brick the disk.
-	// ====================================================================
+	// A class that asks for nothing is how a volume's class is withdrawn, so a
+	// conversion still queued for it is dropped rather than left waiting for a
+	// class that no longer asks for anything.
 	if volumeModifyParams.DiskType == nil && volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
 		opVal, exists, _ := k8sclient.GetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey)
 		if exists && opVal == constants.ConversionStatePending {
@@ -955,7 +945,6 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		klog.V(4).Infof("Volume %s has empty parameters, nothing to modify.", volumeID)
 		return &csi.ControllerModifyVolumeResponse{}, nil
 	}
-	// ====================================================================
 
 	// If the VolumeAttributesClass requests a disk type that doesn't match the
 	// disk's actual type, this is a disk type conversion request rather than an
@@ -1060,20 +1049,8 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
 	}
 
-	// Held back rather than started, so that a migration of many volumes does not
-	// exceed the limit on concurrent conversions. The volume stays queued and the
-	// conversion is attempted again once a conversion in flight finishes.
-	running, admitted := gceCS.acquireConversionSlot()
-	if !admitted {
-		klog.V(4).Infof("Deferring the conversion of volume %s, %d conversions are already running", volumeID, running)
-		gceCS.markConversionPending(ctx, volKey, volumeID)
-		return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is waiting for one of the %d conversions already running to finish", volumeID, currentDiskType, targetDiskType, running)
-	}
-
 	operation, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, targetDiskType, params)
 	if err != nil {
-		// The conversion never started, so the slot it reserved goes back.
-		gceCS.releaseConversionSlot()
 		// A conversion already running means the disk is being rebuilt, so the
 		// volume stays blocked whatever the failure is classified as.
 		if isConversionInProgressError(err) {
@@ -1108,52 +1085,6 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// The conversion has started but is not finished, so the requested
 	// attributes are not in effect yet.
 	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress (%s)", volumeID, currentDiskType, targetDiskType, operation)
-}
-
-// maxConcurrentConversions is how many disk type conversions this driver will
-// have running at once. GCE allows 10 concurrent conversion operations per
-// project per region and rejects the rest, so starting more only spends calls on
-// requests that come back as a quota failure.
-const maxConcurrentConversions = 10
-
-// acquireConversionSlot reserves one of the conversions this driver runs at
-// once, reporting how many are now held and whether a slot was free.
-//
-// The slot is taken before the conversion is requested rather than once it is
-// running, because requests arrive together: a check that only counted
-// conversions already started would let every request through at the moment
-// none of them had started yet. A caller that takes a slot owns it until it is
-// released, which happens when the conversion ends or when it fails to start.
-//
-// The count covers this driver only. Conversions started by another cluster in
-// the same project, or by this driver before it restarted, are not counted, so
-// the limit can still be exceeded. That is handled where it surfaces, as a
-// retriable quota failure from the API.
-func (gceCS *GCEControllerServer) acquireConversionSlot() (int, bool) {
-	limit := maxConcurrentConversions
-	if gceCS.maxConcurrentConversionsOverride > 0 {
-		limit = gceCS.maxConcurrentConversionsOverride
-	}
-
-	gceCS.conversionWatchersLock.Lock()
-	defer gceCS.conversionWatchersLock.Unlock()
-
-	if gceCS.conversionSlotsInUse >= limit {
-		return gceCS.conversionSlotsInUse, false
-	}
-	gceCS.conversionSlotsInUse++
-	return gceCS.conversionSlotsInUse, true
-}
-
-// releaseConversionSlot gives back a slot taken by acquireConversionSlot, so
-// that a conversion waiting for one can start.
-func (gceCS *GCEControllerServer) releaseConversionSlot() {
-	gceCS.conversionWatchersLock.Lock()
-	defer gceCS.conversionWatchersLock.Unlock()
-
-	if gceCS.conversionSlotsInUse > 0 {
-		gceCS.conversionSlotsInUse--
-	}
 }
 
 // markConversionPending records that a volume is waiting for a conversion that
@@ -1253,9 +1184,6 @@ func conversionOperationName(operation string) string {
 func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.Key, operation string) {
 	opName := conversionOperationName(operation)
 	if opName == "" {
-		// Nothing will follow this conversion, so the slot it holds goes back
-		// rather than staying held for a watcher that never runs.
-		gceCS.releaseConversionSlot()
 		return
 	}
 
@@ -1276,9 +1204,6 @@ func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.K
 	gceCS.conversionWorkers.Add(1)
 	go func() {
 		defer gceCS.conversionWorkers.Done()
-		// The conversion is over once the watcher stops following it, whether it
-		// finished, failed or was cancelled, so this is where its slot goes back.
-		defer gceCS.releaseConversionSlot()
 		defer gceCS.unregisterConversionWatcher(volKey, watcher)
 		gceCS.pollConversion(ctx, project, volKey, operation, opName)
 	}()
@@ -2659,47 +2584,30 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 	}
 
 	currentDiskType := disk.GetPDType()
-	// [FIX] GCP EVENTUAL CONSISTENCY ("GHOST ATTACHMENT") RACE CONDITION
-	// ====================================================================
-	// Something attached the disk again between the detach and now, OR GCP
-	// is exhibiting eventual consistency and hasn't cleared the Users array yet.
+	// A disk still listing users just after it detached is usually the detach not
+	// yet visible rather than a new attachment, so the disk is read again for a
+	// short while before the conversion is left queued.
 	if users := disk.GetUsers(); len(users) > 0 {
-		klog.V(4).Infof("Disk %s shows users %v. Waiting briefly for GCP eventual consistency to clear...", volKey.Name, users)
+		klog.V(4).Infof("Disk %s still lists users %v, waiting for the detach to become visible", volKey.Name, users)
 
-		// Give GCP up to 10 seconds to sync its backend database
-		pollErr := wait.PollImmediate(1*time.Second, 10*time.Second, func() (bool, error) {
+		pollErr := wait.PollUntilContextTimeout(ctx, time.Second, 10*time.Second, true, func(ctx context.Context) (bool, error) {
 			refetchedDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 			if err != nil {
-				return false, err // Abort polling on real API error
+				return false, err
 			}
 			if len(refetchedDisk.GetUsers()) == 0 {
-				disk = refetchedDisk // Update our main disk variable!
-				return true, nil     // Detach fully synced!
+				disk = refetchedDisk
+				return true, nil
 			}
-			return false, nil // Still attached, keep checking
+			return false, nil
 		})
-
-		// If 10 seconds pass and it STILL has users, it is genuinely attached to a new pod.
 		if pollErr != nil {
-			klog.V(4).Infof("Disk %s still shows active users after detach window, leaving it queued", volKey.Name)
+			klog.V(4).Infof("Disk %s still lists users, leaving its conversion queued", volKey.Name)
 			return
 		}
-
-		klog.V(4).Infof("Ghost attachment cleared for disk %s, proceeding with conversion.", volKey.Name)
-	}
-	// ====================================================================
-
-	// The volume stays queued when there is no slot, so the conversion is started
-	// by the next detach or the next time the class is applied.
-	running, admitted := gceCS.acquireConversionSlot()
-	if !admitted {
-		klog.V(4).Infof("Leaving the conversion of disk %s queued, %d conversions are already running", volKey.Name, running)
-		return
 	}
 
 	if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, *params.DiskType, params); err != nil {
-		// The conversion never started, so the slot it reserved goes back.
-		gceCS.releaseConversionSlot()
 		if isUnsupportedConversionIntentError(err) {
 			// Retrying cannot help, and leaving the volume queued would block it
 			// on a conversion that will never run.
@@ -3408,10 +3316,6 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
-
-	// ====================================================================
-	// BLOCK RESIZE DURING CONVERSION
-	// ====================================================================
 
 	// Resizing a disk mid-conversion would race the conversion's own copy of the
 	// data, and the size the conversion restores is the one it started with.
