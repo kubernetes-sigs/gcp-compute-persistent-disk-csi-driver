@@ -1,4 +1,3 @@
-#TODO(#40): Force DaemonSet to not run on master.
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -19,6 +18,17 @@ spec:
       hostNetwork: true
       priorityClassName: csi-gce-pd-node
       serviceAccountName: csi-gce-pd-node-sa
+      # Set node affinity to prevent scheduling on control plane (master) nodes.
+      # Because this DaemonSet specifies a wildcard toleration (operator: Exists),
+      # it would otherwise be scheduled on control plane nodes.
+      # See: https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver/issues/40
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
       nodeSelector:
         kubernetes.io/os: linux
       containers:

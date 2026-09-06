@@ -149,6 +149,31 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err.Error())
 	}
 
+	// In GCE clusters created by kube-up.sh, the master node is tainted with
+	// node-role.kubernetes.io/control-plane:NoSchedule but lacks the corresponding
+	// label. Apply the standard label so that nodeAffinity rules in the DaemonSet
+	// can properly exclude it.
+	nodesCmd := exec.Command("kubectl", "get", "nodes", "-o", "jsonpath={.items[*].metadata.name}")
+	out, err := nodesCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to get nodes: %s, err: %w", out, err)
+	}
+	foundMaster := false
+	for _, node := range strings.Fields(string(out)) {
+		if strings.HasSuffix(node, "-master") {
+			foundMaster = true
+			labelCmd := exec.Command("kubectl", "label", "node", node, "node-role.kubernetes.io/control-plane=", "--overwrite")
+			out, err := labelCmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to label master node %s: %s, err: %w", node, out, err)
+			}
+			klog.Infof("Labeled master node %s with node-role.kubernetes.io/control-plane", node)
+		}
+	}
+	if !foundMaster {
+		klog.Warningf("No master node found with suffix '-master' to label with node-role.kubernetes.io/control-plane")
+	}
+
 	return nil
 }
 
