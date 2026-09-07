@@ -15,8 +15,8 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kubernetes-csi/csi-proxy/client v1.3.0
 	github.com/kubernetes-csi/csi-test/v5 v5.4.0
-	github.com/onsi/ginkgo/v2 v2.31.0
-	github.com/onsi/gomega v1.42.0
+	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/gomega v1.43.0
 	github.com/prometheus/client_golang v1.23.2
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0
 	go.opentelemetry.io/otel v1.43.0
