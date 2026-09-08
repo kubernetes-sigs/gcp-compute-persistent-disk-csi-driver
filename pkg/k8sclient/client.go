@@ -421,3 +421,47 @@ func isRetriableAPIError(err error) bool {
 		return true
 	}
 }
+
+// ClearVolumeAttributesClassForPV removes the VolumeAttributesClass from the
+// claim a volume is bound to, reporting whether it was removed.
+//
+// Kubernetes only allows the class to be cleared while the claim has never had
+// one applied, which is the state a claim is left in by a class it could not
+// act on. A claim that has had a class applied keeps it, and a cluster before
+// 1.34 refuses the change outright; neither is an error here, because the
+// caller is withdrawing a class the volume could not use rather than relying on
+// it being gone.
+func ClearVolumeAttributesClassForPV(ctx context.Context, pvName string) (bool, error) {
+	kubeClient, err := GetClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to get kubernetes client: %w", err)
+	}
+
+	pv, err := GetPersistentVolumeWithRetry(ctx, pvName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name == "" {
+		return false, nil
+	}
+
+	namespace, name := pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name
+	patch := []byte(`{"spec":{"volumeAttributesClassName":null}}`)
+	_, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
+			klog.V(4).Infof("The VolumeAttributesClass of PersistentVolumeClaim %s/%s was left in place: %v", namespace, name, err)
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to clear the VolumeAttributesClass of PersistentVolumeClaim %s/%s: %w", namespace, name, err)
+	}
+
+	klog.V(4).Infof("Cleared the VolumeAttributesClass of PersistentVolumeClaim %s/%s", namespace, name)
+	return true, nil
+}

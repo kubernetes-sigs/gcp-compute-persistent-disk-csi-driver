@@ -97,6 +97,9 @@ const (
 	// passed through to the claim on the next attempt rather than being visible
 	// only as an event.
 	DiskTypeConversionLastErrorKey = "pdcsi.gke.io/disk-type-conversion-last-error"
+	// DiskTypeConversionInfeasibleKey holds why a VolumeAttributesClass could
+	// not be acted on, so the reason outlives the class once it is withdrawn.
+	DiskTypeConversionInfeasibleKey = "pdcsi.gke.io/disk-type-conversion-infeasible"
 
 	// Conversion States
 	ConversionStatePending = "Pending"

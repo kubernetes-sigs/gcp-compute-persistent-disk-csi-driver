@@ -1019,6 +1019,7 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	}
 
 	if reason := unsupportedConversionReason(volKey, existingDisk); reason != "" {
+		gceCS.withdrawInfeasibleClass(ctx, volKey, volumeID, reason)
 		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
 	}
 
@@ -1026,6 +1027,7 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// checked against the disk's current size and IOPS, same as the plain
 	// IOPS/throughput update path below.
 	if err := common.ValidateMaxProvisioned(targetDiskType, existingDisk.GetSizeGb(), existingDisk.GetProvisionedIops(), params.IOPS, params.Throughput); err != nil {
+		gceCS.withdrawInfeasibleClass(ctx, volKey, volumeID, err.Error())
 		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 	}
 
@@ -1033,10 +1035,14 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// rejected here rather than sent to the convert API, the same way it is
 	// rejected on the plain IOPS/throughput update path below.
 	if params.IOPS != nil && !gceCS.diskSupportsIopsChange(targetDiskType) {
-		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: cannot specify IOPS for disk type %s", volumeID, currentDiskType, targetDiskType, targetDiskType)
+		reason := fmt.Sprintf("cannot specify IOPS for disk type %s", targetDiskType)
+		gceCS.withdrawInfeasibleClass(ctx, volKey, volumeID, reason)
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
 	}
 	if params.Throughput != nil && !gceCS.diskSupportsThroughputChange(targetDiskType) {
-		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: cannot specify throughput for disk type %s", volumeID, currentDiskType, targetDiskType, targetDiskType)
+		reason := fmt.Sprintf("cannot specify throughput for disk type %s", targetDiskType)
+		gceCS.withdrawInfeasibleClass(ctx, volKey, volumeID, reason)
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
 	}
 
 	// Conversion requires the disk to be detached. Report this as retryable so
@@ -1058,6 +1064,7 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
 		}
 		if isUnsupportedConversionIntentError(err) {
+			gceCS.withdrawInfeasibleClass(ctx, volKey, volumeID, err.Error())
 			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
 		}
 		// The conversion will be retried, so the volume has to stay blocked in
@@ -1085,6 +1092,36 @@ func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project s
 	// The conversion has started but is not finished, so the requested
 	// attributes are not in effect yet.
 	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress (%s)", volumeID, currentDiskType, targetDiskType, operation)
+}
+
+// withdrawInfeasibleClass records why a VolumeAttributesClass could not be acted
+// on and then takes it off the claim.
+//
+// The reason is written to the volume and reported as an event before the class
+// is removed, because removing it also clears the failure from the claim's
+// status: without recording it first, a user would be left with a volume that
+// looks as though nothing was ever asked of it.
+//
+// Withdrawing the class is best effort. Kubernetes only permits it while the
+// claim has never had a class applied, so a class that cannot be removed simply
+// stays, and the recorded reason explains it either way.
+func (gceCS *GCEControllerServer) withdrawInfeasibleClass(ctx context.Context, volKey *meta.Key, volumeID, reason string) {
+	if err := k8sclient.SetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionInfeasibleKey, reason); err != nil {
+		klog.Warningf("Failed to record why the VolumeAttributesClass of volume %s could not be used: %v", volumeID, err)
+	}
+
+	k8sclient.EmitPVEvent(ctx, volKey.Name, v1.EventTypeWarning, constants.DiskTypeConversionFailedReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion of volume %q cannot be done: %s", volKey.Name, reason))
+
+	cleared, err := k8sclient.ClearVolumeAttributesClassForPV(ctx, volKey.Name)
+	if err != nil {
+		klog.Warningf("Failed to withdraw the VolumeAttributesClass of volume %s: %v", volumeID, err)
+		return
+	}
+	if cleared {
+		k8sclient.EmitPVEvent(ctx, volKey.Name, v1.EventTypeNormal, constants.DiskTypeConversionCancelReason, constants.DiskTypeConversionAction,
+			fmt.Sprintf("The VolumeAttributesClass of volume %q was removed because it cannot be applied: %s", volKey.Name, reason))
+	}
 }
 
 // markConversionPending records that a volume is waiting for a conversion that
@@ -1125,6 +1162,13 @@ func (gceCS *GCEControllerServer) startDiskTypeConversion(ctx context.Context, p
 	if err != nil {
 		klog.Errorf("Failed to convert disk %s from %s to %s: %v", volKey.Name, currentDiskType, targetDiskType, err)
 		return "", err
+	}
+
+	// A conversion the API accepted clears any record of an earlier class it
+	// could not act on, so a stale reason is not left on a volume that is now
+	// converting.
+	if err := k8sclient.RemovePVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionInfeasibleKey); err != nil {
+		klog.Warningf("Failed to clear the recorded infeasible class of volume %s: %v", volKey.Name, err)
 	}
 
 	// Record the type the disk is being converted from before the operation, so

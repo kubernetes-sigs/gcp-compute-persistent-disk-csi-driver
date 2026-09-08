@@ -43,12 +43,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	clock "k8s.io/utils/clock/testing"
@@ -8508,4 +8510,123 @@ func TestReconcileAfterConversionSurvivesWatcherCancellation(t *testing.T) {
 		t.Errorf("Conversion targeted %q; want hyperdisk-extreme", got)
 	}
 	gceDriver.cs.stopConversionWatcher(volKey)
+}
+
+func TestInfeasibleClassIsRecordedThenWithdrawn(t *testing.T) {
+	// A class the volume cannot act on is taken off the claim, but only after
+	// the reason is recorded: removing the class also clears the failure from
+	// the claim's status, so without the record the volume would look as though
+	// nothing had been asked of it.
+	className := "vac-infeasible"
+	testCases := []struct {
+		name string
+		// currentClass is what the claim reports as already applied. Kubernetes
+		// only allows the class to be cleared while this is empty.
+		currentClass  string
+		expWithdrawn  bool
+		expReasonPart string
+	}{
+		{
+			name:          "a class that never applied is withdrawn",
+			expWithdrawn:  true,
+			expReasonPart: "cannot specify IOPS for disk type hyperdisk-throughput",
+		},
+		{
+			name:          "a class that has applied is left in place",
+			currentClass:  className,
+			expWithdrawn:  false,
+			expReasonPart: "cannot specify IOPS for disk type hyperdisk-throughput",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldGetKubeClient := k8sclient.GetClient
+			defer func() { k8sclient.GetClient = oldGetKubeClient }()
+
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+				Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+			}
+			if tc.currentClass != "" {
+				pvc.Status.CurrentVolumeAttributesClassName = &tc.currentClass
+			}
+			kubeClient := fake.NewSimpleClientset(
+				&corev1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{Name: name},
+					Spec: corev1.PersistentVolumeSpec{
+						ClaimRef: &corev1.ObjectReference{Name: "test-pvc", Namespace: "default"},
+					},
+				},
+				pvc,
+				&storagev1beta1.VolumeAttributesClass{
+					ObjectMeta: metav1.ObjectMeta{Name: className},
+					DriverName: "pd.csi.storage.gke.io",
+					Parameters: map[string]string{"type": "hyperdisk-throughput", "iops": "3000"},
+				},
+			)
+			// The fake client does not enforce the rule that the class can only be
+			// cleared before one has applied, so it is enforced here.
+			kubeClient.PrependReactor("patch", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if tc.currentClass != "" {
+					return true, nil, apierrors.NewInvalid(
+						corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim").GroupKind(),
+						"test-pvc",
+						nil)
+				}
+				return false, nil, nil
+			})
+			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
+			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
+			if err != nil {
+				t.Fatalf("Failed to create fake cloud provider: %v", err)
+			}
+			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
+			defer gceDriver.cs.WaitForConversionWorkers()
+
+			_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testVolumeID,
+				MutableParameters: map[string]string{"type": "hyperdisk-throughput", "iops": "3000"},
+			})
+			if gotCode := status.Code(err); gotCode != codes.InvalidArgument {
+				t.Fatalf("Expected InvalidArgument, got %v (err: %v)", gotCode, err)
+			}
+
+			// The reason has to outlive the class, whether or not it was removed.
+			pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+			if getErr != nil {
+				t.Fatalf("Failed to get PersistentVolume: %v", getErr)
+			}
+			recorded := pv.Annotations[constants.DiskTypeConversionInfeasibleKey]
+			if !strings.Contains(recorded, tc.expReasonPart) {
+				t.Errorf("Recorded reason %q does not contain %q", recorded, tc.expReasonPart)
+			}
+
+			// The failure is reported before anything is removed.
+			events, evErr := kubeClient.CoreV1().Events(metav1.NamespaceDefault).List(context.Background(), metav1.ListOptions{})
+			if evErr != nil {
+				t.Fatalf("Failed to list events: %v", evErr)
+			}
+			var reportedFailure bool
+			for _, ev := range events.Items {
+				if ev.Reason == constants.DiskTypeConversionFailedReason {
+					reportedFailure = true
+				}
+			}
+			if !reportedFailure {
+				t.Errorf("No %s event was emitted", constants.DiskTypeConversionFailedReason)
+			}
+
+			gotPVC, pvcErr := kubeClient.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), "test-pvc", metav1.GetOptions{})
+			if pvcErr != nil {
+				t.Fatalf("Failed to get PersistentVolumeClaim: %v", pvcErr)
+			}
+			withdrawn := gotPVC.Spec.VolumeAttributesClassName == nil
+			if withdrawn != tc.expWithdrawn {
+				t.Errorf("Class withdrawn=%v; want %v", withdrawn, tc.expWithdrawn)
+			}
+		})
+	}
 }
