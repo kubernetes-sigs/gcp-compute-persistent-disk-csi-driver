@@ -312,13 +312,27 @@ func ExtractModifyVolumeParameters(parameters map[string]string) (ModifyVolumePa
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %w", err)
 			}
+			// A value at or below zero is invalid for every disk type. What
+			// counts as too low for a given type and size is left to the API.
+			if iops <= 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid iops parameter: %d, must be greater than zero", iops)
+			}
 			modifyVolumeParams.IOPS = &iops
 		case "throughput":
 			throughput, err := convert.ConvertMiStringToInt64(value)
 			if err != nil {
 				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %w", err)
 			}
+			if throughput <= 0 {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain invalid throughput parameter: %d, must be greater than zero", throughput)
+			}
 			modifyVolumeParams.Throughput = &throughput
+		case "type":
+			diskType := strings.ToLower(strings.TrimSpace(value))
+			if diskType == "" {
+				return ModifyVolumeParameters{}, fmt.Errorf("parameters contain empty type parameter")
+			}
+			modifyVolumeParams.DiskType = &diskType
 		default:
 			return ModifyVolumeParameters{}, fmt.Errorf("parameters contain unknown parameter: %s", key)
 		}
