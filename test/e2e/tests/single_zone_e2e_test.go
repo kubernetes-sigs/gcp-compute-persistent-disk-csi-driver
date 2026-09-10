@@ -380,6 +380,43 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-ssd", ssdDiskType),
 	)
 
+	DescribeTable("Should succeed calling CreateVolume twice",
+		func(diskType string, diskSize int64) {
+			testContext := getRandomTestContext()
+
+			p, z, _ := testContext.Instance.GetIdentity()
+			client := testContext.Client
+
+			disk := typeToDisk[diskType]
+			volName := testNamePrefix + string(uuid.NewUUID())
+
+			// First CreateVolume call
+			vol1, err := client.CreateVolume(volName, disk.params, diskSize, nil, nil)
+			Expect(err).To(BeNil(), "First CreateVolume call failed")
+			Expect(vol1).ToNot(BeNil())
+
+			defer func() {
+				// Delete Disk
+				err := client.DeleteVolume(vol1.VolumeId)
+				Expect(err).To(BeNil(), "DeleteVolume failed")
+
+				// Validate Disk Deleted
+				_, err = computeService.Disks.Get(p, z, volName).Do()
+				Expect(gce.IsGCEError(err, "notFound")).To(BeTrue(), "Expected disk to not be found")
+			}()
+
+			// Second CreateVolume call with identical parameters
+			vol2, err := client.CreateVolume(volName, disk.params, diskSize, nil, nil)
+			Expect(err).To(BeNil(), "Second CreateVolume call failed")
+			Expect(vol2).ToNot(BeNil())
+			Expect(vol2.VolumeId).To(Equal(vol1.VolumeId), "Expected volume IDs to match for idempotent CreateVolume calls")
+		},
+		Entry("on pd-ssd", ssdDiskType, defaultSizeGb),
+		Entry("on hyperdisk-balanced", hdbDiskType, defaultHdBSizeGb),
+		Entry("on hyperdisk-extreme", hdxDiskType, defaultHdXSizeGb),
+		Entry("on hyperdisk-throughput", hdtDiskType, defaultHdTSizeGb),
+	)
+
 	DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
 		func(diskType string) {
 			testContext := getRandomTestContext()
