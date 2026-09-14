@@ -208,6 +208,9 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["patch"]
 ---
 
 kind: ClusterRole
@@ -220,6 +223,12 @@ rules:
     verbs:     ['use']
     resourceNames:
     - csi-gce-pd-node-psp-win
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["patch"]
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1
