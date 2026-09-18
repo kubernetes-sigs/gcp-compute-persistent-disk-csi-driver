@@ -36,6 +36,7 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -125,6 +126,8 @@ var (
 	runTaintWebhook    = flag.Bool("run-taint-webhook", false, "Enables the Mutating Admission Webhook (adds startup taints to Nodes to delay workloads until the CSINode resource is created)")
 	webhookPort        = flag.Int("webhook-port", 9443, "The port for the admission webhook to listen on")
 	taintMetricsAddr   = flag.String("taint-metrics-addr", ":8081", "The address the taint controller metrics endpoint binds to.")
+
+	enableNodeReadinessCondition = flag.Bool("enable-node-readiness-condition", false, "If set to true, the node driver will report node.gke.io/PDCSIReady=True to the Node status once csi-driver-registrar is healthy.")
 
 	version string
 )
@@ -369,6 +372,18 @@ func handle() {
 				}
 				go driver.StartWatcher(ctx, *nodeName)
 			}
+		}
+
+		if *enableNodeReadinessCondition {
+			kubeClient, err := k8sclient.GetClient()
+			if err != nil {
+				klog.Fatalf("Failed to create k8s client for node readiness reporter: %v", err.Error())
+			}
+			reporter, err := driver.NewNodeReadinessReporter(*nodeName, kubeClient)
+			if err != nil {
+				klog.Fatalf("Failed to create node readiness reporter: %v", err.Error())
+			}
+			go reporter.Run(ctx)
 		}
 
 	}
