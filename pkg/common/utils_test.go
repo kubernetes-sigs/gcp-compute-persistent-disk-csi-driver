@@ -1140,3 +1140,147 @@ func TestGetMinIopsThroughput(t *testing.T) {
 		})
 	}
 }
+
+func iopsInt64Ptr(v int64) *int64 { return &v }
+
+func TestValidateMaxProvisioned(t *testing.T) {
+	testcases := []struct {
+		name        string
+		diskType    string
+		sizeGb      int64
+		currentIops int64
+		iops        *int64
+		throughput  *int64
+		expectErr   bool
+	}{
+		{
+			name:     "hyperdisk-balanced IOPS within max",
+			diskType: "hyperdisk-balanced",
+			sizeGb:   500,
+			iops:     iopsInt64Ptr(160000),
+		},
+		{
+			name:      "hyperdisk-balanced IOPS above the flat cap",
+			diskType:  "hyperdisk-balanced",
+			sizeGb:    500,
+			iops:      iopsInt64Ptr(160001),
+			expectErr: true,
+		},
+		{
+			name:      "hyperdisk-balanced IOPS above the size-scaled max",
+			diskType:  "hyperdisk-balanced",
+			sizeGb:    100,
+			iops:      iopsInt64Ptr(50001), // max is 500 * 100 = 50000
+			expectErr: true,
+		},
+		{
+			name:       "hyperdisk-balanced throughput within max for requested IOPS",
+			diskType:   "hyperdisk-balanced",
+			sizeGb:     500,
+			iops:       iopsInt64Ptr(4000),
+			throughput: iopsInt64Ptr(1000), // max is 4000/4 = 1000
+		},
+		{
+			name:       "hyperdisk-balanced throughput above max for requested IOPS",
+			diskType:   "hyperdisk-balanced",
+			sizeGb:     500,
+			iops:       iopsInt64Ptr(4000),
+			throughput: iopsInt64Ptr(1001),
+			expectErr:  true,
+		},
+		{
+			name:        "hyperdisk-balanced throughput-only change uses the disk's current IOPS",
+			diskType:    "hyperdisk-balanced",
+			sizeGb:      500,
+			currentIops: 4000,
+			throughput:  iopsInt64Ptr(1001), // max is 4000/4 = 1000
+			expectErr:   true,
+		},
+		{
+			name:       "hyperdisk-balanced throughput above the flat cap",
+			diskType:   "hyperdisk-balanced",
+			sizeGb:     500,
+			iops:       iopsInt64Ptr(160000),
+			throughput: iopsInt64Ptr(2401), // max is min(2400, 160000/4) = 2400
+			expectErr:  true,
+		},
+		{
+			name:     "hyperdisk-extreme IOPS within max",
+			diskType: "hyperdisk-extreme",
+			sizeGb:   300,
+			iops:     iopsInt64Ptr(350000),
+		},
+		{
+			name:      "hyperdisk-extreme IOPS above the size-scaled max",
+			diskType:  "hyperdisk-extreme",
+			sizeGb:    100,
+			iops:      iopsInt64Ptr(120001), // max is 1200 * 100 = 120000
+			expectErr: true,
+		},
+		{
+			name:      "hyperdisk-extreme IOPS above the flat cap",
+			diskType:  "hyperdisk-extreme",
+			sizeGb:    300,
+			iops:      iopsInt64Ptr(350001),
+			expectErr: true,
+		},
+		{
+			name:       "hyperdisk-throughput within max",
+			diskType:   "hyperdisk-throughput",
+			sizeGb:     10240,             // 10 TiB
+			throughput: iopsInt64Ptr(900), // max is 90 * 10 = 900
+		},
+		{
+			name:       "hyperdisk-throughput above the size-scaled max",
+			diskType:   "hyperdisk-throughput",
+			sizeGb:     10240,
+			throughput: iopsInt64Ptr(901),
+			expectErr:  true,
+		},
+		{
+			name:       "hyperdisk-throughput above the flat cap",
+			diskType:   "hyperdisk-throughput",
+			sizeGb:     102400, // 100 TiB
+			throughput: iopsInt64Ptr(2401),
+			expectErr:  true,
+		},
+		{
+			name:       "hyperdisk-ml within max",
+			diskType:   "hyperdisk-ml",
+			sizeGb:     1000,
+			throughput: iopsInt64Ptr(1600000), // max is 1600 * 1000 = 1600000
+		},
+		{
+			name:       "hyperdisk-ml above the size-scaled max",
+			diskType:   "hyperdisk-ml",
+			sizeGb:     1000,
+			throughput: iopsInt64Ptr(1600001),
+			expectErr:  true,
+		},
+		{
+			name:       "hyperdisk-ml above the flat cap",
+			diskType:   "hyperdisk-ml",
+			sizeGb:     2000,
+			throughput: iopsInt64Ptr(2097153),
+			expectErr:  true,
+		},
+		{
+			name:       "unrecognized disk type is not validated",
+			diskType:   "pd-ssd",
+			sizeGb:     10,
+			iops:       iopsInt64Ptr(999999999),
+			throughput: iopsInt64Ptr(999999999),
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateMaxProvisioned(tc.diskType, tc.sizeGb, tc.currentIops, tc.iops, tc.throughput)
+			if tc.expectErr && err == nil {
+				t.Errorf("ValidateMaxProvisioned: expected an error, got nil")
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("ValidateMaxProvisioned: expected no error, got %v", err)
+			}
+		})
+	}
+}

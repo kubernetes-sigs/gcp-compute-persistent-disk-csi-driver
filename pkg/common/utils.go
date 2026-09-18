@@ -88,6 +88,28 @@ const (
 	HyperdiskExtremeIopsPerGB          = 2
 	HyperdiskThroughputThroughputPerGB = 10
 	BytesInGB                          = 1024
+
+	// Maximum provisioned IOPS/throughput ceilings, per
+	// https://cloud.google.com/compute/docs/disks/hyperdisk-perf-limits
+	//
+	// hyperdisk-balanced: max IOPS is MIN(500 * sizeGb, 160000); max
+	// throughput depends on the provisioned IOPS value (P) rather than size:
+	// MIN(2400, P/4) MiB/s.
+	HyperdiskBalancedMaxIops               = 160000
+	HyperdiskBalancedMaxThroughput         = 2400
+	HyperdiskBalancedThroughputIopsDivisor = 4
+	// hyperdisk-extreme: max IOPS is MIN(1200 * sizeGb, 350000). Throughput is
+	// not user-provisionable for this type.
+	HyperdiskExtremeMaxIopsPerGB = 1200
+	HyperdiskExtremeMaxIops      = 350000
+	// hyperdisk-throughput: max throughput is MIN(90 * sizeTiB, 2400) MiB/s.
+	// IOPS is not user-provisionable for this type.
+	HyperdiskThroughputMaxThroughputPerTiB = 90
+	HyperdiskThroughputMaxThroughput       = 2400
+	// hyperdisk-ml: max throughput is MIN(1600 * sizeGb, 2097152) MiB/s. IOPS
+	// is not user-provisionable for this type.
+	HyperdiskMLMaxThroughputPerGB = 1600
+	HyperdiskMLMaxThroughput      = 2097152
 )
 
 var (
@@ -587,4 +609,98 @@ func minThroughputForThroughput(disk *computev1.Disk, requestGb int64) (needed b
 		return true, 0, minRequiredThroughput
 	}
 	return false, 0, 0
+}
+
+// ValidateMaxProvisioned checks the requested provisioned IOPS and/or
+// throughput against GCE's published ceiling for diskType and sizeGb, so an
+// out-of-range request is rejected client-side instead of round-tripping to
+// the API.
+// https://cloud.google.com/compute/docs/disks/hyperdisk-perf-limits
+//
+// currentIops is the disk's already-provisioned IOPS. It is used as the basis
+// for hyperdisk-balanced's throughput ceiling, which depends on the
+// provisioned IOPS value rather than disk size, when the request changes
+// throughput without also changing IOPS.
+func ValidateMaxProvisioned(diskType string, sizeGb, currentIops int64, iops, throughput *int64) error {
+	switch {
+	case strings.Contains(diskType, parameters.DiskTypeHyperdiskBalanced):
+		return maxIopsThroughputForBalanced(sizeGb, currentIops, iops, throughput)
+	case strings.Contains(diskType, parameters.DiskTypeHdE):
+		return maxIopsForExtreme(sizeGb, iops)
+	case strings.Contains(diskType, parameters.DiskTypeHdT):
+		return maxThroughputForThroughputType(sizeGb, throughput)
+	case strings.Contains(diskType, parameters.DiskTypeHdML):
+		return maxThroughputForMLType(sizeGb, throughput)
+	}
+	return nil
+}
+
+func maxIopsThroughputForBalanced(sizeGb, currentIops int64, iops, throughput *int64) error {
+	maxIops := sizeGb * HyperdiskBalancedIopsPerGB
+	if maxIops > HyperdiskBalancedMaxIops {
+		maxIops = HyperdiskBalancedMaxIops
+	}
+	if iops != nil && *iops > maxIops {
+		return fmt.Errorf("provisioned IOPS %d exceeds the maximum of %d for a %d GiB hyperdisk-balanced disk", *iops, maxIops, sizeGb)
+	}
+	if throughput == nil {
+		return nil
+	}
+	// The throughput ceiling depends on the provisioned IOPS value (P) rather
+	// than size. Use the requested IOPS when this request also changes it,
+	// otherwise fall back to the disk's already-provisioned IOPS.
+	p := currentIops
+	if iops != nil {
+		p = *iops
+	}
+	maxThroughput := p / HyperdiskBalancedThroughputIopsDivisor
+	if maxThroughput > HyperdiskBalancedMaxThroughput {
+		maxThroughput = HyperdiskBalancedMaxThroughput
+	}
+	if *throughput > maxThroughput {
+		return fmt.Errorf("provisioned throughput %d MiB/s exceeds the maximum of %d MiB/s for provisioned IOPS %d on hyperdisk-balanced", *throughput, maxThroughput, p)
+	}
+	return nil
+}
+
+func maxIopsForExtreme(sizeGb int64, iops *int64) error {
+	if iops == nil {
+		return nil
+	}
+	maxIops := sizeGb * HyperdiskExtremeMaxIopsPerGB
+	if maxIops > HyperdiskExtremeMaxIops {
+		maxIops = HyperdiskExtremeMaxIops
+	}
+	if *iops > maxIops {
+		return fmt.Errorf("provisioned IOPS %d exceeds the maximum of %d for a %d GiB hyperdisk-extreme disk", *iops, maxIops, sizeGb)
+	}
+	return nil
+}
+
+func maxThroughputForThroughputType(sizeGb int64, throughput *int64) error {
+	if throughput == nil {
+		return nil
+	}
+	maxThroughput := sizeGb * HyperdiskThroughputMaxThroughputPerTiB / BytesInGB
+	if maxThroughput > HyperdiskThroughputMaxThroughput {
+		maxThroughput = HyperdiskThroughputMaxThroughput
+	}
+	if *throughput > maxThroughput {
+		return fmt.Errorf("provisioned throughput %d MiB/s exceeds the maximum of %d MiB/s for a %d GiB hyperdisk-throughput disk", *throughput, maxThroughput, sizeGb)
+	}
+	return nil
+}
+
+func maxThroughputForMLType(sizeGb int64, throughput *int64) error {
+	if throughput == nil {
+		return nil
+	}
+	maxThroughput := sizeGb * HyperdiskMLMaxThroughputPerGB
+	if maxThroughput > HyperdiskMLMaxThroughput {
+		maxThroughput = HyperdiskMLMaxThroughput
+	}
+	if *throughput > maxThroughput {
+		return fmt.Errorf("provisioned throughput %d MiB/s exceeds the maximum of %d MiB/s for a %d GiB hyperdisk-ml disk", *throughput, maxThroughput, sizeGb)
+	}
+	return nil
 }
