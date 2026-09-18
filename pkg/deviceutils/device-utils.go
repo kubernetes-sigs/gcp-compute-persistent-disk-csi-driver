@@ -374,8 +374,22 @@ func manuallySetDevicePath(deviceName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	devicePath := path.Join(diskByIdPath, diskGooglePrefix+devFsSerial)
-	return devicePath, os.Symlink(devFsPath, devicePath)
+	return setDevicePathSymlink(devFsPath, diskByIdPath, devFsSerial)
+}
+
+func setDevicePathSymlink(devFsPath, byIdDir, devFsSerial string) (string, error) {
+	devicePath := path.Join(byIdDir, diskGooglePrefix+devFsSerial)
+	// Create a temporary symlink in the same directory
+	tmpPath := path.Join(byIdDir, fmt.Sprintf(".tmp-%s-%d", diskGooglePrefix+devFsSerial, time.Now().UnixNano()))
+	if err := os.Symlink(devFsPath, tmpPath); err != nil {
+		return "", fmt.Errorf("failed to create temporary symlink: %w", err)
+	}
+	// rename to the corrected/correlated symlink
+	if err := os.Rename(tmpPath, devicePath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("failed to atomically replace symlink %s with %s: %w", devicePath, devFsPath, err)
+	}
+	return devicePath, nil
 }
 
 func udevadmTriggerForDiskIfExists(deviceName string) error {
