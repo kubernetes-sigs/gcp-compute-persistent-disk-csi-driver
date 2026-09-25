@@ -885,12 +885,6 @@ func TestIsDataCacheEnabledNodePool(t *testing.T) {
 			wantDataCacheEnabled: false,
 		},
 		{
-			name:                 "test node",
-			nodeName:             constants.TestNode,
-			dataCacheFlag:        true,
-			wantDataCacheEnabled: true,
-		},
-		{
 			name:                 "node name provided but data cache feature disabled",
 			nodeName:             "",
 			dataCacheFlag:        false,

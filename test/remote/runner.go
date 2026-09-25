@@ -32,7 +32,7 @@ func (i *InstanceInfo) UploadAndRun(archivePath, remoteWorkspace, driverRunCmd s
 	klog.V(4).Infof("Staging test binaries on %q", i.cfg.Name)
 
 	// Do not sudo here, so that we can use scp to copy test archive to the directdory.
-	if output, err := i.SSHNoSudo("mkdir", remoteWorkspace); err != nil {
+	if output, err := i.SSHNoSudo("mkdir", "-p", remoteWorkspace); err != nil {
 		// Exit failure with the error
 		return -1, fmt.Errorf("failed to create remoteWorkspace directory %q on instance %q: %v output: %q", remoteWorkspace, i.cfg.Name, err.Error(), output)
 	}

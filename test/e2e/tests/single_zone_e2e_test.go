@@ -60,6 +60,7 @@ const (
 	invalidSizeGb                       int64 = 66000
 	readyState                                = "READY"
 	standardDiskType                          = "pd-standard"
+	balancedDiskType                          = "pd-balanced"
 	ssdDiskType                               = "pd-ssd"
 	extremeDiskType                           = "pd-extreme"
 	hdbDiskType                               = "hyperdisk-balanced"
@@ -67,6 +68,7 @@ const (
 	hdtDiskType                               = "hyperdisk-throughput"
 	hdmlDiskType                              = "hyperdisk-ml"
 	hdhaDiskType                              = "hyperdisk-balanced-high-availability"
+	regionalReplication                       = "regional-pd"
 	provisionedIOPSOnCreate                   = "12345"
 	provisionedIOPSOnCreateInt                = int64(12345)
 	provisionedIOPSOnCreateDefaultInt         = int64(100000)
@@ -81,6 +83,12 @@ const (
 	defaultEpsilon                            = 500000000 // 500M
 )
 
+func checkSkipDiskType(tc *remote.TestContext, diskType string) {
+	if !tc.Instance.SupportsDiskType(diskType) {
+		Skip(fmt.Sprintf("%s does not support %s", tc.Instance.MachineType(), diskType))
+	}
+}
+
 var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should get reasonable volume limits from nodes with NodeGetInfo", func() {
 		testContext := getRandomTestContext()
@@ -90,7 +98,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(volumeLimit).To(Equal(defaultVolumeLimit))
 	})
 
-	It("[NVMe] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
+	It("[NVMe] [OS-Qualification] Should create->attach->stage->mount volume and check if it is writable, then unmount->unstage->detach->delete and check disk is deleted", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -98,7 +106,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -123,7 +131,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -187,7 +195,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("[NVMe] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
+	It("[NVMe] [OS-Qualification] Should automatically add a symlink between /dev/* and /dev/by-id if disk is not found", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -195,7 +203,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -257,15 +265,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should create disks in correct zones when topology is specified", func() {
+	It("[OS-Qualification] Should create disks in correct zones when topology is specified", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
 		p, _, _ := testContext.Instance.GetIdentity()
 
-		zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}
-
-		for _, zone := range zones {
+		for _, zone := range testContext.TestZones {
 			volName := testNamePrefix + string(uuid.NewUUID())
 			topReq := &csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -274,7 +280,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 					},
 				},
 			}
-			volume, err := testContext.Client.CreateVolume(volName, nil, defaultSizeGb, topReq, nil)
+			volume, err := testContext.CreateVolumeForInstance(volName, nil, defaultSizeGb, topReq, nil)
 			Expect(err).To(BeNil(), "Failed to create volume")
 			defer func() {
 				err = testContext.Client.DeleteVolume(volume.VolumeId)
@@ -286,71 +292,72 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 	})
 
-	It("Should create a volume with allowed disk topology and confirm disk support label", func() {
+	It("[OS-Qualification] Should create a volume with allowed disk topology and confirm disk support label", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
 		volName := testNamePrefix + string(uuid.NewUUID())
 		params := map[string]string{
-			"type": hdbDiskType,
 			// Required to enable the disk topology feature.
 			"use-allowed-disk-topology": "true",
 		}
 
+		zone := testContext.TestZones[0]
 		topReq := &csi.TopologyRequirement{
 			Requisite: []*csi.Topology{
 				{
-					Segments: map[string]string{constants.TopologyKeyZone: "us-central1-c"},
+					Segments: map[string]string{constants.TopologyKeyZone: zone},
 				},
 			},
 		}
 
-		volume, err := testContext.Client.CreateVolume(volName, params, defaultSizeGb, topReq, nil)
+		volume, err := testContext.CreateVolumeForInstance(volName, params, defaultSizeGb, topReq, nil)
 		Expect(err).To(BeNil(), "Failed to create volume")
 		defer func() {
 			err = testContext.Client.DeleteVolume(volume.VolumeId)
 			Expect(err).To(BeNil(), "Failed to delete volume")
 		}()
 
+		diskType, found := params[parameters.ParameterKeyType]
+		Expect(found).To(BeTrue())
+
 		// Confirm that the topologies include a disk support label
 		Expect(volume.AccessibleTopology).ToNot(BeEmpty(), "Volume should have accessible topologies")
 		Expect(volume.AccessibleTopology).To(HaveLen(1), "Expected exactly one accessible topology") // Zonal clusters have a single Topology.
 		segments := volume.AccessibleTopology[0].Segments
-		Expect(segments).To(HaveKeyWithValue(constants.TopologyKeyZone, "us-central1-c"), "Topology should include zone segment with value 'us-central1-c'")
-		Expect(segments).To(HaveKeyWithValue(common.DiskTypeLabelKey(hdbDiskType), "true"), "Topology should include disk type label with value 'true'")
+		Expect(segments).To(HaveKeyWithValue(constants.TopologyKeyZone, zone), "Topology should include zone segment with value 'us-central1-c'")
+		Expect(segments).To(HaveKeyWithValue(common.DiskTypeLabelKey(diskType), "true"), "Topology should include disk type label with value 'true'")
 	})
 
-	// TODO(hime): Enable this test once all release branches contain the fix from PR#1708.
-	// It("Should return InvalidArgument when disk size exceeds limit", func() {
-	// 	// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
-	// 	Expect(testContexts).ToNot(BeEmpty())
-	// 	testContext := getRandomTestContext()
+	It("Should return InvalidArgument when disk size exceeds limit", func() {
+		Expect(testContexts).ToNot(BeEmpty())
+		testContext := getRandomTestContext()
 
-	// 	zones := []string{"us-central1-c", "us-central1-b", "us-central1-a"}
+		for _, zone := range testContext.TestZones {
+			volName := testNamePrefix + string(uuid.NewUUID())
+			topReq := &csi.TopologyRequirement{
+				Requisite: []*csi.Topology{
+					{
+						Segments: map[string]string{constants.TopologyKeyZone: zone},
+					},
+				},
+			}
+			volume, err := testContext.CreateVolumeForInstance(volName, nil, invalidSizeGb, topReq, nil)
+			Expect(err).ToNot(BeNil(), "Failed to fetch error from create volume.")
+			// If this returns a different error code (like Unknown), the error wrapping logic in #1708 has regressed.
+			Expect(err.Error()).To(ContainSubstring("InvalidArgument"), "Failed to verify error code matches InvalidArgument.")
+			defer func() {
+				if volume != nil {
+					testContext.Client.DeleteVolume(volume.VolumeId)
+				}
+			}()
+		}
+	})
 
-	// 	for _, zone := range zones {
-	// 		volName := testNamePrefix + string(uuid.NewUUID())
-	// 		topReq := &csi.TopologyRequirement{
-	// 			Requisite: []*csi.Topology{
-	// 				{
-	// 					Segments: map[string]string{constants.TopologyKeyZone: zone},
-	// 				},
-	// 			},
-	// 		}
-	// 		volume, err := testContext.Client.CreateVolume(volName, nil, invalidSizeGb, topReq, nil)
-	// 		Expect(err).ToNot(BeNil(), "Failed to fetch error from create volume.")
-	// 		Expect(err.Error()).To(ContainSubstring("InvalidArgument"), "Failed to verify error code matches InvalidArgument.")
-	// 		defer func() {
-	// 			if volume != nil {
-	// 				testContext.Client.DeleteVolume(volume.VolumeId)
-	// 			}
-	// 		}()
-	// 	}
-	// })
-
-	DescribeTable("Should complete entire disk lifecycle with underspecified volume ID",
+	DescribeTable("[OS-Qualification] Should complete entire disk lifecycle with underspecified volume ID",
 		func(diskType string) {
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			p, z, _ := testContext.Instance.GetIdentity()
 			client := testContext.Client
@@ -380,7 +387,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-ssd", ssdDiskType),
 	)
 
-	DescribeTable("Should succeed calling CreateVolume twice",
+	DescribeTable("[OS-Qualification] Should succeed calling CreateVolume twice",
 		func(diskType string, diskSize int64) {
 			testContext := getRandomTestContext()
 
@@ -417,9 +424,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on hyperdisk-throughput", hdtDiskType, defaultHdTSizeGb),
 	)
 
-	DescribeTable("[NVMe] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
+	DescribeTable("[NVMe] [OS-Qualification] Should complete publish/unpublish lifecycle with underspecified volume ID and missing volume",
 		func(diskType string) {
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			p, z, _ := testContext.Instance.GetIdentity()
 			client := testContext.Client
@@ -458,26 +466,26 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should successfully create RePD in two zones in the drivers region when none are specified", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
+		checkSkipDiskType(testContext, balancedDiskType)
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client
 
-		p, z, _ := controllerInstance.GetIdentity()
-
-		region, err := common.GetRegionFromZones([]string{z})
-		Expect(err).To(BeNil(), "Failed to get region from zones")
+		p, _, _ := controllerInstance.GetIdentity()
+		region := controllerInstance.GetRegion()
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyType:            balancedDiskType,
+			parameters.ParameterKeyReplicationType: regionalReplication,
 		}, defaultRepdSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
 		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring(balancedDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
@@ -499,10 +507,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	DescribeTable("Should create and delete disk with default zone",
+	DescribeTable("[OS-Qualification] Should create and delete disk with default zone",
 		func(diskType string) {
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			p, z, _ := testContext.Instance.GetIdentity()
 			client := testContext.Client
@@ -546,6 +555,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		func(diskType string) {
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			p, z, _ := testContext.Instance.GetIdentity()
 			client := testContext.Client
@@ -584,10 +594,11 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-extreme", extremeDiskType),
 	)
 
-	DescribeTable("Should create and delete disk with labels",
+	DescribeTable("[OS-Qualification] Should create and delete disk with labels",
 		func(diskType string) {
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			p, z, _ := testContext.Instance.GetIdentity()
 			client := testContext.Client
@@ -634,14 +645,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-extreme", extremeDiskType),
 	)
 
-	It("Should create and delete snapshot for the volume with default zone", func() {
+	It("[OS-Qualification] Should create and delete snapshot for the volume with default zone", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, testContext.Instance.DefaultDiskType())
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
@@ -689,11 +700,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	DescribeTable("Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
+	DescribeTable("[OS-Qualification] Should create CMEK key, go through volume lifecycle, validate behavior on key revoke and restore",
 		func(diskType string) {
 			ctx := context.Background()
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			controllerInstance := testContext.Instance
 			controllerClient := testContext.Client
@@ -808,7 +820,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Entry("on pd-extreme", extremeDiskType),
 	)
 
-	It("Should create disks, attach them places, and verify List returns correct results", func() {
+	It("[OS-Qualification] Should create disks, attach them places, and verify List returns correct results", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
 
@@ -817,10 +829,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		nodeID := testContext.Instance.GetNodeID()
 
-		_, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		_, volID := createAndValidateUniqueZonalDisk(client, p, z, testContext.Instance.DefaultDiskType())
 		defer deleteVolumeOrError(client, volID)
 
-		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		_, secondVolID := createAndValidateUniqueZonalDisk(client, p, z, testContext.Instance.DefaultDiskType())
 		defer deleteVolumeOrError(client, secondVolID)
 
 		// Attach volID to current instance
@@ -841,26 +853,26 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should create and delete snapshot for RePD in two zones ", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
+		checkSkipDiskType(testContext, balancedDiskType)
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client
 
-		p, z, _ := controllerInstance.GetIdentity()
-
-		region, err := common.GetRegionFromZones([]string{z})
-		Expect(err).To(BeNil(), "Failed to get region from zones")
+		p, _, _ := controllerInstance.GetIdentity()
+		region := controllerInstance.GetRegion()
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyType:            balancedDiskType,
+			parameters.ParameterKeyReplicationType: regionalReplication,
 		}, defaultRepdSizeGb, nil, nil)
 		Expect(err).To(BeNil(), "CreateVolume failed with error: %v", err)
 
 		// Validate Disk Created
 		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring(balancedDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
@@ -911,14 +923,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}()
 	})
 
-	It("Should get correct VolumeStats for Block", func() {
+	It("[OS-Qualification] Should get correct VolumeStats for Block", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -948,14 +960,14 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 	})
 
-	It("Should get correct VolumeStats", func() {
+	It("[OS-Qualification] Should get correct VolumeStats", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -1052,6 +1064,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		func(diskType string) {
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			controllerInstance := testContext.Instance
 			controllerClient := testContext.Client
@@ -1105,14 +1118,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, testContext.Instance.DefaultDiskType())
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
 
-		// Convert GCP zone to region, e.g. us-central1-a => us-central1
-		// This is safe because we hardcode the zones.
-		snapshotLocation := z[:len(z)-2]
+		snapshotLocation := testContext.Instance.GetRegion()
 
 		snapshotParams := map[string]string{
 			parameters.ParameterKeyStorageLocations:          snapshotLocation,
@@ -1170,7 +1181,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContext.Client
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, testContext.Instance.DefaultDiskType())
 
 		// Create Snapshot
 		snapshotName := testNamePrefix + string(uuid.NewUUID())
@@ -1235,12 +1246,13 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		p, z, _ := controllerInstance.GetIdentity()
 
 		// Create Source Disk
-		_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z, standardDiskType)
+		_, srcVolID := createAndValidateUniqueZonalDisk(controllerClient, p, z, testContext.Instance.DefaultDiskType())
 
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
 			parameters.ParameterKeyReplicationType: "none",
+			parameters.ParameterKeyType:            testContext.Instance.DefaultDiskType(),
 		}, defaultSizeGb,
 			&csi.TopologyRequirement{
 				Requisite: []*csi.Topology{
@@ -1262,7 +1274,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Validate Disk Created
 		cloudDisk, err := computeService.Disks.Get(p, z, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring(testContext.Instance.DefaultDiskType()))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
@@ -1284,24 +1296,25 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should successfully create RePD from a zonal PD VolumeContentSource", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
+		checkSkipDiskType(testContext, balancedDiskType)
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client
 
-		p, z, _ := controllerInstance.GetIdentity()
-
-		region, err := common.GetRegionFromZones([]string{z})
-		Expect(err).To(BeNil(), "Failed to get region from zones")
+		p, _, _ := controllerInstance.GetIdentity()
+		region := controllerInstance.GetRegion()
 
 		// Create Source Disk
 		srcVolName := testNamePrefix + string(uuid.NewUUID())
 		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
 			parameters.ParameterKeyReplicationType: "none",
+			parameters.ParameterKeyType:            balancedDiskType,
 		}, defaultRepdSizeGb, nil, nil)
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyType:            balancedDiskType,
+			parameters.ParameterKeyReplicationType: regionalReplication,
 		}, defaultRepdSizeGb, nil,
 			&csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
@@ -1316,7 +1329,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Validate Disk Created
 		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring(balancedDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
@@ -1349,24 +1362,25 @@ var _ = Describe("GCE PD CSI Driver", func() {
 	It("Should successfully create RePD from a RePD VolumeContentSource", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
+		checkSkipDiskType(testContext, balancedDiskType)
 
 		controllerInstance := testContext.Instance
 		controllerClient := testContext.Client
 
-		p, z, _ := controllerInstance.GetIdentity()
-
-		region, err := common.GetRegionFromZones([]string{z})
-		Expect(err).To(BeNil(), "Failed to get region from zones")
+		p, _, _ := controllerInstance.GetIdentity()
+		region := controllerInstance.GetRegion()
 
 		// Create Source Disk
 		srcVolName := testNamePrefix + string(uuid.NewUUID())
 		srcVolume, err := controllerClient.CreateVolume(srcVolName, map[string]string{
-			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyType:            balancedDiskType,
+			parameters.ParameterKeyReplicationType: regionalReplication,
 		}, defaultRepdSizeGb, nil, nil)
 		// Create Disk
 		volName := testNamePrefix + string(uuid.NewUUID())
 		volume, err := controllerClient.CreateVolume(volName, map[string]string{
-			parameters.ParameterKeyReplicationType: "regional-pd",
+			parameters.ParameterKeyType:            balancedDiskType,
+			parameters.ParameterKeyReplicationType: regionalReplication,
 		}, defaultRepdSizeGb, nil,
 			&csi.VolumeContentSource{
 				Type: &csi.VolumeContentSource_Volume{
@@ -1381,7 +1395,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		// Validate Disk Created
 		cloudDisk, err := computeService.RegionDisks.Get(p, region, volName).Do()
 		Expect(err).To(BeNil(), "Could not get disk from cloud directly")
-		Expect(cloudDisk.Type).To(ContainSubstring(standardDiskType))
+		Expect(cloudDisk.Type).To(ContainSubstring(balancedDiskType))
 		Expect(cloudDisk.Status).To(Equal(readyState))
 		Expect(cloudDisk.SizeGb).To(Equal(defaultRepdSizeGb))
 		Expect(cloudDisk.Name).To(Equal(volName))
@@ -1436,7 +1450,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "no error expected when passed valid compute url")
 	})
 
-	It("[NVMe] Should update readahead if read_ahead_kb passed on mount", func() {
+	It("[NVMe] [OS-Qualification] Should update readahead if read_ahead_kb passed on mount", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -1444,7 +1458,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -1519,17 +1533,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 		}()
 	})
-	It("Should create disks, attach them to instance with local ssd, setup caching between LSSD->detach->reattach to same instance", func() {
+	It("[OS-Qualification] [DataCache] Should create disks, attach them to instance with local ssd, setup caching between LSSD->detach->reattach to same instance", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		testContext := getRandomTestContext()
-		if testContext.Instance.GetLocalSSD() == 0 {
-			Skip("Skipping data cache as no local ssd in context")
+		if !testContext.Instance.HasLocalSSD() {
+			Skip("Skipping data cache as no local ssd in context or tests disabled")
 		}
+
+		testutils.CleanUpAnyExistingLVMInstances(testContext.Instance)
 
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
 		instance := testContext.Instance
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 		defer deleteVolumeOrError(client, volID)
 
 		// Attach Disk
@@ -1537,19 +1553,21 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
 	})
-	It("Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
+
+	It("[OS-Qualification] [DataCache] Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
 		Expect(testContexts).ToNot(BeEmpty())
-		// Select the last instance in the pool which is isolated and reserved for this test case
-		testContextForVm := testContexts[len(testContexts)-1]
-		if testContextForVm.Instance.GetLocalSSD() == 0 {
-			Skip("Skipping Data Cache preemption test as isolated VM instance does not have local SSD")
+		testContext := getRandomTestContext()
+		if !testContext.Instance.HasLocalSSD() {
+			Skip(fmt.Sprintf("Skipping Data Cache preemption test as isolated VM instance %s does not have local SSD", testContext.Instance.MachineType()))
 		}
 
-		p, z, _ := testContextForVm.Instance.GetIdentity()
-		client := testContextForVm.Client
-		instance := testContextForVm.Instance
+		testutils.CleanUpAnyExistingLVMInstances(testContext.Instance)
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		p, z, _ := testContext.Instance.GetIdentity()
+		client := testContext.Client
+		instance := testContext.Instance
+
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, balancedDiskType)
 		defer deleteVolumeOrError(client, volID)
 
 		defer func() {
@@ -1662,7 +1680,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		client := testContextForVm1.Client
 		firstInstance := testContextForVm1.Instance
 
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, firstInstance.DefaultDiskType())
 		defer deleteVolumeOrError(client, volID)
 
 		testContextForVm2 := testZoneContexts[1]
@@ -1728,7 +1746,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 	})
 
-	It("Should block unstage if filesystem mounted", func() {
+	It("[OS-Qualification] Should block unstage if filesystem mounted", func() {
 		testContext := getRandomTestContext()
 
 		p, z, _ := testContext.Instance.GetIdentity()
@@ -1736,7 +1754,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		instance := testContext.Instance
 
 		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disk
@@ -1804,7 +1822,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		Expect(err).To(BeNil(), "Failed to rm file path %s: %v", fp, err)
 	})
 
-	It("Should mount if udev disabled, and remount if it's enabled again", func() {
+	It("[OS-Qualification] Should mount if udev disabled, and remount if it's enabled again", func() {
 		testContext := getRandomTestContext()
 		p, z, _ := testContext.Instance.GetIdentity()
 		client := testContext.Client
@@ -1814,9 +1832,9 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err := instance.DisableUdev()
 		Expect(err).To(BeNil(), "Failed to disable udev")
 
-		// Create Disk
-		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
-		vol2Name, vol2ID := createAndValidateUniqueZonalDisk(client, p, z, standardDiskType)
+		// Create Disk9
+		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
+		vol2Name, vol2ID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 
 		defer func() {
 			// Delete Disks
@@ -1903,6 +1921,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		func(cfg multiZoneTestConfig) {
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, cfg.diskType)
 
 			controllerInstance := testContext.Instance
 			controllerClient := testContext.Client
@@ -1956,6 +1975,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 			}
 			Expect(testContexts).ToNot(BeEmpty())
 			testContext := getRandomTestContext()
+			checkSkipDiskType(testContext, diskType)
 
 			client := testContext.Client
 			instance := testContext.Instance
@@ -2201,6 +2221,14 @@ var typeToDisk = map[string]*disk{
 		},
 		validate: func(disk *compute.Disk) {
 			Expect(disk.Type).To(ContainSubstring(standardDiskType))
+		},
+	},
+	balancedDiskType: {
+		params: map[string]string{
+			parameters.ParameterKeyType: balancedDiskType,
+		},
+		validate: func(disk *compute.Disk) {
+			Expect(disk.Type).To(ContainSubstring(balancedDiskType))
 		},
 	},
 	extremeDiskType: {

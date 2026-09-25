@@ -61,11 +61,6 @@ const (
 
 	// Keys in the publish context
 	ContexLocalSsdCacheSize = "local-ssd-cache-size"
-	// Node name for E2E tests
-	TestNode = "test-node-csi-e2e"
-
-	// Default LSSD count for datacache E2E tests
-	LocalSSDCountForDataCache = 2
 
 	// Node label for Data Cache (only applicable to GKE nodes)
 	NodeLabelPrefix         = "cloud.google.com/%s"
@@ -73,6 +68,9 @@ const (
 	// Node label for attach limit override
 	NodeRestrictionLabelPrefix = "node-restriction.kubernetes.io/%s"
 	AttachLimitOverrideLabel   = "gke-volume-attach-limit-override"
+
+	// Instance label for data cache (only used for non-GKE nodes, eg e2e tests)
+	DatacacheLocalSsdMetadataLabel = "datacache-local-ssd-count"
 
 	// StartupTaintKey is the key that blocks scheduling until the driver is ready.
 	StartupTaintKey    = "pd.csi.storage.gke.io/not-ready"
