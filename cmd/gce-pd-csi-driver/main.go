@@ -37,6 +37,7 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -48,7 +49,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/controller/taint"
-	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 	taintwebhook "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/webhook/taint"
 )
 
@@ -128,6 +128,10 @@ var (
 	runTaintWebhook    = flag.Bool("run-taint-webhook", false, "Enables the Mutating Admission Webhook (adds startup taints to Nodes to delay workloads until the CSINode resource is created)")
 	webhookPort        = flag.Int("webhook-port", 9443, "The port for the admission webhook to listen on")
 	taintMetricsAddr   = flag.String("taint-metrics-addr", ":8081", "The address the taint controller metrics endpoint binds to.")
+
+	enableNodeReadinessCondition = flag.Bool("enable-node-readiness-condition", false, "If set to true, the node driver sets the --node-readiness-condition-type condition to True on its Node once csi-driver-registrar is healthy.")
+	nodeReadinessConditionType   = flag.String("node-readiness-condition-type", "pd.csi.storage.gke.io/Ready", "The Node condition type set when --enable-node-readiness-condition is true.")
+	registrarHealthzEndpoint     = flag.String("registrar-healthz-endpoint", "127.0.0.1:9931", "The host:port of the csi-driver-registrar healthz endpoint polled by the node readiness reporter.")
 
 	version string
 )
@@ -378,6 +382,18 @@ func handle() {
 				}
 				go driver.StartWatcher(ctx, *nodeName)
 			}
+		}
+
+		if *enableNodeReadinessCondition {
+			kubeClient, err := k8sclient.GetClient()
+			if err != nil {
+				klog.Fatalf("Failed to create k8s client for node readiness reporter: %v", err.Error())
+			}
+			reporter, err := driver.NewNodeReadinessReporter(*nodeName, *nodeReadinessConditionType, *registrarHealthzEndpoint, kubeClient)
+			if err != nil {
+				klog.Fatalf("Failed to create node readiness reporter: %v", err.Error())
+			}
+			go reporter.Run(ctx)
 		}
 
 	}
