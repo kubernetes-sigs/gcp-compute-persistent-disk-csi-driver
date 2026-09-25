@@ -61,6 +61,7 @@ type FakeCloudProvider struct {
 	instances  map[string]*computev1.Instance
 	snapshots  map[string]*computev1.Snapshot
 	images     map[string]*computev1.Image
+	operations map[string]*computev1.Operation
 
 	// PD-on-Gen4 conversion testing fields
 	ConversionTestParams ConversionTestParams
@@ -89,6 +90,7 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		instances:  map[string]*computev1.Instance{},
 		snapshots:  map[string]*computev1.Snapshot{},
 		images:     map[string]*computev1.Image{},
+		operations: map[string]*computev1.Operation{},
 		pageTokens: map[string]sets.String{},
 		// A newly created disk is marked READY by default.
 		mockDiskStatus: "READY",
@@ -279,7 +281,7 @@ func (cloud *FakeCloudProvider) DeleteDisk(ctx context.Context, project string, 
 	return nil
 }
 
-func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
+func (cloud *FakeCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool, reqID string) error {
 	cloud.ConversionTestParams.AttachCallCount++
 	if cloud.ConversionTestParams.AttachCallCount == 1 && cloud.ConversionTestParams.InitialAttachFails {
 		return fmt.Errorf("Please run the conversion tool to reset the supported VM families of this disk")
@@ -320,6 +322,31 @@ func (cloud *FakeCloudProvider) ConvertDisk(ctx context.Context, project string,
 	return nil
 }
 
+func (cloud *FakeCloudProvider) GetOperationByClientOpID(ctx context.Context, project, instanceZone, clientOpID string) (*computev1.Operation, error) {
+	if clientOpID == "" {
+		return nil, nil
+	}
+	for _, op := range cloud.operations {
+		if op.ClientOperationId == clientOpID {
+			return op, nil
+		}
+	}
+	return nil, nil
+}
+
+func (cloud *FakeCloudProvider) WaitForZonalOp(ctx context.Context, project, opName string, zone string) error {
+	if op, ok := cloud.operations[opName]; ok {
+		op.Status = "DONE"
+	}
+	return nil
+}
+
+func (cloud *FakeCloudProvider) InsertOperation(op *computev1.Operation) {
+	if cloud.operations == nil {
+		cloud.operations = make(map[string]*computev1.Operation)
+	}
+	cloud.operations[op.Name] = op
+}
 func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error {
 	instance, ok := cloud.instances[instanceName]
 	if !ok {
@@ -627,14 +654,14 @@ func (cloud *FakeBlockingCloudProvider) DetachDisk(ctx context.Context, project,
 	return cloud.FakeCloudProvider.DetachDisk(ctx, project, deviceName, instanceZone, instanceName)
 }
 
-func (cloud *FakeBlockingCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error {
+func (cloud *FakeBlockingCloudProvider) AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool, reqID string) error {
 	execute := make(chan Signal)
 	cloud.ReadyToExecute <- execute
 	val := <-execute
 	if val.ReportError {
 		return fmt.Errorf("force mock error for AttachDisk: volkey %s", volKey)
 	}
-	return cloud.FakeCloudProvider.AttachDisk(ctx, project, volKey, readWrite, diskType, instanceZone, instanceName, forceAttach)
+	return cloud.FakeCloudProvider.AttachDisk(ctx, project, volKey, readWrite, diskType, instanceZone, instanceName, forceAttach, reqID)
 }
 
 func notFoundError() *googleapi.Error {
