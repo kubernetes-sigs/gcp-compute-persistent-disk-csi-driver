@@ -23,14 +23,14 @@ RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$
 
 # Start from Kubernetes Debian base.
 
-FROM gke.gcr.io/debian-base:bookworm-v1.0.4-gke.2 as debian
+FROM gke.gcr.io/debian-base:trixie-v1.0.0-gke.2 AS debian
 
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
 RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2 mdadm
 
 # Since we're leveraging apt to pull in dependencies, we use `gcr.io/distroless/base` because it includes glibc.
-FROM gcr.io/distroless/base-debian12 as distroless-base
+FROM gcr.io/distroless/base-debian13 AS distroless-base
 
 # The distroless amd64 image has a target triplet of x86_64
 FROM distroless-base AS distroless-amd64
@@ -90,7 +90,7 @@ COPY --from=debian /sbin/mkfs* /sbin/
 COPY --from=debian /sbin/resize2fs /sbin/resize2fs
 COPY --from=debian /sbin/xfs_repair /sbin/xfs_repair
 COPY --from=debian /usr/include/xfs /usr/include/xfs
-COPY --from=debian /usr/lib/xfsprogs/xfs* /usr/lib/xfsprogs/
+COPY --from=debian /usr/libexec/xfsprogs/xfs* /usr/libexec/xfsprogs/
 COPY --from=debian /usr/sbin/xfs* /usr/sbin/
 # Add dependencies for /lib/udev_containerized/google_nvme_id script
 COPY --from=debian /usr/sbin/nvme /usr/sbin/nvme
@@ -119,42 +119,47 @@ COPY --from=debian /lib/${LIB_DIR_PREFIX}-linux-gnu/libselinux.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzma.so.5 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libreadline.so.8 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libz.so.1 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liburcu.so.8 \ 
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liburcu.so.8 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libcap.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libcrypto.so.3 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libdbus-1.so.3 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libgcrypt.so.20 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libjson-c.so.5 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/liblz4.so.1 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libm.so.6 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libnvme-mi.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libnvme.so.1 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libsystemd.so.0 \
-                   /lib/${LIB_DIR_PREFIX}-linux-gnu/libgpg-error.so.0 \
+                   /lib/${LIB_DIR_PREFIX}-linux-gnu/liblzo2.so.2 \
                    /lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 /lib/${LIB_DIR_PREFIX}-linux-gnu/
 
 COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libsmartcols.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libbsd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libinih.so.1 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \         
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmount.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libudev.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libuuid.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libzstd.so.1 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libaio.so.1 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libgcrypt.so.20 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libaio.so.1t64 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libsystemd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/liblz4.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libacl.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libattr.so.1 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libedit.so.2 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicudata.so.72 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.72 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.72 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicudata.so.76 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicui18n.so.76 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libicuuc.so.76 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkmod.so.2 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libmd.so.0 \
                    /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libpcre2-8.so.0 \
-                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libstdc++.so.6 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libpam.so.0 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libaudit.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcap-ng.so.0 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libseccomp.so.2 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcrypt.so.1 \
+                   /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libkeyutils.so.1 /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/
+
+COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/systemd/libsystemd-shared-257.so /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/systemd/
 
 # Copy NVME support required script and rules into distroless base.
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
