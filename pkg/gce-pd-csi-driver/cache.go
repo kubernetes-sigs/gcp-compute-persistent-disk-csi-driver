@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,6 +36,13 @@ const (
 var (
 	maxChunkSize float64 = 1 * GiB   // Max allowed chunk size as per LVM documentation
 	minChunkSize float64 = 160 * KiB // This is randomly selected, we need a multiple of 32KiB, the default size would be too small for caching https://man7.org/linux/man-pages/man8/lvcreate.8.html (--chunksize)
+	// mdadmRunDir is mdadm's runtime state directory (MAP_DIR). mdadm >= 4.3
+	// (shipped with Debian trixie) writes a "creating-<md>" udev-blocking file
+	// into this directory during `mdadm --create` and fails with
+	// "Cannot block udev, error creating blocking file" if the directory does
+	// not exist. The driver image is distroless and does not ship /run/mdadm,
+	// so the driver has to create it before invoking mdadm.
+	mdadmRunDir = "/run/mdadm"
 )
 
 func fetchRAIDedLocalSsdPath() (string, error) {
@@ -506,7 +514,19 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 	}
 }
 
+// ensureMdadmRunDir makes sure mdadm's runtime directory (see mdadmRunDir)
+// exists so that `mdadm --create` can write its udev-blocking file.
+func ensureMdadmRunDir() error {
+	if err := os.MkdirAll(mdadmRunDir, 0755); err != nil {
+		return fmt.Errorf("failed to create mdadm run directory %q: %w", mdadmRunDir, err)
+	}
+	return nil
+}
+
 func RaidLocalSsds(availableLssds []string) error {
+	if err := ensureMdadmRunDir(); err != nil {
+		return err
+	}
 	args := []string{
 		"--create",
 		raidedLocalSsdName,
