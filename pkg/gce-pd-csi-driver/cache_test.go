@@ -1,6 +1,8 @@
 package gceGCEDriver
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -114,4 +116,40 @@ func TestFetchNumberGiB(t *testing.T) {
 
 	}
 
+}
+
+func TestEnsureMdadmRunDir(t *testing.T) {
+	origDir := mdadmRunDir
+	t.Cleanup(func() { mdadmRunDir = origDir })
+
+	t.Run("creates missing nested directory", func(t *testing.T) {
+		mdadmRunDir = filepath.Join(t.TempDir(), "run", "mdadm")
+		if err := ensureMdadmRunDir(); err != nil {
+			t.Fatalf("ensureMdadmRunDir() returned error: %v", err)
+		}
+		info, err := os.Stat(mdadmRunDir)
+		if err != nil {
+			t.Fatalf("expected %q to exist: %v", mdadmRunDir, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("expected %q to be a directory", mdadmRunDir)
+		}
+	})
+
+	t.Run("is a no-op when directory already exists", func(t *testing.T) {
+		mdadmRunDir = t.TempDir()
+		if err := ensureMdadmRunDir(); err != nil {
+			t.Fatalf("ensureMdadmRunDir() returned error: %v", err)
+		}
+	})
+
+	t.Run("fails when path is a regular file", func(t *testing.T) {
+		mdadmRunDir = filepath.Join(t.TempDir(), "not-a-dir")
+		if err := os.WriteFile(mdadmRunDir, []byte("x"), 0600); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+		if err := ensureMdadmRunDir(); err == nil {
+			t.Fatalf("ensureMdadmRunDir() expected error when %q is a file", mdadmRunDir)
+		}
+	})
 }
