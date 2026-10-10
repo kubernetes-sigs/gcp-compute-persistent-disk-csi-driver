@@ -311,3 +311,25 @@ func (d *CloudDisk) GetProvisionedThroughput() int64 {
 		return 0
 	}
 }
+
+func (d *CloudDisk) GetLastDetachTimestamp() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.LastDetachTimestamp
+	case d.betaDisk != nil:
+		return d.betaDisk.LastDetachTimestamp
+	default:
+		return ""
+	}
+}
+
+func (d *CloudDisk) GetCreationTimestamp() string {
+	switch {
+	case d.disk != nil:
+		return d.disk.CreationTimestamp
+	case d.betaDisk != nil:
+		return d.betaDisk.CreationTimestamp
+	default:
+		return ""
+	}
+}

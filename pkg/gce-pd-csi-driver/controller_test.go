@@ -33,6 +33,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	googleuuid "github.com/google/uuid"
 
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -6280,15 +6281,15 @@ func mergeParameters(a map[string]string, b map[string]string) map[string]string
 }
 
 func TestListVolumes_Concurrent(t *testing.T) {
-	var d []*gce.CloudDisk
+	var d []*gcecloudprovider.CloudDisk
 	for i := 0; i < 50; i++ {
 		name := fmt.Sprintf("disk-%v", i)
-		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+		d = append(d, gcecloudprovider.CloudDiskFromV1(&compute.Disk{
 			Name:     name,
 			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
 		}))
 	}
-	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	fakeCloudProvider, err := gcecloudprovider.CreateFakeCloudProvider(project, zone, d)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
@@ -6330,15 +6331,15 @@ func TestListVolumes_Concurrent(t *testing.T) {
 
 func TestListSnapshots_Concurrent(t *testing.T) {
 	// Create source disks in mock provider
-	var d []*gce.CloudDisk
+	var d []*gcecloudprovider.CloudDisk
 	for i := 0; i < 50; i++ {
 		name := fmt.Sprintf("disk-%v", i)
-		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+		d = append(d, gcecloudprovider.CloudDiskFromV1(&compute.Disk{
 			Name:     name,
 			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
 		}))
 	}
-	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	fakeCloudProvider, err := gcecloudprovider.CreateFakeCloudProvider(project, zone, d)
 	if err != nil {
 		t.Fatalf("Failed to create fake cloud provider: %v", err)
 	}
@@ -6390,4 +6391,179 @@ func TestListSnapshots_Concurrent(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestGenerateAttachCycleUUID(t *testing.T) {
+	volID := "projects/my-proj/zones/us-central1-a/disks/pvc-123"
+	nodeID := "projects/my-proj/zones/us-central1-a/instances/node-1"
+
+	// 1. New disk without LastDetachTimestamp uses CreationTimestamp
+	disk1 := gcecloudprovider.CloudDiskFromV1(&compute.Disk{
+		Name:              "pvc-123",
+		CreationTimestamp: "2026-01-01T00:00:00.000Z",
+	})
+	uuid1 := generateAttachCycleUUID(volID, nodeID, disk1)
+	if _, err := googleuuid.Parse(uuid1); err != nil {
+		t.Fatalf("expected valid RFC 4122 UUID, got %s: %v", uuid1, err)
+	}
+
+	// Deterministic: same disk and node produce exact same UUID
+	uuid1Repeat := generateAttachCycleUUID(volID, nodeID, disk1)
+	if uuid1 != uuid1Repeat {
+		t.Fatalf("expected deterministic UUID %s, got %s", uuid1, uuid1Repeat)
+	}
+
+	// 2. Disk with LastDetachTimestamp uses LastDetachTimestamp
+	disk2 := gcecloudprovider.CloudDiskFromV1(&compute.Disk{
+		Name:                "pvc-123",
+		CreationTimestamp:   "2026-01-01T00:00:00.000Z",
+		LastDetachTimestamp: "2026-01-02T10:00:00.000Z",
+	})
+	uuid2 := generateAttachCycleUUID(volID, nodeID, disk2)
+	if _, err := googleuuid.Parse(uuid2); err != nil {
+		t.Fatalf("expected valid RFC 4122 UUID, got %s: %v", uuid2, err)
+	}
+	if uuid1 == uuid2 {
+		t.Fatalf("expected different UUID after detach, got same %s", uuid1)
+	}
+
+	// 3. Subsequent detach updates timestamp and produces a new UUID
+	disk3 := gcecloudprovider.CloudDiskFromV1(&compute.Disk{
+		Name:                "pvc-123",
+		CreationTimestamp:   "2026-01-01T00:00:00.000Z",
+		LastDetachTimestamp: "2026-01-03T15:30:00.000Z",
+	})
+	uuid3 := generateAttachCycleUUID(volID, nodeID, disk3)
+	if uuid2 == uuid3 {
+		t.Fatalf("expected different UUID for subsequent detach cycle, got same %s", uuid2)
+	}
+}
+
+func TestControllerUnpublishWaitsForInflightAttach(t *testing.T) {
+	volID := fmt.Sprintf("projects/%s/zones/%s/disks/test-vol", project, zone)
+	nodeID := fmt.Sprintf("projects/%s/zones/%s/instances/test-node", project, zone)
+
+	disk := gcecloudprovider.CloudDiskFromV1(&compute.Disk{
+		Name:              "test-vol",
+		Zone:              zone,
+		CreationTimestamp: "2026-01-01T00:00:00.000Z",
+	})
+
+	fcp, err := gcecloudprovider.CreateFakeCloudProvider(project, zone, []*gcecloudprovider.CloudDisk{disk})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	// Add instance without any attached disks
+	instance := &compute.Instance{
+		Name:  "test-node",
+		Zone:  zone,
+		Disks: []*compute.AttachedDisk{},
+	}
+	fcp.InsertInstance(instance, zone, "test-node")
+
+	// Calculate expected attach cycle UUID
+	reqID := generateAttachCycleUUID(volID, nodeID, disk)
+
+	// Simulate an in-flight attach operation with matching clientOperationId
+	op := &compute.Operation{
+		Name:              "operation-attach-123",
+		ClientOperationId: reqID,
+		Status:            "RUNNING",
+		OperationType:     "attachDisk",
+		TargetLink:        fmt.Sprintf("projects/%s/zones/%s/instances/test-node", project, zone),
+	}
+	fcp.InsertOperation(op)
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
+
+	req := &csi.ControllerUnpublishVolumeRequest{
+		VolumeId: volID,
+		NodeId:   nodeID,
+	}
+
+	// ControllerUnpublishVolume should detect in-flight operation, wait for it (which marks it DONE in fake provider),
+	// and complete unpublish.
+	resp, err := gceDriver.cs.ControllerUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ControllerUnpublishVolume failed: %v", err)
+	}
+	if resp == nil {
+		t.Fatalf("expected non-nil response")
+	}
+
+	// Verify the operation was retrieved and completed (status is now DONE)
+	retrievedOp, err := fcp.GetOperationByClientOpID(context.Background(), project, zone, reqID)
+	if err != nil {
+		t.Fatalf("failed to query operations: %v", err)
+	}
+	if retrievedOp == nil || retrievedOp.Status != "DONE" {
+		t.Fatalf("expected operation status DONE, got %v", retrievedOp)
+	}
+}
+
+func TestControllerUnpublishHandlesOperationCompletedInRaceWindow(t *testing.T) {
+	volID := fmt.Sprintf("projects/%s/zones/%s/disks/test-vol", project, zone)
+	nodeID := fmt.Sprintf("projects/%s/zones/%s/instances/test-node", project, zone)
+
+	disk := gcecloudprovider.CloudDiskFromV1(&compute.Disk{
+		Name:              "test-vol",
+		Zone:              zone,
+		CreationTimestamp: "2026-01-01T00:00:00.000Z",
+	})
+
+	fcp, err := gcecloudprovider.CreateFakeCloudProvider(project, zone, []*gcecloudprovider.CloudDisk{disk})
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	// Add instance where disk is already attached in backend
+	instance := &compute.Instance{
+		Name: "test-node",
+		Zone: zone,
+		Disks: []*compute.AttachedDisk{
+			{
+				DeviceName: "test-vol",
+				Mode:       "READ_WRITE",
+			},
+		},
+	}
+	fcp.InsertInstance(instance, zone, "test-node")
+
+	// Calculate expected attach cycle UUID
+	reqID := generateAttachCycleUUID(volID, nodeID, disk)
+
+	// Simulate completed operation (status DONE) in GCE
+	op := &compute.Operation{
+		Name:              "operation-attach-456",
+		ClientOperationId: reqID,
+		Status:            "DONE",
+		OperationType:     "attachDisk",
+		TargetLink:        fmt.Sprintf("projects/%s/zones/%s/instances/test-node", project, zone),
+	}
+	fcp.InsertOperation(op)
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
+
+	req := &csi.ControllerUnpublishVolumeRequest{
+		VolumeId: volID,
+		NodeId:   nodeID,
+	}
+
+	resp, err := gceDriver.cs.ControllerUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ControllerUnpublishVolume failed: %v", err)
+	}
+	if resp == nil {
+		t.Fatalf("expected non-nil response")
+	}
+
+	// Verify disk was detached from the instance
+	updatedInstance, err := fcp.GetInstanceOrError(context.Background(), project, zone, "test-node")
+	if err != nil {
+		t.Fatalf("failed to get instance: %v", err)
+	}
+	if diskIsAttached("test-vol", updatedInstance) {
+		t.Fatalf("expected disk test-vol to be detached, but was still attached")
+	}
 }
