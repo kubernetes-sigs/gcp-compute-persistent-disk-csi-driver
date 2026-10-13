@@ -14,10 +14,10 @@ readonly PKGDIR=${GOPATH}/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver
 readonly overlay_name="${GCE_PD_OVERLAY_NAME:-stable-master}"
 readonly boskos_resource_type="${GCE_PD_BOSKOS_RESOURCE_TYPE:-gce-project}"
 readonly do_driver_build="${GCE_PD_DO_DRIVER_BUILD:-true}"
-readonly do_k8s_build="${GCE_PD_DO_K8S_BUILD:-false}"
+readonly do_k8s_build="${GCE_PD_DO_K8S_BUILD:-true}"
 readonly deployment_strategy=${DEPLOYMENT_STRATEGY:-gce}
 readonly gke_cluster_version=${GKE_CLUSTER_VERSION:-latest}
-readonly kube_version=${GCE_PD_KUBE_VERSION:-latest}
+readonly kube_version=${GCE_PD_KUBE_VERSION:-master}
 readonly test_version=${TEST_VERSION:-latest}
 readonly gce_zone=${GCE_CLUSTER_ZONE:-us-central1-b}
 readonly gce_region=${GCE_CLUSTER_REGION:-}
@@ -36,7 +36,7 @@ readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-st
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then
-    kt2_version=0e09086b60c122e1084edd2368d3d27fe36f384f
+    kt2_version=22d5b1410bef09ae679fa5813a5f0d196b6079de
     go install sigs.k8s.io/kubetest2@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gce@${kt2_version}
     go install sigs.k8s.io/kubetest2/kubetest2-gke@${kt2_version}
