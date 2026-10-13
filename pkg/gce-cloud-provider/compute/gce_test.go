@@ -202,7 +202,7 @@ func TestGetComputeVersion(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		ctx := context.Background()
-		computeOpts, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion)
+		computeOpts, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion, 0)
 		service, _ := compute.NewService(ctx, computeOpts...)
 		gotEndpoint := service.BasePath
 		if err != nil && !tc.expectError {
@@ -221,4 +221,52 @@ func convertStringToURL(urlString string) *url.URL {
 		return nil
 	}
 	return parsedURL
+}
+
+type errorTokenSource struct{}
+
+func (*errorTokenSource) Token() (*oauth2.Token, error) {
+	return nil, errors.New("auth failed transient error")
+}
+
+func TestCreateCloudService(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		tokenSource          oauth2.TokenSource
+		failCloseOnAuthError bool
+		expectError          bool
+	}{
+		{
+			name:                 "failClose=false, auth fails -> Success (legacy behavior, proceed with nil options)",
+			tokenSource:          &errorTokenSource{},
+			failCloseOnAuthError: false,
+			expectError:          false,
+		},
+		{
+			name:                 "failClose=true, auth fails -> Error (fail-close behavior)",
+			tokenSource:          &errorTokenSource{},
+			failCloseOnAuthError: true,
+			expectError:          true,
+		},
+		{
+			name:                 "failClose=true, auth succeeds -> Success",
+			tokenSource:          &mockTokenSource{},
+			failCloseOnAuthError: true,
+			expectError:          false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			// We use dummy values for other parameters as they are not critical for auth failure testing
+			_, err := createCloudService(ctx, "test-version", tc.tokenSource, nil, EnvironmentProduction, tc.failCloseOnAuthError, 1*time.Nanosecond)
+			if tc.expectError && err == nil {
+				t.Fatalf("Expected error, but got nil")
+			}
+			if !tc.expectError && err != nil {
+				t.Fatalf("Expected no error, but got: %v", err)
+			}
+		})
+	}
 }

@@ -76,6 +76,8 @@ const (
 	// gcpTagsRequestTokenBucketSize is the burst/token bucket size used
 	// for limiting API requests.
 	gcpTagsRequestTokenBucketSize = 8
+
+	pollTimeout = 30 * time.Second
 )
 
 var (
@@ -148,7 +150,7 @@ type ConfigGlobal struct {
 	Zone      string `gcfg:"zone"`
 }
 
-func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig, multiTenancyEnabled bool) (*CloudProvider, error) {
+func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath string, computeEndpoint *url.URL, computeEnvironment Environment, waitForAttachConfig WaitForAttachConfig, listInstancesConfig ListInstancesConfig, multiTenancyEnabled bool, failCloseOnAuthError bool) (*CloudProvider, error) {
 	configFile, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -163,13 +165,13 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 		return nil, err
 	}
 
-	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+	svc, err := createCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
 	klog.Infof("Compute endpoint for V1 version: %s", svc.BasePath)
 
-	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment)
+	betasvc, err := createBetaCloudService(ctx, vendorVersion, tokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +219,7 @@ func CreateCloudProvider(ctx context.Context, vendorVersion string, configPath s
 				return nil, fmt.Errorf("error during tenant token source generation: %w", err)
 			}
 
-			tenantComputeService, err := createCloudService(ctx, vendorVersion, tenantTokenSource, computeEndpoint, computeEnvironment)
+			tenantComputeService, err := createCloudService(ctx, vendorVersion, tenantTokenSource, computeEndpoint, computeEnvironment, failCloseOnAuthError, pollTimeout)
 			if err != nil {
 				klog.Errorf("Error while creating compute service with tenant identity for %s: %v", tenantMeta.TenantName, err)
 				return nil, fmt.Errorf("error while creating compute service with tenant identity: %w", err)
@@ -291,10 +293,13 @@ func readConfig(configPath string) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*computebeta.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionBeta)
+func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*computebeta.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionBeta, timeout)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
+		if failCloseOnAuthError {
+			return nil, err
+		}
 	}
 	service, err := computebeta.NewService(ctx, computeOpts...)
 	if err != nil {
@@ -304,10 +309,13 @@ func createBetaCloudService(ctx context.Context, vendorVersion string, tokenSour
 	return service, nil
 }
 
-func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment) (*compute.Service, error) {
-	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionV1)
+func createCloudService(ctx context.Context, vendorVersion string, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, failCloseOnAuthError bool, timeout time.Duration) (*compute.Service, error) {
+	computeOpts, err := getComputeVersion(ctx, tokenSource, computeEndpoint, computeEnvironment, GCEAPIVersionV1, timeout)
 	if err != nil {
 		klog.Errorf("Failed to get compute endpoint: %s", err)
+		if failCloseOnAuthError {
+			return nil, err
+		}
 	}
 	service, err := compute.NewService(ctx, computeOpts...)
 	if err != nil {
@@ -317,8 +325,8 @@ func createCloudService(ctx context.Context, vendorVersion string, tokenSource o
 	return service, nil
 }
 
-func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion GCEAPIVersion) ([]option.ClientOption, error) {
-	client, err := newOauthClient(ctx, tokenSource)
+func getComputeVersion(ctx context.Context, tokenSource oauth2.TokenSource, computeEndpoint *url.URL, computeEnvironment Environment, computeVersion GCEAPIVersion, timeout time.Duration) ([]option.ClientOption, error) {
+	client, err := newOauthClient(ctx, tokenSource, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +350,7 @@ func constructComputeEndpointPath(env Environment, version GCEAPIVersion) string
 }
 
 func createTagValuesClient(ctx context.Context, tokenSource oauth2.TokenSource, resourceManagerHostSubPath string) (*rscmgr.TagValuesClient, error) {
-	client, err := newOauthClient(ctx, tokenSource)
+	client, err := newOauthClient(ctx, tokenSource, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +364,7 @@ func createTagValuesClient(ctx context.Context, tokenSource oauth2.TokenSource, 
 }
 
 func createTagBindingsClient(ctx context.Context, tokenSource oauth2.TokenSource, location string, resourceManagerHostSubPath string) (*rscmgr.TagBindingsClient, error) {
-	client, err := newOauthClient(ctx, tokenSource)
+	client, err := newOauthClient(ctx, tokenSource, pollTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -374,8 +382,8 @@ func createTagBindingsClient(ctx context.Context, tokenSource oauth2.TokenSource
 	return rscmgr.NewTagBindingsRESTClient(ctx, opts...)
 }
 
-func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource) (*http.Client, error) {
-	if err := wait.PollImmediate(5*time.Second, 30*time.Second, func() (bool, error) {
+func newOauthClient(ctx context.Context, tokenSource oauth2.TokenSource, timeout time.Duration) (*http.Client, error) {
+	if err := wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
 		if _, err := tokenSource.Token(); err != nil {
 			klog.Errorf("error fetching initial token: %v", err.Error())
 			return false, nil
