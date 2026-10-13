@@ -82,13 +82,14 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		}
 		interceptors = append(interceptors, metricsInterceptor.UnaryInterceptor())
 	}
-	if s.otelTracing {
-		interceptors = append(interceptors, otelgrpc.UnaryServerInterceptor())
-	}
 	grpcInterceptor := grpc.ChainUnaryInterceptor(interceptors...)
 
 	opts := []grpc.ServerOption{
 		grpcInterceptor,
+	}
+
+	if s.otelTracing {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 
 	u, err := url.Parse(endpoint)
