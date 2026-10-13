@@ -120,8 +120,8 @@ var _ = BeforeSuite(func() {
 				tcc <- NewDefaultTestContext(curZone, strconv.Itoa(randInt))
 			}(zone, j)
 		}
+		wg.Add(1)
 		go func(curZone string) {
-			wg.Add(1)
 			defer GinkgoRecover()
 			defer wg.Done()
 			hdtcc <- NewTestContext(curZone, *hdMinCpuPlatform, *hdMachineType, "0")
