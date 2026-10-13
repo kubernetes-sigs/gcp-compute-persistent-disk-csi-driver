@@ -74,12 +74,13 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
 	grpcInterceptor := grpc.UnaryInterceptor(logGRPC)
-	if s.otelTracing {
-		grpcInterceptor = grpc.ChainUnaryInterceptor(logGRPC, otelgrpc.UnaryServerInterceptor())
-	}
 
 	opts := []grpc.ServerOption{
 		grpcInterceptor,
+	}
+
+	if s.otelTracing {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 
 	u, err := url.Parse(endpoint)
