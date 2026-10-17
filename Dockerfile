@@ -22,7 +22,9 @@ ADD . .
 RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$STAGINGVERSION make gce-pd-driver
 
 # Start from Kubernetes Debian base.
-
+# Updating Debian versions often breaks the driver, and should be done carefully and well in advance of EOL so that
+# changes can be soaked. When the debian version is updated here, the version used in the kubernetes-csi sidecars
+# should be updated as well.
 FROM gke.gcr.io/debian-base:trixie-v1.0.0-gke.2 AS debian
 
 # Install necessary dependencies
