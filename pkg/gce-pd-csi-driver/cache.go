@@ -682,34 +682,68 @@ func getVgInfoForPv(pvPath string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to run pvs: %w", err)
 	}
-	lines := strings.Split(string(info), "\n")
+	vgName, vgUuid := parsePvsVgInfo(string(info), resolvedPvPath)
+	return vgName, vgUuid, nil
+}
+
+// parsePvsVgInfo extracts the (vg_name, vg_uuid) pair for resolvedPvPath from
+// the combined stdout/stderr output of `pvs --noheadings -o vg_name,vg_uuid,pv_name`.
+//
+// Because common.RunCommand uses CombinedOutput, stderr warning lines such as:
+//   - "WARNING: PV /dev/sdb is marked in use but no VG was found using it."
+//   - "WARNING: PV /dev/sdb in VG csi-vg-... is using an old PV header, modify the VG to update."
+//   - "WARNING: VG csi-vg-... is missing PV ... (last written to [unknown])."
+//
+// are mixed into the output. In "WARNING: PV <dev> ..." lines, fields[2] is the
+// PV device path and fields[0] is "WARNING:", so a `len(fields) >= 3` check
+// matching fields[2] against the PV path would extract "WARNING:" as the VG name.
+//
+// A valid `pvs --noheadings -o vg_name,vg_uuid,pv_name` row for a PV has either:
+//   - 1 field (pv_name) when the PV does not belong to any VG (vg_name and vg_uuid are empty), or
+//   - 3 fields (vg_name, vg_uuid, pv_name) where vg_name and vg_uuid only contain valid LVM name characters.
+func parsePvsVgInfo(output, resolvedPvPath string) (string, string) {
+	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" || strings.HasPrefix(line, "WARNING:") {
 			continue
 		}
 		fields := strings.Fields(line)
-		// The fields slice must contain at least 3 elements representing:
-		// fields[0] = vg_name, fields[1] = vg_uuid, fields[2] = pv_name
-		if len(fields) >= 3 {
+		switch len(fields) {
+		case 1:
+			resolvedFieldName, err := filepath.EvalSymlinks(fields[0])
+			if err != nil {
+				resolvedFieldName = fields[0]
+			}
+			if resolvedFieldName == resolvedPvPath {
+				return "", ""
+			}
+		case 3:
 			resolvedFieldName, err := filepath.EvalSymlinks(fields[2])
 			if err != nil {
 				resolvedFieldName = fields[2]
 			}
-			if resolvedFieldName == resolvedPvPath {
-				vgName := fields[0]
-				vgUuid := fields[1]
-				if vgName == "" || vgName == "-" {
-					vgName = ""
-				}
-				if vgUuid == "" || vgUuid == "-" {
-					vgUuid = ""
-				}
-				return vgName, vgUuid, nil
+			if resolvedFieldName != resolvedPvPath {
+				continue
 			}
+			vgName := fields[0]
+			vgUuid := fields[1]
+			if vgName == "-" {
+				vgName = ""
+			}
+			if vgUuid == "-" {
+				vgUuid = ""
+			}
+			if vgName != "" && !isValidVGName(vgName) {
+				continue
+			}
+			if vgUuid != "" && !isValidVGName(vgUuid) {
+				continue
+			}
+			return vgName, vgUuid
 		}
 	}
-	return "", "", nil
+	return "", ""
 }
 
 // isLvCachedOnDevice checks if the logical volume (LV) in the volume group (VG) is cached.
