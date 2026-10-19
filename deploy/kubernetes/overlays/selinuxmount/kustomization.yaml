@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../stable-master
+patchesJson6902:
+- path: csidriver-selinuxmount.yaml
+  target:
+    group: storage.k8s.io
+    kind: CSIDriver
+    name: pd.csi.storage.gke.io
+    version: v1
+- path: node-selinuxmount.yaml
+  target:
+    group: apps
+    kind: DaemonSet
+    name: csi-gce-pd-node
+    version: v1

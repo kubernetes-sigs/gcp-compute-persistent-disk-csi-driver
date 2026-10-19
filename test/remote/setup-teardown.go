@@ -19,17 +19,23 @@ package remote
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 )
 
+const (
+	LvmCleanupScript = "lvm-cleanup.sh"
+)
+
 // TestContext holds the CSI Client handle to a remotely connected Driver
 // as well as a handle to the Instance that the driver is running on
 type TestContext struct {
-	Instance *InstanceInfo
-	Client   *CsiClient
-	proc     *processes
+	Instance  *InstanceInfo
+	Client    *CsiClient
+	TestZones []string
+	proc      *processes
 }
 
 // ClientConfig contains all the parameters required to package a new
@@ -59,7 +65,7 @@ func SetupInstance(cfg InstanceConfig) (*InstanceInfo, error) {
 		cfg: cfg,
 	}
 
-	err := instance.CreateOrGetInstance(int(cfg.LocalSSDCount))
+	err := instance.CreateOrGetInstance()
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +90,14 @@ func SetupNewDriverAndClient(instance *InstanceInfo, config *ClientConfig) (*Tes
 
 	// Copy dependencies
 	_, _ = instance.SSH("apt-get", "update")
-	output, err := instance.SSH("apt-get", "install", "-y", "mdadm", "lvm2")
+	output, err := instance.SSH("apt-get", "install", "-y", "mdadm", "lvm2", "psmisc")
 	if err != nil {
-		return nil, fmt.Errorf("failed to install dependencies. Output: %v, errror: %v", output, err.Error())
+		return nil, fmt.Errorf("failed to install dependencies. Output: %v, error: %w", output, err)
+	}
+
+	lvmCleanupPath := filepath.Join(config.PkgPath, "test/e2e/utils", LvmCleanupScript)
+	if output, err := runSSHCommand("scp", lvmCleanupPath, fmt.Sprintf("%s:/tmp/", instance.GetSSHTarget())); err != nil {
+		return nil, fmt.Errorf("failed to install lvm cleanup script. Output: %v, error: %w", output, err)
 	}
 
 	// Upload archive to instance and run binaries
@@ -128,7 +139,7 @@ func TeardownDriverAndClient(context *TestContext) error {
 	// Close the SSH tunnel
 	proc, err := os.FindProcess(context.proc.sshTunnel)
 	if err != nil {
-		return fmt.Errorf("unable to efind process for ssh tunnel %v: %v", context.proc.sshTunnel, err.Error())
+		return fmt.Errorf("unable to find process for ssh tunnel %v: %v", context.proc.sshTunnel, err.Error())
 	}
 	if err = proc.Kill(); err != nil {
 		return fmt.Errorf("failed to kill ssh tunnel process %v: %v", context.proc.sshTunnel, err.Error())

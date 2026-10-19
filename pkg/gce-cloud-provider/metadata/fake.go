@@ -16,6 +16,11 @@ limitations under the License.
 
 package metadata
 
+import (
+	"context"
+	"fmt"
+)
+
 type fakeServiceManager struct{}
 
 var _ MetadataService = &fakeServiceManager{}
@@ -45,6 +50,10 @@ func (manager *fakeServiceManager) GetName() string {
 
 func (manager *fakeServiceManager) GetMachineType() string {
 	return FakeMachineType
+}
+
+func (manager *fakeServiceManager) GetValue(_ context.Context, name string) (string, error) {
+	return "", fmt.Errorf("fake metadata doesn't contain %s", name)
 }
 
 func SetMachineType(s string) {

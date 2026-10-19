@@ -54,10 +54,11 @@ const (
 	tagKeyCreatedForSnapshotContentName = "kubernetes.io/created-for/volumesnapshotcontent/name"
 
 	// Hyperdisk disk types
-	DiskTypeHdHA = "hyperdisk-balanced-high-availability"
-	DiskTypeHdT  = "hyperdisk-throughput"
-	DiskTypeHdE  = "hyperdisk-extreme"
-	DiskTypeHdML = "hyperdisk-ml"
+	DiskTypeHyperdiskBalanced = "hyperdisk-balanced"
+	DiskTypeHdHA              = "hyperdisk-balanced-high-availability"
+	DiskTypeHdT               = "hyperdisk-throughput"
+	DiskTypeHdE               = "hyperdisk-extreme"
+	DiskTypeHdML              = "hyperdisk-ml"
 
 	// Parameters for VolumeSnapshotClass
 	DiskSnapshotType = "snapshots"

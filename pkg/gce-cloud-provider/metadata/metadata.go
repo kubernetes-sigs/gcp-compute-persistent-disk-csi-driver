@@ -17,6 +17,7 @@ limitations under the License.
 package metadata
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -30,6 +31,7 @@ type MetadataService interface {
 	GetProject() string
 	GetName() string
 	GetMachineType() string
+	GetValue(ctx context.Context, name string) (string, error)
 }
 
 type metadataServiceManager struct {
@@ -42,20 +44,20 @@ type metadataServiceManager struct {
 
 var _ MetadataService = &metadataServiceManager{}
 
-func NewMetadataService() (MetadataService, error) {
-	zone, err := metadata.Zone()
+func NewMetadataService(ctx context.Context) (MetadataService, error) {
+	zone, err := metadata.ZoneWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current zone: %w", err)
 	}
-	projectID, err := metadata.ProjectID()
+	projectID, err := metadata.ProjectIDWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
-	name, err := metadata.InstanceName()
+	name, err := metadata.InstanceNameWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance name: %w", err)
 	}
-	fullMachineType, err := metadata.Get("instance/machine-type")
+	fullMachineType, err := metadata.GetWithContext(ctx, "instance/machine-type")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine-type: %w", err)
 	}
@@ -85,4 +87,8 @@ func (manager *metadataServiceManager) GetName() string {
 
 func (manager *metadataServiceManager) GetMachineType() string {
 	return manager.machineType
+}
+
+func (manager *metadataServiceManager) GetValue(ctx context.Context, name string) (string, error) {
+	return metadata.GetWithContext(ctx, fmt.Sprintf("instance/attributes/%s", name))
 }

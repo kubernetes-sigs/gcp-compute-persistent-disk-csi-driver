@@ -63,7 +63,7 @@ func (devErrMap *deviceErrMap) deviceErrorExpired(deviceName string) bool {
 	return currentTime().After(expirationTime)
 }
 
-// markDeviceError updates the internal `cache` map to denote an error was encounted
+// markDeviceError updates the internal `cache` map to denote an error was encountered
 // for the specified deviceName at the current time. If an error had previously been recorded, the
 // time will not be updated.
 func (devErrMap *deviceErrMap) markDeviceError(deviceName string) {

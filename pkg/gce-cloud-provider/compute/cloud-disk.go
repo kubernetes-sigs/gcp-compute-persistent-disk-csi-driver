@@ -107,7 +107,7 @@ func (d *CloudDisk) GetStatus() string {
 
 // GetPDType returns the type of the PD, which is stored as a url like
 // projects/project/zones/zone/diskTypes/pd-standard. The returned type is not
-// validated, it is just passed verbatium from GCP.
+// validated, it is just passed verbatim from GCP.
 func (d *CloudDisk) GetPDType() string {
 	var pdType string
 	switch {

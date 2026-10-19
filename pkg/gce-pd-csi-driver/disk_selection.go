@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultTypePD = "pd-balanced"
-	defaultTypeHD = "hyperdisk-balanced"
+	defaultTypeHD = parameters.DiskTypeHyperdiskBalanced
 )
 
 func SelectDisk(ctx context.Context, req *csi.CreateVolumeRequest, gce gce.GCECompute) (string, error) {

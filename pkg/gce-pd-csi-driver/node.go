@@ -67,7 +67,7 @@ type GCENodeServer struct {
 	// device is still in use (or until --device-in-use-timeout is reached, if specified)
 	enableDeviceInUseCheck bool
 	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
-	// encounted for that device
+	// encountered for that device
 	deviceInUseErrors *deviceErrMap
 
 	// If set, this semaphore will be used to serialize formatAndMount. It will be raised
@@ -949,7 +949,7 @@ func (ns *GCENodeServer) getVolumeLimits(ctx context.Context, node *corev1.Node)
 	}
 
 	// Process gen4 machine attach limits which include vCPUs in the machine type
-	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-", "c4d-"}
+	gen4MachineTypesPrefix := []string{"c4a-", "c4-", "n4-", "c4d-", "n4d-", "n4a-"}
 	for _, gen4Prefix := range gen4MachineTypesPrefix {
 		if strings.HasPrefix(machineType, gen4Prefix) {
 			machineTypeSlice := strings.Split(machineType, "-")

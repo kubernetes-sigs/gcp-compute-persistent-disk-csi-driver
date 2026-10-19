@@ -476,6 +476,9 @@ func validAccessMode(want, got string) bool {
 		return true
 	}
 	switch want {
+	case "":
+		// Empty string defaults to RWO
+		return got == constants.GCEReadWriteOnceAccessMode
 	case constants.GCEReadOnlyManyAccessMode, constants.GCEReadWriteOnceAccessMode:
 		return got == constants.GCEReadWriteManyAccessMode
 	// For RWX, no other access mode is valid.
@@ -609,7 +612,7 @@ func (cloud *CloudProvider) constructDiskToCreate(
 	}
 	diskToCreate.EnableConfidentialCompute = params.EnableConfidentialCompute
 
-	resourceTags, err := getResourceManagerTags(ctx, cloud.tokenSource, params.ResourceTags)
+	resourceTags, err := getResourceManagerTags(ctx, cloud.credsJSON, cloud.tokenSource, params.ResourceTags, cloud.universeDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -1150,7 +1153,7 @@ func (cloud *CloudProvider) waitForLongRunningZonalOp(ctx context.Context, proje
 func (cloud *CloudProvider) waitForZonalOpWithBackoff(ctx context.Context, project, opName string, zone string, backoff wait.Backoff) error {
 	return wait.ExponentialBackoff(backoff, func() (bool, error) {
 		waitOp, err := cloud.service.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForZonalOp(op: %s, zone: %#v, err: %v) failed to poll the operation", opName, zone, err)
 			return false, nil
@@ -1167,7 +1170,7 @@ func (cloud *CloudProvider) waitForZonalOpWithBackoff(ctx context.Context, proje
 func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opName string, region string) error {
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.RegionOperations.Wait(project, region, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForRegionalOp(op: %s, region: %#v, err: %v) failed to poll the operation", opName, region, err)
 			return false, nil
@@ -1188,7 +1191,7 @@ func (cloud *CloudProvider) waitForRegionalOp(ctx context.Context, project, opNa
 func (cloud *CloudProvider) waitForGlobalOp(ctx context.Context, project, opName string) error {
 	return wait.ExponentialBackoff(WaitForOpBackoff, func() (bool, error) {
 		waitOp, err := cloud.service.GlobalOperations.Wait(project, opName).Context(ctx).Do()
-		// In case of service unavailable do not propogate the error so ExponentialBackoff will retry
+		// In case of service unavailable do not propagate the error so ExponentialBackoff will retry
 		if err != nil && waitOp != nil && waitOp.HttpErrorStatusCode == 503 {
 			klog.Errorf("WaitForGlobalOp(op: %s, err: %v) failed to poll the operation", opName, err)
 			return false, nil
@@ -1389,7 +1392,7 @@ func (cloud *CloudProvider) CreateSnapshot(ctx context.Context, project string, 
 	snapshot, err := cloud.waitForSnapshotCreation(ctx, project, snapshotName)
 
 	if err == nil {
-		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false, resourceManagerHostSubPath)
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, snapshot.Id, snapshotsType, "", false)
 	}
 
 	return snapshot, err
@@ -1428,7 +1431,7 @@ func (cloud *CloudProvider) CreateImage(ctx context.Context, project string, vol
 	newImage, err := cloud.waitForImageCreation(ctx, project, imageName)
 
 	if err == nil {
-		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, newImage.Id, imagesType, "", false, resourceManagerHostSubPath)
+		err = cloud.attachTagsToResource(ctx, snapshotParams.ResourceTags, project, newImage.Id, imagesType, "", false)
 	}
 
 	return newImage, err
@@ -1679,12 +1682,12 @@ func (cloud *CloudProvider) waitForSnapshotCreation(ctx context.Context, project
 
 // getResourceManagerTags returns the map of tag keys and values. The tag keys are in the form `tagKeys/{tag_key_id}`
 // and the tag values are in the format `tagValues/456`.
-func getResourceManagerTags(ctx context.Context, tokenSource oauth2.TokenSource, tagsMap map[string]string) (map[string]string, error) {
+func getResourceManagerTags(ctx context.Context, credsJSON []byte, tokenSource oauth2.TokenSource, tagsMap map[string]string, universeDomain string) (map[string]string, error) {
 	if len(tagsMap) <= 0 {
 		return nil, nil
 	}
 
-	tagValuesClient, err := createTagValuesClient(ctx, tokenSource, resourceManagerHostSubPath)
+	tagValuesClient, err := createTagValuesClient(ctx, credsJSON, tokenSource, universeDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -1768,13 +1771,12 @@ func (cloud *CloudProvider) attachTagsToResource(
 	resourceID uint64,
 	resourceType ResourceType,
 	location string,
-	isZonal bool,
-	resourceManagerHostSubPath string) error {
+	isZonal bool) error {
 	if len(tagsMap) <= 0 {
 		return nil
 	}
 
-	tagBindingsClient, err := createTagBindingsClient(ctx, cloud.tokenSource, location, resourceManagerHostSubPath)
+	tagBindingsClient, err := createTagBindingsClient(ctx, cloud.credsJSON, cloud.tokenSource, location, cloud.universeDomain)
 	if err != nil || tagBindingsClient == nil {
 		return fmt.Errorf("failed to create tag binding client for adding tags to %d compute %s: %w", resourceID, resourceType, err)
 	}
@@ -1782,13 +1784,13 @@ func (cloud *CloudProvider) attachTagsToResource(
 
 	var fullResourceID string
 	if location != "" {
+		scopeType := "regions"
 		if isZonal {
-			fullResourceID = fmt.Sprintf(zonalOrRegionalComputeParentPathFmt, project, "zones", location, resourceType, resourceID)
-		} else {
-			fullResourceID = fmt.Sprintf(zonalOrRegionalComputeParentPathFmt, project, "regions", location, resourceType, resourceID)
+			scopeType = "zones"
 		}
+		fullResourceID = computeParentPath(cloud.universeDomain, project, scopeType, location, resourceType, resourceID)
 	} else {
-		fullResourceID = fmt.Sprintf(globalComputeParentPathFmt, project, resourceType, resourceID)
+		fullResourceID = computeParentPath(cloud.universeDomain, project, "", "", resourceType, resourceID)
 	}
 
 	filteredTagsMap := getFilteredTagsMap(ctx, tagBindingsClient, fullResourceID, tagsMap)

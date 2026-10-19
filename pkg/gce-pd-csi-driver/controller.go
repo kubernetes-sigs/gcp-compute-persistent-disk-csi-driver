@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -54,9 +55,11 @@ type GCEControllerServer struct {
 
 	volumeEntries     []*csi.ListVolumesResponse_Entry
 	volumeEntriesSeen map[string]int
+	listVolumesLock   sync.Mutex
 
-	snapshots      []*csi.ListSnapshotsResponse_Entry
-	snapshotTokens map[string]int
+	snapshots         []*csi.ListSnapshotsResponse_Entry
+	snapshotTokens    map[string]int
+	listSnapshotsLock sync.Mutex
 
 	// A map storing all volumes with ongoing operations so that additional
 	// operations for that same volume (as defined by Volume Key) return an
@@ -80,7 +83,7 @@ type GCEControllerServer struct {
 	// pair.
 	//
 	// An implication is that in the full operation queue situation, requests
-	// for new disks will not backoff the first time. This is acceptible as a
+	// for new disks will not backoff the first time. This is acceptable as a
 	// single spurious call will not cause problems for quota exhaustion or make
 	// the operation queue problem worse. This is well compensated by giving
 	// disks where no problems are ocurring a chance to be processed.
@@ -190,6 +193,7 @@ func (c ListVolumesConfig) listDisksFields() []googleapi.Field {
 type csiErrorBackoffId string
 
 type csiErrorBackoff struct {
+	mu         sync.Mutex
 	backoff    *flowcontrol.Backoff
 	errorCodes map[csiErrorBackoffId]codes.Code
 }
@@ -435,7 +439,7 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 
 	// Verify that the regional availability class is only used on regional disks.
 	if params.ForceAttach && !params.IsRegional() {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid availabilty class for zonal disk")
+		return nil, status.Errorf(codes.InvalidArgument, "invalid availability class for zonal disk")
 	}
 
 	if gceCS.multiZoneVolumeHandleConfig.Enable && params.MultiZoneProvisioning {
@@ -683,8 +687,10 @@ func getAccessMode(req *csi.CreateVolumeRequest, params parameters.DiskParameter
 			// Disallow multi-attach for HdT and HdE. These checks were done in `createVolumeInternal`,
 			// but repeating them here future-proves us from possible refactors.
 			if am != constants.GCEReadWriteOnceAccessMode {
-				return "", status.Errorf(codes.Internal, "")
+				return "", status.Errorf(codes.InvalidArgument, "Hyperdisk Throughput and Extreme disks only support ReadWriteOnce access mode")
 			}
+			// Return empty string to indicate the default ReadWriteOnce access mode
+			return "", nil
 		} else {
 			return am, nil
 		}
@@ -1644,17 +1650,24 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 			"ListVolumes got max entries request %v. GCE only supports values >0", req.MaxEntries)
 	}
 
-	offsetLow := 0
-	var ok bool
+	var volumeEntries []*csi.ListVolumesResponse_Entry
+	var err error
 	if req.StartingToken == "" {
-		volumeEntries, err := gceCS.listVolumeEntries(ctx)
+		volumeEntries, err = gceCS.listVolumeEntries(ctx)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
 				return nil, status.Errorf(codes.Aborted, "ListVolumes error with invalid request: %v", err.Error())
 			}
 			return nil, common.LoggedError("Failed to list volumes: ", err)
 		}
+	}
 
+	gceCS.listVolumesLock.Lock()
+	defer gceCS.listVolumesLock.Unlock()
+
+	offsetLow := 0
+	var ok bool
+	if req.StartingToken == "" {
 		gceCS.volumeEntries = volumeEntries
 		gceCS.volumeEntriesSeen = map[string]int{}
 	} else {
@@ -1678,8 +1691,11 @@ func (gceCS *GCEControllerServer) ListVolumes(ctx context.Context, req *csi.List
 		offsetHigh = len(gceCS.volumeEntries)
 	}
 
+	entriesCopy := make([]*csi.ListVolumesResponse_Entry, offsetHigh-offsetLow)
+	copy(entriesCopy, gceCS.volumeEntries[offsetLow:offsetHigh])
+
 	return &csi.ListVolumesResponse{
-		Entries:   gceCS.volumeEntries[offsetLow:offsetHigh],
+		Entries:   entriesCopy,
 		NextToken: nextToken,
 	}, nil
 }
@@ -1748,6 +1764,10 @@ func (gceCS *GCEControllerServer) disksAndInstancesToVolumeEntries(disks []*comp
 			continue
 		}
 		for _, disk := range instance.Disks {
+			if disk.Source == "" {
+				klog.V(4).Infof("Skipping ListVolumes instance disk %s with empty source (instance %s)", disk.DeviceName, instance.Name)
+				continue
+			}
 			volumeId, err := getResourceId(disk.Source)
 			if err != nil {
 				klog.Warningf("Bad ListVolumes instance disk source %s, skipped: %v (%+v)", disk.Source, err, instance)
@@ -2098,18 +2118,26 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 			"ListSnapshots got max entries request %v. GCE only supports values >0", maxEntries)
 	}
 
-	var offset int
-	var length int
-	var ok bool
-	var nextToken string
+	var snapshotList []*csi.ListSnapshotsResponse_Entry
+	var err error
 	if req.StartingToken == "" {
-		snapshotList, err := gceCS.getSnapshots(ctx, req)
+		snapshotList, err = gceCS.getSnapshots(ctx, req)
 		if err != nil {
 			if gce.IsGCEInvalidError(err) {
 				return nil, status.Errorf(codes.Aborted, "ListSnapshots error with invalid request: %v", err.Error())
 			}
 			return nil, common.LoggedError("Failed to list snapshots: ", err)
 		}
+	}
+
+	gceCS.listSnapshotsLock.Lock()
+	defer gceCS.listSnapshotsLock.Unlock()
+
+	var offset int
+	var length int
+	var ok bool
+	var nextToken string
+	if req.StartingToken == "" {
 		gceCS.snapshots = snapshotList
 		gceCS.snapshotTokens = map[string]int{}
 	} else {
@@ -2130,8 +2158,11 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 		length = len(gceCS.snapshots) - offset
 	}
 
+	entriesCopy := make([]*csi.ListSnapshotsResponse_Entry, length)
+	copy(entriesCopy, gceCS.snapshots[offset:offset+length])
+
 	return &csi.ListSnapshotsResponse{
-		Entries:   gceCS.snapshots[offset : offset+length],
+		Entries:   entriesCopy,
 		NextToken: nextToken,
 	}, nil
 }
@@ -2758,7 +2789,10 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 }
 
 func newCsiErrorBackoff(initialDuration, errorBackoffMaxDuration time.Duration) *csiErrorBackoff {
-	return &csiErrorBackoff{flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration), make(map[csiErrorBackoffId]codes.Code)}
+	return &csiErrorBackoff{
+		backoff:    flowcontrol.NewBackOff(initialDuration, errorBackoffMaxDuration),
+		errorCodes: make(map[csiErrorBackoffId]codes.Code),
+	}
 }
 
 func (_ *csiErrorBackoff) backoffId(nodeId, volumeId string) csiErrorBackoffId {
@@ -2771,6 +2805,8 @@ func (b *csiErrorBackoff) blocking(id csiErrorBackoffId) bool {
 }
 
 func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if code, ok := b.errorCodes[id]; ok {
 		return code
 	}
@@ -2782,10 +2818,16 @@ func (b *csiErrorBackoff) code(id csiErrorBackoffId) codes.Code {
 
 func (b *csiErrorBackoff) next(id csiErrorBackoffId, code codes.Code) {
 	b.backoff.Next(string(id), b.backoff.Clock.Now())
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.errorCodes[id] = code
 }
 
 func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
 	b.backoff.Reset(string(id))
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	delete(b.errorCodes, id)
 }

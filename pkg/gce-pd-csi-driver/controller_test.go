@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3160,6 +3161,58 @@ func TestListVolumeResponse(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "attached disk with empty source",
+			disks: []compute.Disk{
+				{
+					Name:     "pv-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+				},
+			},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "pv-1",
+							Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+						},
+						{
+							DeviceName: "local-ssd-0",
+							Source:     "", // Empty source link representing a scratch disk or confidential node disk
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{
+				{
+					Volume: &csi.Volume{
+						VolumeId: fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, zone, "pv-1"),
+					},
+					Status: &csi.ListVolumesResponse_VolumeStatus{
+						PublishedNodeIds: []string{fmt.Sprintf("projects/%s/zones/%s/instances/%s", project, zone, "node-1")},
+					},
+				},
+			},
+		},
+		{
+			name:  "only attached disk with empty source",
+			disks: []compute.Disk{},
+			instances: []compute.Instance{
+				{
+					Name:     "node-1",
+					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s", project, zone, "node-1"),
+					Disks: []*compute.AttachedDisk{
+						{
+							DeviceName: "local-ssd-0",
+							Source:     "",
+						},
+					},
+				},
+			},
+			expectedEntries: []*csi.ListVolumesResponse_Entry{},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -5360,7 +5413,10 @@ type backoffDriverConfig struct {
 
 func newFakeCSIErrorBackoff(tc *clock.FakeClock) *csiErrorBackoff {
 	backoff := flowcontrol.NewFakeBackOff(errorBackoffInitialDuration, errorBackoffMaxDuration, tc)
-	return &csiErrorBackoff{backoff, make(map[csiErrorBackoffId]codes.Code)}
+	return &csiErrorBackoff{
+		backoff:    backoff,
+		errorCodes: make(map[csiErrorBackoffId]codes.Code),
+	}
 }
 
 func TestControllerUnpublishBackoff(t *testing.T) {
@@ -6124,7 +6180,7 @@ func TestCreateConfidentialVolume(t *testing.T) {
 				if !ok {
 					t.Fatalf("Could not get error status code from err: %v", serverError)
 				}
-				t.Errorf("Recieved error %v", serverError)
+				t.Errorf("Received error %v", serverError)
 			}
 
 			volumeId := resp.GetVolume().VolumeId
@@ -6221,4 +6277,117 @@ func mergeParameters(a map[string]string, b map[string]string) map[string]string
 		merged[k] = v
 	}
 	return merged
+}
+
+func TestListVolumes_Concurrent(t *testing.T) {
+	var d []*gce.CloudDisk
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("disk-%v", i)
+		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+			Name:     name,
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
+		}))
+	}
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
+
+	concurrency := 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(id int) {
+			defer wg.Done()
+			req := &csi.ListVolumesRequest{
+				MaxEntries: 10,
+			}
+			resp, err := gceDriver.cs.ListVolumes(context.TODO(), req)
+			if err != nil {
+				t.Errorf("worker %d: unexpected error: %v", id, err)
+				return
+			}
+			if resp.NextToken != "" {
+				req2 := &csi.ListVolumesRequest{
+					MaxEntries:    10,
+					StartingToken: resp.NextToken,
+				}
+				_, err2 := gceDriver.cs.ListVolumes(context.TODO(), req2)
+				if err2 != nil {
+					if !strings.Contains(err2.Error(), "invalid startingToken") {
+						t.Errorf("worker %d: unexpected error on page 2: %v", id, err2)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestListSnapshots_Concurrent(t *testing.T) {
+	// Create source disks in mock provider
+	var d []*gce.CloudDisk
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("disk-%v", i)
+		d = append(d, gce.CloudDiskFromV1(&compute.Disk{
+			Name:     name,
+			SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", project, zone, name),
+		}))
+	}
+	fakeCloudProvider, err := gce.CreateFakeCloudProvider(project, zone, d)
+	if err != nil {
+		t.Fatalf("Failed to create fake cloud provider: %v", err)
+	}
+
+	gceDriver := initGCEDriverWithCloudProvider(t, fakeCloudProvider, &GCEControllerServerArgs{})
+
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("snapshot-%v", i)
+		volumeID := fmt.Sprintf("projects/%s/zones/%s/disks/disk-%d", project, zone, i)
+		createReq := &csi.CreateSnapshotRequest{
+			Name:           name,
+			SourceVolumeId: volumeID,
+			Parameters:     map[string]string{parameters.ParameterKeySnapshotType: parameters.DiskSnapshotType},
+		}
+		_, err := gceDriver.cs.CreateSnapshot(context.Background(), createReq)
+		if err != nil {
+			t.Fatalf("failed to create snapshot: %v", err)
+		}
+	}
+
+	concurrency := 20
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(id int) {
+			defer wg.Done()
+			req := &csi.ListSnapshotsRequest{
+				MaxEntries: 10,
+			}
+			resp, err := gceDriver.cs.ListSnapshots(context.TODO(), req)
+			if err != nil {
+				t.Errorf("worker %d: unexpected error: %v", id, err)
+				return
+			}
+			if resp.NextToken != "" {
+				req2 := &csi.ListSnapshotsRequest{
+					MaxEntries:    10,
+					StartingToken: resp.NextToken,
+				}
+				_, err2 := gceDriver.cs.ListSnapshots(context.TODO(), req2)
+				if err2 != nil {
+					if !strings.Contains(err2.Error(), "invalid startingToken") {
+						t.Errorf("worker %d: unexpected error on page 2: %v", id, err2)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }

@@ -2,7 +2,9 @@ package deviceutils
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -111,5 +113,80 @@ func TestDiskNvmePattern(t *testing.T) {
 		if diff := cmp.Diff(gotPaths, tc.wantPaths, cmpopts.SortSlices(less)); diff != "" {
 			t.Errorf("Unexpected NVMe device paths (-got, +want):\n%s", diff)
 		}
+	}
+}
+
+func TestSetDevicePathSymlink(t *testing.T) {
+	serial := "pvc-edf38be4-6fae-4af7-978f-a1e55bbe16ec"
+
+	testCases := []struct {
+		name               string
+		existingLinkTarget string
+		existingTargetFile bool
+		newTarget          string
+	}{
+		{
+			name:      "create symlink when none exists",
+			newTarget: "nvme0n1",
+		},
+		{
+			name:               "atomically replace valid stale symlink",
+			existingLinkTarget: "nvme0n1",
+			existingTargetFile: true,
+			newTarget:          "nvme0n8",
+		},
+		{
+			name:               "atomically replace dangling stale symlink",
+			existingLinkTarget: "nvme0n5-nonexistent",
+			existingTargetFile: false,
+			newTarget:          "nvme0n8",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			wantDevicePath := filepath.Join(tmpDir, "google-"+serial)
+
+			if tc.existingLinkTarget != "" {
+				existingTargetPath := filepath.Join(tmpDir, tc.existingLinkTarget)
+				if tc.existingTargetFile {
+					if err := os.WriteFile(existingTargetPath, []byte("stale-disk"), 0600); err != nil {
+						t.Fatalf("failed to create existing target file: %v", err)
+					}
+				}
+				if err := os.Symlink(existingTargetPath, wantDevicePath); err != nil {
+					t.Fatalf("failed to setup existing symlink: %v", err)
+				}
+			}
+
+			newTargetPath := filepath.Join(tmpDir, tc.newTarget)
+			if err := os.WriteFile(newTargetPath, []byte("new-disk"), 0600); err != nil {
+				t.Fatalf("failed to create new target file: %v", err)
+			}
+
+			gotPath, err := setDevicePathSymlink(newTargetPath, tmpDir, serial)
+			if err != nil {
+				t.Fatalf("unexpected error from setDevicePathSymlink: %v", err)
+			}
+			if gotPath != wantDevicePath {
+				t.Fatalf("expected devicePath %q, got %q", wantDevicePath, gotPath)
+			}
+
+			gotTarget, err := os.Readlink(wantDevicePath)
+			if err != nil || gotTarget != newTargetPath {
+				t.Fatalf("expected symlink target %q, got %q (err: %v)", newTargetPath, gotTarget, err)
+			}
+
+			entries, err := os.ReadDir(tmpDir)
+			if err != nil {
+				t.Fatalf("failed to ReadDir: %v", err)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), ".tmp-") {
+					t.Errorf("found leftover temporary symlink file: %s", entry.Name())
+				}
+			}
+		})
 	}
 }

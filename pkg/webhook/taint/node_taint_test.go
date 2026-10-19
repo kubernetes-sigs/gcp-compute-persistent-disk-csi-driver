@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,7 +26,7 @@ func TestNodeTainter_Handle(t *testing.T) {
 		name          string
 		node          *corev1.Node
 		wantAllowed   bool
-		wantPatches   []jsonpatch.JsonPatchOperation
+		wantPatches   []map[string]interface{}
 		wantResultMsg string
 	}{
 		{
@@ -37,11 +36,11 @@ func TestNodeTainter_Handle(t *testing.T) {
 				Spec:       corev1.NodeSpec{Taints: []corev1.Taint{}},
 			},
 			wantAllowed: true,
-			wantPatches: []jsonpatch.JsonPatchOperation{
+			wantPatches: []map[string]interface{}{
 				{
-					Operation: "add",
-					Path:      "/spec/taints",
-					Value: []interface{}{
+					"op":   "add",
+					"path": "/spec/taints",
+					"value": []interface{}{
 						map[string]interface{}{
 							"effect": string(constants.StartupTaintEffect),
 							"key":    constants.StartupTaintKey,
@@ -62,7 +61,7 @@ func TestNodeTainter_Handle(t *testing.T) {
 				},
 			},
 			wantAllowed:   true,
-			wantPatches:   []jsonpatch.JsonPatchOperation{},
+			wantPatches:   []map[string]interface{}{},
 			wantResultMsg: "Node already has startup taint",
 		},
 		{
@@ -77,7 +76,7 @@ func TestNodeTainter_Handle(t *testing.T) {
 				Spec: corev1.NodeSpec{Taints: []corev1.Taint{}},
 			},
 			wantAllowed:   true,
-			wantPatches:   []jsonpatch.JsonPatchOperation{},
+			wantPatches:   []map[string]interface{}{},
 			wantResultMsg: "Fail-safe label detected",
 		},
 		{
@@ -91,11 +90,11 @@ func TestNodeTainter_Handle(t *testing.T) {
 				},
 			},
 			wantAllowed: true,
-			wantPatches: []jsonpatch.JsonPatchOperation{
+			wantPatches: []map[string]interface{}{
 				{
-					Operation: "add",
-					Path:      "/spec/taints/1",
-					Value: map[string]interface{}{
+					"op":   "add",
+					"path": "/spec/taints/-",
+					"value": map[string]interface{}{
 						"effect": string(constants.StartupTaintEffect),
 						"key":    constants.StartupTaintKey,
 						"value":  constants.StartupTaintValue,
@@ -116,11 +115,11 @@ func TestNodeTainter_Handle(t *testing.T) {
 				},
 			},
 			wantAllowed: true,
-			wantPatches: []jsonpatch.JsonPatchOperation{
+			wantPatches: []map[string]interface{}{
 				{
-					Operation: "add",
-					Path:      "/spec/taints/3",
-					Value: map[string]interface{}{
+					"op":   "add",
+					"path": "/spec/taints/-",
+					"value": map[string]interface{}{
 						"effect": string(constants.StartupTaintEffect),
 						"key":    constants.StartupTaintKey,
 						"value":  constants.StartupTaintValue,
@@ -164,17 +163,23 @@ func TestNodeTainter_Handle(t *testing.T) {
 			}
 
 			if len(tc.wantPatches) > 0 {
-				if len(resp.Patches) != len(tc.wantPatches) {
-					t.Fatalf("Got %d patches, want %d", len(resp.Patches), len(tc.wantPatches))
+				var gotPatches []map[string]interface{}
+				if len(resp.Patch) > 0 {
+					if err := json.Unmarshal(resp.Patch, &gotPatches); err != nil {
+						t.Fatalf("Failed to unmarshal patch response: %v", err)
+					}
 				}
-				for i, patch := range resp.Patches {
+				if len(gotPatches) != len(tc.wantPatches) {
+					t.Fatalf("Got %d patches, want %d", len(gotPatches), len(tc.wantPatches))
+				}
+				for i, patch := range gotPatches {
 					if diff := cmp.Diff(tc.wantPatches[i], patch); diff != "" {
 						t.Errorf("Patch[%d] mismatch (-want +got):\n%s", i, diff)
 					}
 				}
 			} else {
-				if len(resp.Patches) > 0 {
-					t.Errorf("Expected NO patches, got %v", resp.Patches)
+				if len(resp.Patch) > 0 && string(resp.Patch) != "null" && string(resp.Patch) != "[]" {
+					t.Errorf("Expected NO patches, got %s", string(resp.Patch))
 				}
 			}
 		})

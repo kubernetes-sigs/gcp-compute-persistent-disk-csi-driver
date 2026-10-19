@@ -202,7 +202,7 @@ func TestGetComputeVersion(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		ctx := context.Background()
-		computeOpts, err := getComputeVersion(ctx, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion, 0)
+		computeOpts, err := getComputeVersion(ctx, nil, &mockTokenSource{}, tc.computeEndpoint, tc.computeEnvironment, tc.computeVersion, 0, "")
 		service, _ := compute.NewService(ctx, computeOpts...)
 		gotEndpoint := service.BasePath
 		if err != nil && !tc.expectError {
@@ -260,7 +260,7 @@ func TestCreateCloudService(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			// We use dummy values for other parameters as they are not critical for auth failure testing
-			_, err := createCloudService(ctx, "test-version", tc.tokenSource, nil, EnvironmentProduction, tc.failCloseOnAuthError, 1*time.Nanosecond)
+			_, err := createCloudService(ctx, "test-version", nil, tc.tokenSource, nil, EnvironmentProduction, tc.failCloseOnAuthError, 1*time.Nanosecond, "")
 			if tc.expectError && err == nil {
 				t.Fatalf("Expected error, but got nil")
 			}
@@ -268,5 +268,48 @@ func TestCreateCloudService(t *testing.T) {
 				t.Fatalf("Expected no error, but got: %v", err)
 			}
 		})
+	}
+}
+
+func TestNewOauthClient_TransportConfig(t *testing.T) {
+	ctx := context.Background()
+	client, err := newOauthClient(ctx, &mockTokenSource{}, 5*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error creating oauth client: %v", err)
+	}
+	if client == nil {
+		t.Fatalf("expected non-nil client")
+	}
+
+	oauth2Transport, ok := client.Transport.(*oauth2.Transport)
+	if !ok {
+		t.Fatalf("expected client.Transport to be *oauth2.Transport, got %T", client.Transport)
+	}
+
+	baseTransport, ok := oauth2Transport.Base.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected oauth2Transport.Base to be *http.Transport, got %T", oauth2Transport.Base)
+	}
+
+	if baseTransport.ResponseHeaderTimeout != 60*time.Second {
+		t.Errorf("expected ResponseHeaderTimeout to be 60s, got %v", baseTransport.ResponseHeaderTimeout)
+	}
+	if !baseTransport.ForceAttemptHTTP2 {
+		t.Errorf("expected ForceAttemptHTTP2 to be true, got %v", baseTransport.ForceAttemptHTTP2)
+	}
+	if baseTransport.MaxIdleConns != 100 {
+		t.Errorf("expected MaxIdleConns to be 100, got %v", baseTransport.MaxIdleConns)
+	}
+	if baseTransport.IdleConnTimeout != 90*time.Second {
+		t.Errorf("expected IdleConnTimeout to be 90s, got %v", baseTransport.IdleConnTimeout)
+	}
+	if baseTransport.TLSHandshakeTimeout != 10*time.Second {
+		t.Errorf("expected TLSHandshakeTimeout to be 10s, got %v", baseTransport.TLSHandshakeTimeout)
+	}
+	if baseTransport.ExpectContinueTimeout != 1*time.Second {
+		t.Errorf("expected ExpectContinueTimeout to be 1s, got %v", baseTransport.ExpectContinueTimeout)
+	}
+	if baseTransport.DialContext == nil {
+		t.Errorf("expected DialContext to be non-nil")
 	}
 }

@@ -19,10 +19,27 @@ set -o pipefail
 
 echo "Verifying gofmt"
 
-diff=$(find . -name "*.go" | grep -v "\/vendor\/" | xargs gofmt -s -d 2>&1)
+# 1. Find the files and save them to a list
+go_files=$(find . -name "*.go" | grep -v "\/vendor\/")
+
+# 2. Check if we actually found any Go files to check
+if [[ -z "${go_files}" ]]; then
+  echo "No Go files found to verify."
+  exit 0
+fi
+
+# 3. Temporarily turn off 'errexit' (+e) so we can run xargs gofmt.
+# If gofmt finds unformatted code, it will fail, but the script won't crash.
+set +o errexit
+diff=$(echo "${go_files}" | xargs gofmt -s -d 2>&1)
+gofmt_exit_code=$?
+set -o errexit
+
 if [[ -n "${diff}" ]]; then
   echo "${diff}"
   echo
   echo "Please run hack/update-gofmt.sh"
   exit 1
 fi
+
+echo "Successfully verified gofmt"

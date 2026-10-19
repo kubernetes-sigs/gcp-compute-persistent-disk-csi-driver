@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	DriverName = "pd.csi.storage.gke.io"
+
 	// Keys for Topology. This key will be shared amongst drivers from GCP
 	TopologyKeyZone = "topology.gke.io/zone"
 
@@ -59,11 +61,6 @@ const (
 
 	// Keys in the publish context
 	ContexLocalSsdCacheSize = "local-ssd-cache-size"
-	// Node name for E2E tests
-	TestNode = "test-node-csi-e2e"
-
-	// Default LSSD count for datacache E2E tests
-	LocalSSDCountForDataCache = 2
 
 	// Node label for Data Cache (only applicable to GKE nodes)
 	NodeLabelPrefix         = "cloud.google.com/%s"
@@ -71,6 +68,9 @@ const (
 	// Node label for attach limit override
 	NodeRestrictionLabelPrefix = "node-restriction.kubernetes.io/%s"
 	AttachLimitOverrideLabel   = "gke-volume-attach-limit-override"
+
+	// Instance label for data cache (only used for non-GKE nodes, eg e2e tests)
+	DatacacheLocalSsdMetadataLabel = "datacache-local-ssd-count"
 
 	// StartupTaintKey is the key that blocks scheduling until the driver is ready.
 	StartupTaintKey    = "pd.csi.storage.gke.io/not-ready"
@@ -80,6 +80,7 @@ const (
 	// VolumePublishStatus is the key in volume publish context to indicate the status of the volume.
 	VolumePublishStatus = "volume-publish-status-gke-io"
 	ProvisioningStatus  = "provisioning"
+	ProvisionedStatus   = "provisioned"
 	AttachedStatus      = "attaching"
 
 	// ClusterIDLabel is the key in disk labels to indicate the cluster identifier of the disk.
@@ -118,12 +119,24 @@ var N4MachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
 	{Max: 80, Value: 31},
 }
 
+// N4D Machine Types - Hyperdisk Balanced Limits
+var N4DMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{Max: 8, Value: 15},
+	{Max: 96, Value: 31},
+}
+
 // C4A Machine Types - Hyperdisk Balanced Limits
 var C4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
 	{Max: 2, Value: 7},
 	{Max: 8, Value: 15},
 	{Max: 48, Value: 31},
 	{Max: 72, Value: 63},
+}
+
+// N4A Machine Types - Hyperdisk Balanced Limits
+var N4AMachineHyperdiskAttachLimitMap = []MachineHyperdiskLimit{
+	{Max: 8, Value: 15},
+	{Max: 64, Value: 31},
 }
 
 // A4X Machine Types - Hyperdisk Balanced Limits. The max here is actually the GPU count (not CPU, like the others).

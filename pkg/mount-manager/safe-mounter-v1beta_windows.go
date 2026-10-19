@@ -52,7 +52,7 @@ type GoogleCloudDiskBeta struct {
 	Type                    string `json:"type"`
 }
 
-// CSIProxyMounterV1Beta is the mounter implementaiton that uses the v1beta API
+// CSIProxyMounterV1Beta is the mounter implementation that uses the v1beta API
 type CSIProxyMounterV1Beta struct {
 	FsClient     *fsclient.Client
 	DiskClient   *diskclient.Client

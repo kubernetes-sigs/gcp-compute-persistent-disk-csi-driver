@@ -78,7 +78,6 @@ func RegisterTenantEventHandlers(ti TenantsInformer, handler TenantLifecycleHand
 			defer mutex.Unlock()
 			if _, ok := tenantServiceMap[tenantMeta.ProjectNumber]; ok {
 				klog.Infof("Tenant GCE client already exists for tenant project number %s, skipping GCE client instantiation.", tenantMeta.ProjectNumber)
-				mutex.Unlock()
 				return
 			}
 

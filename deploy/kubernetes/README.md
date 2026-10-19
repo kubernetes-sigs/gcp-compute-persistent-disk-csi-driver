@@ -20,7 +20,8 @@ The current structure for kustomization is as follows. Note that Windows support
   * `noauth` Based on stable-master, patches the [base controller configuration](deploy/kubernetes/base/controller.yaml) to remove any dependencies on service account keys.
   * `noauth-debug`: Based on stable-master, used for debugging purposes only, see docs/kubernetes/development.md.
   * `prow-stable-sidecar-rc-master`: Used for prow tests on OSS testgrid to test the latest sidecars. Contains deployment specs of a driver with k8s master branch, driver latest release candidate, and stable sidecars.
-  * `prow-canary-sidecar`: Used for prow tests on OSS testgrid to test release candidates when a new release is being cut. Contains deployment specs of a driver with k8s master branch, Kubernetes driver latest build, and canary sidecars. 
+  * `prow-canary-sidecar`: Used for prow tests on OSS testgrid to test release candidates when a new release is being cut. Contains deployment specs of a driver with k8s master branch, Kubernetes driver latest build, and canary sidecars.
+  * `selinuxmount`: Based on stable-master, enables SELinux mount support ([KEP 1710](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/1710-selinux-relabeling)). Sets `seLinuxMount: true` on the CSIDriver object and mounts `/etc/selinux` into the node plugin so that `mount(8)` can apply `context=` mount options. Requires Kubernetes 1.32+ with the `SELinuxMount` feature gate enabled and an SELinux-enforcing node (e.g. Fedora, RHEL).
 
   ## NVME support
   udev folder under deploy/kubernetes contains google_nvme_id script required for NVME support. Source is downloaded from [GoogleCloudPlatform/guest-configs](https://github.com/GoogleCloudPlatform/guest-configs). README file in the folder contains the downloaded version.

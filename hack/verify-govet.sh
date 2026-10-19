@@ -20,3 +20,5 @@ set -o pipefail
 echo "Verifying govet"
 
 go vet $(go list ./... | grep -v vendor)
+
+echo "Successfully verified govet"

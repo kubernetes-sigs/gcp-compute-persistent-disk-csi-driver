@@ -91,7 +91,11 @@ func (d *DeviceCache) Run(ctx context.Context) {
 		case <-ticker.C:
 			d.listAndUpdate()
 
-			klog.Infof("Cache contents: %+v", d.symlinks)
+			func() {
+				d.mutex.Lock()
+				defer d.mutex.Unlock()
+				klog.Infof("Cache contents: %+v", d.symlinks)
+			}()
 		}
 	}
 }
@@ -153,25 +157,46 @@ func (d *DeviceCache) RemoveVolume(volumeID string) {
 	}
 }
 
+func (d *DeviceCache) getSymlinksMap() map[string]string {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	m := make(map[string]string, len(d.symlinks))
+	for s, device := range d.symlinks {
+		m[s] = device.volumeID
+	}
+	return m
+}
+
 func (d *DeviceCache) listAndUpdate() {
-	for symlink, device := range d.symlinks {
-		// Evaluate the symlink
+	// 1. Copy symlinks to volume IDs map under lock
+	symlinksMap := d.getSymlinksMap()
+
+	// 2. Perform filesystem I/O outside the lock
+	updates := make(map[string]string)
+	for symlink, volumeID := range symlinksMap {
 		realPath, err := filepath.EvalSymlinks(symlink)
 		if err != nil {
-			klog.Warningf("Error evaluating symlink for volume %s: %v", device.volumeID, err)
+			klog.Warningf("Error evaluating symlink for volume %s: %v", volumeID, err)
 			continue
 		}
+		updates[symlink] = realPath
+	}
 
-		// Check if the realPath has changed
-		if realPath != device.realPath {
-			klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
-			if d.metricsManager != nil {
-				d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
+	// 3. Apply updates under lock
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	for symlink, realPath := range updates {
+		if device, ok := d.symlinks[symlink]; ok {
+			if realPath != device.realPath {
+				klog.Warningf("Change in device path for volume %s (symlink: %s), previous path: %s, new path: %s", device.volumeID, symlink, device.realPath, realPath)
+				if d.metricsManager != nil {
+					d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
+				}
+
+				// Update the cache with the new realPath
+				device.realPath = realPath
+				d.symlinks[symlink] = device
 			}
-
-			// Update the cache with the new realPath
-			device.realPath = realPath
-			d.symlinks[symlink] = device
 		}
 	}
 }

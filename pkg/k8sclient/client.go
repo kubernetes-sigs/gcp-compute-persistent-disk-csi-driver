@@ -2,6 +2,7 @@ package k8sclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,11 +22,13 @@ var (
 		Steps:    5,
 	}
 
+	NoKubernetesError = errors.New("No k8s config found")
+
 	// For testing purposes, this function can be overridden to return a fake client.
 	GetClient = func() (kubernetes.Interface, error) {
 		cfg, err := rest.InClusterConfig()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", NoKubernetesError, err)
 		}
 		return kubernetes.NewForConfig(cfg)
 	}

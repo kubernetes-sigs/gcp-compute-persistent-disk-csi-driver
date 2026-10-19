@@ -16,6 +16,16 @@ spec:
               name: cloud-sa-volume
               readOnly: true
               mountPath: "/etc/cloud-sa"
+        - name: taint-controller
+          env:
+            - $patch: delete
+              name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/cloud-sa/cloud-sa.json"
+          volumeMounts:
+            - $patch: delete
+              name: cloud-sa-volume
+              readOnly: true
+              mountPath: "/etc/cloud-sa"
       volumes:
         - $patch: delete
           name: cloud-sa-volume

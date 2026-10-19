@@ -52,20 +52,24 @@ func execPipeCommand(pipeCmd string, pipeCmdArg []string, execCmd1 *exec.Cmd) ([
 	execPipeCmd := exec.Command(pipeCmd, pipeCmdArg...)
 	stdoutPipe, err := execCmd1.StdoutPipe()
 	if err != nil {
-		klog.Errorf("failed command %v: got error:%v", execCmd1, err)
+		return nil, fmt.Errorf("failed to get stdout pipe for %v: %w", execCmd1, err)
 	}
 	err = execCmd1.Start()
 	if err != nil {
-		klog.Infof("errored running command %v; error %v; ", execCmd1, err)
+		return nil, fmt.Errorf("failed to start command %v: %w", execCmd1, err)
 	}
+	defer func() {
+		_ = execCmd1.Wait() // Reclaim zombie process resources
+	}()
 	defer stdoutPipe.Close()
 
 	execPipeCmd.Stdin = stdoutPipe
 	output, err := execPipeCmd.CombinedOutput()
 	if err != nil {
-		// Some commands (such as grep) will return an error with exit status of 1
-		if len(output) == 0 && err.(*exec.ExitError).ExitCode() == 1 {
-			return output, nil
+		if len(output) == 0 {
+			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+				return output, nil
+			}
 		}
 		err = checkError(err, *execPipeCmd)
 		return nil, fmt.Errorf("%s failed: %w; output: %s", execPipeCmd, err, string(output))

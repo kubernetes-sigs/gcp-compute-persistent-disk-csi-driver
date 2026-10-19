@@ -19,8 +19,10 @@ GCE_PD_CSI_STAGING_VERSION ?= ${REV}
 STAGINGVERSION=${GCE_PD_CSI_STAGING_VERSION}
 STAGINGIMAGE=${GCE_PD_CSI_STAGING_IMAGE}
 LABELERSTAGINGIMAGE?=${STAGINGIMAGE}/gce-pd-node-labeler
+DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE?=${STAGINGIMAGE}/gce-pd-default-sc-rollback-handler
 DRIVERBINARY=gce-pd-csi-driver
 LABELERBINARY=gce-pd-node-labeler
+DEFAULTSCROLLBACKHANDLERBINARY=gce-pd-default-sc-rollback-handler
 DRIVERWINDOWSBINARY=${DRIVERBINARY}.exe
 
 DOCKER=DOCKER_CLI_EXPERIMENTAL=enabled docker
@@ -45,6 +47,10 @@ gce-pd-driver: require-GCE_PD_CSI_STAGING_VERSION
 gce-pd-node-labeler: require-GCE_PD_CSI_STAGING_VERSION
 	mkdir -p bin
 	CGO_ENABLED=0 go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-extldflags=static -X main.version=$(STAGINGVERSION)" -o bin/${LABELERBINARY} ./cmd/gce-pd-node-labeler/
+
+gce-pd-default-sc-rollback-handler: require-GCE_PD_CSI_STAGING_VERSION
+	mkdir -p bin
+	CGO_ENABLED=0 go build -mod=vendor -gcflags=$(GCFLAGS) -ldflags "-extldflags=static -X main.version=$(STAGINGVERSION)" -o bin/${DEFAULTSCROLLBACKHANDLERBINARY} ./cmd/default-sc-rollback-handler/
 
 gce-pd-driver-windows: require-GCE_PD_CSI_STAGING_VERSION
 ifeq (${GOARCH}, amd64)
@@ -86,6 +92,22 @@ build-and-push-multi-arch-debug: build-and-push-container-linux-debug build-and-
 build-and-push-node-labeler-multi-arch: build-node-labeler-container-linux-amd64 build-node-labeler-container-linux-arm64
 	$(DOCKER) manifest create $(LABELERSTAGINGIMAGE):$(STAGINGVERSION) $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64
 	$(DOCKER) manifest push -p $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)
+
+build-default-sc-rollback-handler-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.default-sc-rollback-handler --platform=linux/amd64 \
+		-t $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
+
+build-default-sc-rollback-handler-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
+	$(DOCKER) buildx build --file=Dockerfile.default-sc-rollback-handler --platform=linux/arm64 \
+		-t $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
+		--build-arg BUILDPLATFORM=linux \
+		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
+
+build-and-push-default-sc-rollback-handler-multi-arch: build-default-sc-rollback-handler-linux-amd64 build-default-sc-rollback-handler-linux-arm64
+	$(DOCKER) manifest create $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION) $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64
+	$(DOCKER) manifest push -p $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)
 
 push-container: build-container
 

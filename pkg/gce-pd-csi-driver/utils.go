@@ -167,7 +167,7 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params parameters.DiskPa
 		return fmt.Errorf("storage pools do not support confidential storage")
 	}
 
-	if !(params.DiskType == "hyperdisk-balanced" || params.DiskType == "hyperdisk-throughput") {
+	if !(params.DiskType == parameters.DiskTypeHyperdiskBalanced || params.DiskType == parameters.DiskTypeHdT) {
 		return fmt.Errorf("invalid disk-type: %q. storage pools only support hyperdisk-balanced or hyperdisk-throughput", params.DiskType)
 	}
 
@@ -186,8 +186,8 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params parameters.DiskPa
 	}
 
 	// Check that Storage Pools are in same project as the GCEClient that creates the volume.
-	if err := validateStoragePoolProjects(project, params.StoragePools); err != nil {
-		return fmt.Errorf("failed to validate storage pools projects: %v", err)
+	if usingCrossProjectStoragePools(project, params.StoragePools) {
+		klog.V(4).Infof("cross project storage pool being used for volume provisioning. Volume: %q, Project: %q, StoragePools: %v", req.GetName(), project, params.StoragePools)
 	}
 
 	return nil
@@ -208,15 +208,15 @@ func validateStoragePoolZones(req *csi.CreateVolumeRequest, storagePools []param
 	return nil
 }
 
-func validateStoragePoolProjects(project string, storagePools []parameters.StoragePool) error {
+func usingCrossProjectStoragePools(project string, storagePools []parameters.StoragePool) bool {
 	spProjects := sets.String{}
 	for _, sp := range storagePools {
 		if sp.Project != project {
 			spProjects.Insert(sp.Project)
-			return fmt.Errorf("cross-project storage pools usage is not supported. Trying to CreateVolume in project %q with storage pools in projects %v", project, spProjects.UnsortedList())
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 func getMultiWriterFromCapability(vc *csi.VolumeCapability) (bool, error) {
@@ -353,9 +353,6 @@ func containsZone(zones []string, zone string) bool {
 func IsDataCacheEnabledNodePool(ctx context.Context, nodeName string, enableDataCacheFlag bool) (bool, error) {
 	if !enableDataCacheFlag {
 		return false, nil
-	}
-	if nodeName == constants.TestNode { // disregard logic below when E2E testing.
-		return true, nil
 	}
 	if len(nodeName) > 0 {
 		dataCacheLSSDCount, err := GetDataCacheCountFromNodeLabel(ctx, nodeName)

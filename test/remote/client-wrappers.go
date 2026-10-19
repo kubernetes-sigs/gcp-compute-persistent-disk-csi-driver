@@ -112,6 +112,7 @@ func (c *CsiClient) CreateVolumeWithCaps(volName string, params map[string]strin
 	capRange := &csipb.CapacityRange{
 		RequiredBytes: common.GbToBytes(sizeInGb),
 	}
+
 	cvr := &csipb.CreateVolumeRequest{
 		Name:               volName,
 		VolumeCapabilities: caps,

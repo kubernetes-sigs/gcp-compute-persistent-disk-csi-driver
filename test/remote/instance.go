@@ -23,9 +23,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
+	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/oauth2/google"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
@@ -35,7 +37,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/constants"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/parameters"
 )
 
 const (
@@ -52,6 +56,8 @@ type InstanceConfig struct {
 	Zone                      string
 	Name                      string
 	MachineType               string
+	DiskTypeDefault           string
+	SupportedDiskTypes        []string
 	ServiceAccount            string
 	ImageURL                  string
 	CloudtopHost              bool
@@ -60,6 +66,7 @@ type InstanceConfig struct {
 	EnableConfidentialCompute bool
 	LocalSSDCount             int64
 	EnableDataCache           bool
+	Subnetwork                string
 }
 
 type InstanceInfo struct {
@@ -72,6 +79,19 @@ func (i *InstanceInfo) GetIdentity() (string, string, string) {
 	return i.cfg.Project, i.cfg.Zone, i.cfg.Name
 }
 
+func (i *InstanceInfo) GetRegion() string {
+	idx := strings.LastIndex(i.cfg.Zone, "-")
+
+	// If '-' is not found (idx == -1),
+	// or it's at the very beginning (idx == 0 -> empty prefix),
+	// or it's at the very end (idx == len-1 -> empty suffix)
+	if idx <= 0 || idx == len(i.cfg.Zone)-1 {
+		return ""
+	}
+
+	return i.cfg.Zone[:idx]
+}
+
 func (i *InstanceInfo) GetName() string {
 	return i.cfg.Name
 }
@@ -80,8 +100,36 @@ func (i *InstanceInfo) GetNodeID() string {
 	return common.CreateNodeID(i.cfg.Project, i.cfg.Zone, i.cfg.Name)
 }
 
-func (i *InstanceInfo) GetLocalSSD() int64 {
+func (i *InstanceInfo) HasLocalSSD() bool {
+	if isAutoLocalSSDMachineType(i.cfg.MachineType) {
+		return true
+	}
+	return i.cfg.LocalSSDCount > 0
+}
+
+func (i *InstanceInfo) MachineType() string {
+	return i.cfg.MachineType
+}
+
+func (i *InstanceInfo) GetLocalSSDCount() int64 {
 	return i.cfg.LocalSSDCount
+}
+
+func (i *InstanceInfo) DefaultDiskType() string {
+	if i.cfg.DiskTypeDefault != "" {
+		return i.cfg.DiskTypeDefault
+	}
+	if len(i.cfg.SupportedDiskTypes) > 0 {
+		return i.cfg.SupportedDiskTypes[0]
+	}
+	return "unknown-disk-type" // Will cause an error downstream
+}
+
+func (i *InstanceInfo) SupportsDiskType(diskType string) bool {
+	if len(i.cfg.SupportedDiskTypes) > 0 {
+		return slices.Contains(i.cfg.SupportedDiskTypes, diskType)
+	}
+	return diskType == i.cfg.DiskTypeDefault
 }
 
 func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) bool {
@@ -89,7 +137,7 @@ func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) b
 		klog.Infof("Machine type mismatch")
 		return true
 	}
-	// Ideally we could compare to see if the new instance has a greater minCpuPlatfor
+	// Ideally we could compare to see if the new instance has a greater minCpuPlatform.
 	// For now we just check it was set and it's different.
 	if curInst.MinCpuPlatform != "" && curInst.MinCpuPlatform != newInst.MinCpuPlatform {
 		klog.Infof("CPU Platform mismatch: cur: %v; new: %v", curInst.MinCpuPlatform, newInst.MinCpuPlatform)
@@ -108,8 +156,22 @@ func machineTypeMismatch(curInst *compute.Instance, newInst *compute.Instance) b
 	return false
 }
 
+func isAutoLocalSSDMachineType(machineType string) bool {
+	if strings.HasSuffix(machineType, "-lssd") {
+		return true
+	}
+
+	fixedSSDFamilies := []string{"z3", "a4", "a3", "a2"}
+	for _, family := range fixedSSDFamilies {
+		if strings.HasPrefix(machineType, family) {
+			return true
+		}
+	}
+	return false
+}
+
 // Provision a gce instance using image
-func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
+func (i *InstanceInfo) CreateOrGetInstance() error {
 	var err error
 	var instance *compute.Instance
 	klog.V(4).Infof("Creating instance: %v", i.cfg.Name)
@@ -145,7 +207,14 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 				},
 			},
 		},
-		MinCpuPlatform: i.cfg.MinCpuPlatform,
+	}
+
+	if i.cfg.MinCpuPlatform != "" && strings.ToLower(i.cfg.MinCpuPlatform) != "none" {
+		newInst.MinCpuPlatform = i.cfg.MinCpuPlatform
+	}
+
+	if i.cfg.Subnetwork != "" {
+		newInst.NetworkInterfaces[0].Subnetwork = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/%s/subnetworks/%s", i.cfg.Project, i.GetRegion(), i.cfg.Subnetwork)
 	}
 
 	if i.cfg.EnableConfidentialCompute {
@@ -163,7 +232,13 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		Interface:  "NVME",
 	}
 
-	for i := 0; i < localSSDCount; i++ {
+	// See https://docs.cloud.google.com/compute/docs/disks/add-local-ssd#create_local_ssd
+	// for details. Machines with automatically attached local ssds skip this step.
+	ssdCount := i.cfg.LocalSSDCount
+	if isAutoLocalSSDMachineType(i.cfg.MachineType) {
+		ssdCount = 0
+	}
+	for i := int64(0); i < ssdCount; i++ {
 		newInst.Disks = append(newInst.Disks, localSSDConfig)
 	}
 	saObj := &compute.ServiceAccount{
@@ -172,12 +247,31 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 	}
 	newInst.ServiceAccounts = []*compute.ServiceAccount{saObj}
 
+	var meta *compute.Metadata
 	if pubkey, ok := os.LookupEnv("JENKINS_GCE_SSH_PUBLIC_KEY_FILE"); ok {
 		klog.V(4).Infof("JENKINS_GCE_SSH_PUBLIC_KEY_FILE set to %v, adding public key to Instance", pubkey)
-		meta, err := generateMetadataWithPublicKey(pubkey)
+		meta, err = generateMetadataWithPublicKey(pubkey)
 		if err != nil {
 			return err
 		}
+	}
+
+	if ssdCount > 0 {
+		if meta == nil {
+			meta = &compute.Metadata{}
+		}
+		// If in the future we want to test datacache using only a subset of ssd
+		// cards, this would be the place to set it.
+		count := fmt.Sprintf("%d", ssdCount)
+		meta.Items = append(meta.Items,
+			&compute.MetadataItems{
+				Key:   constants.DatacacheLocalSsdMetadataLabel,
+				Value: &count,
+			},
+		)
+	}
+
+	if meta != nil {
 		newInst.Metadata = meta
 	}
 
@@ -217,11 +311,11 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 			return fmt.Errorf("could not create instance %s: %+v", i.cfg.Name, op.Error)
 		}
 	} else {
-		klog.V(4).Infof("Compute service GOT instance %v, skipping instance creation", newInst.Name)
+		klog.V(4).Infof("Compute service got instance %v, skipping instance creation", newInst.Name)
 	}
 
 	start := time.Now()
-	err = wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), 15*time.Second, 5*time.Minute, true, func(_ context.Context) (bool, error) {
 		klog.V(2).Infof("Waiting for instance %v to come up. %v elapsed", i.cfg.Name, time.Since(start))
 
 		instance, err = i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do()
@@ -236,7 +330,7 @@ func (i *InstanceInfo) CreateOrGetInstance(localSSDCount int) error {
 		}
 
 		if i.cfg.CloudtopHost {
-			output, err := exec.Command("gcloud", "compute", "ssh", i.cfg.Name, "--zone", i.cfg.Zone, "--project", i.cfg.Project).CombinedOutput()
+			output, err := exec.Command("gcloud", "compute", "ssh", i.cfg.Name, "--zone", i.cfg.Zone, "--project", i.cfg.Project, "--", "-o", "ProxyCommand=corp-ssh-helper %h %p").CombinedOutput()
 			if err != nil {
 				klog.Errorf("Failed to bootstrap ssh (%v): %s", err, string(output))
 				return false, nil
@@ -289,7 +383,7 @@ func (i *InstanceInfo) DetachDisk(diskName string) error {
 	}
 
 	start := time.Now()
-	if err := wait.Poll(5*time.Second, 1*time.Minute, func() (bool, error) {
+	if err := wait.PollUntilContextTimeout(context.Background(), 5*time.Second, 1*time.Minute, true, func(_ context.Context) (bool, error) {
 		klog.V(2).Infof("Waiting for disk %q to be detached from instance %q. %v elapsed", diskName, i.cfg.Name, time.Since(start))
 
 		op, err = i.cfg.ComputeService.ZoneOperations.Get(i.cfg.Project, i.cfg.Zone, op.Name).Do()
@@ -350,6 +444,19 @@ func (i *InstanceInfo) createDefaultFirewallRule() error {
 		klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
 	}
 	return nil
+}
+
+// CreateVolumeForInstance calls Client.CreateVolume, using the instance default disk type if it's not already specified in params.
+func (tc *TestContext) CreateVolumeForInstance(volName string, params map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement, volContentSrc *csipb.VolumeContentSource) (*csipb.Volume, error) {
+	if params == nil {
+		params = map[string]string{}
+	}
+	if tc.Instance.cfg.DiskTypeDefault != "" {
+		if _, found := params[parameters.ParameterKeyType]; !found {
+			params[parameters.ParameterKeyType] = tc.Instance.cfg.DiskTypeDefault
+		}
+	}
+	return tc.Client.CreateVolume(volName, params, sizeInGb, topReq, volContentSrc)
 }
 
 func GetComputeClient() (*compute.Service, error) {

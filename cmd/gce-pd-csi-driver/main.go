@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	metadataservice "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/metadata"
 	driver "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-pd-csi-driver"
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/k8sclient"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/linkcache"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
 	mountmanager "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/mount-manager"
@@ -56,7 +58,7 @@ var (
 	endpoint             = flag.String("endpoint", "unix:/tmp/csi.sock", "CSI endpoint")
 	runControllerService = flag.Bool("run-controller-service", true, "If set to false then the CSI driver does not activate its controller service (default: true)")
 	runNodeService       = flag.Bool("run-node-service", true, "If set to false then the CSI driver does not activate its node service (default: true)")
-	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
+	httpEndpoint         = flag.String("http-endpoint", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `127.0.0.1:8080`). The default is empty string, which means metrics endpoint is disabled. The endpoint contains internal system state (go runtime), which can help attackers better understand system internals, so should not be publicly exposed")
 	metricsPath          = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 	grpcLogCharCap       = flag.Int("grpc-log-char-cap", 10000, "The maximum amount of characters logged for every grpc responses")
 	enableOtelTracing    = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
@@ -89,6 +91,7 @@ var (
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
 	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with Data Cache configuration")
+	enableNonK8sDataCacheIfSSDs = flag.Bool("enable-non-k8s-data-cache-if-ssds", false, "If set to true, enable data cache when not running on in k8s if the node has SSDs")
 	enableMultitenancyFlag      = flag.Bool("enable-multitenancy", false, "If set to true, the CSI Driver will support running on multitenant GKE clusters")
 	enablePdConversion          = flag.Bool("enable-pd-conversion", false, "If set to true, the CSI Driver will attempt to convert eligible PD disks to be compatible with attaching machine types during the attach operation")
 	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
@@ -114,6 +117,7 @@ var (
 	dynamicVolumes = flag.Bool("dynamic-volumes", false, "If set to true, the CSI driver will automatically select a compatible disk type based on the presence of the dynamic-volume parameter and disk types defined in the StorageClass. Disabled by default.")
 
 	gceDiskStatus      = flag.Bool("gce-disk-status", false, "If set to true, the CSI driver will update the volume-publish-status-gke-io label on the GCE disk resource after successful attachment to indicate the attachment status. Disabled by default.")
+	enableDiskCleanup  = flag.Bool("enable-disk-cleanup", false, "If set to true, the CSI driver will run a routine on startup to cleanup leaked GCE disks resources. Requires the cluster-ownership-id flag to be set. Disabled by default.")
 	clusterOwnershipID = flag.String("cluster-ownership-id", "", "The identifier for the cluster to which the CSI driver belongs. When specified, the id is applied to the GCE disk resource as a label")
 
 	diskCacheSyncPeriod = flag.Duration("disk-cache-sync-period", 10*time.Minute, "Period for the disk cache to check the /dev/disk/by-id/ directory and evaluate the symlinks")
@@ -125,11 +129,11 @@ var (
 	webhookPort        = flag.Int("webhook-port", 9443, "The port for the admission webhook to listen on")
 	taintMetricsAddr   = flag.String("taint-metrics-addr", ":8081", "The address the taint controller metrics endpoint binds to.")
 
-	version string
-)
+	enableNodeReadinessCondition = flag.Bool("enable-node-readiness-condition", false, "If set to true, the node driver sets the --node-readiness-condition-type condition to True on its Node once csi-driver-registrar is healthy.")
+	nodeReadinessConditionType   = flag.String("node-readiness-condition-type", "pd.csi.storage.gke.io/Ready", "The Node condition type set when --enable-node-readiness-condition is true.")
+	registrarHealthzEndpoint     = flag.String("registrar-healthz-endpoint", "127.0.0.1:9931", "The host:port of the csi-driver-registrar healthz endpoint polled by the node readiness reporter.")
 
-const (
-	driverName = "pd.csi.storage.gke.io"
+	version string
 )
 
 func init() {
@@ -198,6 +202,7 @@ func handle() {
 	runServiceWithMetrics := *runControllerService || *runNodeService
 	if runServiceWithMetrics && *httpEndpoint != "" {
 		mm := metrics.NewMetricsManager()
+		mm.RegisterRuntimeMetrics()
 		mm.InitializeHttpHandler(*httpEndpoint, *metricsPath)
 
 		switch {
@@ -305,6 +310,15 @@ func handle() {
 		}
 
 		controllerServer = driver.NewControllerServer(gceDriver, cloudProvider, initialBackoffDuration, maxBackoffDuration, fallbackRequisiteZones, *enableStoragePoolsFlag, *enableDataCacheFlag, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, *enableHdHAFlag, args)
+		if *gceDiskStatus {
+			// Block startup if configured incorrectly, but fail-open on the cleanup routine.
+			if *clusterOwnershipID == "" {
+				klog.Fatalf("Cannot enable cleanup routine without cluster ownership ID specified")
+			}
+			if err := controllerServer.VerifyClusterDisks(ctx, *enableDiskCleanup); err != nil {
+				klog.Errorf("Failed to verify cluster disks: %v", err)
+			}
+		}
 	} else if *cloudConfigFilePath != "" {
 		klog.Warningf("controller service is disabled but cloud config given - it has no effect")
 	}
@@ -319,16 +333,24 @@ func handle() {
 
 		deviceUtils := deviceutils.NewDeviceUtils()
 		statter := mountmanager.NewStatter(mounter)
-		meta, err := metadataservice.NewMetadataService()
+		meta, err := metadataservice.NewMetadataService(ctx)
 		if err != nil {
 			klog.Fatalf("Failed to set up metadata service: %v", err.Error())
 		}
 		isDataCacheEnabledNodePool, err := driver.IsDataCacheEnabledNodePool(ctx, *nodeName, *enableDataCacheFlag)
-		if err != nil {
+		if *enableNonK8sDataCacheIfSSDs && (*nodeName == "" || errors.Is(err, k8sclient.NoKubernetesError)) {
+			klog.Warningf("Datacache enabled for non-k8s, will get datacache node pool information from metadata server")
+			if getLocalSsdFromMetadata(ctx, meta) > 0 {
+				klog.Infof("Have ssds reported in metadata, treating like datacache node pool")
+				isDataCacheEnabledNodePool = true
+			} else {
+				klog.Infof("No ssds reported, treating like not a datacache node pool")
+			}
+		} else if err != nil {
 			klog.Fatalf("Failed to get node info from API server: %v", err.Error())
 		}
 
-		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, driverName, deviceUtils, metricsManager)
+		deviceCache, err := linkcache.NewDeviceCacheForNode(ctx, *diskCacheSyncPeriod, *nodeName, constants.DriverName, deviceUtils, metricsManager)
 		if err != nil {
 			klog.Warningf("Failed to create device cache: %v", err.Error())
 		} else {
@@ -352,21 +374,31 @@ func handle() {
 		if *maxConcurrentFormatAndMount > 0 {
 			nodeServer = nodeServer.WithSerializedFormatAndMount(*formatAndMountTimeout, *maxConcurrentFormatAndMount)
 		}
+		klog.Infof("Data Cache driver enabled: %t. Node enabled: %t", *enableDataCacheFlag, nsArgs.DataCacheEnabledNodePool)
 		if *enableDataCacheFlag {
-			if nodeName == nil || *nodeName == "" {
-				klog.Errorf("Data Cache enabled, but --node-name not passed")
-			}
 			if nsArgs.DataCacheEnabledNodePool {
-				if err := setupDataCache(ctx, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
+				if err := setupDataCache(ctx, meta, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 					klog.Errorf("Data Cache setup failed: %v", err)
 				}
 				go driver.StartWatcher(ctx, *nodeName)
 			}
 		}
 
+		if *enableNodeReadinessCondition {
+			kubeClient, err := k8sclient.GetClient()
+			if err != nil {
+				klog.Fatalf("Failed to create k8s client for node readiness reporter: %v", err.Error())
+			}
+			reporter, err := driver.NewNodeReadinessReporter(*nodeName, *nodeReadinessConditionType, *registrarHealthzEndpoint, kubeClient)
+			if err != nil {
+				klog.Fatalf("Failed to create node readiness reporter: %v", err.Error())
+			}
+			go reporter.Run(ctx)
+		}
+
 	}
 
-	err = gceDriver.SetupGCEDriver(driverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
+	err = gceDriver.SetupGCEDriver(constants.DriverName, version, extraVolumeLabels, extraTags, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		klog.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
 	}
@@ -477,7 +509,22 @@ func fetchLssdsForRaiding(lssdCount int) ([]string, error) {
 	return availableLssds[:lssdCount], nil
 }
 
-func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
+func getLocalSsdFromMetadata(ctx context.Context, meta metadataservice.MetadataService) int {
+	ssdStr, err := meta.GetValue(ctx, constants.DatacacheLocalSsdMetadataLabel)
+	if err != nil {
+		klog.Warningf("Could not fetch %s, assuming no local ssd: %v", constants.DatacacheLocalSsdMetadataLabel, err)
+		return 0
+	}
+	ssdCount, err := strconv.Atoi(ssdStr)
+	if err != nil {
+		klog.Warningf("Could not parse %s value, assuming no local ssd; value: %s; err: %v", constants.DatacacheLocalSsdMetadataLabel, ssdStr, err)
+		return 0
+	}
+	return ssdCount
+}
+
+func setupDataCache(ctx context.Context, meta metadataservice.MetadataService, nodeName string, nodeId string) error {
+	klog.V(4).Infof("Setting up data cache on %s", nodeName)
 	isAlreadyRaided, err := driver.IsRaided()
 	if err != nil {
 		klog.V(4).Infof("Errored while scanning for available LocalSSDs err:%v; continuing Raiding", err)
@@ -486,18 +533,21 @@ func setupDataCache(ctx context.Context, nodeName string, nodeId string) error {
 		return nil
 	}
 
-	lssdCount := constants.LocalSSDCountForDataCache
-	if nodeName != constants.TestNode {
-		var err error
+	var lssdCount int
+	if nodeName != "" {
 		lssdCount, err = driver.GetDataCacheCountFromNodeLabel(ctx, nodeName)
-		if err != nil {
-			return err
-		}
-		if lssdCount == 0 {
-			klog.V(4).Infof("Data Cache is not enabled on node %v, so skipping caching setup", nodeName)
-			return nil
-		}
 	}
+	if nodeName == "" || errors.Is(err, k8sclient.NoKubernetesError) {
+		klog.V(4).Infof("No kubernetes, will get local ssd count from card list (error: %v)", err)
+		lssdCount = getLocalSsdFromMetadata(ctx, meta)
+	} else if err != nil {
+		return err
+	}
+	if lssdCount == 0 {
+		klog.V(4).Infof("No ssds found on node %v, skipping data cache setup", nodeName)
+		return nil
+	}
+
 	lssdNames, err := fetchLssdsForRaiding(lssdCount)
 	if err != nil {
 		klog.Fatalf("Failed to get sufficient SSDs for Data Cache's caching setup: %v", err)

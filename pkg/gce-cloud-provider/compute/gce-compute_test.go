@@ -238,6 +238,40 @@ func TestValidateExistingDisk(t *testing.T) {
 			diskType: hyperdisk,
 			wantErr:  true,
 		},
+		{
+			name:       "valid hyperdisk with empty requested access mode config - RWO allowed",
+			accessMode: "",
+			disk: &computebeta.Disk{
+				AccessMode: constants.GCEReadWriteOnceAccessMode,
+			},
+			diskType: hyperdisk,
+		},
+		{
+			name:       "valid hyperdisk with empty requested access mode config - empty existing access mode allowed",
+			accessMode: "",
+			disk: &computebeta.Disk{
+				AccessMode: "",
+			},
+			diskType: hyperdisk,
+		},
+		{
+			name:       "invalid hyperdisk with empty requested access mode config - ROX disallowed",
+			accessMode: "",
+			disk: &computebeta.Disk{
+				AccessMode: constants.GCEReadOnlyManyAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
+		{
+			name:       "invalid hyperdisk with empty requested access mode config - RWX disallowed",
+			accessMode: "",
+			disk: &computebeta.Disk{
+				AccessMode: constants.GCEReadWriteManyAccessMode,
+			},
+			diskType: hyperdisk,
+			wantErr:  true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Bootstrap correct disk
@@ -253,6 +287,121 @@ func TestValidateExistingDisk(t *testing.T) {
 			err := ValidateExistingDisk(context.Background(), CloudDiskFromBeta(tc.disk), params, tc.reqBytes, tc.limBytes, tc.multiWriter, tc.accessMode)
 			if gotErr := err != nil; gotErr != tc.wantErr {
 				t.Errorf("want error: %v, got error: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidAccessMode(t *testing.T) {
+	testCases := []struct {
+		name string
+		want string
+		got  string
+		exp  bool
+	}{
+		{
+			name: "empty want and empty got",
+			want: "",
+			got:  "",
+			exp:  true,
+		},
+		{
+			name: "empty want and RWO got",
+			want: "",
+			got:  constants.GCEReadWriteOnceAccessMode,
+			exp:  true,
+		},
+		{
+			name: "empty want and ROX got",
+			want: "",
+			got:  constants.GCEReadOnlyManyAccessMode,
+			exp:  false,
+		},
+		{
+			name: "empty want and RWX got",
+			want: "",
+			got:  constants.GCEReadWriteManyAccessMode,
+			exp:  false,
+		},
+		{
+			name: "RWO want and RWO got",
+			want: constants.GCEReadWriteOnceAccessMode,
+			got:  constants.GCEReadWriteOnceAccessMode,
+			exp:  true,
+		},
+		{
+			name: "RWO want and RWX got",
+			want: constants.GCEReadWriteOnceAccessMode,
+			got:  constants.GCEReadWriteManyAccessMode,
+			exp:  true,
+		},
+		{
+			name: "RWO want and ROX got",
+			want: constants.GCEReadWriteOnceAccessMode,
+			got:  constants.GCEReadOnlyManyAccessMode,
+			exp:  false,
+		},
+		{
+			name: "RWO want and empty got",
+			want: constants.GCEReadWriteOnceAccessMode,
+			got:  "",
+			exp:  false,
+		},
+		{
+			name: "ROX want and ROX got",
+			want: constants.GCEReadOnlyManyAccessMode,
+			got:  constants.GCEReadOnlyManyAccessMode,
+			exp:  true,
+		},
+		{
+			name: "ROX want and RWX got",
+			want: constants.GCEReadOnlyManyAccessMode,
+			got:  constants.GCEReadWriteManyAccessMode,
+			exp:  true,
+		},
+		{
+			name: "ROX want and RWO got",
+			want: constants.GCEReadOnlyManyAccessMode,
+			got:  constants.GCEReadWriteOnceAccessMode,
+			exp:  false,
+		},
+		{
+			name: "RWX want and RWX got",
+			want: constants.GCEReadWriteManyAccessMode,
+			got:  constants.GCEReadWriteManyAccessMode,
+			exp:  true,
+		},
+		{
+			name: "RWX want and RWO got",
+			want: constants.GCEReadWriteManyAccessMode,
+			got:  constants.GCEReadWriteOnceAccessMode,
+			exp:  false,
+		},
+		{
+			name: "RWX want and ROX got",
+			want: constants.GCEReadWriteManyAccessMode,
+			got:  constants.GCEReadOnlyManyAccessMode,
+			exp:  false,
+		},
+		{
+			name: "invalid want matching invalid got",
+			want: "UNKNOWN",
+			got:  "UNKNOWN",
+			exp:  true,
+		},
+		{
+			name: "invalid want not matching got",
+			want: "UNKNOWN",
+			got:  constants.GCEReadWriteOnceAccessMode,
+			exp:  false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := validAccessMode(tc.want, tc.got)
+			if got != tc.exp {
+				t.Errorf("validAccessMode(%q, %q) = %v, want %v", tc.want, tc.got, got, tc.exp)
 			}
 		})
 	}

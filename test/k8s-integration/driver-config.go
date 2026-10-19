@@ -117,7 +117,7 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 	case "gce":
 		fsTypes = append(fsTypes, "xfs", "btrfs")
 	default:
-		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", testParams.deploymentStrategy)
+		return "", fmt.Errorf("got unknown deployment start %s, expected gce or gke", testParams.deploymentStrategy)
 	}
 
 	if testParams.storageClassFile == "sc-btrfs.yaml" {

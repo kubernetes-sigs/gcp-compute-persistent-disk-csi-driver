@@ -20,8 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/codes"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
@@ -92,6 +94,13 @@ func (mm *MetricsManager) GetRegistry() metrics.KubeRegistry {
 
 func (mm *MetricsManager) registerComponentVersionMetric() {
 	mm.registry.MustRegister(gkeComponentVersion)
+}
+
+func (mm *MetricsManager) RegisterRuntimeMetrics() {
+	mm.registry.RawMustRegister(
+		prometheus.NewGoCollector(),
+		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+	)
 }
 
 func (mm *MetricsManager) RegisterPDCSIMetric() {
@@ -168,10 +177,15 @@ func (mm *MetricsManager) registerToServer(s Server, metricsPath string) {
 			ErrorHandling: metrics.ContinueOnError}))
 }
 
-// InitializeHttpHandler sets up a server and creates a handler for metrics.
+// InitializeHttpHandler sets up a server and creates a handler for metrics and pprof.
 func (mm *MetricsManager) InitializeHttpHandler(address, path string) {
 	mux := http.NewServeMux()
 	mm.registerToServer(mux, path)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	go func() {
 		klog.Infof("Metric server listening at %q", address)
 		if err := http.ListenAndServe(address, mux); err != nil {
