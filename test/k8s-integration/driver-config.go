@@ -120,6 +120,13 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 		return "", fmt.Errorf("got unknown deployment strat %s, expected gce or gke", testParams.deploymentStrategy)
 	}
 
+	if testParams.storageClassFile == "sc-btrfs.yaml" {
+		// sc-btrfs.yaml carries btrfs-only mount options. The external storage
+		// test suite overrides the fstype per test pattern but keeps the
+		// StorageClass mountOptions, so non-btrfs patterns fail to mount.
+		fsTypes = []string{"btrfs"}
+	}
+
 	var absSnapshotClassFilePath string
 	var snapshotClassName string
 	// If snapshot class is passed in as argument, include snapshot specific driver capabiltiites.
