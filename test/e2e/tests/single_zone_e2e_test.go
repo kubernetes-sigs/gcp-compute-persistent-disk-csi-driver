@@ -1570,10 +1570,16 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, balancedDiskType)
 		defer deleteVolumeOrError(client, volID)
 
+		var args *verifyArgs
 		defer func() {
 			klog.Infof("Cleaning up preemption test resources on VM %s...", instance.GetName())
+			if args != nil {
+				_ = client.NodeUnpublishVolume(volID, args.publishDir)
+				_ = client.NodeUnstageVolume(volID, args.stageDir)
+			}
 			// Force-detach GCE PD using controller API
 			_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			_ = testutils.CleanUpAnyExistingLVMInstances(instance)
 			klog.Infof("Cleanup completed.")
 		}()
 
@@ -1586,7 +1592,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// 1. Stage and Mount the volume with Data Cache enabled on the VM
 		klog.Infof("Step 1: Staging and mounting Data Cache volume %s on VM %s", volName, instance.GetName())
-		err, _, args := testAttachAndMount(volID, volName, instance, client, attachMountArgs)
+		var err error
+		err, _, args = testAttachAndMount(volID, volName, instance, client, attachMountArgs)
 		Expect(err).To(BeNil(), "Failed to stage and mount volume on VM")
 
 		// 2. Write a verification file to prove data persistence on the VM
@@ -1686,6 +1693,10 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		testContextForVm2 := testZoneContexts[1]
 		secondClient := testContextForVm2.Client
 		secondInstance := testContextForVm2.Instance
+
+		testutils.CleanUpAnyExistingLVMInstances(firstInstance)
+		testutils.CleanUpAnyExistingLVMInstances(secondInstance)
+
 		unmountDisk := func(client *remote.CsiClient, volID string, args *verifyArgs) {
 			err := client.NodeUnpublishVolume(volID, args.publishDir)
 			if err != nil {
@@ -1700,16 +1711,12 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		}
 		// Controller Publish (Attach) - Node Stage - Node Publish(Mount) Volume
 		err, _, args := testAttachAndMount(volID, volName, firstInstance, client, attachMountArgs)
-		if err != nil {
-			klog.Errorf("Failed to attach and mount: %v", err.Error())
-		}
+		Expect(err).To(BeNil(), "Failed to attach and mount volume %s on instance %s", volName, firstInstance.GetName())
+
 		// Write file in the volume
 		firstMountVerify, _ := testWriteAndReadFile(firstInstance, false /* readOnly */)
 		err = firstMountVerify(args)
-		if err != nil {
-			klog.Errorf("failed to verify after first mount to %s: %v", args, err)
-		}
-		Expect(err).To(BeNil(), "Failed to write data to volume %s on instance %s", volName, firstInstance.GetName())
+		Expect(err).To(BeNil(), "Failed to write data to volume %s on instance %s: %v", volName, firstInstance.GetName(), err)
 		// Unmount Disk
 		unmountDisk(client, volID, args)
 
