@@ -1629,9 +1629,11 @@ func testLifecycleWithVerify(volID string, volName string, instance *remote.Inst
 		// Unstage and detach
 		err = client.NodeUnstageVolume(volID, stageDir)
 		if err != nil {
-			klog.Errorf("Failed to unstage volume: %v", err)
+			return fmt.Errorf("NodeUnstageVolume failed with error: %v", err)
 		}
-		detach(volID, instance, client)
+		if err := detach(volID, instance, client); err != nil {
+			return err
+		}
 		// Reattach the volume
 		err, _, stageDir = testAttach(volID, volName, instance, client, attachArgs)
 		if err != nil {

@@ -571,3 +571,464 @@ func TestParsePvsVgInfo(t *testing.T) {
 		})
 	}
 }
+
+func TestParseVgsUuid(t *testing.T) {
+	testCases := []struct {
+		name     string
+		output   string
+		wantUuid string
+	}{
+		{
+			name:     "clean vgs output",
+			output:   "  e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6\n",
+			wantUuid: "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6",
+		},
+		{
+			name: "WARNING lines before and after vg_uuid",
+			output: "  WARNING: VG csi-vg-x7hl7lfz is missing PV a1b2c3 (last written to [unknown]).\n" +
+				"  WARNING: PV /dev/sdb is marked in use but no VG was found using it.\n" +
+				"  e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6\n" +
+				"  WARNING: PV /dev/sdb might need repairing.\n",
+			wantUuid: "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6",
+		},
+		{
+			name:     "placeholder dash is ignored",
+			output:   "  -\n",
+			wantUuid: "",
+		},
+		{
+			name:     "invalid token is ignored",
+			output:   "  [unknown]\n",
+			wantUuid: "",
+		},
+		{
+			name:     "empty output",
+			output:   "",
+			wantUuid: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseVgsUuid(tc.output); got != tc.wantUuid {
+				t.Errorf("parseVgsUuid() = %q, want %q", got, tc.wantUuid)
+			}
+		})
+	}
+}
+
+func TestGetVgUuid(t *testing.T) {
+	origRunCommand := runCommand
+	t.Cleanup(func() { runCommand = origRunCommand })
+
+	t.Run("strips WARNING lines from vgs output", func(t *testing.T) {
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			if cmd1 != "vgs" {
+				t.Fatalf("unexpected command %q", cmd1)
+			}
+			out := "  WARNING: VG csi-vg-x7hl7lfz is missing PV a1b2c3 (last written to [unknown]).\n" +
+				"  e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6\n"
+			return []byte(out), nil
+		}
+		got, err := getVgUuid("csi-vg-x7hl7lfz")
+		if err != nil {
+			t.Fatalf("getVgUuid() unexpected error: %v", err)
+		}
+		want := "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6"
+		if got != want {
+			t.Errorf("getVgUuid() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("passes device filter when excludedPvPaths is provided", func(t *testing.T) {
+		var gotArgs []string
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			gotArgs = execCmdArgs
+			return []byte("  e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6\n"), nil
+		}
+		got, err := getVgUuid("csi-vg-x7hl7lfz", "/dev/sdb")
+		if err != nil {
+			t.Fatalf("getVgUuid() unexpected error: %v", err)
+		}
+		if got != "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6" {
+			t.Errorf("getVgUuid() = %q", got)
+		}
+		wantArgs := []string{
+			"--noheadings",
+			"-o",
+			"vg_uuid",
+			"csi-vg-x7hl7lfz",
+			"--config",
+			`devices { filter = [ "r|^/dev/sdb$|", "a|.*|" ] }`,
+		}
+		if !reflect.DeepEqual(gotArgs, wantArgs) {
+			t.Errorf("vgs args = %v, want %v", gotArgs, wantArgs)
+		}
+	})
+
+	t.Run("returns error when vgs fails", func(t *testing.T) {
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			return []byte("  Volume group \"csi-vg-x7hl7lfz\" not found\n"), errors.New("exit status 5")
+		}
+		if _, err := getVgUuid("csi-vg-x7hl7lfz"); err == nil {
+			t.Fatal("getVgUuid() expected error, got nil")
+		}
+	})
+}
+
+func TestDetectPreemptionVgConflict(t *testing.T) {
+	origRunCommand := runCommand
+	t.Cleanup(func() { runCommand = origRunCommand })
+
+	const (
+		vgName   = "csi-vg-x7hl7lfz"
+		pvPath   = "/dev/sdb"
+		pdUuid   = "111111-2222-3333-4444-5555-6666-777777"
+		hostUuid = "aaaaaa-bbbb-cccc-dddd-eeee-ffff-000000"
+	)
+
+	t.Run("detects conflict when host VG has different UUID", func(t *testing.T) {
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			switch cmd1 {
+			case "pvs":
+				return []byte(fmt.Sprintf("  %s %s %s\n", vgName, pdUuid, pvPath)), nil
+			case "vgs":
+				return []byte(fmt.Sprintf("  %s\n", hostUuid)), nil
+			default:
+				t.Fatalf("unexpected command %q", cmd1)
+				return nil, nil
+			}
+		}
+		conflict, staleUuid, err := detectPreemptionVgConflict(vgName, pvPath)
+		if err != nil {
+			t.Fatalf("detectPreemptionVgConflict() unexpected error: %v", err)
+		}
+		if !conflict || staleUuid != pdUuid {
+			t.Errorf("detectPreemptionVgConflict() = (%v, %q), want (true, %q)", conflict, staleUuid, pdUuid)
+		}
+	})
+
+	t.Run("detects conflict when host VG does not exist on host devices", func(t *testing.T) {
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			switch cmd1 {
+			case "pvs":
+				return []byte(fmt.Sprintf("  %s %s %s\n", vgName, pdUuid, pvPath)), nil
+			case "vgs":
+				return []byte("  Volume group not found\n"), errors.New("exit status 5")
+			default:
+				t.Fatalf("unexpected command %q", cmd1)
+				return nil, nil
+			}
+		}
+		conflict, staleUuid, err := detectPreemptionVgConflict(vgName, pvPath)
+		if err != nil {
+			t.Fatalf("detectPreemptionVgConflict() unexpected error: %v", err)
+		}
+		if !conflict || staleUuid != pdUuid {
+			t.Errorf("detectPreemptionVgConflict() = (%v, %q), want (true, %q)", conflict, staleUuid, pdUuid)
+		}
+	})
+
+	t.Run("no conflict when host VG has same UUID even with WARNING output", func(t *testing.T) {
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			switch cmd1 {
+			case "pvs":
+				return []byte(fmt.Sprintf("  %s %s %s\n", vgName, pdUuid, pvPath)), nil
+			case "vgs":
+				out := fmt.Sprintf("  WARNING: VG %s is missing PV a1b2c3 (last written to %s).\n  %s\n", vgName, pvPath, pdUuid)
+				return []byte(out), nil
+			default:
+				t.Fatalf("unexpected command %q", cmd1)
+				return nil, nil
+			}
+		}
+		conflict, staleUuid, err := detectPreemptionVgConflict(vgName, pvPath)
+		if err != nil {
+			t.Fatalf("detectPreemptionVgConflict() unexpected error: %v", err)
+		}
+		if conflict || staleUuid != "" {
+			t.Errorf("detectPreemptionVgConflict() = (%v, %q), want (false, \"\")", conflict, staleUuid)
+		}
+	})
+}
+
+func TestGetUnstagedVolumeGroupName(t *testing.T) {
+	fullVolID := "projects/test-proj/zones/us-central1-a/disks/pvc-8b643106-31d1-4a48-90b5-d000605514e0"
+	shortVolID := "pvc-8b643106-31d1-4a48-90b5-d000605514e0"
+
+	vg1 := getUnstagedVolumeGroupName(fullVolID)
+	vg2 := getUnstagedVolumeGroupName(shortVolID)
+	if vg1 != vg2 {
+		t.Errorf("getUnstagedVolumeGroupName(%q) = %q != getUnstagedVolumeGroupName(%q) = %q", fullVolID, vg1, shortVolID, vg2)
+	}
+	if !strings.HasPrefix(vg1, "csi-vg-unstaged-") {
+		t.Errorf("getUnstagedVolumeGroupName(%q) = %q, want prefix %q", fullVolID, vg1, "csi-vg-unstaged-")
+	}
+	if !isValidVGName(vg1) {
+		t.Errorf("getUnstagedVolumeGroupName(%q) = %q is not a valid VG name", fullVolID, vg1)
+	}
+	nodeVg := getVolumeGroupName("gke-cluster-pool-12345678-abcd")
+	if vg1 == nodeVg {
+		t.Errorf("unstaged VG name %q should not collide with node VG name %q", vg1, nodeVg)
+	}
+}
+
+func TestCleanupCache(t *testing.T) {
+	const (
+		nodeID   = "gke-cluster-pool-12345678-abcd"
+		volumeID = "projects/test-proj/zones/us-central1-a/disks/pvc-8b643106-31d1-4a48-90b5-d000605514e0"
+	)
+	nodeVg := getVolumeGroupName(nodeID)
+	unstagedVg := getUnstagedVolumeGroupName(volumeID)
+	mainLv := getLvName(mainLvSuffix, volumeID)
+
+	t.Run("deactivates, uncaches, and splits LV into unstaged VG", func(t *testing.T) {
+		origRunCommand := runCommand
+		t.Cleanup(func() { runCommand = origRunCommand })
+
+		var calls []string
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			call := strings.TrimSpace(cmd1 + " " + strings.Join(execCmdArgs, " "))
+			calls = append(calls, call)
+			switch cmd1 {
+			case "vgscan":
+				return []byte(fmt.Sprintf("  Found volume group %q using metadata type lvm2\n", nodeVg)), nil
+			case "vgreduce":
+				return []byte(fmt.Sprintf("  Volume group %q is already consistent.\n", nodeVg)), nil
+			case "lvscan":
+				return []byte(fmt.Sprintf("  ACTIVE            '/dev/%s/%s' [4.00 GiB] inherit\n", nodeVg, mainLv)), nil
+			case "lvchange":
+				return nil, nil
+			case "lvs":
+				return []byte("  [csi-fast-pvc-8b643106-31d1-4a48-90b5-d000605514e0_cvol]\n"), nil
+			case "lvconvert":
+				return []byte(fmt.Sprintf("  Logical volume %s/%s is not cached and csi-fast-... is removed.\n", nodeVg, mainLv)), nil
+			case "vgsplit":
+				return []byte(fmt.Sprintf("  New volume group %q successfully split from %q\n", unstagedVg, nodeVg)), nil
+			default:
+				t.Fatalf("unexpected command: %s", call)
+				return nil, nil
+			}
+		}
+
+		if err := cleanupCache(volumeID, nodeID); err != nil {
+			t.Fatalf("cleanupCache() unexpected error: %v", err)
+		}
+
+		wantCalls := []string{
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			fmt.Sprintf("vgreduce --removemissing --autobackup n %s --force", nodeVg),
+			"lvscan",
+			fmt.Sprintf("lvchange -an --autobackup n /dev/%s/%s", nodeVg, mainLv),
+			fmt.Sprintf("lvs --select lv_name=%s -o pool_lv", mainLv),
+			fmt.Sprintf("lvconvert --uncache %s/%s -y", nodeVg, mainLv),
+			fmt.Sprintf("vgsplit --autobackup n -n %s %s %s", mainLv, nodeVg, unstagedVg),
+		}
+		if !reflect.DeepEqual(calls, wantCalls) {
+			t.Errorf("cleanupCache() calls =\n  %v\nwant\n  %v", calls, wantCalls)
+		}
+	})
+
+	t.Run("skips lvconvert uncache if LV is already uncached and splits into unstaged VG", func(t *testing.T) {
+		origRunCommand := runCommand
+		t.Cleanup(func() { runCommand = origRunCommand })
+
+		var calls []string
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			call := strings.TrimSpace(cmd1 + " " + strings.Join(execCmdArgs, " "))
+			calls = append(calls, call)
+			switch cmd1 {
+			case "vgscan":
+				return []byte(fmt.Sprintf("  Found volume group %q using metadata type lvm2\n", nodeVg)), nil
+			case "vgreduce":
+				return nil, nil
+			case "lvscan":
+				return []byte(fmt.Sprintf("  inactive          '/dev/%s/%s' [4.00 GiB] inherit\n", nodeVg, mainLv)), nil
+			case "lvchange":
+				return nil, nil
+			case "lvs":
+				return []byte("  Pool\n      \n"), nil
+			case "vgsplit":
+				return nil, nil
+			default:
+				t.Fatalf("unexpected command: %s", call)
+				return nil, nil
+			}
+		}
+
+		if err := cleanupCache(volumeID, nodeID); err != nil {
+			t.Fatalf("cleanupCache() unexpected error: %v", err)
+		}
+
+		wantCalls := []string{
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			fmt.Sprintf("vgreduce --removemissing --autobackup n %s --force", nodeVg),
+			"lvscan",
+			fmt.Sprintf("lvchange -an --autobackup n /dev/%s/%s", nodeVg, mainLv),
+			fmt.Sprintf("lvs --select lv_name=%s -o pool_lv", mainLv),
+			fmt.Sprintf("vgsplit --autobackup n -n %s %s %s", mainLv, nodeVg, unstagedVg),
+		}
+		if !reflect.DeepEqual(calls, wantCalls) {
+			t.Errorf("cleanupCache() calls =\n  %v\nwant\n  %v", calls, wantCalls)
+		}
+	})
+
+	t.Run("is idempotent when LV was already split into unstaged VG", func(t *testing.T) {
+		origRunCommand := runCommand
+		t.Cleanup(func() { runCommand = origRunCommand })
+
+		var calls []string
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			call := strings.TrimSpace(cmd1 + " " + strings.Join(execCmdArgs, " "))
+			calls = append(calls, call)
+			switch cmd1 {
+			case "vgscan":
+				return []byte(fmt.Sprintf("  Found volume group %q using metadata type lvm2\n  Found volume group %q using metadata type lvm2\n", nodeVg, unstagedVg)), nil
+			case "vgreduce":
+				return nil, nil
+			case "lvscan":
+				// LV is in unstagedVg, not nodeVg.
+				return []byte(fmt.Sprintf("  inactive          '/dev/%s/%s' [4.00 GiB] inherit\n", unstagedVg, mainLv)), nil
+			default:
+				t.Fatalf("unexpected command: %s", call)
+				return nil, nil
+			}
+		}
+
+		if err := cleanupCache(volumeID, nodeID); err != nil {
+			t.Fatalf("cleanupCache() unexpected error: %v", err)
+		}
+
+		wantCalls := []string{
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			"vgscan --config backup { backup = 0 archive = 0 }",
+			fmt.Sprintf("vgreduce --removemissing --autobackup n %s --force", nodeVg),
+			"lvscan",
+		}
+		if !reflect.DeepEqual(calls, wantCalls) {
+			t.Errorf("cleanupCache() calls =\n  %v\nwant\n  %v", calls, wantCalls)
+		}
+	})
+
+	t.Run("returns error when vgsplit fails", func(t *testing.T) {
+		origRunCommand := runCommand
+		t.Cleanup(func() { runCommand = origRunCommand })
+
+		runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+			switch cmd1 {
+			case "vgscan":
+				return []byte(fmt.Sprintf("  Found volume group %q using metadata type lvm2\n", nodeVg)), nil
+			case "vgreduce":
+				return nil, nil
+			case "lvscan":
+				return []byte(fmt.Sprintf("  ACTIVE            '/dev/%s/%s' [4.00 GiB] inherit\n", nodeVg, mainLv)), nil
+			case "lvchange":
+				return nil, nil
+			case "lvs":
+				return []byte("  [csi-fast-pvc_cvol]\n"), nil
+			case "lvconvert":
+				return nil, nil
+			case "vgsplit":
+				return []byte("vgsplit error"), errors.New("exit status 5")
+			default:
+				return nil, nil
+			}
+		}
+
+		if err := cleanupCache(volumeID, nodeID); err == nil {
+			t.Fatal("cleanupCache() expected error when vgsplit fails, got nil")
+		}
+	})
+}
+
+func TestRecoverPreemptionVgConflict(t *testing.T) {
+	origRunCommand := runCommand
+	t.Cleanup(func() { runCommand = origRunCommand })
+
+	const (
+		vgName      = "csi-vg-x7hl7lfz"
+		mainLvName  = "csi-main-pvc-1234"
+		devicePath  = "/dev/sdb"
+		staleVgUuid = "11111122-3333-4444-5555-666677778888"
+		tempVgName  = "csi-vg-stale-11111122"
+	)
+	configFilter := fmt.Sprintf("devices { filter = [ \"a|%s|\", \"r|.*|\" ] }", devicePath)
+
+	var calls []string
+	runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+		call := strings.TrimSpace(cmd1 + " " + strings.Join(execCmdArgs, " "))
+		calls = append(calls, call)
+		switch cmd1 {
+		case "vgchange", "lvconvert", "vgreduce", "vgrename":
+			return nil, nil
+		case "lvs":
+			return []byte("  [csi-fast-pvc-1234_cvol]\n"), nil
+		default:
+			t.Fatalf("unexpected command: %s", call)
+			return nil, nil
+		}
+	}
+
+	if err := recoverPreemptionVgConflict(vgName, mainLvName, devicePath, staleVgUuid); err != nil {
+		t.Fatalf("recoverPreemptionVgConflict() unexpected error: %v", err)
+	}
+
+	wantCalls := []string{
+		fmt.Sprintf("vgchange -an --autobackup n %s --config %s", vgName, configFilter),
+		fmt.Sprintf("lvs --noheadings --select lv_name=%s && vg_name=%s -o pool_lv --config %s", mainLvName, vgName, configFilter),
+		fmt.Sprintf("lvconvert --uncache %s/%s --force -y --config %s", vgName, mainLvName, configFilter),
+		fmt.Sprintf("vgreduce --removemissing --autobackup n %s --force --config %s", vgName, configFilter),
+		fmt.Sprintf("vgrename --autobackup n %s %s --config %s", vgName, tempVgName, configFilter),
+		fmt.Sprintf("vgchange -u --autobackup n %s --config %s", tempVgName, configFilter),
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("recoverPreemptionVgConflict() calls =\n  %v\nwant\n  %v", calls, wantCalls)
+	}
+}
+
+func TestMergeStaleVgIntoHost(t *testing.T) {
+	origRunCommand := runCommand
+	t.Cleanup(func() { runCommand = origRunCommand })
+
+	const (
+		staleVg    = "csi-vg-unstaged-abcd1234"
+		hostVg     = "csi-vg-x7hl7lfz"
+		mainLvName = "csi-main-pvc-1234"
+	)
+
+	var calls []string
+	runCommand = func(pipeCmd string, pipeCmdArg []string, cmd1 string, execCmdArgs ...string) ([]byte, error) {
+		call := strings.TrimSpace(cmd1 + " " + strings.Join(execCmdArgs, " "))
+		calls = append(calls, call)
+		switch cmd1 {
+		case "vgscan":
+			return []byte(fmt.Sprintf("  Found volume group %q using metadata type lvm2\n", staleVg)), nil
+		case "vgchange", "lvconvert", "vgreduce", "vgmerge":
+			return nil, nil
+		case "lvs":
+			return []byte("  [csi-fast-pvc-1234_cvol]\n"), nil
+		default:
+			t.Fatalf("unexpected command: %s", call)
+			return nil, nil
+		}
+	}
+
+	if err := mergeStaleVgIntoHost(staleVg, hostVg, mainLvName); err != nil {
+		t.Fatalf("mergeStaleVgIntoHost() unexpected error: %v", err)
+	}
+
+	wantCalls := []string{
+		fmt.Sprintf("vgchange -ay --autobackup n %s", staleVg),
+		fmt.Sprintf("lvs --select lv_name=%s -o pool_lv", mainLvName),
+		fmt.Sprintf("lvconvert --uncache %s/%s --force -y --config backup { backup = 0 archive = 0 }", staleVg, mainLvName),
+		"vgscan --config backup { backup = 0 archive = 0 }",
+		fmt.Sprintf("vgreduce --removemissing --autobackup n %s --force", staleVg),
+		fmt.Sprintf("vgchange -an --autobackup n %s", staleVg),
+		fmt.Sprintf("vgmerge --autobackup n %s %s", hostVg, staleVg),
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("mergeStaleVgIntoHost() calls =\n  %v\nwant\n  %v", calls, wantCalls)
+	}
+}
