@@ -25,6 +25,7 @@ const (
 	mainLvSuffix               = "csi-main"
 	raidedLocalSsdName         = "csi-driver-data-cache"
 	raidMode                   = "0"
+	lvmNoBackupConfig          = "backup { backup = 0 archive = 0 }"
 	maxAllowedChunks   int64   = 1000000 // This is the max allowed chunks for LVM
 	GiB                float64 = 1024 * 1024 * 1024
 	KiB                float64 = 1024
@@ -46,6 +47,25 @@ var (
 // output. It is a variable so that unit tests can fake mdadm.
 var runMdadm = func(args ...string) ([]byte, error) {
 	return common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "mdadm", args...)
+}
+
+// runCommand runs a command with the given arguments and returns its combined
+// output. It is a variable so that unit tests can fake LVM commands.
+var runCommand = common.RunCommand
+
+// withNoBackupConfig returns an LVM --config string that disables metadata
+// backups and archives, preserving any existing config sections (such as
+// devices { filter = ... }) in a single --config value because LVM rejects
+// repeated --config flags.
+func withNoBackupConfig(configFilter string) string {
+	trimmed := strings.TrimSpace(configFilter)
+	if trimmed == "" {
+		return lvmNoBackupConfig
+	}
+	if strings.Contains(trimmed, lvmNoBackupConfig) {
+		return trimmed
+	}
+	return trimmed + " " + lvmNoBackupConfig
 }
 
 // mdArray is an md array listed by `mdadm --detail --scan`.
@@ -154,18 +174,62 @@ func fetchRAIDedLocalSsdPath() (string, error) {
 	return path, nil
 }
 
-func getVgUuid(vgName string) (string, error) {
+func getVgUuid(vgName string, excludedPvPaths ...string) (string, error) {
 	args := []string{
 		"--noheadings",
 		"-o",
 		"vg_uuid",
 		vgName,
 	}
-	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
+	var configFilter string
+	if len(excludedPvPaths) > 0 {
+		var filters []string
+		for _, pvPath := range excludedPvPaths {
+			if pvPath == "" {
+				continue
+			}
+			resolvedPvPath, err := filepath.EvalSymlinks(pvPath)
+			if err != nil {
+				resolvedPvPath = pvPath
+			}
+			filters = append(filters, fmt.Sprintf("\"r|^%s$|\"", resolvedPvPath))
+		}
+		if len(filters) > 0 {
+			filters = append(filters, "\"a|.*|\"")
+			configFilter = fmt.Sprintf("devices { filter = [ %s ] }", strings.Join(filters, ", "))
+		}
+	}
+	args = append(args, "--config", withNoBackupConfig(configFilter))
+	output, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgs", args...)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(output)), nil
+	return parseVgsUuid(string(output)), nil
+}
+
+// parseVgsUuid extracts the VG UUID from the combined stdout/stderr output of
+// `vgs --noheadings -o vg_uuid <vgName>`.
+//
+// Because common.RunCommand uses CombinedOutput, stderr warning lines such as
+// "WARNING: VG ... is missing PV ..." or "WARNING: PV ... is marked in use ..."
+// may precede or follow the vg_uuid line and must be ignored.
+func parseVgsUuid(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "WARNING:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 1 {
+			continue
+		}
+		vgUuid := fields[0]
+		if vgUuid == "-" || !isValidVGName(vgUuid) {
+			continue
+		}
+		return vgUuid
+	}
+	return ""
 }
 
 func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId string) (string, error) {
@@ -182,8 +246,8 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 	mainDevicePath := "/dev/" + volumeGroupName + "/" + mainLvName
 
 	// Refresh LVM device cache to ensure newly attached GCE PD is fully scanned (Comment: Refresh LVM cache)
-	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvscan", []string{"--cache"}...)
-	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", []string{"--cache"}...)
+	_, _ = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvscan", []string{"--cache", "--config", lvmNoBackupConfig}...)
+	_, _ = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", []string{"--cache", "--config", lvmNoBackupConfig}...)
 
 	// Resolve any stale duplicate Volume Group name conflicts from preemption events
 	hasConflict, staleVgUuid, err := detectPreemptionVgConflict(volumeGroupName, devicePath)
@@ -230,7 +294,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		}
 
 	} else {
-		_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, devicePath}...)
+		_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{"--autobackup", "n", volumeGroupName, devicePath}...)
 		if err != nil {
 			return "", fmt.Errorf("Errored while extending Volume group to add PV %v, error: %w", devicePath, err)
 		}
@@ -243,12 +307,14 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 		"-o",
 		"lv_name",
 	}
-	lvList, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+	lvList, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 	if err != nil {
 		return mainDevicePath, fmt.Errorf("Errored while checking logical volume for the device %s %w", devicePath, err)
 	}
 	if !strings.Contains(string(lvList), mainLvName) {
 		args = []string{
+			"--autobackup",
+			"n",
 			"--yes",
 			"-n",
 			mainLvName,
@@ -257,7 +323,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			volumeGroupName,
 			devicePath,
 		}
-		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+		_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 		if err != nil {
 			return mainDevicePath, fmt.Errorf("Errored setting up logical volume for the volume %s %w", devicePath, err)
 		}
@@ -293,13 +359,15 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			"-o",
 			"lv_name",
 		}
-		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+		info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 		if err != nil {
 			return mainDevicePath, fmt.Errorf("Errored while checking logical volume list %w", err)
 		}
 		lvExists := strings.Contains(string(info), cacheLvName)
 		if !lvExists {
 			args = []string{
+				"--autobackup",
+				"n",
 				"--yes",
 				"-n",
 				cacheLvName,
@@ -309,7 +377,7 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 				volumeGroupName,
 				raidedLocalSsdPath,
 			}
-			_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
+			_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvcreate", args...)
 			if err != nil {
 				if strings.Contains(err.Error(), "insufficient free space") {
 					return mainDevicePath, status.Error(codes.InvalidArgument, fmt.Sprintf("Error setting up cache: %v", err.Error()))
@@ -333,15 +401,17 @@ func setupCaching(devicePath string, req *csi.NodeStageVolumeRequest, nodeId str
 			chunkSize,
 			"--force",
 			"-y",
+			"--config",
+			lvmNoBackupConfig,
 		}
-		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+		_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 		if err != nil {
 			return mainDevicePath, fmt.Errorf("Errored while setting up caching for volume %s %w", devicePath, err)
 		}
 	}
 
 	// activate all the LVs in the Volume group
-	_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", volumeGroupName}...)
+	_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", "--autobackup", "n", volumeGroupName}...)
 	if err != nil {
 		// The logical volumes would not be accessible if the group is not activated
 		return mainDevicePath, fmt.Errorf("Failed to activate volume group %v %w", volumeGroupName, err)
@@ -363,8 +433,9 @@ func detectPreemptionVgConflict(volumeGroupName, devicePath string) (bool, strin
 		return false, "", nil
 	}
 
-	// Get the active VG UUID on the host to distinguish same-node reattachments from true conflicts
-	activeVgUuid, activeVgErr := getVgUuid(volumeGroupName)
+	// Get the active VG UUID on the host (excluding the GCE PD itself) to distinguish
+	// same-node reattachments of an already-staged volume from true conflicts.
+	activeVgUuid, activeVgErr := getVgUuid(volumeGroupName, devicePath)
 	if activeVgErr != nil {
 		klog.V(4).Infof("Failed to get active VG UUID for %s (it might not exist yet): %v. Proceeding with duplicate VG recovery.", volumeGroupName, activeVgErr)
 	}
@@ -440,36 +511,36 @@ func recoverPreemptionVgConflict(volumeGroupName, mainLvName, devicePath, staleV
 
 // deactivateVolumeGroup deactivates the Volume Group under the specified device filter to release kernel locks.
 func deactivateVolumeGroup(vgName, configFilter string) error {
-	deactivateArgs := []string{"-an", vgName, "--config", configFilter}
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", deactivateArgs...)
+	deactivateArgs := []string{"-an", "--autobackup", "n", vgName, "--config", configFilter}
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", deactivateArgs...)
 	return err
 }
 
 // uncacheLogicalVolume dissociates (uncaches) the cache pool from the logical volume under the specified device filter.
 func uncacheLogicalVolume(vgName, lvName, configFilter string) error {
-	uncacheArgs := []string{"--uncache", vgName + "/" + lvName, "--force", "-y", "--config", configFilter}
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
+	uncacheArgs := []string{"--uncache", vgName + "/" + lvName, "--force", "-y", "--config", withNoBackupConfig(configFilter)}
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", uncacheArgs...)
 	return err
 }
 
 // reduceStaleVolumeGroup prunes missing physical volumes (references to local SSDs) from the VG metadata under the specified device filter.
 func reduceStaleVolumeGroup(vgName, configFilter string) error {
-	reduceArgs := []string{"--removemissing", vgName, "--force", "--config", configFilter}
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
+	reduceArgs := []string{"--removemissing", "--autobackup", "n", vgName, "--force", "--config", configFilter}
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", reduceArgs...)
 	return err
 }
 
 // renameVolumeGroup renames the Volume Group under the specified device filter to resolve the duplicate naming conflict.
 func renameVolumeGroup(oldName, newName, configFilter string) error {
-	renameArgs := []string{oldName, newName, "--config", configFilter}
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
+	renameArgs := []string{"--autobackup", "n", oldName, newName, "--config", configFilter}
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgrename", renameArgs...)
 	return err
 }
 
 // regenerateVolumeGroupUuid regenerates the Volume Group UUID under the specified device filter to resolve the duplicate VGID conflict.
 func regenerateVolumeGroupUuid(vgName, configFilter string) error {
-	vgchangeArgs := []string{"-u", vgName, "--config", configFilter}
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", vgchangeArgs...)
+	vgchangeArgs := []string{"-u", "--autobackup", "n", vgName, "--config", configFilter}
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", vgchangeArgs...)
 	return err
 }
 
@@ -598,8 +669,14 @@ func FetchLSSDsWihtEmptyMountPoint() ([]string, error) {
 }
 
 func checkVgExists(volumeGroupName string) bool {
-	args := []string{}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
+	// vgscan does not support --autobackup, and by default calls check_current_backup
+	// on every scanned VG, which would write /etc/lvm/backup and /etc/lvm/archive
+	// entries for temporary VGs (such as csi-vg-unstaged-* or csi-vg-stale-*).
+	args := []string{
+		"--config",
+		lvmNoBackupConfig,
+	}
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
 	if err != nil {
 		klog.Errorf("Errored while checking if volume group exists %v: %s", err, info)
 		return false
@@ -619,34 +696,61 @@ func cleanupCache(volumeId string, nodeId string) error {
 	}
 	reduceVolumeGroup(volumeGroupName, true)
 	mainLvName := getLvName(mainLvSuffix, volumeId)
-	if !checkLvExists(mainLvName) {
+	if !checkLvExists(volumeGroupName + "/" + mainLvName) {
 		klog.V(4).Infof("Logical volume %s not found, assuming caching wasn't setup for the PVC %s or is cleaned up", mainLvName, volumeId)
 		// If logical volume doesn't exist then there's nothing to uncache
 		return nil
 	}
 	args := []string{
 		"-an",
+		"--autobackup",
+		"n",
 		"/dev/" + volumeGroupName + "/" + mainLvName,
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvchange", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvchange", args...)
 	if err != nil {
 		return fmt.Errorf("Failed to deactivate volume for uncaching %s %v: %s", volumeId, err, info)
 	}
-	args = []string{
-		"--uncache",
-		volumeGroupName + "/" + mainLvName,
-		"-y",
+	if cacheErr, isCached := isCachingSetup(mainLvName); cacheErr != nil || isCached {
+		args = []string{
+			"--uncache",
+			volumeGroupName + "/" + mainLvName,
+			"-y",
+			"--config",
+			lvmNoBackupConfig,
+		}
+		info, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+		if err != nil {
+			return fmt.Errorf("Failed to uncache volume %s %w: %s", volumeId, err, info)
+		}
 	}
-	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+	// Split the uncached GCE PD PV and its logical volume out of the node's shared
+	// volume group into a per-volume unstaged VG before the disk is detached.
+	// Otherwise, detaching the disk leaves the node VG missing a PV, causing
+	// watchDiskDetaches (`vgreduce --removemissing --force` and `vgck --updatemetadata`)
+	// to delete the LV from the node VG and wipe the PV's metadata area on same-node
+	// re-attachment. With its own unstaged VG, re-attachment on either the same node
+	// or a different node merges the existing VG/LV back into the host VG via vgmerge
+	// without re-creating or wiping the LV.
+	unstagedVgName := getUnstagedVolumeGroupName(volumeId)
+	args = []string{
+		"--autobackup",
+		"n",
+		"-n",
+		mainLvName,
+		volumeGroupName,
+		unstagedVgName,
+	}
+	info, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgsplit", args...)
 	if err != nil {
-		return fmt.Errorf("Failed to uncache volume %s %w: %s", volumeId, err, info)
+		return fmt.Errorf("Failed to split volume %s from volume group %s into %s %w: %s", volumeId, volumeGroupName, unstagedVgName, err, info)
 	}
 	return nil
 }
 
 func checkLvExists(lvName string) bool {
 	args := []string{}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvscan", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvscan", args...)
 	if err != nil {
 		klog.Errorf("Errored while checking if logical volume exists for %s %v: %s", lvName, err, info)
 		return false
@@ -660,6 +764,13 @@ func getVolumeGroupName(nodePath string) string {
 	nodeId := nodeSlice[len(nodeSlice)-1]
 	nodeHash := common.ShortString(nodeId)
 	return fmt.Sprintf("csi-vg-%s", nodeHash)
+}
+
+func getUnstagedVolumeGroupName(volumeId string) string {
+	volSlice := strings.Split(volumeId, "/")
+	volName := volSlice[len(volSlice)-1]
+	volHash := common.ShortString(volName)
+	return fmt.Sprintf("csi-vg-unstaged-%s", volHash)
 }
 
 // getVgInfoForPv queries LVM metadata for the physical volume (PV) path under a device-specific filter.
@@ -678,7 +789,7 @@ func getVgInfoForPv(pvPath string) (string, string, error) {
 		"--config",
 		configFilter,
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to run pvs: %w", err)
 	}
@@ -728,7 +839,7 @@ func isLvCachedOnDevice(vgName, lvName, pvPath string) (bool, error) {
 		"-o", "pool_lv",
 		"--config", configFilter,
 	}
-	output, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
+	output, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvs", args...)
 	if err != nil {
 		// If lvs exits with a warning/error (which it always does when a PV is missing),
 		// we still want to parse the output. If the VG/LV genuinely doesn't exist,
@@ -744,7 +855,7 @@ func isLvCachedOnDevice(vgName, lvName, pvPath string) (bool, error) {
 func mergeStaleVgIntoHost(vgNameForPv, volumeGroupName, mainLvName string) error {
 	klog.Infof("Stale VG %s found on GCE PD. Activating it first to perform cleanup.", vgNameForPv)
 	// Ensure the stale VG is active so we can modify its metadata (Comment: Activate stale VG for cleanup)
-	_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", vgNameForPv}...)
+	_, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-ay", "--autobackup", "n", vgNameForPv}...)
 	if err != nil {
 		klog.Errorf("Errored while activating stale VG %v: err: %v", vgNameForPv, err)
 	}
@@ -757,8 +868,10 @@ func mergeStaleVgIntoHost(vgNameForPv, volumeGroupName, mainLvName string) error
 			vgNameForPv + "/" + mainLvName,
 			"--force",
 			"-y", // force remove cache without flushing data
+			"--config",
+			lvmNoBackupConfig,
 		}
-		_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
+		_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "lvconvert", args...)
 		if err != nil {
 			return fmt.Errorf("errored while uncaching main LV: %w", err)
 		}
@@ -769,10 +882,10 @@ func mergeStaleVgIntoHost(vgNameForPv, volumeGroupName, mainLvName string) error
 
 	// Deactivate ONLY the source VG to release its locks before running vgmerge (Comment: Release locks on source VG only)
 	klog.Infof("Deactivating source VG %s to release locks before merging...", vgNameForPv)
-	_, _ = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", vgNameForPv}...)
+	_, _ = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgchange", []string{"-an", "--autobackup", "n", vgNameForPv}...)
 
 	// Merge the GCE PD's VG into the host's VG (destination VG remains active/in-use!)
-	_, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{volumeGroupName, vgNameForPv}...)
+	_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgmerge", []string{"--autobackup", "n", volumeGroupName, vgNameForPv}...)
 	if err != nil {
 		return fmt.Errorf("Errored while merging the PV Volume group %s into %s %w", vgNameForPv, volumeGroupName, err)
 	}
@@ -787,20 +900,25 @@ func getLvName(suffix string, volumeId string) string {
 
 func createVg(volumeGroupName string, raidedLocalSsds string) error {
 	args := []string{
+		"--autobackup",
+		"n",
 		"--zero",
 		"y",
 		volumeGroupName,
 		raidedLocalSsds,
 		"-v",
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgcreate", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgcreate", args...)
 	if err != nil {
 		return fmt.Errorf("Volume group creation failed %w: %s", err, info)
 	}
 	klog.V(4).Infof("Volume group creation succeeded for %v", volumeGroupName)
 
-	args = []string{}
-	info, err = common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
+	args = []string{
+		"--config",
+		lvmNoBackupConfig,
+	}
+	info, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgscan", args...)
 	if err != nil {
 		klog.Errorf("Failed to scan for volume group post creation, continuing: %v: %s", err, info)
 	}
@@ -816,7 +934,7 @@ func ensureLocalSsdInVolumeGroup(volumeGroupName, raidedLocalSsdPath string) err
 	}
 	if ssdVgName != volumeGroupName {
 		klog.Infof("Extending Volume Group %s to include local SSD cache PV %s", volumeGroupName, raidedLocalSsdPath)
-		info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{volumeGroupName, raidedLocalSsdPath}...)
+		info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{"--autobackup", "n", volumeGroupName, raidedLocalSsdPath}...)
 		if err != nil {
 			return fmt.Errorf("failed to extend VG %s with local SSD PV %s: %w (output: %s)", volumeGroupName, raidedLocalSsdPath, err, string(info))
 		}
@@ -830,12 +948,14 @@ func reduceVolumeGroup(volumeGroupName string, force bool) {
 	}
 	args := []string{
 		"--removemissing",
+		"--autobackup",
+		"n",
 		volumeGroupName,
 	}
 	if force {
 		args = append(args, "--force")
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgreduce", args...)
 	if err != nil {
 		klog.Errorf("Errored while cleaning up volume group %v: %s", err, info)
 	}
@@ -900,7 +1020,7 @@ func isCachingSetup(mainLvName string) (error, bool) {
 		"-o",
 		"pool_lv",
 	}
-	poolName, err := common.RunCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lvs", args...)
+	poolName, err := runCommand("" /* pipedCmd */, nil /* pipeCmdArg */, "lvs", args...)
 	if strings.Contains(string(poolName), "csi-fast") {
 		return nil, true
 	}
@@ -990,15 +1110,32 @@ func watchDiskDetaches(ctx context.Context, watcher *fsnotify.Watcher, nodeName 
 		case <-watcher.Events:
 			// In case of an event i.e. creation or deletion of any new PV, we update the VG metadata.
 			// This might include some non-LVM changes, no harm in updating metadata multiple times.
+			// Only update/reduce when the host's RAIDed Local SSD belongs to the node VG;
+			// otherwise (e.g. if the Local SSD VG has not been created yet and a preempted PD
+			// carrying a stale VG with the same name is attached), running vgreduce --removemissing
+			// would operate on the PD's stale VG and destroy its cached LV before preemption recovery.
+			vgName := getVolumeGroupName(nodeName)
+			raidedLocalSsdPath, err := fetchRAIDedLocalSsdPath()
+			if err != nil {
+				klog.V(4).Infof("Skipping VG metadata update for %s: failed to fetch RAIDed local SSD path: %v", vgName, err)
+				continue
+			}
+			ssdVgName, _, err := getVgInfoForPv(raidedLocalSsdPath)
+			if err != nil || ssdVgName != vgName {
+				klog.V(4).Infof("Skipping VG metadata update for %s: local SSD %s belongs to VG %q (err: %v)", vgName, raidedLocalSsdPath, ssdVgName, err)
+				continue
+			}
 			args := []string{
 				"--updatemetadata",
-				getVolumeGroupName(nodeName),
+				vgName,
+				"--config",
+				lvmNoBackupConfig,
 			}
-			_, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
+			_, err = runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgck", args...)
 			if err != nil {
 				klog.Errorf("Error updating volume group's metadata: %v", err)
 			}
-			reduceVolumeGroup(getVolumeGroupName(nodeName), true)
+			reduceVolumeGroup(vgName, true)
 		}
 	}
 }
@@ -1011,7 +1148,7 @@ func validateRaidedLSSDinVG(vgName string, lssdPath string) error {
 		"--select",
 		"vg_name=" + vgName,
 	}
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
 		return fmt.Errorf("errored while checking physical volume details %v: %s", err, info)
 		// On error info contains the error message which we cannot use for further steps
@@ -1024,7 +1161,7 @@ func validateRaidedLSSDinVG(vgName string, lssdPath string) error {
 }
 
 func addRaidedLSSDToVg(vgName, lssdPath string) error {
-	info, err := common.RunCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{vgName, lssdPath}...)
+	info, err := runCommand("" /* pipedCmd */, nil /* pipedCmdArg */, "vgextend", []string{"--autobackup", "n", vgName, lssdPath}...)
 	if err != nil {
 		return fmt.Errorf("errored while extending VGs %v: %s", err, info)
 	}
@@ -1038,7 +1175,7 @@ func fetchPvSizeGiB() (string, error) {
 		"--units=b",
 	}
 	// RAIDed device is always registered with its /dev/md127 equivalent in VG so cannot check it directly based on the RAIDed LSSD path which could be /dev/md/csi-driver-data-cache
-	info, err := common.RunCommand("grep" /* pipedCmd */, []string{"/dev/md"} /* pipedCmdArg */, "pvs", args...)
+	info, err := runCommand("grep" /* pipedCmd */, []string{"/dev/md"} /* pipedCmdArg */, "pvs", args...)
 	if err != nil {
 		return "", fmt.Errorf("errored while fetching PV size %v: %s", err, info)
 	}

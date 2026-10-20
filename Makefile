@@ -69,12 +69,14 @@ build-container: require-GCE_PD_CSI_STAGING_IMAGE require-GCE_PD_CSI_STAGING_VER
 
 build-and-push-windows-container-ltsc2019: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows/amd64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2019 \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2019) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-windows-container-ltsc2022: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.Windows --platform=windows/amd64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_ltsc2022 \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE_LTSC2022) \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
@@ -95,12 +97,14 @@ build-and-push-node-labeler-multi-arch: build-node-labeler-container-linux-amd64
 
 build-default-sc-rollback-handler-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.default-sc-rollback-handler --platform=linux/amd64 \
+	  --progress=plain \
 		-t $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-default-sc-rollback-handler-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.default-sc-rollback-handler --platform=linux/arm64 \
+	  --progress=plain \
 		-t $(DEFAULTSCROLLBACKHANDLERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
@@ -123,40 +127,47 @@ validate-container-linux: validate-container-linux-amd64 validate-container-linu
 
 build-and-load-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/amd64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --load .
 
 build-and-load-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --load .
 
 build-and-push-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --platform=linux/amd64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile --platform=linux/arm64 \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-node-labeler-container-linux-amd64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.node-labeler --platform=linux/amd64 \
+	  --progress=plain \
 		-t $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_amd64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-node-labeler-container-linux-arm64: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.node-labeler --platform=linux/arm64 \
+	  --progress=plain \
 		-t $(LABELERSTAGINGIMAGE):$(STAGINGVERSION)_linux_arm64 \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push --provenance=false .
 
 build-and-push-container-linux-debug: require-GCE_PD_CSI_STAGING_IMAGE init-buildx
 	$(DOCKER) buildx build --file=Dockerfile.debug --platform=linux \
+	  --progress=plain \
 		-t $(STAGINGIMAGE):$(STAGINGVERSION)_linux \
 		--build-arg BUILDPLATFORM=linux \
 		--build-arg STAGINGVERSION=$(STAGINGVERSION) --push .

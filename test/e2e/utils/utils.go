@@ -310,6 +310,18 @@ func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
 	if err != nil {
 		return fmt.Errorf("failed to update field udev_rules, error:%v; output: %v", err, output)
 	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*event_activation = 1.*/ event_activation = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field event_activation, error: %w; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "'/^[[:space:]]*backup[[:space:]]*{/,/^[[:space:]]*}/s/^[[:space:]]*#\\{0,1\\}[[:space:]]*backup[[:space:]]*=[[:space:]]*[01][[:space:]]*\\(#.*\\)\\{0,1\\}$/\tbackup = 0/'", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field backup, error: %w; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "'/^[[:space:]]*backup[[:space:]]*{/,/^[[:space:]]*}/s/^[[:space:]]*#\\{0,1\\}[[:space:]]*archive[[:space:]]*=[[:space:]]*[01][[:space:]]*\\(#.*\\)\\{0,1\\}$/\tarchive = 0/'", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field archive, error: %w; output: %v", err, output)
+	}
 	return nil
 }
 
