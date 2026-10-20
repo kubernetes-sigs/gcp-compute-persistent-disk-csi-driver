@@ -168,6 +168,16 @@ func TestIsValidVGName(t *testing.T) {
 			vgName:   "md127)",
 			expected: false,
 		},
+		{
+			name:     "invalid name WARNING token",
+			vgName:   "WARNING:",
+			expected: false,
+		},
+		{
+			name:     "invalid name unknown token",
+			vgName:   "[unknown]",
+			expected: false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -483,5 +493,81 @@ func TestIsDataCacheArrayName(t *testing.T) {
 		if got := isDataCacheArrayName(tc.name); got != tc.want {
 			t.Errorf("isDataCacheArrayName(%q) = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestParsePvsVgInfo(t *testing.T) {
+	testCases := []struct {
+		name       string
+		output     string
+		pvPath     string
+		wantVgName string
+		wantVgUuid string
+	}{
+		{
+			name:       "clean pvs output with VG",
+			output:     "  csi-vg-x7hl7lfz e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6 /dev/sdb\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "csi-vg-x7hl7lfz",
+			wantVgUuid: "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6",
+		},
+		{
+			name: "WARNING PV line with device path as 3rd token before VG row",
+			output: "  WARNING: PV /dev/sdb in VG csi-vg-x7hl7lfz is using an old PV header, modify the VG to update.\n" +
+				"  WARNING: VG csi-vg-x7hl7lfz is missing PV a1b2c3 (last written to [unknown]).\n" +
+				"  csi-vg-x7hl7lfz e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6 /dev/sdb\n" +
+				"  csi-vg-x7hl7lfz e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6 [unknown]\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "csi-vg-x7hl7lfz",
+			wantVgUuid: "e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6",
+		},
+		{
+			name: "WARNING PV marked in use on orphan PV without VG",
+			output: "  WARNING: PV /dev/sdb is marked in use but no VG was found using it.\n" +
+				"  WARNING: PV /dev/sdb might need repairing.\n" +
+				"            /dev/sdb\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "",
+			wantVgUuid: "",
+		},
+		{
+			name: "WARNING PV marked in use after orphan PV row",
+			output: "            /dev/sdb\n" +
+				"  WARNING: PV /dev/sdb is marked in use but no VG was found using it.\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "",
+			wantVgUuid: "",
+		},
+		{
+			name:       "orphan PV with placeholder dashes",
+			output:     "  - - /dev/sdb\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "",
+			wantVgUuid: "",
+		},
+		{
+			name: "invalid VG name tokens like [unknown] or WARNING: in 3-field line are rejected",
+			output: "  WARNING: PV /dev/sdb\n" +
+				"  [unknown] e1L2m3-N4o5-P6q7-R8s9-T0u1-V2w3-X4y5z6 /dev/sdb\n",
+			pvPath:     "/dev/sdb",
+			wantVgName: "",
+			wantVgUuid: "",
+		},
+		{
+			name:       "empty output",
+			output:     "",
+			pvPath:     "/dev/sdb",
+			wantVgName: "",
+			wantVgUuid: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotVgName, gotVgUuid := parsePvsVgInfo(tc.output, tc.pvPath)
+			if gotVgName != tc.wantVgName || gotVgUuid != tc.wantVgUuid {
+				t.Errorf("parsePvsVgInfo() = (%q, %q), want (%q, %q)", gotVgName, gotVgUuid, tc.wantVgName, tc.wantVgUuid)
+			}
+		})
 	}
 }
