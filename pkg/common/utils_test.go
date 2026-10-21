@@ -457,6 +457,19 @@ func TestCodeForError(t *testing.T) {
 			expCode:  codes.InvalidArgument,
 		},
 		{
+			name:     "Service unavailable error",
+			inputErr: &googleapi.Error{Code: http.StatusServiceUnavailable, Message: "Service Unavailable"},
+			expCode:  codes.Unavailable,
+		},
+		{
+			name: "googleapi.Error that wraps apierror.APIError of http kind service unavailable",
+			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
+				Code:    http.StatusServiceUnavailable,
+				Message: "service unavailable error",
+			}),
+			expCode: codes.Unavailable,
+		},
+		{
 			name: "googleapi.Error that wraps apierror.APIError of http kind",
 			inputErr: getGoogleAPIWrappedError(&googleapi.Error{
 				Code:    404,

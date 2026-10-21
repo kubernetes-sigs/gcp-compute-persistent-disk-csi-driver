@@ -96,6 +96,13 @@ func TestGetMetricParameters(t *testing.T) {
 			expectedDiskType:                  DefaultDiskTypeForMetric,
 			expectedEnableStoragePools:        DefaultEnableStoragePools,
 		},
+		{
+			name:                              "test disk with empty disk type does not overwrite default",
+			disk:                              CreateDiskWithConfidentialCompute(false, ""),
+			expectedEnableConfidentialCompute: "false",
+			expectedDiskType:                  DefaultDiskTypeForMetric,
+			expectedEnableStoragePools:        "false",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -136,6 +143,11 @@ func TestErrorCodeLabelValue(t *testing.T) {
 			name:          "googleapi.Error but not a user error",
 			operationErr:  &googleapi.Error{Code: http.StatusInternalServerError, Message: "Internal error"},
 			wantErrorCode: "Internal",
+		},
+		{
+			name:          "service unavailable error",
+			operationErr:  &googleapi.Error{Code: http.StatusServiceUnavailable, Message: "Service Unavailable"},
+			wantErrorCode: "Unavailable",
 		},
 		{
 			name:          "context canceled error",

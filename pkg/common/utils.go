@@ -105,6 +105,7 @@ var (
 		http.StatusNotFound:           codes.NotFound,
 		http.StatusConflict:           codes.FailedPrecondition,
 		http.StatusPreconditionFailed: codes.FailedPrecondition,
+		http.StatusServiceUnavailable: codes.Unavailable,
 	}
 
 	csiRetryableErrorCodes = []codes.Code{codes.Canceled, codes.DeadlineExceeded, codes.Unavailable, codes.Aborted, codes.ResourceExhausted}
