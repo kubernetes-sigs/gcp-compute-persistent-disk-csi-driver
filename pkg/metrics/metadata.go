@@ -50,7 +50,9 @@ func UpdateRequestMetadataFromParams(ctx context.Context, params parameters.Disk
 func UpdateRequestMetadataFromDisk(ctx context.Context, disk *gce.CloudDisk) {
 	metadata := MetadataFromContext(ctx)
 	if metadata != nil && disk != nil {
-		metadata.diskType = disk.GetPDType()
+		if pdType := disk.GetPDType(); pdType != "" {
+			metadata.diskType = pdType
+		}
 		metadata.enableConfidentialStorage = strconv.FormatBool(disk.GetEnableConfidentialCompute())
 		metadata.enableStoragePools = strconv.FormatBool(disk.GetEnableStoragePools())
 	}
