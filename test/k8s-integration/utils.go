@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"os/exec"
 
@@ -8,9 +10,15 @@ import (
 )
 
 func runCommand(action string, cmd *exec.Cmd) error {
-	cmd.Stdout = os.Stdout
+	_, err := runCommandWithOutput(action, cmd)
+	return err
+}
+
+func runCommandWithOutput(action string, cmd *exec.Cmd) (string, error) {
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
 
 	klog.Infof("%s", action)
 	klog.Infof("cmd env=%v", cmd.Env)
@@ -18,14 +26,14 @@ func runCommand(action string, cmd *exec.Cmd) error {
 
 	err := cmd.Start()
 	if err != nil {
-		return err
+		return buf.String(), err
 	}
 
 	err = cmd.Wait()
 	if err != nil {
-		return err
+		return buf.String(), err
 	}
-	return nil
+	return buf.String(), nil
 }
 
 func generateUniqueTmpDir() string {
