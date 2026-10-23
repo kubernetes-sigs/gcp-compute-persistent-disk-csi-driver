@@ -433,6 +433,62 @@ func TestGetVolumeAttributesClassForPV(t *testing.T) {
 	}
 }
 
+// PR2397-C10: Transient PVC and VAC read errors must retry before reconciliation.
+func TestGetVolumeAttributesClassForPVRetriesTransientReads(t *testing.T) {
+	oldBackoff := backoff
+	backoff = wait.Backoff{Duration: time.Millisecond, Factor: 1, Steps: 3}
+	defer func() { backoff = oldBackoff }()
+
+	className := "vac-hyperdisk"
+	pv := newPV("test-pv", nil)
+	pv.Spec.ClaimRef = &v1.ObjectReference{Name: "test-pvc", Namespace: "default"}
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+		Spec:       v1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+	}
+	vac := &storagev1.VolumeAttributesClass{
+		ObjectMeta: metav1.ObjectMeta{Name: className},
+		DriverName: "pd.csi.storage.gke.io",
+		Parameters: map[string]string{"type": "hyperdisk-balanced"},
+	}
+	clientset := fake.NewSimpleClientset(pv, pvc, vac)
+	pvcGets, vacGets, clientGets := 0, 0, 0
+	clientset.PrependReactor("get", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		pvcGets++
+		if pvcGets == 1 {
+			return true, nil, apierrors.NewServiceUnavailable("temporary PVC read failure")
+		}
+		return false, nil, nil
+	})
+	clientset.PrependReactor("get", "volumeattributesclasses", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		vacGets++
+		if vacGets == 1 {
+			return true, nil, apierrors.NewServiceUnavailable("temporary VAC read failure")
+		}
+		return false, nil, nil
+	})
+	oldGetClient := GetClient
+	GetClient = func() (kubernetes.Interface, error) {
+		clientGets++
+		return clientset, nil
+	}
+	defer func() { GetClient = oldGetClient }()
+
+	params, exists, err := GetVolumeAttributesClassForPV(context.Background(), "test-pv")
+	if err != nil {
+		t.Fatalf("GetVolumeAttributesClassForPV failed after transient reads: %v", err)
+	}
+	if !exists || !reflect.DeepEqual(params, map[string]string{"type": "hyperdisk-balanced"}) {
+		t.Fatalf("GetVolumeAttributesClassForPV = %v, %v; want the class parameters", params, exists)
+	}
+	if pvcGets != 2 || vacGets != 2 {
+		t.Errorf("PVC gets = %d and VAC gets = %d; want two each", pvcGets, vacGets)
+	}
+	if clientGets != 1 {
+		t.Errorf("Kubernetes clients fetched = %d; want one", clientGets)
+	}
+}
+
 func TestGetVolumeAttributesClassForPVAPIVersions(t *testing.T) {
 	boundPV := func() *v1.PersistentVolume {
 		pv := newPV("test-pv", nil)

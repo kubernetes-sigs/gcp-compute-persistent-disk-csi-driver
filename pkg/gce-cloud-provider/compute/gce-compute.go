@@ -118,7 +118,7 @@ type GCECompute interface {
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error
-	ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error)
+	ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error)
 	IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error)
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
 	SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error
@@ -1007,7 +1007,7 @@ func (cloud *CloudProvider) ConvertDisk(ctx context.Context, project string, vol
 // only starts the operation and returns as soon as the API accepts it. It
 // returns the self link of the conversion operation, which callers record so
 // the conversion can still be found after the driver restarts.
-func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error) {
+func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error) {
 	if volKey.Type() != meta.Zonal {
 		return "", fmt.Errorf("disk type conversion is not supported for regional disk %s", volKey.Name)
 	}
@@ -1032,7 +1032,9 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 		return "", fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err)
 	}
 
-	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).Context(ctx).Do()
+	// PR2397-C1: Reuse the durable request ID so retries cannot create another
+	// conversion when GCE accepted the first request but its response was lost.
+	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).RequestId(requestID).Context(ctx).Do()
 	if err != nil {
 		return "", err
 	}

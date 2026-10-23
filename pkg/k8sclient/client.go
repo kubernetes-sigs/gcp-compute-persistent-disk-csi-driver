@@ -8,6 +8,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -181,7 +182,7 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 		return nil, false, fmt.Errorf("failed to get kubernetes client: %w", err)
 	}
 
-	pv, err := GetPersistentVolumeWithRetry(ctx, pvName)
+	pv, err := getPersistentVolumeWithRetry(ctx, kubeClient, pvName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, false, nil
@@ -192,8 +193,27 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 		return nil, false, nil
 	}
 
-	pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(ctx, pv.Spec.ClaimRef.Name, metav1.GetOptions{})
+	// PR2397-C10: Retry transient PVC/VAC reads so API-server hiccups do not
+	// incorrectly make a conversion look cancelled during reconciliation.
+	var pvc *v1.PersistentVolumeClaim
+	var lastErr error
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		var getErr error
+		pvc, getErr = kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(ctx, pv.Spec.ClaimRef.Name, metav1.GetOptions{})
+		if getErr == nil {
+			return true, nil
+		}
+		lastErr = getErr
+		if !isRetriableAPIError(getErr) {
+			return false, getErr
+		}
+		klog.Warningf("Error getting PersistentVolumeClaim %s/%s: %v, retrying...\n", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name, getErr)
+		return false, nil
+	})
 	if err != nil {
+		if lastErr != nil {
+			err = lastErr
+		}
 		if apierrors.IsNotFound(err) {
 			return nil, false, nil
 		}
@@ -216,7 +236,24 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 // have to be tried before concluding there is no class: treating an unserved API
 // as a missing class would silently withdraw every conversion on those clusters.
 func getVolumeAttributesClassParameters(ctx context.Context, kubeClient kubernetes.Interface, vacName string) (map[string]string, bool, error) {
-	vac, err := kubeClient.StorageV1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+	var vac *storagev1.VolumeAttributesClass
+	var lastErr error
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		var getErr error
+		vac, getErr = kubeClient.StorageV1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+		if getErr == nil {
+			return true, nil
+		}
+		lastErr = getErr
+		if !isRetriableAPIError(getErr) {
+			return false, getErr
+		}
+		klog.Warningf("Error getting VolumeAttributesClass %s from storage.k8s.io/v1: %v, retrying...\n", vacName, getErr)
+		return false, nil
+	})
+	if err != nil && lastErr != nil {
+		err = lastErr
+	}
 	if err == nil {
 		return vac.Parameters, true, nil
 	}
@@ -224,7 +261,24 @@ func getVolumeAttributesClassParameters(ctx context.Context, kubeClient kubernet
 		return nil, false, fmt.Errorf("failed to get VolumeAttributesClass %s: %w", vacName, err)
 	}
 
-	betaVac, betaErr := kubeClient.StorageV1beta1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+	var betaVac *storagev1beta1.VolumeAttributesClass
+	lastErr = nil
+	betaErr := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+		var getErr error
+		betaVac, getErr = kubeClient.StorageV1beta1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+		if getErr == nil {
+			return true, nil
+		}
+		lastErr = getErr
+		if !isRetriableAPIError(getErr) {
+			return false, getErr
+		}
+		klog.Warningf("Error getting VolumeAttributesClass %s from storage.k8s.io/v1beta1: %v, retrying...\n", vacName, getErr)
+		return false, nil
+	})
+	if betaErr != nil && lastErr != nil {
+		betaErr = lastErr
+	}
 	if betaErr == nil {
 		return betaVac.Parameters, true, nil
 	}
@@ -313,6 +367,52 @@ func GetPVAnnotation(ctx context.Context, pvName string, annotationKey string) (
 	}
 	value, exists := pv.Annotations[annotationKey]
 	return value, exists, nil
+}
+
+// PVAnnotationCondition describes the annotation state a caller expects before
+// applying an atomic set of annotation changes to a PersistentVolume.
+// PR2397-C7: These conditions prevent stale completion workers from releasing
+// a volume whose conversion/reconciliation state has changed.
+type PVAnnotationCondition struct {
+	Value  string
+	Exists bool
+}
+
+// UpdatePVAnnotations applies annotation changes with a resource-version check.
+// Conditions prevent a stale conversion worker from overwriting state written
+// by a newer operation between its read and update.
+func UpdatePVAnnotations(ctx context.Context, pvName string, conditions map[string]PVAnnotationCondition, set map[string]string, remove []string) error {
+	kubeClient, err := GetClient()
+	if err != nil {
+		return fmt.Errorf("failed to get kubernetes client: %w", err)
+	}
+	pv, err := getPersistentVolumeWithRetry(ctx, kubeClient, pvName)
+	if err != nil {
+		return fmt.Errorf("failed to get PersistentVolume %s before updating annotations: %w", pvName, err)
+	}
+	for key, expected := range conditions {
+		actual, exists := pv.Annotations[key]
+		if exists != expected.Exists || (exists && actual != expected.Value) {
+			return apierrors.NewConflict(
+				v1.Resource("persistentvolumes"),
+				pvName,
+				fmt.Errorf("annotation %s changed while updating PersistentVolume", key),
+			)
+		}
+	}
+	if pv.Annotations == nil && len(set) > 0 {
+		pv.Annotations = map[string]string{}
+	}
+	for key, value := range set {
+		pv.Annotations[key] = value
+	}
+	for _, key := range remove {
+		delete(pv.Annotations, key)
+	}
+	if _, err := kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("failed to update annotations on PersistentVolume %s: %w", pvName, err)
+	}
+	return nil
 }
 
 // SetPVAnnotation adds or updates an annotation on a PersistentVolume.

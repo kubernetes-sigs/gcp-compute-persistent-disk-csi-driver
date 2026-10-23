@@ -57,11 +57,12 @@ type FakeCloudProvider struct {
 	project string
 	zone    string
 
-	disks      map[string]*CloudDisk
-	pageTokens map[string]sets.String
-	instances  map[string]*computev1.Instance
-	snapshots  map[string]*computev1.Snapshot
-	images     map[string]*computev1.Image
+	disks                           map[string]*CloudDisk
+	pageTokens                      map[string]sets.String
+	conversionOperationsByRequestID map[string]string
+	instances                       map[string]*computev1.Instance
+	snapshots                       map[string]*computev1.Snapshot
+	images                          map[string]*computev1.Image
 
 	// PD-on-Gen4 conversion testing fields
 	ConversionTestParams ConversionTestParams
@@ -96,19 +97,21 @@ type ConversionTestParams struct {
 	TypeConversionTargetType string
 	TypeConversionIops       *int64
 	TypeConversionThroughput *int64
+	TypeConversionRequestIDs []string
 }
 
 var _ GCECompute = &FakeCloudProvider{}
 
 func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*FakeCloudProvider, error) {
 	fcp := &FakeCloudProvider{
-		project:    project,
-		zone:       zone,
-		disks:      map[string]*CloudDisk{},
-		instances:  map[string]*computev1.Instance{},
-		snapshots:  map[string]*computev1.Snapshot{},
-		images:     map[string]*computev1.Image{},
-		pageTokens: map[string]sets.String{},
+		project:                         project,
+		zone:                            zone,
+		disks:                           map[string]*CloudDisk{},
+		instances:                       map[string]*computev1.Instance{},
+		snapshots:                       map[string]*computev1.Snapshot{},
+		images:                          map[string]*computev1.Image{},
+		pageTokens:                      map[string]sets.String{},
+		conversionOperationsByRequestID: map[string]string{},
 		// A newly created disk is marked READY by default.
 		mockDiskStatus: "READY",
 	}
@@ -356,7 +359,7 @@ func (cloud *FakeCloudProvider) DetachDisk(ctx context.Context, project, deviceN
 	return nil
 }
 
-func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType string, provisionedIops, provisionedThroughput *int64) (string, error) {
+func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error) {
 	// Conversions can be started from a background worker, so the record of
 	// what was asked for is shared with whoever is checking it.
 	cloud.pollLock.Lock()
@@ -367,6 +370,12 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	cloud.ConversionTestParams.TypeConversionTargetType = targetDiskType
 	cloud.ConversionTestParams.TypeConversionIops = provisionedIops
 	cloud.ConversionTestParams.TypeConversionThroughput = provisionedThroughput
+	cloud.ConversionTestParams.TypeConversionRequestIDs = append(cloud.ConversionTestParams.TypeConversionRequestIDs, requestID)
+	// PR2397-C1: A repeated request ID returns the original operation, matching
+	// GCE's idempotent conversion retry behavior.
+	if operation, ok := cloud.conversionOperationsByRequestID[requestID]; ok {
+		return operation, nil
+	}
 
 	if cloud.ConversionTestParams.TypeConversionErr != nil {
 		return "", cloud.ConversionTestParams.TypeConversionErr
@@ -385,7 +394,9 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	if disk.betaDisk != nil {
 		disk.betaDisk.Type = typeURI
 	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/alpha/projects/%s/zones/%s/operations/operation-convert-%s", project, volKey.Zone, volKey.Name), nil
+	operation := fmt.Sprintf("https://www.googleapis.com/compute/alpha/projects/%s/zones/%s/operations/operation-convert-%s", project, volKey.Zone, volKey.Name)
+	cloud.conversionOperationsByRequestID[requestID] = operation
+	return operation, nil
 }
 
 // IsConvertOperationDone reports the conversion as still running for the first
