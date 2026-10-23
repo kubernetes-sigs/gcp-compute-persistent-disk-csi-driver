@@ -48,7 +48,7 @@ var (
 	architecture              = flag.String("arch", "amd64", "Architecture pd csi driver build on")
 	minCpuPlatform            = flag.String("min-cpu-platform", "AMD Rome", "Minimum CPU architecture")
 	mwMinCpuPlatform          = flag.String("min-cpu-platform-mw", "Intel Sapphire Rapids", "Minimum CPU architecture for multiwriter tests")
-	zonesFlag                 = flag.String("zones", "us-east4-a,us-east4-c", "Zones to run tests in. If there are multiple zones, separate each by comma")
+	zonesFlag                 = flag.String("zones", "us-east5-a,us-east5-b", "Zones to run tests in. If there are multiple zones, separate each by comma")
 	subnetwork                = flag.String("subnetwork", "", "Subnetwork to use. Must already exist in the region of a zone used for an instance. Ignored if empty")
 	machineType               = flag.String("machine-type", "n2d-standard-4", "Type of machine to provision instance on")
 	instancesPerZone          = flag.Int("instances-per-zone", 3, "Number of instances per zone that will be provisioned")

@@ -380,7 +380,10 @@ func handle() {
 				if err := setupDataCache(ctx, meta, *nodeName, nodeServer.MetadataService.GetName()); err != nil {
 					klog.Errorf("Data Cache setup failed: %v", err)
 				}
-				go driver.StartWatcher(ctx, *nodeName)
+				// Note there are subtle differences between --node-name and the metadata service instance name, see #2279
+				// for an example. The data cache subsystem uses the metadata service consistently with the instance name.
+				// See for example NodeStageVolume and its use of setupCaching and nodeId from the metadata service.
+				go driver.StartWatcher(ctx, nodeServer.MetadataService.GetName())
 			}
 		}
 

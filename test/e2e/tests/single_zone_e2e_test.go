@@ -1548,10 +1548,20 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 		defer deleteVolumeOrError(client, volID)
 
-		// Attach Disk
+		// Attach Disk, stage+mount with Data Cache, write file, unpublish+unstage+detach,
+		// re-attach to the same instance, stage+mount, and verify file contents.
 		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, true /* detachAndReattach */, true /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
+		// Verify that after unstaging and detaching the disk, the node's shared VG
+		// has no missing PVs (confirming cleanupCache split the PD out of the node VG).
+		nodeHash := common.ShortString(instance.GetName())
+		volumeGroupName := fmt.Sprintf("csi-vg-%s", nodeHash)
+		missingPvOut, err := instance.SSH("vgs", "--noheadings", "-o", "vg_missing_pv_count", volumeGroupName)
+		Expect(err).To(BeNil(), "Failed to query vg_missing_pv_count for %s: %s", volumeGroupName, missingPvOut)
+		Expect(strings.TrimSpace(missingPvOut)).To(Equal("0"), "Expected 0 missing PVs in node VG %s after unstage and detach", volumeGroupName)
+
+		verifyNoUnexpectedLvmBackups(instance)
 	})
 
 	It("[OS-Qualification] [DataCache] Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
@@ -1630,14 +1640,24 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		_, _ = instance.SSH("umount", "-l", mountDir)
 		_, _ = instance.SSH("umount", "-l", stageDirLocal)
 
-		// Wipe LVM state and log results
-		_, _ = instance.SSH("vgreduce", "--removemissing", "--force", volumeGroupName)
-		out1, err1 := instance.SSH("vgchange", "-an", volumeGroupName)
+		// Wipe LVM state and recreate the host VG with a new UUID on the local SSD RAID
+		// array (matching InitializeDataCacheNode on a preempted/recreated node) so that
+		// re-attaching the force-detached GCE PD creates a live duplicate VG name conflict.
+		_, _ = instance.SSH("vgreduce", "--removemissing", "--autobackup", "n", "--force", volumeGroupName)
+		raidDevOut, raidDevErr := instance.SSH("pvs", "--noheadings", "-o", "pv_name", "-S", "vg_name="+volumeGroupName)
+		raidDev := strings.TrimSpace(raidDevOut)
+		if raidDevErr != nil || raidDev == "" {
+			raidDev = "/dev/md127"
+		}
+		out1, err1 := instance.SSH("vgchange", "-an", "--autobackup", "n", volumeGroupName)
 		klog.Infof("vgchange -an: out=%s, err=%v", out1, err1)
 		out2, err2 := instance.SSH("vgremove", "-y", volumeGroupName)
 		klog.Infof("vgremove -y: out=%s, err=%v", out2, err2)
-		out3, err3 := instance.SSH("pvremove", "-y", "/dev/md127")
-		klog.Infof("pvremove -y: out=%s, err=%v", out3, err3)
+		out3, err3 := instance.SSH("pvremove", "-y", raidDev)
+		klog.Infof("pvremove -y %s: out=%s, err=%v", raidDev, out3, err3)
+		out4, err4 := instance.SSH("vgcreate", "--autobackup", "n", "--zero", "y", "-y", volumeGroupName, raidDev)
+		klog.Infof("vgcreate -y %s %s: out=%s, err=%v", volumeGroupName, raidDev, out4, err4)
+		Expect(err4).To(BeNil(), "Failed to recreate host VG %s on %s to simulate node preemption reset: %s", volumeGroupName, raidDev, out4)
 
 		// Wait a few seconds for the GCE control plane to register the detach
 		time.Sleep(10 * time.Second)
@@ -1660,6 +1680,8 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err = readVerifyFunc(args)
 		Expect(err).To(BeNil(), "Data integrity verification failed on VM after preemption recovery! Potential data loss.")
 		klog.Infof("Success: Volume successfully recovered and verified with zero data loss on VM after preemption!")
+
+		verifyNoUnexpectedLvmBackups(instance)
 	})
 	It("Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
 		Expect(testContexts).ToNot(BeEmpty())
@@ -1722,19 +1744,19 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Node Unstage
 		err = client.NodeUnstageVolume(volID, args.stageDir)
-		if err != nil {
-			klog.Errorf("Failed to unstage volume: %v", err)
-		}
-		detach(volID, firstInstance, client)
+		Expect(err).To(BeNil(), "Failed to unstage volume %s on instance %s", volName, firstInstance.GetName())
+		err = detach(volID, firstInstance, client)
+		Expect(err).To(BeNil(), "Failed to detach volume %s from instance %s", volName, firstInstance.GetName())
+
+		verifyNoUnexpectedLvmBackups(firstInstance)
 
 		// Attach Disk to secondInstance
 		err, detacher, stageDir := testAttach(volID, volName, secondInstance, secondClient, attachMountArgs)
-		if err != nil {
-			klog.Errorf("Failed to attach disk %v", err)
-		}
+		Expect(err).To(BeNil(), "Failed to attach disk %s to instance %s", volName, secondInstance.GetName())
 		defer func() {
-			detacher()
-			deleteVolumeOrError(secondClient, volID)
+			if detacher != nil {
+				detacher()
+			}
 		}()
 
 		// Mount disk
@@ -1751,6 +1773,7 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		unmountDisk(secondClient, volID, args)
 		Expect(err).To(BeNil(), "Failed to read data from volume %s on instance %s", volName, secondInstance.GetName())
 
+		verifyNoUnexpectedLvmBackups(secondInstance)
 	})
 
 	It("[OS-Qualification] Should block unstage if filesystem mounted", func() {
@@ -2354,4 +2377,29 @@ func waitForMetadataUpdate(numMinutes int, project, zone, volName string, initia
 		return false, nil
 	})
 	return err
+}
+
+func verifyNoUnexpectedLvmBackups(instance *remote.InstanceInfo) {
+	nodeHash := common.ShortString(instance.GetName())
+	expectedVgName := fmt.Sprintf("csi-vg-%s", nodeHash)
+
+	backupOut, err := instance.SSH("sh", "-c", "if [ -d /etc/lvm/backup ]; then ls -A /etc/lvm/backup; fi")
+	Expect(err).To(BeNil(), "Failed to list /etc/lvm/backup on instance %s: %s", instance.GetName(), backupOut)
+	for _, entry := range strings.Split(strings.TrimSpace(backupOut), "\n") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		Expect(entry).To(Equal(expectedVgName), "Unexpected file %q in /etc/lvm/backup on instance %s (expected only %q)", entry, instance.GetName(), expectedVgName)
+	}
+
+	archiveOut, err := instance.SSH("sh", "-c", "if [ -d /etc/lvm/archive ]; then ls -A /etc/lvm/archive; fi")
+	Expect(err).To(BeNil(), "Failed to list /etc/lvm/archive on instance %s: %s", instance.GetName(), archiveOut)
+	for _, entry := range strings.Split(strings.TrimSpace(archiveOut), "\n") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		Expect(entry).To(HavePrefix(expectedVgName+"_"), "Unexpected file %q in /etc/lvm/archive on instance %s (expected prefix %q)", entry, instance.GetName(), expectedVgName+"_")
+	}
 }
