@@ -193,7 +193,7 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 		return nil, false, nil
 	}
 
-	// PR2397-C10: Retry transient PVC/VAC reads so API-server hiccups do not
+	// Retry transient PVC/VAC reads so API-server hiccups do not
 	// incorrectly make a conversion look cancelled during reconciliation.
 	var pvc *v1.PersistentVolumeClaim
 	var lastErr error
@@ -371,7 +371,7 @@ func GetPVAnnotation(ctx context.Context, pvName string, annotationKey string) (
 
 // PVAnnotationCondition describes the annotation state a caller expects before
 // applying an atomic set of annotation changes to a PersistentVolume.
-// PR2397-C7: These conditions prevent stale completion workers from releasing
+// These conditions prevent stale completion workers from releasing
 // a volume whose conversion/reconciliation state has changed.
 type PVAnnotationCondition struct {
 	Value  string

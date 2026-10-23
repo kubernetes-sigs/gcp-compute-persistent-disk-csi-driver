@@ -1008,7 +1008,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	// PR2397-C3: Let GCE validate provisioned performance limits so service-side
+	// Let GCE validate provisioned performance limits so service-side
 	// updates and project allowlists remain authoritative.
 	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
 	if err != nil {
@@ -1417,7 +1417,7 @@ func conversionOperationName(operation string) string {
 // The state that matters is on the PersistentVolume, so a conversion whose
 // watcher is lost to a restart is still completed correctly by the next attach
 // or expand. That is why nothing here fails an operation.
-// PR2397-C5: Recreate a watcher from an active PV operation URL after restart.
+// Recreate a watcher from an active PV operation URL after restart.
 func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.Key, operation string) {
 	gceCS.watchConversionWithRequestID(project, volKey, operation, "")
 }
@@ -1616,12 +1616,12 @@ func (gceCS *GCEControllerServer) finishWatchedConversion(ctx context.Context, p
 	}
 	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	if err != nil {
-		// PR2397-C6: Keep the watcher alive so it retries the disk read next poll.
+		// Keep the watcher alive so it retries the disk read next poll.
 		klog.Warningf("Disk type conversion %s of volume %s finished but the disk could not be read; still watching: %v", conversionOperationName(operation), volKey.Name, err)
 		return false
 	}
 	if err := gceCS.recordCompletedConversion(ctx, volKey, operation, disk.GetPDType()); err != nil {
-		// PR2397-C6: Wait for durable completion state before reconciliation;
+		// Wait for durable completion state before reconciliation;
 		// the poller retries this path on its next tick.
 		klog.Warningf("Failed to record the completed conversion of volume %s; still watching: %v", volKey.Name, err)
 		return false
@@ -2154,7 +2154,7 @@ func (gceCS *GCEControllerServer) reconcileLatestVACAfterConversion(
 		klog.V(4).Infof("No new conversion needed for disk %s: its VolumeAttributesClass was removed", volKey.Name)
 		return nil
 	}
-	// PR2397-C9: Validate the latest class after conversion and withdraw an
+	// Validate the latest class after conversion and withdraw an
 	// infeasible target instead of silently treating it as ordinary completion.
 	params, err := parameters.ExtractModifyVolumeParameters(parameterMap)
 	if err != nil {
@@ -3036,7 +3036,7 @@ func (gceCS *GCEControllerServer) WaitForConversionWorkers() {
 // actually run. A user who no longer wants the conversion clears the class on
 // their claim, and this is where that takes effect.
 func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, project string, volKey *meta.Key) {
-	// PR2397-C2: Serialize queued conversion with publish, resize, snapshot, and
+	// Serialize queued conversion with publish, resize, snapshot, and
 	// other modifications through the shared per-volume lock.
 	volumeID, acquired := gceCS.acquireConversionVolumeLock(ctx, project, volKey)
 	if !acquired {

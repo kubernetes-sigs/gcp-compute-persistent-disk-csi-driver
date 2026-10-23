@@ -90,7 +90,7 @@ const (
 
 	// Annotations for Disk Type Conversion
 	DiskTypeConversionOperationKey = "pdcsi.gke.io/disk-type-conversion-operation"
-	// PR2397-C1: Persist request identity so an accepted conversion is not
+	// Persist request identity so an accepted conversion is not
 	// submitted as a new operation after a retry or restart.
 	// DiskTypeConversionRequestIDKey holds the stable GCE request ID used while
 	// a conversion request is pending and its operation URL is not yet recorded.
@@ -100,7 +100,7 @@ const (
 	DiskTypeConvertedFromKey               = "pdcsi.gke.io/disk-type-converted-from"
 	DiskTypeConvertedToKey                 = "pdcsi.gke.io/disk-type-converted-to"
 	DiskTypeConversionTargetKey            = "pdcsi.gke.io/disk-type-conversion-target"
-	// PR2397-C7: Keep post-conversion reconciliation identifiable until its
+	// Keep post-conversion reconciliation identifiable until its
 	// latest VAC work succeeds, so the volume stays blocked in the meantime.
 	// DiskTypeConversionReconciliationIDKey identifies the completed GCE
 	// operation whose post-conversion reconciliation is still in progress.

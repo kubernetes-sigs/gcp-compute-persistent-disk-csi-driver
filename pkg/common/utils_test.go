@@ -1141,5 +1141,5 @@ func TestGetMinIopsThroughput(t *testing.T) {
 	}
 }
 
-// PR2397-C3: Do not mirror GCE's mutable provisioned-performance ceilings in
+// Do not mirror GCE's mutable provisioned-performance ceilings in
 // driver-side unit tests; the Compute Engine API validates those requests.

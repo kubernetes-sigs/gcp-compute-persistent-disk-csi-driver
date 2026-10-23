@@ -1032,7 +1032,7 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 		return "", fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err)
 	}
 
-	// PR2397-C1: Reuse the durable request ID so retries cannot create another
+	// Reuse the durable request ID so retries cannot create another
 	// conversion when GCE accepted the first request but its response was lost.
 	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).RequestId(requestID).Context(ctx).Do()
 	if err != nil {

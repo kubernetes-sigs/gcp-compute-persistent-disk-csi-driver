@@ -18,7 +18,7 @@ package common
 
 import "testing"
 
-// PR2397-C2: Verify publish readers coexist and exclude exclusive conversions.
+// Verify publish readers coexist and exclude exclusive conversions.
 func TestVolumeLocksSharedAndExclusive(t *testing.T) {
 	locks := NewVolumeLocks()
 	if !locks.TryAcquireShared("disk") {

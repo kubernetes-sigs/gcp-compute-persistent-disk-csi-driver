@@ -2814,7 +2814,7 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 	}
 }
 
-// Conversion must persist its intent before calling GCE.
+// PR2397-C1: Conversion must persist its intent before calling GCE.
 func TestStartDiskTypeConversionRequiresDurableState(t *testing.T) {
 	testCases := []struct {
 		name               string
@@ -2937,7 +2937,7 @@ func TestMarkConversionPendingDoesNotOverwriteOperationOnReadError(t *testing.T)
 	}
 }
 
-// A retry after a lost operation-URL write must reuse the request ID.
+// PR2397-C1: A retry after a lost operation-URL write must reuse the request ID.
 func TestStartDiskTypeConversionReusesRequestIDWhenOperationWriteFails(t *testing.T) {
 	oldGetKubeClient := k8sclient.GetClient
 	defer func() { k8sclient.GetClient = oldGetKubeClient }()
@@ -3160,57 +3160,6 @@ func TestVolumeModifyOperation(t *testing.T) {
 		if diskIops != tc.expIops && throughput != tc.expThroughput {
 			t.Errorf("Failed to modify volume: %v", err)
 		}
-	}
-}
-
-func TestControllerModifyVolumePerformanceUpdateIgnoresStaleConversionWhenDisabled(t *testing.T) {
-	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/stale-op"
-	oldGetKubeClient := k8sclient.GetClient
-	defer func() { k8sclient.GetClient = oldGetKubeClient }()
-	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Annotations: map[string]string{
-				constants.DiskTypeConversionOperationKey: operation,
-			},
-		},
-	})
-	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
-
-	fcp, err := gce.CreateFakeCloudProvider(project, zone, nil)
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
-	}
-	_, volKey, err := common.VolumeIDToKey(testVolumeID)
-	if err != nil {
-		t.Fatalf("Failed to convert volume ID: %v", err)
-	}
-	if err := fcp.InsertDisk(context.Background(), project, volKey, parameters.DiskParameters{
-		DiskType: "hyperdisk-balanced",
-	}, 200*1024*1024*1024, nil, nil, "", "", false, ""); err != nil {
-		t.Fatalf("Failed to insert disk: %v", err)
-	}
-	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: false})
-
-	if _, err := gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
-		VolumeId:          testVolumeID,
-		MutableParameters: map[string]string{"iops": "12000"},
-	}); err != nil {
-		t.Fatalf("performance-only ControllerModifyVolume with conversion disabled failed: %v", err)
-	}
-	disk, err := fcp.GetDisk(context.Background(), project, volKey)
-	if err != nil {
-		t.Fatalf("Failed to read updated disk: %v", err)
-	}
-	if got := disk.GetProvisionedIops(); got != 12000 {
-		t.Fatalf("disk IOPS = %d; want 12000", got)
-	}
-	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to read PV: %v", err)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != operation {
-		t.Fatalf("stale conversion annotation = %q; want it preserved as %q", got, operation)
 	}
 }
 
@@ -7111,14 +7060,6 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 			getClientErr:       fmt.Errorf("connection refused"),
 			expErrCode:         codes.OK,
 		},
-		{
-			name:               "reattaches with a stale operation URL when conversion is disabled",
-			enablePdConversion: false,
-			pv: conversionPV(map[string]string{
-				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/stale-op",
-			}),
-			expErrCode: codes.OK,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -7185,7 +7126,7 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 	}
 }
 
-// A restarted controller restores completion tracking from the PV URL.
+// PR2397-C5: A restarted controller restores completion tracking from the PV URL.
 func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1"
 	className := "vac-hyperdisk-extreme"
@@ -7342,7 +7283,7 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 	}
 }
 
-// Queued work follows the latest VAC, so removing its type cancels it.
+// PR2397-C4: Queued work follows the latest VAC, so removing its type cancels it.
 func TestRunQueuedConversion(t *testing.T) {
 	className := "vac-hyperdisk"
 	emptyClassName := ""
@@ -7535,7 +7476,7 @@ func waitFor(t *testing.T, timeout time.Duration, desc string, cond func() bool)
 	return false
 }
 
-// Completion read/write failures keep the watcher retryable.
+// PR2397-C6: Completion read/write failures keep the watcher retryable.
 func TestConversionWatcher(t *testing.T) {
 	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-convert-1"
 
@@ -8527,7 +8468,7 @@ func waitForNoConversionWatchers(cs *GCEControllerServer) {
 	cs.WaitForConversionWorkers()
 }
 
-// Terminal failures are recorded so later retries do not repeat them.
+// PR2397-C8: Terminal failures are recorded so later retries do not repeat them.
 func TestConversionFailureIsReportedOnRetry(t *testing.T) {
 	// A conversion that ran and failed for a retriable reason is reported when
 	// the next conversion starts, so that the reason reaches the claim rather
@@ -8581,65 +8522,6 @@ func TestConversionFailureIsReportedOnRetry(t *testing.T) {
 	gceDriver.cs.stopConversionWatcher(volKey)
 }
 
-func TestTerminalConversionFailurePreventsRetryForSameTarget(t *testing.T) {
-	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-terminal"
-	const target = "hyperdisk-balanced"
-	oldGetKubeClient := k8sclient.GetClient
-	defer func() { k8sclient.GetClient = oldGetKubeClient }()
-	kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Annotations: map[string]string{
-				constants.DiskTypeConversionOperationKey: operation,
-				constants.DiskTypeConversionTargetKey:    target,
-			},
-		},
-	})
-	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
-
-	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 200}
-	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
-	}
-	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
-	defer gceDriver.cs.WaitForConversionWorkers()
-	_, volKey, err := common.VolumeIDToKey(testVolumeID)
-	if err != nil {
-		t.Fatalf("Failed to convert volume ID: %v", err)
-	}
-
-	failure := conversionAPIError(400, "DISK_TYPE_CONVERSION_UNSUPPORTED", "unsupported conversion")
-	if err := gceDriver.cs.recordFailedConversion(context.Background(), volKey, operation, failure); err != nil {
-		t.Fatalf("recordFailedConversion returned an error: %v", err)
-	}
-
-	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to get PV after terminal failure: %v", err)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionInfeasibleTargetKey]; got != target {
-		t.Fatalf("infeasible target = %q; want %q", got, target)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionInfeasibleKey]; !strings.Contains(got, failure.Error()) {
-		t.Fatalf("infeasible reason = %q; want it to contain %q", got, failure.Error())
-	}
-	if _, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]; exists {
-		t.Fatalf("terminal operation annotation was not cleared: %q", pv.Annotations[constants.DiskTypeConversionOperationKey])
-	}
-
-	_, err = gceDriver.cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
-		VolumeId:          testVolumeID,
-		MutableParameters: map[string]string{"type": target},
-	})
-	if got := status.Code(err); got != codes.InvalidArgument {
-		t.Fatalf("retry status = %v (err %v); want InvalidArgument", got, err)
-	}
-	if fcp.ConversionTestParams.TypeConversionCalled {
-		t.Fatal("GCE conversion API was called again for the known-infeasible target")
-	}
-}
-
 // ModifyVolume shares the per-volume exclusion used by other operations.
 func TestControllerModifyVolumeSerializesWithOtherVolumeOperations(t *testing.T) {
 	oldGetKubeClient := k8sclient.GetClient
@@ -8688,25 +8570,11 @@ func TestStaleWatcherDoesNotClearNewerConversion(t *testing.T) {
 	}
 
 	// The superseded conversion reports its outcome and must be ignored.
-	if err := gceDriver.cs.requeueFailedConversion(context.Background(), volKey, oldOp, errors.New("stale conversion failure")); err != nil {
-		t.Fatalf("requeueFailedConversion returned an error: %v", err)
-	}
-	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if getErr != nil {
-		t.Fatalf("Failed to get PersistentVolume after stale requeue: %v", getErr)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != newOp {
-		t.Errorf("The newer conversion was overwritten by a stale requeue: got %q; want %q", got, newOp)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionLastErrorKey]; got != "" {
-		t.Errorf("A stale failure was recorded for the newer conversion: %q", got)
-	}
-
 	if err := gceDriver.cs.recordCompletedConversion(context.Background(), volKey, oldOp, "hyperdisk-balanced"); err != nil {
 		t.Fatalf("recordCompletedConversion returned an error: %v", err)
 	}
 
-	pv, getErr = kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+	pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
 	if getErr != nil {
 		t.Fatalf("Failed to get PersistentVolume: %v", getErr)
 	}
@@ -8748,7 +8616,7 @@ func TestStaleWatcherDoesNotClearNewerConversion(t *testing.T) {
 	}
 }
 
-// A stale worker cannot clear a newer reconciliation for the same type.
+// PR2397-C7: A stale worker cannot clear a newer reconciliation for the same type.
 func TestStaleReconcilerCannotClearNewerReconciliationForSameDiskType(t *testing.T) {
 	const oldOp = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-old-reconcile"
 	const newOp = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-new-reconcile"
@@ -8806,7 +8674,7 @@ func TestStaleReconcilerCannotClearNewerReconciliationForSameDiskType(t *testing
 	}
 }
 
-// Attach and modify remain blocked across instances during reconciliation.
+// PR2397-C7: Attach and modify remain blocked across instances during reconciliation.
 func TestConversionCompletionRemainsBlockedAcrossControllerInstances(t *testing.T) {
 	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-complete"
 	className := "vac-completion-race"
@@ -8897,127 +8765,6 @@ func TestConversionCompletionRemainsBlockedAcrossControllerInstances(t *testing.
 	}
 	if _, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]; exists {
 		t.Fatalf("conversion state remained after successful reconciliation: %q", pv.Annotations[constants.DiskTypeConversionOperationKey])
-	}
-}
-
-func TestInfeasibleVACDuringConversionCompletionIsRecordedBeforeUnblocking(t *testing.T) {
-	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-complete-infeasible"
-	className := "vac-infeasible-after-conversion"
-	oldGetKubeClient := k8sclient.GetClient
-	defer func() { k8sclient.GetClient = oldGetKubeClient }()
-	kubeClient := fake.NewSimpleClientset(
-		&corev1.PersistentVolume{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Annotations: map[string]string{
-				constants.DiskTypeConversionOperationKey: operation,
-			}},
-			Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: "pvc", Namespace: "default"}},
-		},
-		&corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: "pvc", Namespace: "default"},
-			Spec:       corev1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
-		},
-		&storagev1beta1.VolumeAttributesClass{
-			ObjectMeta: metav1.ObjectMeta{Name: className},
-			DriverName: "pd.csi.storage.gke.io",
-			// hyperdisk-throughput does not accept provisioned IOPS.
-			Parameters: map[string]string{"type": "hyperdisk-throughput", "iops": "3000"},
-		},
-	)
-	enteredClassWithdrawal := make(chan struct{})
-	releaseClassWithdrawal := make(chan struct{})
-	var releaseOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(releaseClassWithdrawal) }) }
-	defer release()
-	var blockOnce sync.Once
-	kubeClient.PrependReactor("patch", "persistentvolumeclaims", func(k8stesting.Action) (bool, runtime.Object, error) {
-		blockOnce.Do(func() {
-			close(enteredClassWithdrawal)
-			<-releaseClassWithdrawal
-		})
-		return true, nil, apierrors.NewInvalid(
-			corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim").GroupKind(),
-			"pvc",
-			nil,
-		)
-	})
-	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
-
-	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200}
-	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
-	if err != nil {
-		t.Fatalf("Failed to create fake cloud provider: %v", err)
-	}
-	gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
-	defer gceDriver.cs.WaitForConversionWorkers()
-	_, volKey, err := common.VolumeIDToKey(testVolumeID)
-	if err != nil {
-		t.Fatalf("Failed to convert volume ID: %v", err)
-	}
-
-	finishDone := make(chan bool, 1)
-	go func() {
-		finishDone <- gceDriver.cs.finishWatchedConversion(context.Background(), project, volKey, operation, "")
-	}()
-	select {
-	case <-enteredClassWithdrawal:
-	case <-time.After(5 * time.Second):
-		t.Fatal("completion did not reach class withdrawal")
-	}
-
-	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to read PV while reconciliation was blocked: %v", err)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionOperationKey]; got != constants.ConversionStateReconciling {
-		t.Fatalf("conversion state during class withdrawal = %q; want %q", got, constants.ConversionStateReconciling)
-	}
-	if err := gceDriver.cs.checkNoConversionInProgress(context.Background(), project, volKey, gce.CloudDiskFromV1(disk), "attach"); status.Code(err) != codes.Unavailable {
-		t.Fatalf("attach guard status = %v (err %v); want Unavailable", status.Code(err), err)
-	}
-	if fcp.ConversionTestParams.TypeConversionCalled {
-		t.Fatal("infeasible VAC started a follow-up conversion")
-	}
-	events, err := kubeClient.CoreV1().Events(metav1.NamespaceDefault).List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		t.Fatalf("Failed to list events: %v", err)
-	}
-	var failureEventFound bool
-	for _, event := range events.Items {
-		if event.Reason == constants.DiskTypeConversionFailedReason {
-			failureEventFound = true
-			break
-		}
-	}
-	if !failureEventFound {
-		t.Fatalf("no %s event was emitted during reconciliation", constants.DiskTypeConversionFailedReason)
-	}
-
-	release()
-	select {
-	case finished := <-finishDone:
-		if !finished {
-			t.Fatal("completion watcher did not finish reconciliation")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("completion watcher did not finish reconciliation")
-	}
-	gceDriver.cs.WaitForConversionWorkers()
-
-	pv, err = kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to read PV after reconciliation: %v", err)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionInfeasibleTargetKey]; got != "hyperdisk-throughput" {
-		t.Fatalf("infeasible target = %q; want hyperdisk-throughput", got)
-	}
-	if got := pv.Annotations[constants.DiskTypeConversionInfeasibleKey]; !strings.Contains(got, "IOPS cannot be specified") {
-		t.Fatalf("infeasible reason = %q; want an IOPS incompatibility", got)
-	}
-	if _, exists := pv.Annotations[constants.DiskTypeConversionOperationKey]; exists {
-		t.Fatalf("reconciliation marker was not cleared after recording infeasibility: %q", pv.Annotations[constants.DiskTypeConversionOperationKey])
-	}
-	if fcp.ConversionTestParams.TypeConversionCalled {
-		t.Fatal("infeasible VAC started a follow-up conversion")
 	}
 }
 

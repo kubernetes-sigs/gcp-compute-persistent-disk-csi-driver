@@ -53,7 +53,7 @@ func (vl *VolumeLocks) TryAcquire(volumeID string) bool {
 // TryAcquireShared acquires a read lock for volumeID. Multiple shared
 // operations can coexist, but none can run while an exclusive volume
 // operation, such as conversion, is in progress.
-// PR2397-C2: This preserves concurrent publishes while excluding conversion.
+// This preserves concurrent publishes while excluding conversion.
 func (vl *VolumeLocks) TryAcquireShared(volumeID string) bool {
 	vl.mux.Lock()
 	defer vl.mux.Unlock()

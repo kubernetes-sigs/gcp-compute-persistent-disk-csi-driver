@@ -433,7 +433,7 @@ func TestGetVolumeAttributesClassForPV(t *testing.T) {
 	}
 }
 
-// PR2397-C10: Transient PVC and VAC read errors must retry before reconciliation.
+// Transient PVC and VAC read errors must retry before reconciliation.
 func TestGetVolumeAttributesClassForPVRetriesTransientReads(t *testing.T) {
 	oldBackoff := backoff
 	backoff = wait.Backoff{Duration: time.Millisecond, Factor: 1, Steps: 3}

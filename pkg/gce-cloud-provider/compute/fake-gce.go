@@ -371,7 +371,7 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	cloud.ConversionTestParams.TypeConversionIops = provisionedIops
 	cloud.ConversionTestParams.TypeConversionThroughput = provisionedThroughput
 	cloud.ConversionTestParams.TypeConversionRequestIDs = append(cloud.ConversionTestParams.TypeConversionRequestIDs, requestID)
-	// PR2397-C1: A repeated request ID returns the original operation, matching
+	// A repeated request ID returns the original operation, matching
 	// GCE's idempotent conversion retry behavior.
 	if operation, ok := cloud.conversionOperationsByRequestID[requestID]; ok {
 		return operation, nil
