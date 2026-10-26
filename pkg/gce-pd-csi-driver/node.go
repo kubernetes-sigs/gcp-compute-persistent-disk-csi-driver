@@ -481,7 +481,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		}
 
 		if expectedSizeGib > actualSizeGib {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("expected block size %q, got %q", expectedSizeGib, actualSizeGib))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("expected block size %d, got %d", expectedSizeGib, actualSizeGib))
 		}
 	} else {
 		klog.V(4).Infof("skipping disk size validation due to invalid expected size: %v", err)
