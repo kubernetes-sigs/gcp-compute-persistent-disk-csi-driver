@@ -531,6 +531,8 @@ func IsUpdateIopsThroughputValuesAllowed(disk *computev1.Disk) bool {
 // based on the existing disk configuration and the requested new GiB.
 // The `needed` return value indicates whether either IOPS or throughput need to be updated.
 // https://cloud.google.com/compute/docs/disks/hyperdisks#limits-disk
+// This helper computes minimum provisioning only; GCE validates
+// maximum performance limits, which can change with service updates/allowlists.
 func GetMinIopsThroughput(disk *computev1.Disk, requestGb int64) (needed bool, minIops int64, minThroughput int64) {
 	switch {
 	case strings.Contains(disk.Type, parameters.DiskTypeHyperdiskBalanced):

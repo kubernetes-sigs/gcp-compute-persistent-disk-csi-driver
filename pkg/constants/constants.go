@@ -85,6 +85,50 @@ const (
 
 	// ClusterIDLabel is the key in disk labels to indicate the cluster identifier of the disk.
 	ClusterIDLabel = "cluster-id-gke-io"
+
+	// Annotations for Disk Type Conversion
+	DiskTypeConversionOperationKey = "pdcsi.gke.io/disk-type-conversion-operation"
+	// Persist request identity so an accepted conversion is not
+	// submitted as a new operation after a retry or restart.
+	// DiskTypeConversionRequestIDKey holds the stable GCE request ID used while
+	// a conversion request is pending and its operation URL is not yet recorded.
+	DiskTypeConversionRequestIDKey         = "pdcsi.gke.io/disk-type-conversion-request-id"
+	DiskTypeConversionRequestIopsKey       = "pdcsi.gke.io/disk-type-conversion-request-iops"
+	DiskTypeConversionRequestThroughputKey = "pdcsi.gke.io/disk-type-conversion-request-throughput"
+	DiskTypeConvertedFromKey               = "pdcsi.gke.io/disk-type-converted-from"
+	DiskTypeConvertedToKey                 = "pdcsi.gke.io/disk-type-converted-to"
+	DiskTypeConversionTargetKey            = "pdcsi.gke.io/disk-type-conversion-target"
+	// Keep post-conversion reconciliation identifiable until its
+	// latest VAC work succeeds, so the volume stays blocked in the meantime.
+	// DiskTypeConversionReconciliationIDKey identifies the completed GCE
+	// operation whose post-conversion reconciliation is still in progress.
+	DiskTypeConversionReconciliationIDKey = "pdcsi.gke.io/disk-type-conversion-reconciliation-id"
+	// DiskTypeConversionLastErrorKey holds the error reported by a conversion
+	// that ran and failed but will be retried, so that the failure can be
+	// passed through to the claim on the next attempt rather than being visible
+	// only as an event.
+	DiskTypeConversionLastErrorKey = "pdcsi.gke.io/disk-type-conversion-last-error"
+	// DiskTypeConversionInfeasibleKey holds why a VolumeAttributesClass could
+	// not be acted on, so the reason outlives the class once it is withdrawn.
+	DiskTypeConversionInfeasibleKey = "pdcsi.gke.io/disk-type-conversion-infeasible"
+	// DiskTypeConversionInfeasibleTargetKey scopes an infeasible reason to the
+	// VAC type that produced it, so a later request for another target can retry.
+	DiskTypeConversionInfeasibleTargetKey = "pdcsi.gke.io/disk-type-conversion-infeasible-target"
+
+	// Conversion States
+	ConversionStatePending = "Pending"
+	// ConversionStateReconciling means the GCE operation completed but the
+	// latest VolumeAttributesClass has not yet been fully applied.
+	ConversionStateReconciling = "Reconciling"
+
+	// Reasons and actions for the events emitted while converting a disk type.
+	DiskTypeConversionStartReason    = "DiskTypeConversionStart"
+	DiskTypeConversionCompleteReason = "DiskTypeConversionComplete"
+	DiskTypeConversionRetryReason    = "DiskTypeConversionRetry"
+	DiskTypeConversionCancelReason   = "DiskTypeConversionCancelled"
+	DiskTypeConversionQueuedReason   = "DiskTypeConversionQueued"
+	DiskTypeConversionFailedReason   = "DiskTypeConversionFailed"
+	DiskTypeConversionAction         = "ConvertDiskType"
 )
 
 // doc https://cloud.google.com/compute/docs/general-purpose-machines
