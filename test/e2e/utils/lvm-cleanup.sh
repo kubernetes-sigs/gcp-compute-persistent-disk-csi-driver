@@ -57,3 +57,5 @@ for vg_name in $(vgs -o vg_name --noheadings | grep csi-vg); do
     wipefs -a $pvs
   fi
 done
+
+rm -f /etc/lvm/backup/csi-vg* /etc/lvm/archive/csi-vg*

@@ -1548,10 +1548,20 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		volName, volID := createAndValidateUniqueZonalDisk(client, p, z, instance.DefaultDiskType())
 		defer deleteVolumeOrError(client, volID)
 
-		// Attach Disk
+		// Attach Disk, stage+mount with Data Cache, write file, unpublish+unstage+detach,
+		// re-attach to the same instance, stage+mount, and verify file contents.
 		err := testAttachWriteReadDetach(volID, volName, instance, client, false /* readOnly */, true /* detachAndReattach */, true /* setupDataCache */)
 		Expect(err).To(BeNil(), "Failed to go through volume lifecycle")
 
+		// Verify that after unstaging and detaching the disk, the node's shared VG
+		// has no missing PVs (confirming cleanupCache split the PD out of the node VG).
+		nodeHash := common.ShortString(instance.GetName())
+		volumeGroupName := fmt.Sprintf("csi-vg-%s", nodeHash)
+		missingPvOut, err := instance.SSH("vgs", "--noheadings", "-o", "vg_missing_pv_count", "--config", "'backup { backup = 0 archive = 0 }'", volumeGroupName)
+		Expect(err).To(BeNil(), "Failed to query vg_missing_pv_count for %s: %s", volumeGroupName, missingPvOut)
+		Expect(strings.TrimSpace(missingPvOut)).To(Equal("0"), "Expected 0 missing PVs in node VG %s after unstage and detach", volumeGroupName)
+
+		verifyNoUnexpectedLvmBackups(instance)
 	})
 
 	It("[OS-Qualification] [DataCache] Should successfully recover from hard preemption and duplicate VG name conflict on same node", func() {
@@ -1571,14 +1581,17 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		defer deleteVolumeOrError(client, volID)
 
 		var args *verifyArgs
+		detached := false
 		defer func() {
 			klog.Infof("Cleaning up preemption test resources on VM %s...", instance.GetName())
 			if args != nil {
 				_ = client.NodeUnpublishVolume(volID, args.publishDir)
 				_ = client.NodeUnstageVolume(volID, args.stageDir)
 			}
-			// Force-detach GCE PD using controller API
-			_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			if !detached {
+				// Force-detach GCE PD using controller API
+				_ = client.ControllerUnpublishVolume(volID, instance.GetNodeID())
+			}
 			_ = testutils.CleanUpAnyExistingLVMInstances(instance)
 			klog.Infof("Cleanup completed.")
 		}()
@@ -1630,14 +1643,24 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		_, _ = instance.SSH("umount", "-l", mountDir)
 		_, _ = instance.SSH("umount", "-l", stageDirLocal)
 
-		// Wipe LVM state and log results
-		_, _ = instance.SSH("vgreduce", "--removemissing", "--force", volumeGroupName)
-		out1, err1 := instance.SSH("vgchange", "-an", volumeGroupName)
+		// Wipe LVM state and recreate the host VG with a new UUID on the local SSD RAID
+		// array (matching InitializeDataCacheNode on a preempted/recreated node) so that
+		// re-attaching the force-detached GCE PD creates a live duplicate VG name conflict.
+		_, _ = instance.SSH("vgreduce", "--removemissing", "--autobackup", "n", "--force", volumeGroupName)
+		raidDevOut, raidDevErr := instance.SSH("pvs", "--noheadings", "-o", "pv_name", "-S", "vg_name="+volumeGroupName)
+		raidDev := strings.TrimSpace(raidDevOut)
+		if raidDevErr != nil || raidDev == "" {
+			raidDev = "/dev/md127"
+		}
+		out1, err1 := instance.SSH("vgchange", "-an", "--autobackup", "n", volumeGroupName)
 		klog.Infof("vgchange -an: out=%s, err=%v", out1, err1)
-		out2, err2 := instance.SSH("vgremove", "-y", volumeGroupName)
+		out2, err2 := instance.SSH("vgremove", "-y", "--config", "'backup { backup = 0 archive = 0 }'", volumeGroupName)
 		klog.Infof("vgremove -y: out=%s, err=%v", out2, err2)
-		out3, err3 := instance.SSH("pvremove", "-y", "/dev/md127")
-		klog.Infof("pvremove -y: out=%s, err=%v", out3, err3)
+		out3, err3 := instance.SSH("pvremove", "-y", raidDev)
+		klog.Infof("pvremove -y %s: out=%s, err=%v", raidDev, out3, err3)
+		out4, err4 := instance.SSH("vgcreate", "--autobackup", "n", "--zero", "y", "-y", volumeGroupName, raidDev)
+		klog.Infof("vgcreate -y %s %s: out=%s, err=%v", volumeGroupName, raidDev, out4, err4)
+		Expect(err4).To(BeNil(), "Failed to recreate host VG %s on %s to simulate node preemption reset: %s", volumeGroupName, raidDev, out4)
 
 		// Wait a few seconds for the GCE control plane to register the detach
 		time.Sleep(10 * time.Second)
@@ -1660,8 +1683,23 @@ var _ = Describe("GCE PD CSI Driver", func() {
 		err = readVerifyFunc(args)
 		Expect(err).To(BeNil(), "Data integrity verification failed on VM after preemption recovery! Potential data loss.")
 		klog.Infof("Success: Volume successfully recovered and verified with zero data loss on VM after preemption!")
+
+		// 7. Unpublish, unstage, and detach before checking LVM backup/archive directories.
+		err = client.NodeUnpublishVolume(volID, args.publishDir)
+		Expect(err).To(BeNil(), "Failed to unpublish volume %s on instance %s", volName, instance.GetName())
+		err = client.NodeUnstageVolume(volID, args.stageDir)
+		Expect(err).To(BeNil(), "Failed to unstage volume %s on instance %s", volName, instance.GetName())
+		args = nil
+		if rmErr := testutils.RmAll(instance, filepath.Join("/tmp/", volName)); rmErr != nil {
+			klog.Errorf("Failed to rm file path %s: %v", filepath.Join("/tmp/", volName), rmErr)
+		}
+		err = detach(volID, instance, client)
+		Expect(err).To(BeNil(), "Failed to detach volume %s from instance %s", volName, instance.GetName())
+		detached = true
+
+		verifyNoUnexpectedLvmBackups(instance)
 	})
-	It("Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
+	It("[DataCache] Should create->attach->setup caching->write->detach->attach to different node->mount->read", func() {
 		Expect(testContexts).ToNot(BeEmpty())
 		zoneToContext := map[string][]*remote.TestContext{}
 		testZoneContexts := []*remote.TestContext{}
@@ -1722,35 +1760,44 @@ var _ = Describe("GCE PD CSI Driver", func() {
 
 		// Node Unstage
 		err = client.NodeUnstageVolume(volID, args.stageDir)
-		if err != nil {
-			klog.Errorf("Failed to unstage volume: %v", err)
-		}
-		detach(volID, firstInstance, client)
+		Expect(err).To(BeNil(), "Failed to unstage volume %s on instance %s", volName, firstInstance.GetName())
+		err = detach(volID, firstInstance, client)
+		Expect(err).To(BeNil(), "Failed to detach volume %s from instance %s", volName, firstInstance.GetName())
+
+		verifyNoUnexpectedLvmBackups(firstInstance)
 
 		// Attach Disk to secondInstance
 		err, detacher, stageDir := testAttach(volID, volName, secondInstance, secondClient, attachMountArgs)
-		if err != nil {
-			klog.Errorf("Failed to attach disk %v", err)
-		}
+		Expect(err).To(BeNil(), "Failed to attach disk %s to instance %s", volName, secondInstance.GetName())
 		defer func() {
-			detacher()
-			deleteVolumeOrError(secondClient, volID)
+			if detacher != nil {
+				detacher()
+			}
 		}()
 
 		// Mount disk
 		err, _, args = testMount(volID, volName, secondInstance, secondClient, attachMountArgs, stageDir)
-		if err != nil {
-			klog.Fatalf("Failed to mount disk %v", err)
-		}
+		Expect(err).To(BeNil(), "Failed to mount disk %s on instance %s", volName, secondInstance.GetName())
 		_, secondMountRead := testWriteAndReadFile(secondInstance, false /* readOnly */)
-		err = secondMountRead(args)
-		if err != nil {
-			klog.Errorf("failed to verify after second mount to %s: %v", args, err)
+		readErr := secondMountRead(args)
+		if readErr != nil {
+			klog.Errorf("failed to verify after second mount to %s: %v", args, readErr)
 		}
 		// Unmount disk for cleanup
 		unmountDisk(secondClient, volID, args)
-		Expect(err).To(BeNil(), "Failed to read data from volume %s on instance %s", volName, secondInstance.GetName())
+		Expect(readErr).To(BeNil(), "Failed to read data from volume %s on instance %s", volName, secondInstance.GetName())
 
+		// Node Unstage and detach before checking LVM backup/archive directories
+		err = secondClient.NodeUnstageVolume(volID, stageDir)
+		Expect(err).To(BeNil(), "Failed to unstage volume %s on instance %s", volName, secondInstance.GetName())
+		if rmErr := testutils.RmAll(secondInstance, filepath.Join("/tmp/", volName)); rmErr != nil {
+			klog.Errorf("Failed to rm file path %s: %v", filepath.Join("/tmp/", volName), rmErr)
+		}
+		err = detach(volID, secondInstance, secondClient)
+		Expect(err).To(BeNil(), "Failed to detach volume %s from instance %s", volName, secondInstance.GetName())
+		detacher = nil
+
+		verifyNoUnexpectedLvmBackups(secondInstance)
 	})
 
 	It("[OS-Qualification] Should block unstage if filesystem mounted", func() {
@@ -2354,4 +2401,57 @@ func waitForMetadataUpdate(numMinutes int, project, zone, volName string, initia
 		return false, nil
 	})
 	return err
+}
+
+func verifyNoUnexpectedLvmBackups(instance *remote.InstanceInfo) {
+	GinkgoHelper()
+	verifyNoUnexpectedLvmBackupsWithSSH(instance.GetName(), instance.SSH)
+}
+
+func verifyNoUnexpectedLvmBackupsWithSSH(instanceName string, sshFn func(cmd ...string) (string, error)) {
+	GinkgoHelper()
+
+	backupOut, backupErr := sshFn("sh", "-c", "'if [ -d /etc/lvm/backup ]; then ls -A /etc/lvm/backup; fi'")
+	archiveOut, archiveErr := sshFn("sh", "-c", "'if [ -d /etc/lvm/archive ]; then ls -A /etc/lvm/archive; fi'")
+	Expect(backupErr).To(BeNil(), "Failed to list /etc/lvm/backup on instance %s: %s (archive err=%v, out=%s)", instanceName, backupOut, archiveErr, archiveOut)
+	Expect(archiveErr).To(BeNil(), "Failed to list /etc/lvm/archive on instance %s: %s (backup out=%s)", instanceName, archiveOut, backupOut)
+
+	backupFiles := strings.TrimSpace(backupOut)
+	archiveFiles := strings.TrimSpace(archiveOut)
+	if backupFiles == "" && archiveFiles == "" {
+		return
+	}
+
+	backupDiagOut, backupDiagErr := sshFn("sh", "-c", `'if [ -d /etc/lvm/backup ]; then find /etc/lvm/backup -maxdepth 1 -type f -print0 | LC_ALL=C sort -z | xargs -0 -r grep -a -H -E "Generated by|description =|Created |creation_host|creation_time" || true; fi'`)
+	if backupDiagErr != nil {
+		backupDiagOut = fmt.Sprintf("%s (diagnostic SSH error: %v)", backupDiagOut, backupDiagErr)
+	}
+	archiveDiagOut, archiveDiagErr := sshFn("sh", "-c", `'if [ -d /etc/lvm/archive ]; then find /etc/lvm/archive -maxdepth 1 -type f -print0 | LC_ALL=C sort -z | xargs -0 -r grep -a -H -E "Generated by|description =|Created |creation_host|creation_time" || true; fi'`)
+	if archiveDiagErr != nil {
+		archiveDiagOut = fmt.Sprintf("%s (diagnostic SSH error: %v)", archiveDiagOut, archiveDiagErr)
+	}
+
+	diagSummary := fmt.Sprintf(
+		"Unexpected LVM metadata backup/archive files on instance %s:\n"+
+			"  /etc/lvm/backup files:\n%s\n"+
+			"  /etc/lvm/backup headers:\n%s\n"+
+			"  /etc/lvm/archive files:\n%s\n"+
+			"  /etc/lvm/archive headers:\n%s",
+		instanceName,
+		indentDiagnosticBlock(backupFiles),
+		indentDiagnosticBlock(strings.TrimSpace(backupDiagOut)),
+		indentDiagnosticBlock(archiveFiles),
+		indentDiagnosticBlock(strings.TrimSpace(archiveDiagOut)),
+	)
+	klog.Errorf("%s", diagSummary)
+
+	Expect(backupFiles).To(BeEmpty(), "%s", diagSummary)
+	Expect(archiveFiles).To(BeEmpty(), "%s", diagSummary)
+}
+
+func indentDiagnosticBlock(s string) string {
+	if s == "" {
+		return "    (none)"
+	}
+	return "    " + strings.ReplaceAll(s, "\n", "\n    ")
 }
