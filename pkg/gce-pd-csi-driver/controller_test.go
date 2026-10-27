@@ -7299,8 +7299,9 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 		// withVACRequesting, if set, gives the PV a claimRef to a PVC whose
 		// VolumeAttributesClass still requests this type, so a queued
 		// conversion is still wanted rather than reconciled away.
-		withVACRequesting string
-		expErrCode        codes.Code
+		withVACRequesting    string
+		expErrCode           codes.Code
+		retryAfterCompletion bool
 		// expPVAnnotations are the annotations the PersistentVolume is expected
 		// to end with. A key mapped to the empty string is expected to be absent.
 		expPVAnnotations map[string]string
@@ -7315,7 +7316,8 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 				constants.DiskTypeConversionOperationKey: operation,
 				constants.DiskTypeConvertedFromKey:       "pd-balanced",
 			},
-			expErrCode: codes.OK,
+			expErrCode:           codes.Unavailable,
+			retryAfterCompletion: true,
 			expPVAnnotations: map[string]string{
 				constants.DiskTypeConversionOperationKey: "",
 				constants.DiskTypeConvertedFromKey:       "pd-balanced",
@@ -7405,8 +7407,14 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: true})
 			defer gceDriver.cs.WaitForConversionWorkers()
+			if tc.retryAfterCompletion {
+				// The normal polling interval is minutes; this fake reports GCE
+				// completion on its first poll, so keep the asynchronous recovery
+				// deterministic and quick.
+				gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+			}
 
-			_, err, _ = gceDriver.cs.executeControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
+			publishRequest := &csi.ControllerPublishVolumeRequest{
 				VolumeId: testVolumeID,
 				NodeId:   testNodeID,
 				VolumeCapability: &csi.VolumeCapability{
@@ -7417,10 +7425,28 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 					},
 				},
-			})
+			}
+			_, err, _ = gceDriver.cs.executeControllerPublishVolume(context.Background(), publishRequest)
 
 			if gotCode := status.Code(err); gotCode != tc.expErrCode {
 				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
+			}
+			if tc.retryAfterCompletion {
+				// An operation URL remains authoritative until GCE reports it done
+				// and post-conversion VAC reconciliation clears the durable marker.
+				waitFor(t, 5*time.Second, "conversion completion and reconciliation before retrying attach", func() bool {
+					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+					if getErr != nil {
+						return false
+					}
+					return pv.Annotations[constants.DiskTypeConversionOperationKey] == "" &&
+						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced"
+				})
+				gceDriver.cs.WaitForConversionWorkers()
+				_, retryErr, _ := gceDriver.cs.executeControllerPublishVolume(context.Background(), publishRequest)
+				if retryErr != nil {
+					t.Fatalf("Expected attach retry to succeed after conversion reconciliation, got: %v", retryErr)
+				}
 			}
 
 			pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
@@ -8188,9 +8214,11 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 		annotations        map[string]string
 		// pvc is the PVC the PV's claimRef points at, or nil if the PV should
 		// have no claimRef, as if the PVC or its VAC reference were removed.
-		pvc        *corev1.PersistentVolumeClaim
-		vac        *storagev1beta1.VolumeAttributesClass
-		expErrCode codes.Code
+		pvc                  *corev1.PersistentVolumeClaim
+		vac                  *storagev1beta1.VolumeAttributesClass
+		diskType             string
+		retryAfterCompletion bool
+		expErrCode           codes.Code
 	}{
 		{
 			name:               "expands when no conversion is recorded",
@@ -8246,14 +8274,18 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 			expErrCode: codes.Unavailable,
 		},
 		{
-			// The conversion finished unobserved, so the volume is usable again.
-			name:               "expands once the conversion has finished",
+			// The URL identifies an operation that still needs to be polled. The
+			// first expand must wait for the watcher to record completion and
+			// reconcile the PV before retrying the resize.
+			name:               "expands after the conversion watcher reconciles completion",
 			enablePdConversion: true,
 			annotations: map[string]string{
 				constants.DiskTypeConversionOperationKey: "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-1",
-				constants.DiskTypeConvertedFromKey:       "pd-standard",
+				constants.DiskTypeConvertedFromKey:       "pd-balanced",
 			},
-			expErrCode: codes.OK,
+			diskType:             "hyperdisk-balanced",
+			retryAfterCompletion: true,
+			expErrCode:           codes.Unavailable,
 		},
 		{
 			name:               "does not consult the PV when conversion is disabled",
@@ -8282,21 +8314,46 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 			kubeClient := fake.NewSimpleClientset(objects...)
 			k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
 
-			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "pd-balanced", SizeGb: 20}
+			diskType := tc.diskType
+			if diskType == "" {
+				diskType = "pd-balanced"
+			}
+			disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: diskType, SizeGb: 20}
 			fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
 			if err != nil {
 				t.Fatalf("Failed to create fake cloud provider: %v", err)
 			}
 			gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
 			defer gceDriver.cs.WaitForConversionWorkers()
+			if tc.retryAfterCompletion {
+				// Keep the background poll deterministic; the fake reports the LRO
+				// complete on its first check.
+				gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+			}
 
-			_, err = gceDriver.cs.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+			expandRequest := &csi.ControllerExpandVolumeRequest{
 				VolumeId:      testVolumeID,
 				CapacityRange: &csi.CapacityRange{RequiredBytes: common.GbToBytes(30)},
-			})
+			}
+			_, err = gceDriver.cs.ControllerExpandVolume(context.Background(), expandRequest)
 
 			if gotCode := status.Code(err); gotCode != tc.expErrCode {
 				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
+			}
+			if tc.retryAfterCompletion {
+				waitFor(t, 5*time.Second, "conversion completion and reconciliation before retrying expand", func() bool {
+					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+					if getErr != nil {
+						return false
+					}
+					return pv.Annotations[constants.DiskTypeConversionOperationKey] == "" &&
+						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced"
+				})
+				gceDriver.cs.WaitForConversionWorkers()
+				_, retryErr := gceDriver.cs.ControllerExpandVolume(context.Background(), expandRequest)
+				if retryErr != nil {
+					t.Fatalf("Expected expand retry to succeed after conversion reconciliation, got: %v", retryErr)
+				}
 			}
 		})
 	}
