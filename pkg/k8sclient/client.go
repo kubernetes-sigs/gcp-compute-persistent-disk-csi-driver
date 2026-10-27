@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -320,7 +321,7 @@ func EmitPVEvent(ctx context.Context, pvName string, eventType, reason, action, 
 		ObjectMeta: metav1.ObjectMeta{
 			// Event names have to be unique within a namespace, and this is the
 			// naming the API server's own recorders use.
-			Name:      fmt.Sprintf("%s.%x", pvName, now.UnixNano()),
+			Name:      fmt.Sprintf("%s.%x.%s", pvName, now.UnixNano(), uuid.NewUUID()),
 			Namespace: metav1.NamespaceDefault,
 		},
 		InvolvedObject: v1.ObjectReference{

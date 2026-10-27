@@ -1007,6 +1007,17 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.InvalidArgument, "Cannot specify throughput for disk type %s", diskType)
 		return nil, err
 	}
+	// A conversion may already have applied the requested performance values.
+	// Avoid a redundant Disks.Update, which can fail during Hyperdisk cooldowns.
+	if volumeModifyParams.IOPS != nil && *volumeModifyParams.IOPS == existingDisk.GetProvisionedIops() {
+		volumeModifyParams.IOPS = nil
+	}
+	if volumeModifyParams.Throughput != nil && *volumeModifyParams.Throughput == existingDisk.GetProvisionedThroughput() {
+		volumeModifyParams.Throughput = nil
+	}
+	if volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
 
 	// Let GCE validate provisioned performance limits so service-side
 	// updates and project allowlists remain authoritative.
@@ -1903,14 +1914,31 @@ func (gceCS *GCEControllerServer) checkNoConversionInProgress(ctx context.Contex
 			}
 			return status.Errorf(codes.Unavailable, "cannot %s disk %s: an accepted conversion request is being recovered", operation, volKey.Name)
 		}
-		_, cancelReason, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
+		params, cancelReason, infeasible, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
 		if err != nil {
 			klog.Errorf("Refusing to %s disk %s: could not tell whether its queued disk type conversion is still requested: %v", operation, volKey.Name, err)
 			return status.Errorf(codes.Unavailable, "cannot %s disk %s: could not determine whether the queued disk type conversion is still requested: %v", operation, volKey.Name, err)
 		}
 		if cancelReason != "" {
 			klog.V(4).Infof("Disk %s has a queued disk type conversion that is no longer requested, unblocking the %s: %s", volKey.Name, operation, cancelReason)
-			if err := gceCS.cancelQueuedConversion(ctx, volKey, cancelReason); err != nil {
+			var err error
+			if infeasible {
+				targets := []string(nil)
+				if params.DiskType != nil {
+					targets = []string{*params.DiskType}
+				}
+				gceCS.withdrawInfeasibleClass(ctx, volKey, volKey.Name, cancelReason, targets...)
+				finalOperation, finalExists, finalErr := k8sclient.GetPVAnnotation(ctx, volKey.Name, constants.DiskTypeConversionOperationKey)
+				if finalErr != nil {
+					return status.Errorf(codes.Unavailable, "cannot safely %s disk %s after withdrawing an infeasible conversion: %v", operation, volKey.Name, finalErr)
+				}
+				if finalExists && finalOperation != "" && finalOperation != "null" {
+					return status.Errorf(codes.Unavailable, "cannot safely %s disk %s because conversion state remains %q", operation, volKey.Name, finalOperation)
+				}
+				return nil
+			}
+			err = gceCS.cancelQueuedConversion(ctx, volKey, cancelReason)
+			if err != nil {
 				return status.Errorf(codes.Unavailable, "cannot cancel queued conversion of disk %s: %v", volKey.Name, err)
 			}
 			return nil
@@ -1936,29 +1964,29 @@ func (gceCS *GCEControllerServer) checkNoConversionInProgress(ctx context.Contex
 // disk may be nil, in which case the disk's current type cannot be checked
 // against the class and the conversion is treated as still wanted rather
 // than cancelled without proof.
-func (gceCS *GCEControllerServer) queuedConversionOutcome(ctx context.Context, volKey *meta.Key, disk *gce.CloudDisk) (params parameters.ModifyVolumeParameters, cancelReason string, err error) {
+func (gceCS *GCEControllerServer) queuedConversionOutcome(ctx context.Context, volKey *meta.Key, disk *gce.CloudDisk) (params parameters.ModifyVolumeParameters, cancelReason string, infeasible bool, err error) {
 	parameterMap, exists, err := k8sclient.GetVolumeAttributesClassForPV(ctx, volKey.Name)
 	if err != nil {
-		return parameters.ModifyVolumeParameters{}, "", err
+		return parameters.ModifyVolumeParameters{}, "", false, err
 	}
 	if !exists {
-		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass was removed", nil
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass was removed", false, nil
 	}
 
 	extracted, err := parameters.ExtractModifyVolumeParameters(parameterMap)
 	if err != nil {
-		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err), nil
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err), true, nil
 	}
 	if extracted.DiskType == nil {
-		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass no longer asks for a disk type", nil
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass no longer asks for a disk type", false, nil
 	}
 	if disk != nil && disk.GetPDType() == *extracted.DiskType {
-		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("it is already %s", disk.GetPDType()), nil
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("it is already %s", disk.GetPDType()), false, nil
 	}
 	if reason := gceCS.unconvertibleToTargetReason(volKey, disk, *extracted.DiskType, extracted); reason != "" {
-		return parameters.ModifyVolumeParameters{}, reason, nil
+		return extracted, reason, true, nil
 	}
-	return extracted, "", nil
+	return extracted, "", false, nil
 }
 
 // unconvertibleToTargetReason describes why a volume can never be converted to
@@ -3083,15 +3111,14 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 		if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, disk.GetPDType(), target, parameters.ModifyVolumeParameters{}); err != nil {
 			klog.Warningf("Could not recover accepted conversion request for disk %s: %v", volKey.Name, err)
 			if isUnsupportedConversionIntentError(err) {
-				if cancelErr := gceCS.cancelQueuedConversion(ctx, volKey, fmt.Sprintf("GCE rejected its conversion request: %v", err)); cancelErr != nil {
-					klog.Warningf("Could not clear rejected conversion request for disk %s: %v", volKey.Name, cancelErr)
-				}
+				gceCS.withdrawInfeasibleClass(ctx, volKey, volKey.Name,
+					fmt.Sprintf("GCE rejected its conversion request: %v", err), target)
 			}
 		}
 		return
 	}
 
-	params, cancelReason, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
+	params, cancelReason, infeasible, err := gceCS.queuedConversionOutcome(ctx, volKey, disk)
 	if err != nil {
 		klog.Warningf("Could not read the VolumeAttributesClass of disk %s, leaving its conversion queued: %v", volKey.Name, err)
 		return
@@ -3101,6 +3128,14 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 		// already the requested type, which is also how a conversion that
 		// completed elsewhere is noticed.
 		klog.V(4).Infof("Cancelling the queued conversion of disk %s: %s", volKey.Name, cancelReason)
+		if infeasible {
+			targets := []string(nil)
+			if params.DiskType != nil {
+				targets = []string{*params.DiskType}
+			}
+			gceCS.withdrawInfeasibleClass(ctx, volKey, volKey.Name, cancelReason, targets...)
+			return
+		}
 		if err := gceCS.cancelQueuedConversion(ctx, volKey, cancelReason); err != nil {
 			klog.Warningf("Could not cancel queued conversion of disk %s: %v", volKey.Name, err)
 		}
@@ -3133,11 +3168,10 @@ func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, proje
 
 	if _, err := gceCS.startDiskTypeConversion(ctx, project, volKey, currentDiskType, *params.DiskType, params); err != nil {
 		if isUnsupportedConversionIntentError(err) {
-			// Retrying cannot help, and leaving the volume queued would block it
-			// on a conversion that will never run.
-			if cancelErr := gceCS.cancelQueuedConversion(ctx, volKey, fmt.Sprintf("it cannot be converted from %s to %s: %v", currentDiskType, *params.DiskType, err)); cancelErr != nil {
-				klog.Warningf("Could not cancel queued conversion of disk %s: %v", volKey.Name, cancelErr)
-			}
+			// A terminal rejection must remain visible so a later retry does not
+			// submit the same infeasible target again.
+			gceCS.withdrawInfeasibleClass(ctx, volKey, volKey.Name,
+				fmt.Sprintf("it cannot be converted from %s to %s: %v", currentDiskType, *params.DiskType, err), *params.DiskType)
 			return
 		}
 		// The volume stays queued, so the next detach or the next time the class
