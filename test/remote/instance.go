@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	csipb "github.com/container-storage-interface/spec/lib/go/csi"
@@ -276,11 +277,26 @@ func (i *InstanceInfo) CreateOrGetInstance() error {
 	}
 
 	// If instance exists but settings differ, delete instance
-	curInst, _ := i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, newInst.Name).Do()
+	var curInst *compute.Instance
+	_ = retryGCE(func() error {
+		var getErr error
+		curInst, getErr = i.cfg.ComputeService.Instances.Get(i.cfg.Project, i.cfg.Zone, newInst.Name).Do()
+		if isGCEError(getErr, "notFound") {
+			curInst = nil
+			return nil
+		}
+		return getErr
+	})
 	if curInst != nil {
 		if machineTypeMismatch(curInst, newInst) {
 			klog.V(4).Infof("Instance machine type doesn't match the required one. Delete instance.")
-			if _, err := i.cfg.ComputeService.Instances.Delete(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do(); err != nil {
+			if err := retryGCE(func() error {
+				_, delErr := i.cfg.ComputeService.Instances.Delete(i.cfg.Project, i.cfg.Zone, i.cfg.Name).Do()
+				if isGCEError(delErr, "notFound") {
+					return nil
+				}
+				return delErr
+			}); err != nil {
 				return err
 			}
 
@@ -299,14 +315,21 @@ func (i *InstanceInfo) CreateOrGetInstance() error {
 	}
 
 	if curInst == nil {
-		op, err := i.cfg.ComputeService.Instances.Insert(i.cfg.Project, i.cfg.Zone, newInst).Do()
+		var op *compute.Operation
+		err = retryGCE(func() error {
+			var insErr error
+			op, insErr = i.cfg.ComputeService.Instances.Insert(i.cfg.Project, i.cfg.Zone, newInst).Do()
+			return insErr
+		})
 		klog.V(4).Infof("Inserted instance %v in project: %v, zone: %v", newInst.Name, i.cfg.Project, i.cfg.Zone)
 		if err != nil {
-			ret := fmt.Sprintf("could not create instance %s: API error: %v", i.cfg.Name, err.Error())
-			if op != nil {
-				ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
+			if !isGCEError(err, "alreadyExists") && !gce.IsGCEError(err, "alreadyExists") {
+				ret := fmt.Sprintf("could not create instance %s: API error: %v", i.cfg.Name, err.Error())
+				if op != nil {
+					ret = fmt.Sprintf("%s. op error: %v", ret, op.Error)
+				}
+				return errors.New(ret)
 			}
-			return errors.New(ret)
 		} else if op.Error != nil {
 			return fmt.Errorf("could not create instance %s: %+v", i.cfg.Name, op.Error)
 		}
@@ -416,32 +439,50 @@ func getTimestamp() string {
 	return fmt.Sprintf("%s", time.Now().Format(timestampFormat))
 }
 
+var firewallMu sync.Mutex
+
 // Create default SSH filewall rule if it does not exist
 func (i *InstanceInfo) createDefaultFirewallRule() error {
-	var err error
-	klog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
+	firewallMu.Lock()
+	defer firewallMu.Unlock()
 
-	if _, err = i.cfg.ComputeService.Firewalls.Get(i.cfg.Project, defaultFirewallRule).Do(); err != nil {
-		klog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
-		f := &compute.Firewall{
-			Name: defaultFirewallRule,
-			Allowed: []*compute.FirewallAllowed{
-				{
-					IPProtocol: "tcp",
-					Ports:      []string{"22"},
-				},
-			},
+	klog.V(4).Infof("Creating default firewall rule %s...", defaultFirewallRule)
+	var notFound bool
+	err := retryGCE(func() error {
+		_, getErr := i.cfg.ComputeService.Firewalls.Get(i.cfg.Project, defaultFirewallRule).Do()
+		if isGCEError(getErr, "notFound") {
+			notFound = true
+			return nil
 		}
-		_, err = i.cfg.ComputeService.Firewalls.Insert(i.cfg.Project, f).Do()
-		if err != nil {
-			if gce.IsGCEError(err, "alreadyExists") {
-				klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
-				return nil
-			}
-			return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err.Error())
-		}
-	} else {
+		return getErr
+	})
+	if err != nil {
+		return fmt.Errorf("failed to check default SSH firewall rule %v: %v", defaultFirewallRule, err)
+	}
+	if !notFound {
 		klog.V(4).Infof("Default firewall rule %v already exists, skipping creation", defaultFirewallRule)
+		return nil
+	}
+
+	klog.V(4).Infof("Default firewall rule %v does not exist, creating", defaultFirewallRule)
+	f := &compute.Firewall{
+		Name: defaultFirewallRule,
+		Allowed: []*compute.FirewallAllowed{
+			{
+				IPProtocol: "tcp",
+				Ports:      []string{"22"},
+			},
+		},
+	}
+	err = retryGCE(func() error {
+		_, insErr := i.cfg.ComputeService.Firewalls.Insert(i.cfg.Project, f).Do()
+		if insErr != nil && (gce.IsGCEError(insErr, "alreadyExists") || isGCEError(insErr, "alreadyExists")) {
+			return nil
+		}
+		return insErr
+	})
+	if err != nil {
+		return fmt.Errorf("Failed to insert required default SSH firewall Rule %v: %v", defaultFirewallRule, err.Error())
 	}
 	return nil
 }
@@ -588,4 +629,32 @@ func isGCEError(err error, reason string) bool {
 		}
 	}
 	return false
+}
+
+func isRetryableGCEError(err error) bool {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Code == http.StatusTooManyRequests || apiErr.Code >= http.StatusInternalServerError
+}
+
+func retryGCE(fn func() error) error {
+	backoff := wait.Backoff{Duration: 2 * time.Second, Factor: 2.0, Jitter: 0.2, Steps: 6}
+	var lastErr error
+	err := wait.ExponentialBackoff(backoff, func() (bool, error) {
+		lastErr = fn()
+		if lastErr == nil {
+			return true, nil
+		}
+		if isRetryableGCEError(lastErr) {
+			klog.Warningf("Transient GCE API error (will retry): %v", lastErr)
+			return false, nil
+		}
+		return false, lastErr
+	})
+	if err != nil && lastErr != nil {
+		return lastErr
+	}
+	return err
 }
