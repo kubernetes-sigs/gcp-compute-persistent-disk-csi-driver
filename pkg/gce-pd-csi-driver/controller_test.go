@@ -50,6 +50,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	storagev1client "k8s.io/client-go/kubernetes/typed/storage/v1"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
@@ -7185,6 +7186,9 @@ func TestControllerPublishVolume_ConversionGuard(t *testing.T) {
 
 			gceDriver := initGCEDriver(t, nil, &GCEControllerServerArgs{EnablePdConversion: tc.enablePdConversion})
 			gceDriver.cs.CloudProvider = fakeCloudProvider
+			// A refused attach starts a watcher; it must finish against this
+			// test's client, not the one the next test installs.
+			defer gceDriver.cs.WaitForConversionWorkers()
 
 			req := &csi.ControllerPublishVolumeRequest{
 				VolumeId: testVolumeID,
@@ -9006,6 +9010,36 @@ func TestStaleReconcilerCannotClearNewerReconciliationForSameDiskType(t *testing
 	}
 }
 
+// beforeVACGetClient calls beforeGet ahead of every storage.k8s.io/v1
+// VolumeAttributesClass get, outside the wrapped fake's lock.
+type beforeVACGetClient struct {
+	kubernetes.Interface
+	beforeGet func()
+}
+
+func (c *beforeVACGetClient) StorageV1() storagev1client.StorageV1Interface {
+	return &beforeVACGetStorageV1{StorageV1Interface: c.Interface.StorageV1(), beforeGet: c.beforeGet}
+}
+
+type beforeVACGetStorageV1 struct {
+	storagev1client.StorageV1Interface
+	beforeGet func()
+}
+
+func (s *beforeVACGetStorageV1) VolumeAttributesClasses() storagev1client.VolumeAttributesClassInterface {
+	return &beforeVACGet{VolumeAttributesClassInterface: s.StorageV1Interface.VolumeAttributesClasses(), beforeGet: s.beforeGet}
+}
+
+type beforeVACGet struct {
+	storagev1client.VolumeAttributesClassInterface
+	beforeGet func()
+}
+
+func (v *beforeVACGet) Get(ctx context.Context, name string, opts metav1.GetOptions) (*storagev1.VolumeAttributesClass, error) {
+	v.beforeGet()
+	return v.VolumeAttributesClassInterface.Get(ctx, name, opts)
+}
+
 // Attach and modify remain blocked across instances during reconciliation.
 func TestConversionCompletionRemainsBlockedAcrossControllerInstances(t *testing.T) {
 	const operation = "https://www.googleapis.com/compute/alpha/projects/p/zones/z/operations/op-complete"
@@ -9035,14 +9069,15 @@ func TestConversionCompletionRemainsBlockedAcrossControllerInstances(t *testing.
 	release := func() { releaseOnce.Do(func() { close(releaseVACRead) }) }
 	defer release()
 	var blockOnce sync.Once
-	kubeClient.PrependReactor("get", "volumeattributesclasses", func(k8stesting.Action) (bool, runtime.Object, error) {
+	// The read is held before it reaches the fake: a reactor runs under the
+	// fake's lock, which would also block the second controller's PV reads.
+	blockingClient := &beforeVACGetClient{Interface: kubeClient, beforeGet: func() {
 		blockOnce.Do(func() {
 			close(enteredVACRead)
 			<-releaseVACRead
 		})
-		return false, nil, nil
-	})
-	k8sclient.GetClient = func() (kubernetes.Interface, error) { return kubeClient, nil }
+	}}
+	k8sclient.GetClient = func() (kubernetes.Interface, error) { return blockingClient, nil }
 	disk := &compute.Disk{Name: name, Zone: zone, SelfLink: testVolumeID, Type: "hyperdisk-balanced", SizeGb: 200}
 	fcp, err := gce.CreateFakeCloudProvider(project, zone, []*gce.CloudDisk{gce.CloudDiskFromV1(disk)})
 	if err != nil {
