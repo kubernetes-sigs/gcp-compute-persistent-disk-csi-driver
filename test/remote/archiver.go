@@ -21,8 +21,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"k8s.io/klog/v2"
+)
+
+var (
+	driverBuildMu  sync.Mutex
+	builtBinaryKey string
 )
 
 func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (string, error) {
@@ -53,10 +59,17 @@ func CreateDriverArchive(archiveName, architecture, pkgPath, binPath string) (st
 }
 
 func setupBinaries(architecture, tarDir, pkgPath, binPath string) error {
-	klog.V(4).Infof("Setting up binaries at %s", binPath)
-	out, err := exec.Command("make", "-C", pkgPath, "GOARCH="+architecture).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err.Error())
+	driverBuildMu.Lock()
+	defer driverBuildMu.Unlock()
+
+	cacheKey := fmt.Sprintf("%s|%s|%s|%s", pkgPath, binPath, architecture, os.Getenv("GCE_PD_CSI_STAGING_VERSION"))
+	if _, err := os.Stat(binPath); builtBinaryKey != cacheKey || err != nil {
+		klog.V(4).Infof("Setting up binaries at %s", binPath)
+		out, err := exec.Command("make", "-C", pkgPath, "gce-pd-driver", "GOARCH="+architecture).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("Failed to make at %s: %v: %v", pkgPath, string(out), err.Error())
+		}
+		builtBinaryKey = cacheKey
 	}
 
 	// Copy binaries
@@ -64,7 +77,7 @@ func setupBinaries(architecture, tarDir, pkgPath, binPath string) error {
 	if _, err := os.Stat(binPath); err != nil {
 		return fmt.Errorf("failed to locate test binary %s: %v", binPath, err.Error())
 	}
-	out, err = exec.Command("cp", binPath, tarDir).CombinedOutput()
+	out, err := exec.Command("cp", binPath, tarDir).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to copy %q: %v Output: %q", binPath, err.Error(), out)
 	}
