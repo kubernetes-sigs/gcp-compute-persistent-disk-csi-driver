@@ -15,9 +15,11 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"math"
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/wait"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 )
 
@@ -54,7 +56,12 @@ func controllerServerForTest(cloudProvider gce.GCECompute, args *GCEControllerSe
 		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-extreme"},
 		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
 	}
-	return NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */, args)
+	cs := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */, args)
+	// The production conversion poll waits at least 10s before its first check,
+	// which alone would exceed the package timeout in test/run-unit.sh once a few
+	// tests start a watcher.
+	cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
+	return cs
 }
 
 func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute, args *GCEControllerServerArgs) *GCEDriver {

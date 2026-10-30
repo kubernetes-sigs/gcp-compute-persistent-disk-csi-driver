@@ -118,6 +118,8 @@ type GCECompute interface {
 	AttachDisk(ctx context.Context, project string, volKey *meta.Key, readWrite, diskType, instanceZone, instanceName string, forceAttach bool) error
 	DetachDisk(ctx context.Context, project, deviceName, instanceZone, instanceName string) error
 	ConvertDisk(ctx context.Context, project string, volKey *meta.Key, instanceName, instanceZone string, quickConversionOnly bool) error
+	ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error)
+	IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error)
 	SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error
 	SetDiskLabels(ctx context.Context, project string, volKey *meta.Key, disk *CloudDisk, labels map[string]string) error
 	ListCompatibleDiskTypeZones(ctx context.Context, project string, zones []string, diskType string) ([]string, error)
@@ -725,6 +727,13 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 	_, err := diskUpdateOp.Context(ctx).Do()
 
 	if err != nil {
+		// GCE rejects an out-of-range or unsupported IOPS/throughput value (e.g.
+		// "IOPS cannot be smaller than 3000") by reason, not by HTTP status alone:
+		// 400/403 are also used for retriable conditions such as a rate limit or
+		// exhausted quota, which must not be classified as a bad request.
+		if IsGCEError(err, "badRequest") || IsGCEError(err, "invalidParameter") || IsGCEInvalidError(err) {
+			return status.Errorf(codes.InvalidArgument, "error updating disk %v: %v", volKey, err)
+		}
 		return fmt.Errorf("error updating disk %v: %w", volKey, err)
 	}
 
@@ -988,6 +997,125 @@ func (cloud *CloudProvider) ConvertDisk(ctx context.Context, project string, vol
 		return fmt.Errorf("failed while waiting for zonal conversion operation: %w", err)
 	}
 	return nil
+}
+
+// ConvertDiskType converts a disk to targetDiskType in place, optionally
+// applying the provisioned IOPS and throughput the target type should be
+// created with. The disk keeps its name and self link.
+//
+// Conversion can take from minutes to hours depending on disk size, so this
+// only starts the operation and returns as soon as the API accepts it. It
+// returns the self link of the conversion operation, which callers record so
+// the conversion can still be found after the driver restarts.
+func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error) {
+	if volKey.Type() != meta.Zonal {
+		return "", status.Errorf(codes.InvalidArgument, "disk type conversion is not supported for regional disk %s", volKey.Name)
+	}
+	klog.V(5).Infof("Converting disk %v in zone %v to type %s", volKey.Name, volKey.Zone, targetDiskType)
+
+	// TargetDiskType is the bare disk type name, not a disk type URI. Passing a
+	// URI is rejected with DISK_TYPE_CONVERSION_UNSUPPORTED.
+	params := &computealpha.DiskConvertParams{
+		TargetDiskType: targetDiskType,
+	}
+	if provisionedIops != nil {
+		params.ProvisionedIops = *provisionedIops
+	}
+	if provisionedThroughput != nil {
+		params.ProvisionedThroughput = *provisionedThroughput
+	}
+
+	// Paced so that a migration of many volumes does not exceed the per-region
+	// limit on conversion calls. Waiting here costs a moment on a call whose
+	// operation runs for minutes, and saves a rejected request.
+	if err := cloud.convertRateLimiter.Wait(ctx); err != nil {
+		return "", NewConversionStatusError(common.CodeForError(err), fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err))
+	}
+
+	// Reuse the durable request ID so retries cannot create another
+	// conversion when GCE accepted the first request but its response was lost.
+	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).RequestId(requestID).Context(ctx).Do()
+	if err != nil {
+		return "", NewConversionStatusError(common.CodeForError(err), err)
+	}
+	klog.V(4).Infof("Started convert operation %s for disk %s to type %s", op.Name, volKey.Name, targetDiskType)
+	// The self link is what identifies the operation once this call returns.
+	// Fall back to the operation name so a response without a self link still
+	// leaves something to track the conversion by.
+	if op.SelfLink != "" {
+		return op.SelfLink, nil
+	}
+	return op.Name, nil
+}
+
+// IsConvertOperationDone reports whether a disk type conversion has finished,
+// and returns the conversion's own error if it finished by failing.
+//
+// The operation is read from the alpha API, because that is where a conversion
+// started by disks.convert exists. Conversions are zonal, so there is no
+// regional equivalent of this call.
+//
+// This checks the operation once rather than waiting for it. A conversion can
+// run for hours, far longer than a request should be held open, so the caller
+// decides how often to ask.
+func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error) {
+	op, err := cloud.alphaService.ZoneOperations.Get(project, zone, operationName).Context(ctx).Do()
+	if err != nil {
+		return false, NewConversionStatusError(common.CodeForError(err), err)
+	}
+	if op == nil || op.Status != operationStatusDone {
+		return false, nil
+	}
+	if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
+		opErr := op.Error.Errors[0]
+		// Returned as a googleapi.Error carrying the operation's own error code
+		// as the reason, so that the caller can classify the failure the same
+		// way it classifies one returned when the operation was requested.
+		apiErr := &googleapi.Error{
+			Code:    int(op.HttpErrorStatusCode),
+			Message: fmt.Sprintf("operation %s failed: %s: %s", operationName, opErr.Code, opErr.Message),
+			Errors: []googleapi.ErrorItem{{
+				Reason:  opErr.Code,
+				Message: opErr.Message,
+			}},
+		}
+		return true, NewConversionStatusError(codeForGCEOpError(computev1.OperationErrorErrors{Code: opErr.Code}), apiErr)
+	}
+	return true, nil
+}
+
+// conversionStatusError is an error from the disk conversion API translated
+// into a gRPC status, so that callers get a status code the same way they do
+// for other GCE calls.
+//
+// The GCE error stays reachable through errors.As, because a status code is
+// too coarse to classify a conversion failure by: a running conversion, a
+// disk held by a snapshot and an out of range IOPS value all arrive as a 400,
+// and only the reason GCE gives tells them apart.
+type conversionStatusError struct {
+	code codes.Code
+	err  error
+}
+
+// NewConversionStatusError translates err into a gRPC status error carrying
+// code, keeping err as the cause.
+func NewConversionStatusError(code codes.Code, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &conversionStatusError{code: code, err: err}
+}
+
+func (e *conversionStatusError) Error() string {
+	return e.err.Error()
+}
+
+func (e *conversionStatusError) Unwrap() error {
+	return e.err
+}
+
+func (e *conversionStatusError) GRPCStatus() *status.Status {
+	return status.New(e.code, e.err.Error())
 }
 
 func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {
