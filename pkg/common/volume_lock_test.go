@@ -20,30 +20,55 @@ import "testing"
 
 // Verify publish readers coexist and exclude exclusive conversions.
 func TestVolumeLocksSharedAndExclusive(t *testing.T) {
-	locks := NewVolumeLocks()
-	if !locks.TryAcquireShared("disk") {
-		t.Fatal("first shared acquire failed")
-	}
-	if !locks.TryAcquireShared("disk") {
-		t.Fatal("second shared acquire failed")
-	}
-	if locks.TryAcquire("disk") {
-		t.Fatal("exclusive acquire succeeded while shared locks were held")
-	}
-	locks.ReleaseShared("disk")
-	if locks.TryAcquire("disk") {
-		t.Fatal("exclusive acquire succeeded while one shared lock remained")
-	}
-	locks.ReleaseShared("disk")
-	if !locks.TryAcquire("disk") {
-		t.Fatal("exclusive acquire failed after shared locks were released")
-	}
-	if locks.TryAcquireShared("disk") {
-		t.Fatal("shared acquire succeeded while exclusive lock was held")
-	}
-	locks.Release("disk")
-	if !locks.TryAcquireShared("disk") {
-		t.Fatal("shared acquire failed after exclusive lock was released")
-	}
-	locks.ReleaseShared("disk")
+	t.Run("shared locks coexist", func(t *testing.T) {
+		locks := NewVolumeLocks()
+		if !locks.TryAcquireShared("disk") {
+			t.Fatal("first shared acquire failed")
+		}
+		if !locks.TryAcquireShared("disk") {
+			t.Fatal("second shared acquire failed")
+		}
+	})
+
+	t.Run("exclusive waits for every shared lock to be released", func(t *testing.T) {
+		locks := NewVolumeLocks()
+		locks.TryAcquireShared("disk")
+		locks.TryAcquireShared("disk")
+
+		// Both readers are held, so the exclusive lock is refused.
+		if locks.TryAcquire("disk") {
+			t.Fatal("exclusive acquire succeeded while shared locks were held")
+		}
+
+		// One reader is still held, so the exclusive lock is still refused.
+		locks.ReleaseShared("disk")
+		if locks.TryAcquire("disk") {
+			t.Fatal("exclusive acquire succeeded while one shared lock remained")
+		}
+
+		// The last reader is gone, so the exclusive lock is granted.
+		locks.ReleaseShared("disk")
+		if !locks.TryAcquire("disk") {
+			t.Fatal("exclusive acquire failed after shared locks were released")
+		}
+	})
+
+	t.Run("shared waits for the exclusive lock to be released", func(t *testing.T) {
+		locks := NewVolumeLocks()
+		if !locks.TryAcquire("disk") {
+			t.Fatal("exclusive acquire failed on an unlocked volume")
+		}
+
+		// The exclusive lock is held, so readers are refused.
+		if locks.TryAcquireShared("disk") {
+			t.Fatal("shared acquire succeeded while exclusive lock was held")
+		}
+
+		// The exclusive lock is released, so readers are granted again.
+		locks.Release("disk")
+		if !locks.TryAcquireShared("disk") {
+			t.Fatal("shared acquire failed after exclusive lock was released")
+		}
+		locks.ReleaseShared("disk")
+	})
 }

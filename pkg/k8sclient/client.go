@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
 
@@ -118,35 +119,49 @@ func getStorageClassWithRetry(ctx context.Context, kubeClient kubernetes.Interfa
 
 func getPersistentVolumeWithRetry(ctx context.Context, kubeClient kubernetes.Interface, pvName string) (*v1.PersistentVolume, error) {
 	var pvObj *v1.PersistentVolume
-	var lastErr error
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	// A PersistentVolume that does not exist will not start existing during the
+	// backoff, and callers need that answer promptly to tell it apart from an
+	// API server they could not reach, so doWithRetry does not retry it.
+	err := doWithRetry(ctx, fmt.Sprintf("getting PersistentVolume %s", pvName), func(ctx context.Context) error {
 		pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 		if err != nil {
-			lastErr = err
-			// A PersistentVolume that does not exist will not start existing
-			// during the backoff, and callers need that answer promptly to tell
-			// it apart from an API server they could not reach.
-			if !isRetriableAPIError(err) {
-				return false, err
-			}
-			klog.Warningf("Error getting PersistentVolume %s: %v, retrying...\n", pvName, err)
-			return false, nil
+			return err
 		}
 		pvObj = pv
-		klog.V(4).Infof("Successfully retrieved PersistentVolume info %s\n", pvName)
-		return true, nil
+		return nil
 	})
-
 	if err != nil {
-		// On timeout the backoff reports only that it gave up, so surface the
-		// error that actually caused the retries.
-		if lastErr != nil {
-			err = lastErr
-		}
 		klog.Errorf("Failed to get PersistentVolume %s: %v\n", pvName, err)
 		return nil, err
 	}
+	klog.V(4).Infof("Successfully retrieved PersistentVolume info %s\n", pvName)
 	return pvObj, nil
+}
+
+// doWithRetry calls fn until it succeeds, it fails with an error retrying
+// cannot fix, or the backoff runs out.
+//
+// When the backoff runs out, or ctx ends, the backoff on its own reports only
+// that it gave up, so the error fn last returned is surfaced in its place. An
+// error fn returned that was not retried is returned as is.
+func doWithRetry(ctx context.Context, description string, fn func(ctx context.Context) error) error {
+	var lastErr error
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		err := fn(ctx)
+		if err == nil {
+			return true, nil
+		}
+		lastErr = err
+		if !isRetriableAPIError(err) {
+			return false, err
+		}
+		klog.Warningf("Error %s: %v, retrying...\n", description, err)
+		return false, nil
+	})
+	if wait.Interrupted(err) && lastErr != nil {
+		return lastErr
+	}
+	return err
 }
 
 func listPodsInNamespace(ctx context.Context, kubeClient kubernetes.Interface, namespace string) (*v1.PodList, error) {
@@ -193,31 +208,19 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 		}
 		return nil, false, err
 	}
-	if pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name == "" {
+	if !hasClaimRef(pv) {
 		return nil, false, nil
 	}
 
 	// Retry transient PVC/VAC reads so API-server hiccups do not
 	// incorrectly make a conversion look cancelled during reconciliation.
 	var pvc *v1.PersistentVolumeClaim
-	var lastErr error
-	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	err = doWithRetry(ctx, fmt.Sprintf("getting PersistentVolumeClaim %s/%s", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name), func(ctx context.Context) error {
 		var getErr error
 		pvc, getErr = kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(ctx, pv.Spec.ClaimRef.Name, metav1.GetOptions{})
-		if getErr == nil {
-			return true, nil
-		}
-		lastErr = getErr
-		if !isRetriableAPIError(getErr) {
-			return false, getErr
-		}
-		klog.Warningf("Error getting PersistentVolumeClaim %s/%s: %v, retrying...\n", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name, getErr)
-		return false, nil
+		return getErr
 	})
 	if err != nil {
-		if lastErr != nil {
-			err = lastErr
-		}
 		if apierrors.IsNotFound(err) {
 			return nil, false, nil
 		}
@@ -241,23 +244,11 @@ func GetVolumeAttributesClassForPV(ctx context.Context, pvName string) (map[stri
 // as a missing class would silently withdraw every conversion on those clusters.
 func getVolumeAttributesClassParameters(ctx context.Context, kubeClient kubernetes.Interface, vacName string) (map[string]string, bool, error) {
 	var vac *storagev1.VolumeAttributesClass
-	var lastErr error
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	err := doWithRetry(ctx, fmt.Sprintf("getting VolumeAttributesClass %s from storage.k8s.io/v1", vacName), func(ctx context.Context) error {
 		var getErr error
 		vac, getErr = kubeClient.StorageV1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
-		if getErr == nil {
-			return true, nil
-		}
-		lastErr = getErr
-		if !isRetriableAPIError(getErr) {
-			return false, getErr
-		}
-		klog.Warningf("Error getting VolumeAttributesClass %s from storage.k8s.io/v1: %v, retrying...\n", vacName, getErr)
-		return false, nil
+		return getErr
 	})
-	if err != nil && lastErr != nil {
-		err = lastErr
-	}
 	if err == nil {
 		return vac.Parameters, true, nil
 	}
@@ -266,23 +257,11 @@ func getVolumeAttributesClassParameters(ctx context.Context, kubeClient kubernet
 	}
 
 	var betaVac *storagev1beta1.VolumeAttributesClass
-	lastErr = nil
-	betaErr := wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	betaErr := doWithRetry(ctx, fmt.Sprintf("getting VolumeAttributesClass %s from storage.k8s.io/v1beta1", vacName), func(ctx context.Context) error {
 		var getErr error
 		betaVac, getErr = kubeClient.StorageV1beta1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
-		if getErr == nil {
-			return true, nil
-		}
-		lastErr = getErr
-		if !isRetriableAPIError(getErr) {
-			return false, getErr
-		}
-		klog.Warningf("Error getting VolumeAttributesClass %s from storage.k8s.io/v1beta1: %v, retrying...\n", vacName, getErr)
-		return false, nil
+		return getErr
 	})
-	if betaErr != nil && lastErr != nil {
-		betaErr = lastErr
-	}
 	if betaErr == nil {
 		return betaVac.Parameters, true, nil
 	}
@@ -390,33 +369,44 @@ func UpdatePVAnnotations(ctx context.Context, pvName string, conditions map[stri
 	if err != nil {
 		return fmt.Errorf("failed to get kubernetes client: %w", err)
 	}
-	pv, err := getPersistentVolumeWithRetry(ctx, kubeClient, pvName)
-	if err != nil {
-		return fmt.Errorf("failed to get PersistentVolume %s before updating annotations: %w", pvName, err)
-	}
-	for key, expected := range conditions {
-		actual, exists := pv.Annotations[key]
-		if exists != expected.Exists || (exists && actual != expected.Value) {
-			return apierrors.NewConflict(
-				v1.Resource("persistentvolumes"),
-				pvName,
-				fmt.Errorf("annotation %s changed while updating PersistentVolume", key),
-			)
+
+	// A write that loses a race with an unrelated change to the PV, such as
+	// the PV controller updating its status, is retried against a fresh read.
+	// The conditions are checked again on every attempt, and a condition that
+	// no longer holds is not retried: the state the caller acted on is gone.
+	conditionFailed := false
+	return retry.OnError(retry.DefaultRetry, func(err error) bool {
+		return !conditionFailed && apierrors.IsConflict(err)
+	}, func() error {
+		pv, err := getPersistentVolumeWithRetry(ctx, kubeClient, pvName)
+		if err != nil {
+			return fmt.Errorf("failed to get PersistentVolume %s before updating annotations: %w", pvName, err)
 		}
-	}
-	if pv.Annotations == nil && len(set) > 0 {
-		pv.Annotations = map[string]string{}
-	}
-	for key, value := range set {
-		pv.Annotations[key] = value
-	}
-	for _, key := range remove {
-		delete(pv.Annotations, key)
-	}
-	if _, err := kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("failed to update annotations on PersistentVolume %s: %w", pvName, err)
-	}
-	return nil
+		for key, expected := range conditions {
+			actual, exists := pv.Annotations[key]
+			if exists != expected.Exists || (exists && actual != expected.Value) {
+				conditionFailed = true
+				return apierrors.NewConflict(
+					v1.Resource("persistentvolumes"),
+					pvName,
+					fmt.Errorf("annotation %s changed while updating PersistentVolume", key),
+				)
+			}
+		}
+		if pv.Annotations == nil && len(set) > 0 {
+			pv.Annotations = map[string]string{}
+		}
+		for key, value := range set {
+			pv.Annotations[key] = value
+		}
+		for _, key := range remove {
+			delete(pv.Annotations, key)
+		}
+		if _, err := kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update annotations on PersistentVolume %s: %w", pvName, err)
+		}
+		return nil
+	})
 }
 
 // SetPVAnnotation adds or updates an annotation on a PersistentVolume.
@@ -478,34 +468,27 @@ func patchPVAnnotation(ctx context.Context, pvName string, annotationKey string,
 		return fmt.Errorf("failed to build annotation patch for PersistentVolume %s: %w", pvName, err)
 	}
 
-	var lastErr error
-	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (bool, error) {
+	// Retrying a request the API server has already rejected on its merits
+	// only delays the caller, which for the conversion hooks runs inside a CSI
+	// call, so doWithRetry does not retry it.
+	err = doWithRetry(ctx, fmt.Sprintf("patching annotation %s on PersistentVolume %s", annotationKey, pvName), func(ctx context.Context) error {
 		_, patchErr := kubeClient.CoreV1().PersistentVolumes().Patch(ctx, pvName, types.MergePatchType, patchPayload, metav1.PatchOptions{})
-		if patchErr != nil {
-			lastErr = patchErr
-			// Retrying a request the API server has already rejected on its
-			// merits only delays the caller, which for the conversion hooks
-			// runs inside a CSI call.
-			if !isRetriableAPIError(patchErr) {
-				return false, patchErr
-			}
-			klog.Warningf("Error patching annotation %s on PersistentVolume %s: %v, retrying...\n", annotationKey, pvName, patchErr)
-			return false, nil
-		}
-		klog.V(4).Infof("Successfully patched annotation %s on PersistentVolume %s\n", annotationKey, pvName)
-		return true, nil
+		return patchErr
 	})
-
 	if err != nil {
-		// On timeout the backoff reports only that it gave up, so surface the
-		// error that actually caused the retries.
-		if lastErr != nil {
-			err = lastErr
-		}
 		klog.Errorf("Failed to patch annotation %s on PersistentVolume %s: %v\n", annotationKey, pvName, err)
 		return fmt.Errorf("failed to patch annotation %s on PersistentVolume %s: %w", annotationKey, pvName, err)
 	}
+	klog.V(4).Infof("Successfully patched annotation %s on PersistentVolume %s\n", annotationKey, pvName)
 	return nil
+}
+
+// hasClaimRef reports whether a PersistentVolume names the claim it is bound
+// to. A PersistentVolumeClaim is namespaced, so a reference without a
+// namespace cannot be resolved to one: reading it would look in the wrong
+// place rather than finding the claim.
+func hasClaimRef(pv *v1.PersistentVolume) bool {
+	return pv.Spec.ClaimRef != nil && pv.Spec.ClaimRef.Name != "" && pv.Spec.ClaimRef.Namespace != ""
 }
 
 // isRetriableAPIError reports whether a failed request could succeed if tried
@@ -548,7 +531,7 @@ func ClearVolumeAttributesClassForPV(ctx context.Context, pvName string) (bool, 
 		}
 		return false, err
 	}
-	if pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name == "" {
+	if !hasClaimRef(pv) {
 		return false, nil
 	}
 

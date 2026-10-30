@@ -39,6 +39,9 @@ const testAnnotationKey = "pdcsi.gke.io/disk-type-conversion-operation"
 
 // withFakeClient points GetClient at clientset for the duration of a test, and
 // shortens the backoff so failure cases don't spend seconds sleeping.
+//
+// GetClient and backoff are package globals, so tests in this file must not
+// call t.Parallel(): a parallel test would swap them out from under another.
 func withFakeClient(t *testing.T, clientset kubernetes.Interface) {
 	t.Helper()
 	originalGetClient := GetClient
@@ -219,6 +222,7 @@ func TestPatchPVAnnotationRetryBehaviour(t *testing.T) {
 	testCases := []struct {
 		name          string
 		patchErr      error
+		isExpectedErr func(error) bool
 		expectedCalls int
 	}{
 		{
@@ -226,21 +230,25 @@ func TestPatchPVAnnotationRetryBehaviour(t *testing.T) {
 			// only delays the CSI call that is waiting on this.
 			name:          "not found is not retried",
 			patchErr:      apierrors.NewNotFound(pvResource, "test-pv"),
+			isExpectedErr: apierrors.IsNotFound,
 			expectedCalls: 1,
 		},
 		{
 			name:          "forbidden is not retried",
 			patchErr:      apierrors.NewForbidden(pvResource, "test-pv", nil),
+			isExpectedErr: apierrors.IsForbidden,
 			expectedCalls: 1,
 		},
 		{
 			name:          "server timeout is retried",
 			patchErr:      apierrors.NewServerTimeout(pvResource, "patch", 1),
+			isExpectedErr: apierrors.IsServerTimeout,
 			expectedCalls: 3,
 		},
 		{
 			name:          "conflict is retried",
 			patchErr:      apierrors.NewConflict(pvResource, "test-pv", nil),
+			isExpectedErr: apierrors.IsConflict,
 			expectedCalls: 3,
 		},
 	}
@@ -257,8 +265,8 @@ func TestPatchPVAnnotationRetryBehaviour(t *testing.T) {
 			}
 			// The backoff on its own reports only that it gave up, so check that
 			// the cause survived.
-			if !apierrors.IsNotFound(err) && !apierrors.IsForbidden(err) && !apierrors.IsServerTimeout(err) && !apierrors.IsConflict(err) {
-				t.Errorf("SetPVAnnotation error %v does not wrap the API error", err)
+			if !tc.isExpectedErr(err) {
+				t.Errorf("SetPVAnnotation error %v does not wrap the %v API error", err, tc.patchErr)
 			}
 			if *calls != tc.expectedCalls {
 				t.Errorf("Made %d patch calls; want %d", *calls, tc.expectedCalls)
@@ -389,6 +397,17 @@ func TestGetVolumeAttributesClassForPV(t *testing.T) {
 		{
 			name:      "reports no class when the volume is not bound to a claim",
 			objects:   []runtime.Object{boundPV(""), vac},
+			expExists: false,
+		},
+		{
+			// A claim is namespaced, so a reference without a namespace
+			// cannot be resolved to one.
+			name: "reports no class when the claim reference has no namespace",
+			objects: []runtime.Object{func() *v1.PersistentVolume {
+				pv := boundPV("test-pvc")
+				pv.Spec.ClaimRef.Namespace = ""
+				return pv
+			}(), pvcWithClass(&className), vac},
 			expExists: false,
 		},
 		{
@@ -559,4 +578,176 @@ func TestGetVolumeAttributesClassForPVAPIVersions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClearVolumeAttributesClassForPV(t *testing.T) {
+	className := "vac-hyperdisk"
+	boundPV := func(namespace string) *v1.PersistentVolume {
+		pv := newPV("test-pv", nil)
+		pv.Spec.ClaimRef = &v1.ObjectReference{Name: "test-pvc", Namespace: namespace}
+		return pv
+	}
+	pvcWithClass := func() *v1.PersistentVolumeClaim {
+		return &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-pvc", Namespace: "default"},
+			Spec:       v1.PersistentVolumeClaimSpec{VolumeAttributesClassName: &className},
+		}
+	}
+	pvcResource := schema.GroupResource{Resource: "persistentvolumeclaims"}
+
+	testCases := []struct {
+		name       string
+		objects    []runtime.Object
+		patchErr   error
+		expCleared bool
+		expErr     func(error) bool
+		// expClass is the class the claim names afterwards, or nil if the
+		// claim should not be checked.
+		expClass *string
+	}{
+		{
+			name:       "clears the class from the bound claim",
+			objects:    []runtime.Object{boundPV("default"), pvcWithClass()},
+			expCleared: true,
+			expClass:   new(string),
+		},
+		{
+			name:       "does nothing when the volume has no PersistentVolume",
+			objects:    nil,
+			expCleared: false,
+		},
+		{
+			name:       "does nothing when the volume is not bound to a claim",
+			objects:    []runtime.Object{newPV("test-pv", nil), pvcWithClass()},
+			expCleared: false,
+			expClass:   &className,
+		},
+		{
+			name:       "does nothing when the claim reference has no namespace",
+			objects:    []runtime.Object{boundPV(""), pvcWithClass()},
+			expCleared: false,
+			expClass:   &className,
+		},
+		{
+			name:       "does nothing when the claim is gone",
+			objects:    []runtime.Object{boundPV("default")},
+			expCleared: false,
+		},
+		{
+			// Kubernetes refuses to clear a class that has been applied, and
+			// clusters before 1.34 refuse the change outright.
+			name:       "leaves the class in place when the change is refused as invalid",
+			objects:    []runtime.Object{boundPV("default"), pvcWithClass()},
+			patchErr:   apierrors.NewInvalid(schema.GroupKind{Kind: "PersistentVolumeClaim"}, "test-pvc", nil),
+			expCleared: false,
+		},
+		{
+			name:       "leaves the class in place when the change is forbidden",
+			objects:    []runtime.Object{boundPV("default"), pvcWithClass()},
+			patchErr:   apierrors.NewForbidden(pvcResource, "test-pvc", nil),
+			expCleared: false,
+		},
+		{
+			name:       "returns other failures",
+			objects:    []runtime.Object{boundPV("default"), pvcWithClass()},
+			patchErr:   apierrors.NewServiceUnavailable("temporary PVC patch failure"),
+			expCleared: false,
+			expErr:     apierrors.IsServiceUnavailable,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			clientset := fake.NewSimpleClientset(tc.objects...)
+			if tc.patchErr != nil {
+				clientset.PrependReactor("patch", "persistentvolumeclaims", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, tc.patchErr
+				})
+			}
+			withFakeClient(t, clientset)
+
+			cleared, err := ClearVolumeAttributesClassForPV(context.Background(), "test-pv")
+			if tc.expErr != nil {
+				if !tc.expErr(err) {
+					t.Fatalf("ClearVolumeAttributesClassForPV error = %v; want %v", err, tc.patchErr)
+				}
+			} else if err != nil {
+				t.Fatalf("ClearVolumeAttributesClassForPV failed: %v", err)
+			}
+			if cleared != tc.expCleared {
+				t.Errorf("Got cleared %v; want %v", cleared, tc.expCleared)
+			}
+			if tc.expClass == nil {
+				return
+			}
+			pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), "test-pvc", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get PersistentVolumeClaim: %v", err)
+			}
+			got := ""
+			if pvc.Spec.VolumeAttributesClassName != nil {
+				got = *pvc.Spec.VolumeAttributesClassName
+			}
+			if got != *tc.expClass {
+				t.Errorf("Claim names class %q; want %q", got, *tc.expClass)
+			}
+		})
+	}
+}
+
+func TestUpdatePVAnnotations(t *testing.T) {
+	pvResource := schema.GroupResource{Resource: "persistentvolumes"}
+
+	t.Run("retries an update that lost a race with another writer", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(newPV("test-pv", map[string]string{testAnnotationKey: "Pending"}))
+		updates := 0
+		clientset.PrependReactor("update", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+			updates++
+			if updates == 1 {
+				return true, nil, apierrors.NewConflict(pvResource, "test-pv", nil)
+			}
+			return false, nil, nil
+		})
+		withFakeClient(t, clientset)
+
+		err := UpdatePVAnnotations(context.Background(), "test-pv",
+			map[string]PVAnnotationCondition{testAnnotationKey: {Value: "Pending", Exists: true}},
+			map[string]string{testAnnotationKey: "operation"}, nil)
+		if err != nil {
+			t.Fatalf("UpdatePVAnnotations failed: %v", err)
+		}
+		if updates != 2 {
+			t.Errorf("Made %d updates; want 2", updates)
+		}
+		if got := getAnnotations(context.Background(), t, clientset, "test-pv")[testAnnotationKey]; got != "operation" {
+			t.Errorf("Annotation %s = %q; want %q", testAnnotationKey, got, "operation")
+		}
+	})
+
+	t.Run("does not retry or write when a condition no longer holds", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(newPV("test-pv", map[string]string{testAnnotationKey: "newer-operation"}))
+		gets, updates := 0, 0
+		clientset.PrependReactor("get", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+			gets++
+			return false, nil, nil
+		})
+		clientset.PrependReactor("update", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+			updates++
+			return false, nil, nil
+		})
+		withFakeClient(t, clientset)
+
+		err := UpdatePVAnnotations(context.Background(), "test-pv",
+			map[string]PVAnnotationCondition{testAnnotationKey: {Value: "Pending", Exists: true}},
+			map[string]string{testAnnotationKey: "operation"}, nil)
+		if !apierrors.IsConflict(err) {
+			t.Fatalf("UpdatePVAnnotations error = %v; want a conflict", err)
+		}
+		if gets != 1 || updates != 0 {
+			t.Errorf("Made %d gets and %d updates; want 1 get and no updates", gets, updates)
+		}
+		if got := getAnnotations(context.Background(), t, clientset, "test-pv")[testAnnotationKey]; got != "newer-operation" {
+			t.Errorf("Annotation %s = %q; want it left as %q", testAnnotationKey, got, "newer-operation")
+		}
+	})
 }

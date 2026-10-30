@@ -2757,6 +2757,8 @@ func TestVolumeModifyDiskTypeConversion(t *testing.T) {
 			}
 			fcp.ConversionTestParams.TypeConversionErr = tc.convertErr
 
+			// k8sclient.GetClient is a package global, so this test, like every
+			// test in this file that swaps it out, must not call t.Parallel().
 			oldGetKubeClient := k8sclient.GetClient
 			defer func() { k8sclient.GetClient = oldGetKubeClient }()
 			kubeClient := fake.NewSimpleClientset(&corev1.PersistentVolume{
@@ -3086,14 +3088,34 @@ func TestCancelQueuedConversionPreservesPossiblyAcceptedRequest(t *testing.T) {
 	}
 }
 
+// genericReasonForStatus is the generic reason GCE puts in the top level error
+// item for an HTTP status.
+var genericReasonForStatus = map[int]string{
+	http.StatusBadRequest:         "badRequest",
+	http.StatusForbidden:          "forbidden",
+	http.StatusNotFound:           "notFound",
+	http.StatusConflict:           "conflict",
+	http.StatusPreconditionFailed: "conditionNotMet",
+	http.StatusTooManyRequests:    "rateLimitExceeded",
+	http.StatusServiceUnavailable: "backendError",
+}
+
 // conversionAPIError builds an error shaped like the one the convert API
 // returns, where the machine readable reason is carried in an ErrorInfo detail
 // rather than in the top level error item.
+//
+// The top level item carries the generic reason for the HTTP status, so that
+// an error simulating a rate limit is not also read as a bad request by
+// anything that looks at the top level item instead of the details.
 func conversionAPIError(code int, reason, message string) *googleapi.Error {
+	topLevelReason, ok := genericReasonForStatus[code]
+	if !ok {
+		topLevelReason = reason
+	}
 	return &googleapi.Error{
 		Code:    code,
 		Message: message,
-		Errors:  []googleapi.ErrorItem{{Reason: "badRequest", Message: message}},
+		Errors:  []googleapi.ErrorItem{{Reason: topLevelReason, Message: message}},
 		Details: []interface{}{
 			map[string]interface{}{
 				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
@@ -7438,14 +7460,16 @@ func TestControllerPublishVolume_ConversionCompletionFallback(t *testing.T) {
 			if tc.retryAfterCompletion {
 				// An operation URL remains authoritative until GCE reports it done
 				// and post-conversion VAC reconciliation clears the durable marker.
-				waitFor(t, 5*time.Second, "conversion completion and reconciliation before retrying attach", func() bool {
-					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+				if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 					if getErr != nil {
-						return false
+						return false, nil
 					}
 					return pv.Annotations[constants.DiskTypeConversionOperationKey] == "" &&
-						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced"
-				})
+						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced", nil
+				}); err != nil {
+					t.Errorf("Timed out waiting for conversion completion and reconciliation before retrying attach: %v", err)
+				}
 				gceDriver.cs.WaitForConversionWorkers()
 				_, retryErr, _ := gceDriver.cs.executeControllerPublishVolume(context.Background(), publishRequest)
 				if retryErr != nil {
@@ -7696,20 +7720,9 @@ func TestRunQueuedConversion(t *testing.T) {
 	}
 }
 
-// waitFor polls a condition, so that tests do not depend on how quickly a
-// background watcher runs.
-func waitFor(t *testing.T, timeout time.Duration, desc string, cond func() bool) bool {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return true
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Errorf("Timed out waiting for %s", desc)
-	return false
-}
+// pollInterval is how often tests check for the outcome of background work,
+// so that they do not depend on how quickly a watcher runs.
+const pollInterval = 5 * time.Millisecond
 
 // Completion read/write failures keep the watcher retryable.
 func TestConversionWatcher(t *testing.T) {
@@ -7810,13 +7823,15 @@ func TestConversionWatcher(t *testing.T) {
 
 			gceDriver.cs.watchConversion(project, volKey, operation)
 
-			waitFor(t, 5*time.Second, "the conversion state to settle", func() bool {
-				pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+			if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+				pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 				if err != nil {
-					return false
+					return false, nil
 				}
-				return pv.Annotations[constants.DiskTypeConversionOperationKey] == tc.expOperation
-			})
+				return pv.Annotations[constants.DiskTypeConversionOperationKey] == tc.expOperation, nil
+			}); err != nil {
+				t.Errorf("Timed out waiting for the conversion state to settle: %v", err)
+			}
 
 			pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
 			if err != nil {
@@ -7860,11 +7875,13 @@ func TestConversionWatcher(t *testing.T) {
 				t.Errorf("Made %d checks; want more than %d", fcp.PollCalls(), tc.notDoneTimes)
 			}
 			// The watcher must not outlive the conversion it was following.
-			waitFor(t, 2*time.Second, "the watcher to deregister", func() bool {
+			if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 2*time.Second, true, func(context.Context) (bool, error) {
 				gceDriver.cs.conversionWatchersLock.Lock()
 				defer gceDriver.cs.conversionWatchersLock.Unlock()
-				return len(gceDriver.cs.conversionWatchers) == 0
-			})
+				return len(gceDriver.cs.conversionWatchers) == 0, nil
+			}); err != nil {
+				t.Errorf("Timed out waiting for the watcher to deregister: %v", err)
+			}
 		})
 	}
 }
@@ -7900,7 +7917,11 @@ func TestConversionWatcherStopsOnVolumeDelete(t *testing.T) {
 	gceDriver.cs.conversionPollBackoffOverride = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Steps: math.MaxInt32}
 
 	gceDriver.cs.watchConversion(project, volKey, operation)
-	waitFor(t, 5*time.Second, "the watcher to start polling", func() bool { return fcp.PollCalls() > 0 })
+	if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(context.Context) (bool, error) {
+		return fcp.PollCalls() > 0, nil
+	}); err != nil {
+		t.Errorf("Timed out waiting for the watcher to start polling: %v", err)
+	}
 
 	// A conversion rebuilds the disk through a temporary snapshot, so the delete
 	// is refused while one is running and the watcher keeps following it.
@@ -7924,11 +7945,12 @@ func TestConversionWatcherStopsOnVolumeDelete(t *testing.T) {
 		t.Fatalf("DeleteVolume failed: %v", err)
 	}
 
-	if !waitFor(t, 5*time.Second, "the watcher to deregister", func() bool {
+	if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(context.Context) (bool, error) {
 		gceDriver.cs.conversionWatchersLock.Lock()
 		defer gceDriver.cs.conversionWatchersLock.Unlock()
-		return len(gceDriver.cs.conversionWatchers) == 0
-	}) {
+		return len(gceDriver.cs.conversionWatchers) == 0, nil
+	}); err != nil {
+		t.Errorf("Timed out waiting for the watcher to deregister: %v", err)
 		return
 	}
 
@@ -7969,7 +7991,11 @@ func TestConversionWatcherReplacesExisting(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		gceDriver.cs.watchConversion(project, volKey, fmt.Sprintf("https://example.com/operations/op-%d", i))
 	}
-	waitFor(t, 5*time.Second, "the watcher to start polling", func() bool { return fcp.PollCalls() > 0 })
+	if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(context.Context) (bool, error) {
+		return fcp.PollCalls() > 0, nil
+	}); err != nil {
+		t.Errorf("Timed out waiting for the watcher to start polling: %v", err)
+	}
 
 	gceDriver.cs.conversionWatchersLock.Lock()
 	watchers := len(gceDriver.cs.conversionWatchers)
@@ -7979,11 +8005,13 @@ func TestConversionWatcherReplacesExisting(t *testing.T) {
 	}
 
 	gceDriver.cs.stopConversionWatcher(volKey)
-	waitFor(t, 2*time.Second, "the watcher to deregister", func() bool {
+	if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 2*time.Second, true, func(context.Context) (bool, error) {
 		gceDriver.cs.conversionWatchersLock.Lock()
 		defer gceDriver.cs.conversionWatchersLock.Unlock()
-		return len(gceDriver.cs.conversionWatchers) == 0
-	})
+		return len(gceDriver.cs.conversionWatchers) == 0, nil
+	}); err != nil {
+		t.Errorf("Timed out waiting for the watcher to deregister: %v", err)
+	}
 }
 
 func TestConversionOperationName(t *testing.T) {
@@ -8199,6 +8227,27 @@ func TestConversionErrorReasonPrefersErrorInfo(t *testing.T) {
 		t.Errorf("Got reason %q; want badRequest", got)
 	}
 
+	// A simulated rate limit must not fall back to a bad request reason, which
+	// would classify a retriable failure as terminal.
+	rateLimited := conversionAPIError(http.StatusTooManyRequests, "rateLimitExceeded", "slow down")
+	rateLimited.Details = nil
+	if got := conversionErrorReason(rateLimited); got != "rateLimitExceeded" {
+		t.Errorf("Got reason %q; want rateLimitExceeded", got)
+	}
+	if isUnsupportedConversionIntentError(rateLimited) {
+		t.Error("A rate limit was classified as an unsupported conversion")
+	}
+
+	// The cloud provider returns convert API errors as gRPC status errors,
+	// which must still carry the reason GCE gave.
+	statusErr := gce.NewConversionStatusError(codes.InvalidArgument, err)
+	if got := status.Code(statusErr); got != codes.InvalidArgument {
+		t.Errorf("Got status code %v; want InvalidArgument", got)
+	}
+	if got := conversionErrorReason(statusErr); got != "DISK_TYPE_CONVERSION_UNSUPPORTED" {
+		t.Errorf("Got reason %q from a status error; want the ErrorInfo reason", got)
+	}
+
 	if got := conversionErrorReason(fmt.Errorf("not an api error")); got != "" {
 		t.Errorf("Got reason %q; want \"\" for a non API error", got)
 	}
@@ -8345,14 +8394,16 @@ func TestControllerExpandVolume_ConversionGuard(t *testing.T) {
 				t.Errorf("Expected error code %v, got %v (err: %v)", tc.expErrCode, gotCode, err)
 			}
 			if tc.retryAfterCompletion {
-				waitFor(t, 5*time.Second, "conversion completion and reconciliation before retrying expand", func() bool {
-					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
+				if err := wait.PollUntilContextTimeout(context.Background(), pollInterval, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+					pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 					if getErr != nil {
-						return false
+						return false, nil
 					}
 					return pv.Annotations[constants.DiskTypeConversionOperationKey] == "" &&
-						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced"
-				})
+						pv.Annotations[constants.DiskTypeConvertedToKey] == "hyperdisk-balanced", nil
+				}); err != nil {
+					t.Errorf("Timed out waiting for conversion completion and reconciliation before retrying expand: %v", err)
+				}
 				gceDriver.cs.WaitForConversionWorkers()
 				_, retryErr := gceDriver.cs.ControllerExpandVolume(context.Background(), expandRequest)
 				if retryErr != nil {
@@ -8510,18 +8561,6 @@ func TestStartQueuedConversionOnDetach(t *testing.T) {
 			}
 		})
 	}
-}
-
-// waitForCondition reports whether cond became true within timeout.
-func waitForCondition(timeout time.Duration, cond func() bool) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return cond()
 }
 
 func TestMarkConversionPendingKeepsRunningOperation(t *testing.T) {

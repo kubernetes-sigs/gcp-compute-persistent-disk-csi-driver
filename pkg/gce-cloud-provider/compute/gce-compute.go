@@ -1009,7 +1009,7 @@ func (cloud *CloudProvider) ConvertDisk(ctx context.Context, project string, vol
 // the conversion can still be found after the driver restarts.
 func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string, volKey *meta.Key, targetDiskType, requestID string, provisionedIops, provisionedThroughput *int64) (string, error) {
 	if volKey.Type() != meta.Zonal {
-		return "", fmt.Errorf("disk type conversion is not supported for regional disk %s", volKey.Name)
+		return "", status.Errorf(codes.InvalidArgument, "disk type conversion is not supported for regional disk %s", volKey.Name)
 	}
 	klog.V(5).Infof("Converting disk %v in zone %v to type %s", volKey.Name, volKey.Zone, targetDiskType)
 
@@ -1029,14 +1029,14 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 	// limit on conversion calls. Waiting here costs a moment on a call whose
 	// operation runs for minutes, and saves a rejected request.
 	if err := cloud.convertRateLimiter.Wait(ctx); err != nil {
-		return "", fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err)
+		return "", NewConversionStatusError(common.CodeForError(err), fmt.Errorf("failed to acquire a disk conversion request token for %s: %w", volKey.Name, err))
 	}
 
 	// Reuse the durable request ID so retries cannot create another
 	// conversion when GCE accepted the first request but its response was lost.
 	op, err := cloud.alphaService.Disks.Convert(project, volKey.Zone, volKey.Name, &computealpha.DisksConvertRequest{Params: params}).RequestId(requestID).Context(ctx).Do()
 	if err != nil {
-		return "", err
+		return "", NewConversionStatusError(common.CodeForError(err), err)
 	}
 	klog.V(4).Infof("Started convert operation %s for disk %s to type %s", op.Name, volKey.Name, targetDiskType)
 	// The self link is what identifies the operation once this call returns.
@@ -1061,7 +1061,7 @@ func (cloud *CloudProvider) ConvertDiskType(ctx context.Context, project string,
 func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project, zone, operationName string) (bool, error) {
 	op, err := cloud.alphaService.ZoneOperations.Get(project, zone, operationName).Context(ctx).Do()
 	if err != nil {
-		return false, err
+		return false, NewConversionStatusError(common.CodeForError(err), err)
 	}
 	if op == nil || op.Status != operationStatusDone {
 		return false, nil
@@ -1071,7 +1071,7 @@ func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project,
 		// Returned as a googleapi.Error carrying the operation's own error code
 		// as the reason, so that the caller can classify the failure the same
 		// way it classifies one returned when the operation was requested.
-		return true, &googleapi.Error{
+		apiErr := &googleapi.Error{
 			Code:    int(op.HttpErrorStatusCode),
 			Message: fmt.Sprintf("operation %s failed: %s: %s", operationName, opErr.Code, opErr.Message),
 			Errors: []googleapi.ErrorItem{{
@@ -1079,8 +1079,43 @@ func (cloud *CloudProvider) IsConvertOperationDone(ctx context.Context, project,
 				Message: opErr.Message,
 			}},
 		}
+		return true, NewConversionStatusError(codeForGCEOpError(computev1.OperationErrorErrors{Code: opErr.Code}), apiErr)
 	}
 	return true, nil
+}
+
+// conversionStatusError is an error from the disk conversion API translated
+// into a gRPC status, so that callers get a status code the same way they do
+// for other GCE calls.
+//
+// The GCE error stays reachable through errors.As, because a status code is
+// too coarse to classify a conversion failure by: a running conversion, a
+// disk held by a snapshot and an out of range IOPS value all arrive as a 400,
+// and only the reason GCE gives tells them apart.
+type conversionStatusError struct {
+	code codes.Code
+	err  error
+}
+
+// NewConversionStatusError translates err into a gRPC status error carrying
+// code, keeping err as the cause.
+func NewConversionStatusError(code codes.Code, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &conversionStatusError{code: code, err: err}
+}
+
+func (e *conversionStatusError) Error() string {
+	return e.err.Error()
+}
+
+func (e *conversionStatusError) Unwrap() error {
+	return e.err
+}
+
+func (e *conversionStatusError) GRPCStatus() *status.Status {
+	return status.New(e.code, e.err.Error())
 }
 
 func (cloud *CloudProvider) SetDiskAccessMode(ctx context.Context, project string, volKey *meta.Key, accessMode string) error {

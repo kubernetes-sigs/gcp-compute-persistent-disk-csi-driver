@@ -378,7 +378,7 @@ func (cloud *FakeCloudProvider) ConvertDiskType(ctx context.Context, project str
 	}
 
 	if cloud.ConversionTestParams.TypeConversionErr != nil {
-		return "", cloud.ConversionTestParams.TypeConversionErr
+		return "", NewConversionStatusError(common.CodeForError(cloud.ConversionTestParams.TypeConversionErr), cloud.ConversionTestParams.TypeConversionErr)
 	}
 
 	// The real API converts asynchronously, but the fake applies the new type
@@ -410,13 +410,13 @@ func (cloud *FakeCloudProvider) IsConvertOperationDone(ctx context.Context, proj
 	cloud.pollOperationName = operationName
 
 	if cloud.PollErr != nil {
-		return false, cloud.PollErr
+		return false, NewConversionStatusError(common.CodeForError(cloud.PollErr), cloud.PollErr)
 	}
 	if cloud.pollCallCount <= cloud.PollNotDoneTimes {
 		return false, nil
 	}
 	if cloud.PollOperationErr != nil {
-		return true, cloud.PollOperationErr
+		return true, NewConversionStatusError(common.CodeForError(cloud.PollOperationErr), cloud.PollOperationErr)
 	}
 	return true, nil
 }
