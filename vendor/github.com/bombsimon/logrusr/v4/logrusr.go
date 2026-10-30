@@ -11,16 +11,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// According to the specification of the Logger interface calling the InfoLogger
-// directly on the logger should be the same as calling them on V(0). Since
-// logrus level 0 is PanicLevel and Infolevel doesn't start until V(4) we use
-// this constant to be able to calculate what V(n) values should mean.
-const logrusDiffToInfo = 4
+const (
+	// According to the specification of the Logger interface calling the InfoLogger
+	// directly on the logger should be the same as calling them on V(0). Since
+	// logrus level 0 is PanicLevel and Infolevel doesn't start until V(4) we use
+	// this constant to be able to calculate what V(n) values should mean.
+	logrusDiffToInfo = 4
+
+	// Frames to skip when fetching caller.
+	logrusCallFramesSkip = 3
+)
 
 // FormatFunc is the function to format log values with for non primitive data.
 // If this is not set (default) all unknown types will be JSON marshaled and
 // added as a string.
-type FormatFunc func(interface{}) interface{}
+type FormatFunc func(any) any
 
 // Option is options to give when construction a logrusr logger.
 type Option func(l *logrusr)
@@ -102,12 +107,13 @@ func (l *logrusr) Enabled(level int) bool {
 	// logrus.InfoLevel has value 4 so if the level on the logger is set to 0 we
 	// should only be seen as enabled if the logrus logger has a severity of
 	// info or higher.
+	//nolint:gosec // We can't affect the types
 	return l.logger.Logger.IsLevelEnabled(logrus.Level(level + logrusDiffToInfo))
 }
 
 // Info logs info messages if the logger is enabled, that is if the level on the
 // logger is set to logrus.InfoLevel or less.
-func (l *logrusr) Info(level int, msg string, keysAndValues ...interface{}) {
+func (l *logrusr) Info(level int, msg string, keysAndValues ...any) {
 	log := l.logger
 	if c := l.caller(); c != "" {
 		log = log.WithField("caller", c)
@@ -115,13 +121,14 @@ func (l *logrusr) Info(level int, msg string, keysAndValues ...interface{}) {
 
 	log.
 		WithFields(listToLogrusFields(l.formatter, keysAndValues...)).
+		//nolint:gosec // We can't affect the types
 		Log(logrus.Level(level+logrusDiffToInfo), msg)
 }
 
 // Error logs error messages. Since the log will be written with `Error` level
 // it won't show if the severity of the underlying logrus logger is less than
 // Error.
-func (l *logrusr) Error(err error, msg string, keysAndValues ...interface{}) {
+func (l *logrusr) Error(err error, msg string, keysAndValues ...any) {
 	log := l.logger
 	if c := l.caller(); c != "" {
 		log = log.WithField("caller", c)
@@ -137,7 +144,7 @@ func (l *logrusr) Error(err error, msg string, keysAndValues ...interface{}) {
 // equivalent to logrus WithFields() but takes a list of even arguments
 // (key/value pairs) instead of a map as input. If an odd number of arguments
 // are sent all values will be discarded.
-func (l *logrusr) WithValues(keysAndValues ...interface{}) logr.LogSink {
+func (l *logrusr) WithValues(keysAndValues ...any) logr.LogSink {
 	newLogger := l.copyLogger()
 	newLogger.logger = newLogger.logger.WithFields(
 		listToLogrusFields(l.formatter, keysAndValues...),
@@ -160,7 +167,7 @@ func (l *logrusr) WithName(name string) logr.LogSink {
 }
 
 // listToLogrusFields converts a list of arbitrary length to key/value paris.
-func listToLogrusFields(formatter FormatFunc, keysAndValues ...interface{}) logrus.Fields {
+func listToLogrusFields(formatter FormatFunc, keysAndValues ...any) logrus.Fields {
 	f := make(logrus.Fields)
 
 	// Skip all fields if it's not an even length list.
@@ -186,7 +193,7 @@ func listToLogrusFields(formatter FormatFunc, keysAndValues ...interface{}) logr
 		case int, int8, int16, int32, int64,
 			uint, uint8, uint16, uint32, uint64,
 			float32, float64, complex64, complex128,
-			string, bool:
+			string, bool, error:
 			f[s] = vVal
 
 		case []byte:
@@ -196,6 +203,7 @@ func listToLogrusFields(formatter FormatFunc, keysAndValues ...interface{}) logr
 			if formatter != nil {
 				f[s] = formatter(v)
 			} else {
+				//nolint:errchkjson // This is just best effort
 				j, _ := json.Marshal(vVal)
 				f[s] = string(j)
 			}
@@ -240,7 +248,7 @@ func (l *logrusr) caller() string {
 	// +1 for this frame.
 	// +1 for frame calling here (Info/Error)
 	// +1 for logr frame
-	_, file, line, ok := runtime.Caller(l.depth + 3)
+	_, file, line, ok := runtime.Caller(l.depth + logrusCallFramesSkip)
 	if !ok {
 		return ""
 	}
