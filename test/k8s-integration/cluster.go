@@ -207,83 +207,163 @@ func setImageTypeEnvs(imageType string) error {
 	return nil
 }
 
-func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
-	locationArg, locationVal, err := gkeLocationArgs(gceZone, gceRegion)
-	if err != nil {
-		return err
-	}
+var (
+	fallbackGKEZones   = []string{"us-central1-b", "us-central1-c", "us-central1-a", "us-west1-b", "us-west1-c", "us-east1-b", "us-east1-c"}
+	fallbackGKERegions = []string{"us-central1", "us-west1", "us-east1"}
+)
 
+func candidateGKELocations(z, r string) (locationArg string, locations []string, err error) {
+	locationArg, primaryLoc, err := gkeLocationArgs(z, r)
+	if err != nil {
+		return "", nil, err
+	}
+	locations = []string{primaryLoc}
+	var fallbacks []string
+	if isRegionalGKECluster(z, r) {
+		fallbacks = fallbackGKERegions
+	} else {
+		fallbacks = fallbackGKEZones
+	}
+	for _, fb := range fallbacks {
+		if fb != primaryLoc {
+			locations = append(locations, fb)
+		}
+	}
+	return locationArg, locations, nil
+}
+
+func isGKEStockoutError(output string) bool {
+	stockoutPatterns := []string{
+		"GCE_STOCKOUT",
+		"does not have enough resources available",
+		"RESOURCE_POOL_EXHAUSTED",
+		"ZONE_RESOURCE_POOL_EXHAUSTED",
+	}
+	for _, pattern := range stockoutPatterns {
+		if strings.Contains(output, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func deleteExistingGKEClusterIfPresent(locationArg, locationVal string) error {
 	out, err := exec.Command("gcloud", "container", "clusters", "list",
 		locationArg, locationVal, "--verbosity", "none", "--filter",
 		fmt.Sprintf("name=%s", *gkeTestClusterName)).CombinedOutput()
-
 	if err != nil {
 		return fmt.Errorf("failed to check for previous test cluster: %v %s", err.Error(), out)
 	}
 	if len(out) > 0 {
-		klog.Infof("Detected previous cluster %s. Deleting so a new one can be created...", *gkeTestClusterName)
-		err = clusterDownGKE(gceZone, gceRegion)
-		if err != nil {
+		klog.Infof("Detected previous cluster %s in %s. Deleting so a new one can be created...", *gkeTestClusterName, locationVal)
+		var z, r string
+		if locationArg == "--zone" {
+			z = locationVal
+		} else {
+			r = locationVal
+		}
+		if err := clusterDownGKE(z, r); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	// Assemble parameters from passed in arguments.
-	cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
-		locationArg, locationVal, "--num-nodes", strconv.Itoa(numNodes),
-		"--quiet", "--machine-type", "n1-standard-2", "--no-enable-autoupgrade"}
-
-	if imageType == "win2019" || imageType == "win2022" {
-		cmdParams = append(cmdParams, "--image-type", "WINDOWS_LTSC_CONTAINERD")
-		if imageType == "win2019" {
-			cmdParams = append(cmdParams, "--windows-os-version", "ltsc2019")
-		} else {
-			cmdParams = append(cmdParams, "--windows-os-version", "ltsc2022")
-		}
-	} else {
-		cmdParams = append(cmdParams, "--image-type", imageType)
-	}
-
-	if isVariableSet(gkeReleaseChannel) {
-		cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
-
-		// Release channel based GKE clusters require autorepair to be enabled.
-		cmdParams = append(cmdParams, "--enable-autorepair")
-
-		if *gkeReleaseChannel == "extended" {
-			// Extended channel clusters require autoupgrade to be enabled.
-			cmdParams = append(cmdParams, "--enable-autoupgrade")
-
-			// We often leverage the extended channel to test the oldest
-			// versions.  In that case, we specify both a release channel *and* a
-			// cluster version.
-			if isVariableSet(gkeClusterVer) {
-				cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
-			}
-		}
-	} else if isVariableSet(gkeClusterVer) {
-		cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
-	} else {
-		return fmt.Errorf("must specify either release channel or cluster version")
-	}
-
-	if isVariableSet(gkeNodeVersion) {
-		cmdParams = append(cmdParams, "--node-version", *gkeNodeVersion)
-	}
-
-	if useManagedDriver {
-		cmdParams = append(cmdParams, "--addons", "GcePersistentDiskCsiDriver")
-	}
-
-	cmd := exec.Command("gcloud", cmdParams...)
-	err = runCommand("Starting E2E Cluster on GKE", cmd)
+func clusterUpGKE(z, r string, numNodes int, numWindowsNodes int, imageType string, useManagedDriver bool) error {
+	locationArg, candidateLocations, err := candidateGKELocations(z, r)
 	if err != nil {
-		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", err.Error())
+		return err
+	}
+
+	machineType := "e2-standard-2"
+	if isVariableSet(gkeMachineType) {
+		machineType = *gkeMachineType
+	}
+
+	var locationVal string
+	var lastCreateErr error
+	for i, candidateLoc := range candidateLocations {
+		if err := deleteExistingGKEClusterIfPresent(locationArg, candidateLoc); err != nil {
+			return err
+		}
+
+		// Assemble parameters from passed in arguments.
+		cmdParams := []string{"container", "clusters", "create", *gkeTestClusterName,
+			locationArg, candidateLoc, "--num-nodes", strconv.Itoa(numNodes),
+			"--quiet", "--machine-type", machineType, "--no-enable-autoupgrade"}
+
+		if imageType == "win2019" || imageType == "win2022" {
+			cmdParams = append(cmdParams, "--image-type", "WINDOWS_LTSC_CONTAINERD")
+			if imageType == "win2019" {
+				cmdParams = append(cmdParams, "--windows-os-version", "ltsc2019")
+			} else {
+				cmdParams = append(cmdParams, "--windows-os-version", "ltsc2022")
+			}
+		} else {
+			cmdParams = append(cmdParams, "--image-type", imageType)
+		}
+
+		if isVariableSet(gkeReleaseChannel) {
+			cmdParams = append(cmdParams, "--release-channel", *gkeReleaseChannel)
+
+			// Release channel based GKE clusters require autorepair to be enabled.
+			cmdParams = append(cmdParams, "--enable-autorepair")
+
+			if *gkeReleaseChannel == "extended" {
+				// Extended channel clusters require autoupgrade to be enabled.
+				cmdParams = append(cmdParams, "--enable-autoupgrade")
+
+				// We often leverage the extended channel to test the oldest
+				// versions.  In that case, we specify both a release channel *and* a
+				// cluster version.
+				if isVariableSet(gkeClusterVer) {
+					cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+				}
+			}
+		} else if isVariableSet(gkeClusterVer) {
+			cmdParams = append(cmdParams, "--cluster-version", *gkeClusterVer)
+		} else {
+			return fmt.Errorf("must specify either release channel or cluster version")
+		}
+
+		if isVariableSet(gkeNodeVersion) {
+			cmdParams = append(cmdParams, "--node-version", *gkeNodeVersion)
+		}
+
+		if useManagedDriver {
+			cmdParams = append(cmdParams, "--addons", "GcePersistentDiskCsiDriver")
+		}
+
+		cmd := exec.Command("gcloud", cmdParams...)
+		createOut, createErr := runCommandWithOutput("Starting E2E Cluster on GKE", cmd)
+		if createErr == nil {
+			locationVal = candidateLoc
+			if locationArg == "--zone" {
+				*gceZone = candidateLoc
+			} else {
+				*gceRegion = candidateLoc
+			}
+			lastCreateErr = nil
+			break
+		}
+
+		lastCreateErr = createErr
+		if cleanupErr := deleteExistingGKEClusterIfPresent(locationArg, candidateLoc); cleanupErr != nil {
+			klog.Warningf("Failed to clean up partially created cluster in %s: %v", candidateLoc, cleanupErr)
+		}
+		if isGKEStockoutError(createOut) && i+1 < len(candidateLocations) {
+			klog.Warningf("GKE cluster creation in %s failed due to stockout; retrying in fallback location %s", candidateLoc, candidateLocations[i+1])
+			continue
+		}
+		break
+	}
+	if lastCreateErr != nil {
+		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gke: %v", lastCreateErr.Error())
 	}
 
 	// To avoid unexpected GKE maintenance, create a 4-hour maintenance exclusion window.
 	startExclusionTime := time.Now().UTC()
-	cmd = exec.Command("gcloud", "container", "clusters", "update", *gkeTestClusterName, locationArg, locationVal, "--quiet",
+	cmd := exec.Command("gcloud", "container", "clusters", "update", *gkeTestClusterName, locationArg, locationVal, "--quiet",
 		"--add-maintenance-exclusion-name", "no-upgrades-during-test",
 		"--add-maintenance-exclusion-start", startExclusionTime.Format(time.RFC3339),
 		"--add-maintenance-exclusion-end", startExclusionTime.Add(2*time.Hour).Format(time.RFC3339),
@@ -307,7 +387,7 @@ func clusterUpGKE(gceZone, gceRegion string, numNodes int, numWindowsNodes int, 
 	}
 
 	cmd = exec.Command("gcloud", "container", "clusters", "describe", *gkeTestClusterName, locationArg, locationVal)
-	out, err = cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to list cluster: %v %s", err, out)
 	}

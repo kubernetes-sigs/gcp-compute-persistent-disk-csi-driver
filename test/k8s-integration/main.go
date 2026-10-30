@@ -55,6 +55,7 @@ var (
 	gkeTestClusterPrefix = flag.String("gke-cluster-prefix", "pdcsi", "Prefix of GKE cluster names. A random suffix will be appended to form the full name.")
 	gkeTestClusterName   = flag.String("gke-cluster-name", "", "Name of existing cluster")
 	gkeNodeVersion       = flag.String("gke-node-version", "", "GKE cluster worker node version")
+	gkeMachineType       = flag.String("gke-machine-type", "e2-standard-2", "GKE cluster worker node machine type")
 	isRegionalCluster    = flag.Bool("is-regional-cluster", false, "tell the test that a regional cluster is being used. Should be used for running on an existing regional cluster (ie, --bringup-cluster=false). The test will fail if a zonal GKE cluster is created when this flag is true")
 
 	// Test infrastructure flags

@@ -34,6 +34,9 @@ export GCE_PD_VERBOSITY=9
 
 readonly GCE_PD_TEST_FOCUS="PersistentVolumes\sGCEPD|[V|v]olume\sexpand|\[sig-storage\]\sIn-tree\sVolumes\s\[Driver:\sgcepd\]|allowedTopologies|Pod\sDisks|PersistentVolumes\sDefault"
 
+# http streams may try to download too much in parallel
+export GODEBUG=http2client=0
+
 make -C "${PKGDIR}" test-k8s-integration
 
 if [ "$use_kubetest2" = true ]; then

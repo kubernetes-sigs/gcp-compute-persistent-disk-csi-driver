@@ -53,6 +53,9 @@ fi
 
 if [[ -n $gce_region ]] ; then
   storage_classes="${storage_classes}",sc-regional.yaml
+  readonly num_nodes=${NUM_NODES:-2}
+else
+  readonly num_nodes=${NUM_NODES:-3}
 fi
 
 if [[ $migration_test = true ]]; then
@@ -76,7 +79,7 @@ base_cmd="${PKGDIR}/bin/k8s-integration-test \
             --do-driver-build=${do_driver_build} --teardown-driver=${teardown_driver} --boskos-resource-type=${boskos_resource_type} \
             --storageclass-files="${storage_classes}" \
             --deployment-strategy=${deployment_strategy} --test-version=${test_version} \
-            --num-nodes=3 --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
+            --num-nodes=${num_nodes} --image-type=${image_type} --use-kubetest2=${use_kubetest2}"
 
 if [ "$migration_test" = true ]; then
   base_cmd="${base_cmd} --migration-test=true --test-focus='${GCE_PD_TEST_FOCUS}'"
