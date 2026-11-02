@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -330,8 +331,12 @@ func (i *InstanceInfo) CreateOrGetInstance() error {
 				}
 				return errors.New(ret)
 			}
-		} else if op.Error != nil {
+		} else if op != nil && op.Error != nil {
 			return fmt.Errorf("could not create instance %s: %+v", i.cfg.Name, op.Error)
+		} else if op != nil && op.Name != "" {
+			if waitErr := waitForZoneOp(i.cfg.ComputeService, i.cfg.Project, i.cfg.Zone, op.Name); waitErr != nil {
+				return fmt.Errorf("could not create instance %s: %w", i.cfg.Name, waitErr)
+			}
 		}
 	} else {
 		klog.V(4).Infof("Compute service got instance %v, skipping instance creation", newInst.Name)
@@ -657,4 +662,94 @@ func retryGCE(fn func() error) error {
 		return lastErr
 	}
 	return err
+}
+
+// IsStockoutError returns true if err indicates GCE capacity exhaustion in a zone.
+func IsStockoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, token := range []string{
+		"ZONE_RESOURCE_POOL_EXHAUSTED",
+		"RESOURCE_POOL_EXHAUSTED",
+		"GCE_STOCKOUT",
+		"does not have enough resources available",
+	} {
+		if strings.Contains(msg, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForZoneOp(cs *compute.Service, project, zone, opName string) error {
+	return wait.PollUntilContextTimeout(context.Background(), 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
+		op, err := cs.ZoneOperations.Wait(project, zone, opName).Context(ctx).Do()
+		if err != nil {
+			if (op != nil && op.HttpErrorStatusCode == http.StatusServiceUnavailable) || isRetryableGCEError(err) {
+				klog.Warningf("Transient error waiting on operation %s in %s: %v", opName, zone, err)
+				return false, nil
+			}
+			return false, err
+		}
+		if op == nil || op.Status != "DONE" {
+			return false, nil
+		}
+		if op.Error != nil && len(op.Error.Errors) > 0 && op.Error.Errors[0] != nil {
+			e := op.Error.Errors[0]
+			return true, fmt.Errorf("operation %s failed (%s): %s", opName, e.Code, e.Message)
+		}
+		return true, nil
+	})
+}
+
+// ListZoneCandidatesInRegion returns UP standard zones in region supporting all given machineTypes.
+func ListZoneCandidatesInRegion(cs *compute.Service, project, region string, machineTypes []string) ([]string, error) {
+	stdZone := regexp.MustCompile("^" + regexp.QuoteMeta(region) + "-[a-z]$")
+	var zoneList *compute.ZoneList
+	if err := retryGCE(func() error {
+		var err error
+		zoneList, err = cs.Zones.List(project).Do()
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	var zones []string
+	for _, z := range zoneList.Items {
+		if z != nil && strings.EqualFold(z.Status, "UP") && stdZone.MatchString(z.Name) {
+			zones = append(zones, z.Name)
+		}
+	}
+	slices.Sort(zones)
+
+	var candidates []string
+	for _, zName := range zones {
+		supported := true
+		for _, mt := range machineTypes {
+			if mt == "" || strings.EqualFold(mt, "none") {
+				continue
+			}
+			var missing bool
+			if err := retryGCE(func() error {
+				_, getErr := cs.MachineTypes.Get(project, zName, mt).Do()
+				if isGCEError(getErr, "notFound") {
+					missing = true
+					return nil
+				}
+				return getErr
+			}); err != nil {
+				return nil, err
+			}
+			if missing {
+				supported = false
+				break
+			}
+		}
+		if supported {
+			candidates = append(candidates, zName)
+		}
+	}
+	return candidates, nil
 }

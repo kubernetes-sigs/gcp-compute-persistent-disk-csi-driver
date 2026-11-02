@@ -16,6 +16,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -121,43 +122,122 @@ var _ = BeforeSuite(func() {
 
 	klog.Infof("Running in project %v with service account %v", *project, *serviceAccount)
 
+	var fallbackZones []string
+	if idx := strings.LastIndex(zones[0], "-"); idx > 0 {
+		region := zones[0][:idx]
+		candidates, candErr := remote.ListZoneCandidatesInRegion(computeService, *project, region, []string{*machineType, *mwMachineType})
+		if candErr != nil {
+			klog.Warningf("Could not list fallback zones in %s: %v", region, candErr)
+		} else {
+			for _, c := range candidates {
+				if !slices.Contains(zones, c) {
+					fallbackZones = append(fallbackZones, c)
+				}
+			}
+		}
+	}
+
+	// Provision instances per zone first so any stockout zone fallback finalizes `zones`
+	// before CSI drivers are started with `--fallback-requisite-zones`.
+	defaultInsts := make([][]*remote.InstanceInfo, len(zones))
+	mwInsts := make([]*remote.InstanceInfo, len(zones))
+	var fbMu sync.Mutex
+	var provErrs []error
+	var wg sync.WaitGroup
+
+	for i, zone := range zones {
+		wg.Add(1)
+		go func(slot int, curZone string) {
+			defer GinkgoRecover()
+			defer wg.Done()
+			for {
+				defs, mw, slotErr := provisionZoneInstances(curZone, numberOfInstancesPerZone)
+				if slotErr == nil {
+					fbMu.Lock()
+					zones[slot] = curZone
+					fbMu.Unlock()
+					defaultInsts[slot] = defs
+					mwInsts[slot] = mw
+					return
+				}
+				if *deleteInstances {
+					for _, inst := range defs {
+						if inst != nil {
+							inst.DeleteInstance()
+						}
+					}
+					if mw != nil {
+						mw.DeleteInstance()
+					}
+				}
+				fbMu.Lock()
+				if remote.IsStockoutError(slotErr) && len(fallbackZones) > 0 {
+					nextZone := fallbackZones[0]
+					fallbackZones = fallbackZones[1:]
+					fbMu.Unlock()
+					klog.Warningf("Zone %s hit stockout (%v); falling back to %s", curZone, slotErr, nextZone)
+					curZone = nextZone
+					continue
+				}
+				provErrs = append(provErrs, slotErr)
+				fbMu.Unlock()
+				return
+			}
+		}(i, zone)
+	}
+	wg.Wait()
+	if err = errors.Join(provErrs...); err != nil {
+		if *deleteInstances {
+			for _, defs := range defaultInsts {
+				for _, inst := range defs {
+					if inst != nil {
+						inst.DeleteInstance()
+					}
+				}
+			}
+			for _, mw := range mwInsts {
+				if mw != nil {
+					mw.DeleteInstance()
+				}
+			}
+		}
+		Expect(err).To(BeNil(), "Failed to provision E2E instances")
+	}
+
 	testContexts = make([]*remote.TestContext, numberOfInstancesPerZone*len(zones))
 	if *mwMachineType != noMachineType {
 		mwTestContexts = make([]*remote.TestContext, len(zones))
 	}
-	var wg sync.WaitGroup
-	setupContext := func(idx int, zone string) {
+	for idx := range zones {
 		for j := 0; j < numberOfInstancesPerZone; j++ {
 			wg.Add(1)
-			go func(curZone string, randInt int) {
+			go func(inst *remote.InstanceInfo, k int) {
 				defer GinkgoRecover()
 				defer wg.Done()
-				tc := NewDefaultTestContext(curZone, strconv.Itoa(randInt))
-				k := j + idx*numberOfInstancesPerZone
+				tc := setupNodeAndDriver(inst)
 				testContexts[k] = tc
 				klog.Infof("Added TestContext for node %s at %d", tc.Instance.GetName(), k)
-			}(zone, j)
+			}(defaultInsts[idx][j], j+idx*numberOfInstancesPerZone)
 		}
 		if mwTestContexts != nil {
 			wg.Add(1)
-			go func(curZone string) {
+			go func(inst *remote.InstanceInfo, mwIdx int) {
 				defer GinkgoRecover()
 				defer wg.Done()
-				tc := NewTestContext(curZone, *mwMinCpuPlatform, *mwMachineType, 0, "0")
-				mwTestContexts[idx] = tc
-				klog.Infof("Added hyperdisk TestContext for node %s at %d", tc.Instance.GetName(), idx)
-			}(zone)
+				tc := setupNodeAndDriver(inst)
+				mwTestContexts[mwIdx] = tc
+				klog.Infof("Added hyperdisk TestContext for node %s at %d", tc.Instance.GetName(), mwIdx)
+			}(mwInsts[idx], idx)
 		}
-	}
-
-	for i, zone := range zones {
-		setupContext(i, zone)
 	}
 	wg.Wait()
 })
 
 var _ = AfterSuite(func() {
 	for _, tc := range testContexts {
+		if tc == nil {
+			continue
+		}
 		err := remote.TeardownDriverAndClient(tc)
 		Expect(err).To(BeNil(), "Teardown Driver and Client failed with error")
 		if *deleteInstances {
@@ -165,6 +245,9 @@ var _ = AfterSuite(func() {
 		}
 	}
 	for _, mwTc := range mwTestContexts {
+		if mwTc == nil {
+			continue
+		}
 		err := remote.TeardownDriverAndClient(mwTc)
 		Expect(err).To(BeNil(), "Multiwriter Teardown Driver and Client failed with error")
 		if *deleteInstances {
@@ -172,6 +255,47 @@ var _ = AfterSuite(func() {
 		}
 	}
 })
+
+func provisionZoneInstances(zone string, count int) ([]*remote.InstanceInfo, *remote.InstanceInfo, error) {
+	defs := make([]*remote.InstanceInfo, count)
+	var mw *remote.InstanceInfo
+	var mu sync.Mutex
+	var errs []error
+	var wg sync.WaitGroup
+
+	for j := 0; j < count; j++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer GinkgoRecover()
+			defer wg.Done()
+			inst, err := provisionInstance(zone, *minCpuPlatform, *machineType, int64(*localSsdCount), strconv.Itoa(idx))
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			defs[idx] = inst
+		}(j)
+	}
+	if *mwMachineType != noMachineType {
+		wg.Add(1)
+		go func() {
+			defer GinkgoRecover()
+			defer wg.Done()
+			inst, err := provisionInstance(zone, *mwMinCpuPlatform, *mwMachineType, 0, "0")
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			mw = inst
+		}()
+	}
+	wg.Wait()
+	return defs, mw, errors.Join(errs...)
+}
 
 func notEmpty(v string) bool {
 	return v != ""
@@ -189,6 +313,14 @@ func NewDefaultTestContext(zone string, instanceNumber string) *remote.TestConte
 }
 
 func NewTestContext(zone, minCpuPlatform, machineType string, localSsdCount int64, instanceNumber string) *remote.TestContext {
+	i, err := provisionInstance(zone, minCpuPlatform, machineType, localSsdCount, instanceNumber)
+	if err != nil {
+		klog.Fatalf("Failed to setup instance: %v", err)
+	}
+	return setupNodeAndDriver(i)
+}
+
+func provisionInstance(zone, minCpuPlatform, machineType string, localSsdCount int64, instanceNumber string) (*remote.InstanceInfo, error) {
 	nodeID := fmt.Sprintf("%s-%s-%s-%s", *vmNamePrefix, zone, machineType, instanceNumber)
 	klog.Infof("Setting up node %s", nodeID)
 
@@ -217,10 +349,13 @@ func NewTestContext(zone, minCpuPlatform, machineType string, localSsdCount int6
 
 	i, err := remote.SetupInstance(instanceConfig)
 	if err != nil {
-		klog.Fatalf("Failed to setup instance %v: %v", nodeID, err)
+		return nil, fmt.Errorf("failed to setup instance %v: %w", nodeID, err)
 	}
+	return i, nil
+}
 
-	err = testutils.MkdirAll(i, "/lib/udev_containerized")
+func setupNodeAndDriver(i *remote.InstanceInfo) *remote.TestContext {
+	err := testutils.MkdirAll(i, "/lib/udev_containerized")
 	if err != nil {
 		klog.Fatalf("Failed to make scsi_id containerized directory: %v", err)
 	}
