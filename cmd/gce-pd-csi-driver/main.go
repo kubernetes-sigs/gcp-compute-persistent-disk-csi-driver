@@ -94,6 +94,7 @@ var (
 	enableNonK8sDataCacheIfSSDs = flag.Bool("enable-non-k8s-data-cache-if-ssds", false, "If set to true, enable data cache when not running on in k8s if the node has SSDs")
 	enableMultitenancyFlag      = flag.Bool("enable-multitenancy", false, "If set to true, the CSI Driver will support running on multitenant GKE clusters")
 	enablePdConversion          = flag.Bool("enable-pd-conversion", false, "If set to true, the CSI Driver will attempt to convert eligible PD disks to be compatible with attaching machine types during the attach operation")
+	enableDiskTypeConversion    = flag.Bool("enable-disk-type-conversion", false, "If set to true, the CSI Driver will convert a disk to the type its VolumeAttributesClass asks for, such as from a Persistent Disk type to a Hyperdisk type")
 	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
 
 	multiZoneVolumeHandleDiskTypesFlag = flag.String("multi-zone-volume-handle-disk-types", "", "Comma separated list of allowed disk types that can use the multi-zone volumeHandle. Used only if --multi-zone-volume-handle-enable")
@@ -306,6 +307,7 @@ func handle() {
 			EnableDynamicVolumes:     *dynamicVolumes,
 			EnableGCEDiskStatus:      *gceDiskStatus,
 			EnablePdConversion:       *enablePdConversion,
+			EnableDiskTypeConversion: *enableDiskTypeConversion,
 			ClusterOwnershipID:       *clusterOwnershipID,
 		}
 

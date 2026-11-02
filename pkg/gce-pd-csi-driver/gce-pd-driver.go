@@ -15,7 +15,11 @@ limitations under the License.
 package gceGCEDriver
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
@@ -184,6 +188,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		EnableDiskSizeValidation:    args.EnableDiskSizeValidation,
 		enableGCEDiskStatus:         args.EnableGCEDiskStatus,
 		EnablePdConversion:          args.EnablePdConversion,
+		EnableDiskTypeConversion:    args.EnableDiskTypeConversion,
 		clusterOwnershipID:          args.ClusterOwnershipID,
 	}
 }
@@ -200,5 +205,42 @@ func (gceDriver *GCEDriver) Run(endpoint string, grpcLogCharCap int, enableOtelT
 
 	s.Start(endpoint, gceDriver.ids, gceDriver.cs, gceDriver.ns)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		gceDriver.shutdown(s)
+	}()
+
 	s.Wait()
+}
+
+// Bounds on shutdown, which must finish well inside the pod's termination
+// grace period.
+const (
+	grpcGracefulStopTimeout   = 10 * time.Second
+	conversionWorkersStopTime = 5 * time.Second
+)
+
+// shutdown stops the driver on a termination signal. The gRPC server stops
+// first, so that no request can start background work while that work is being
+// stopped. Background conversion work is then cancelled and waited for. It
+// keeps its state on the PersistentVolume, so work cut short is resumed by the
+// next driver instance.
+func (gceDriver *GCEDriver) shutdown(s NonBlockingGRPCServer) {
+	klog.Infof("Received termination signal, shutting down")
+	stopped := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(grpcGracefulStopTimeout):
+		klog.Warningf("gRPC server did not stop within %v, forcing it", grpcGracefulStopTimeout)
+		s.ForceStop()
+	}
+	if gceDriver.cs != nil && !gceDriver.cs.StopConversionWorkers(conversionWorkersStopTime) {
+		klog.Warningf("Background disk type conversion work did not stop within %v; it resumes from the PersistentVolume on restart", conversionWorkersStopTime)
+	}
 }

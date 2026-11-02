@@ -138,6 +138,65 @@ func getPersistentVolumeWithRetry(ctx context.Context, kubeClient kubernetes.Int
 	return pvObj, nil
 }
 
+// FindPersistentVolumeName returns the name of the PersistentVolume that owns
+// reports as backing a volume, and whether there is one.
+//
+// The names in candidates are tried first, in order, because a
+// PersistentVolume is usually named after its disk, or was found before. When
+// none of them is the right one, every PersistentVolume is listed: a statically
+// provisioned or migrated PersistentVolume can have any name, and one that only
+// shares the disk's name may belong to a different disk entirely. The list is
+// served from the API server's watch cache, so it does not reach etcd.
+//
+// When more than one PersistentVolume claims the volume, a bound one is
+// preferred, since that is the one a workload uses.
+func FindPersistentVolumeName(ctx context.Context, candidates []string, owns func(*v1.PersistentVolume) bool) (string, bool, error) {
+	kubeClient, err := GetClient()
+	if err != nil {
+		return "", false, fmt.Errorf("failed to get kubernetes client: %w", err)
+	}
+
+	for _, name := range candidates {
+		if name == "" {
+			continue
+		}
+		pv, err := getPersistentVolumeWithRetry(ctx, kubeClient, name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return "", false, err
+		}
+		if owns(pv) {
+			return pv.Name, true, nil
+		}
+	}
+
+	var pvs *v1.PersistentVolumeList
+	err = doWithRetry(ctx, "listing PersistentVolumes", func(ctx context.Context) error {
+		var listErr error
+		pvs, listErr = kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{ResourceVersion: "0"})
+		return listErr
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("failed to list PersistentVolumes: %w", err)
+	}
+	found := ""
+	for i := range pvs.Items {
+		pv := &pvs.Items[i]
+		if !owns(pv) {
+			continue
+		}
+		if pv.Status.Phase == v1.VolumeBound {
+			return pv.Name, true, nil
+		}
+		if found == "" {
+			found = pv.Name
+		}
+	}
+	return found, found != "", nil
+}
+
 // doWithRetry calls fn until it succeeds, it fails with an error retrying
 // cannot fix, or the backoff runs out.
 //
@@ -507,48 +566,4 @@ func isRetriableAPIError(err error) bool {
 	default:
 		return true
 	}
-}
-
-// ClearVolumeAttributesClassForPV removes the VolumeAttributesClass from the
-// claim a volume is bound to, reporting whether it was removed.
-//
-// Kubernetes only allows the class to be cleared while the claim has never had
-// one applied, which is the state a claim is left in by a class it could not
-// act on. A claim that has had a class applied keeps it, and a cluster before
-// 1.34 refuses the change outright; neither is an error here, because the
-// caller is withdrawing a class the volume could not use rather than relying on
-// it being gone.
-func ClearVolumeAttributesClassForPV(ctx context.Context, pvName string) (bool, error) {
-	kubeClient, err := GetClient()
-	if err != nil {
-		return false, fmt.Errorf("failed to get kubernetes client: %w", err)
-	}
-
-	pv, err := GetPersistentVolumeWithRetry(ctx, pvName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !hasClaimRef(pv) {
-		return false, nil
-	}
-
-	namespace, name := pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name
-	patch := []byte(`{"spec":{"volumeAttributesClassName":null}}`)
-	_, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
-			klog.V(4).Infof("The VolumeAttributesClass of PersistentVolumeClaim %s/%s was left in place: %v", namespace, name, err)
-			return false, nil
-		}
-		return false, fmt.Errorf("failed to clear the VolumeAttributesClass of PersistentVolumeClaim %s/%s: %w", namespace, name, err)
-	}
-
-	klog.V(4).Infof("Cleared the VolumeAttributesClass of PersistentVolumeClaim %s/%s", namespace, name)
-	return true, nil
 }

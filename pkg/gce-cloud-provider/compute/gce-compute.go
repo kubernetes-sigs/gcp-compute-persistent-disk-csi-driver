@@ -39,6 +39,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -693,6 +694,19 @@ func (cloud *CloudProvider) insertConstructedDisk(ctx context.Context, disk *com
 	return nil
 }
 
+// updateDiskInvalidReasons are the reasons Disks.Update gives for a requested
+// IOPS or throughput value it will not apply. They are matched against
+// GCEErrorReason, so a rate limit or cooldown that GCE reports as a 400 with a
+// more specific ErrorInfo reason is not mistaken for one of these. A generic
+// "badRequest" with nothing more specific is still treated as invalid: the
+// external-resizer keeps retrying an Infeasible modification on a slow
+// interval, so a misclassified transient failure still recovers.
+var updateDiskInvalidReasons = sets.NewString(
+	"badRequest",
+	"invalid",
+	"invalidParameter",
+)
+
 func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
 	// hyperdisks are zonal disks
 	// pd-disks do not support modification of IOPS and Throughput
@@ -727,17 +741,26 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 	_, err := diskUpdateOp.Context(ctx).Do()
 
 	if err != nil {
-		// GCE rejects an out-of-range or unsupported IOPS/throughput value (e.g.
-		// "IOPS cannot be smaller than 3000") by reason, not by HTTP status alone:
-		// 400/403 are also used for retriable conditions such as a rate limit or
-		// exhausted quota, which must not be classified as a bad request.
-		if IsGCEError(err, "badRequest") || IsGCEError(err, "invalidParameter") || IsGCEInvalidError(err) {
-			return status.Errorf(codes.InvalidArgument, "error updating disk %v: %v", volKey, err)
-		}
-		return fmt.Errorf("error updating disk %v: %w", volKey, err)
+		return updateDiskError(volKey, err)
 	}
 
 	return nil
+}
+
+// updateDiskError translates a Disks.Update failure into a gRPC status.
+//
+// Only a value GCE rejected on its merits, such as "IOPS cannot be smaller than
+// 3000", is reported as InvalidArgument, which the external-resizer records as
+// Infeasible. 400 and 403 are also used for conditions that clear on their own,
+// such as a rate limit or the cooldown between performance changes, so the
+// decision is made on the most specific reason GCE gives rather than on the
+// status code or the generic top level reason. Everything else is Unavailable,
+// which the external-resizer retries.
+func updateDiskError(volKey *meta.Key, err error) error {
+	if updateDiskInvalidReasons.Has(GCEErrorReason(err)) {
+		return status.Errorf(codes.InvalidArgument, "error updating disk %v: %v", volKey, err)
+	}
+	return status.Errorf(codes.Unavailable, "error updating disk %v: %v", volKey, err)
 }
 
 func convertV1CustomerEncryptionKeyToBeta(v1Key *computev1.CustomerEncryptionKey) *computebeta.CustomerEncryptionKey {

@@ -98,6 +98,11 @@ const (
 	DiskTypeConvertedFromKey               = "pdcsi.gke.io/disk-type-converted-from"
 	DiskTypeConvertedToKey                 = "pdcsi.gke.io/disk-type-converted-to"
 	DiskTypeConversionTargetKey            = "pdcsi.gke.io/disk-type-conversion-target"
+	// DiskTypeConversionSourceKey holds the type a disk had when its conversion
+	// was requested. It is moved to DiskTypeConvertedFromKey when the
+	// conversion completes, and dropped if the conversion never happens, so
+	// that DiskTypeConvertedFromKey only ever describes a finished conversion.
+	DiskTypeConversionSourceKey = "pdcsi.gke.io/disk-type-conversion-source"
 	// Keep post-conversion reconciliation identifiable until its
 	// latest VAC work succeeds, so the volume stays blocked in the meantime.
 	// DiskTypeConversionReconciliationIDKey identifies the completed GCE
@@ -108,12 +113,14 @@ const (
 	// passed through to the claim on the next attempt rather than being visible
 	// only as an event.
 	DiskTypeConversionLastErrorKey = "pdcsi.gke.io/disk-type-conversion-last-error"
-	// DiskTypeConversionInfeasibleKey holds why a VolumeAttributesClass could
-	// not be acted on, so the reason outlives the class once it is withdrawn.
+	// DiskTypeConversionInfeasibleKey holds why the conversion a
+	// VolumeAttributesClass asks for cannot be done, so that a ModifyVolume
+	// retry can report it as InvalidArgument without asking GCE again.
 	DiskTypeConversionInfeasibleKey = "pdcsi.gke.io/disk-type-conversion-infeasible"
-	// DiskTypeConversionInfeasibleTargetKey scopes an infeasible reason to the
-	// VAC type that produced it, so a later request for another target can retry.
-	DiskTypeConversionInfeasibleTargetKey = "pdcsi.gke.io/disk-type-conversion-infeasible-target"
+	// DiskTypeConversionInfeasibleIntentKey scopes an infeasible reason to the
+	// request that produced it: the target type and the requested IOPS and
+	// throughput. A request that differs in any of them is tried again.
+	DiskTypeConversionInfeasibleIntentKey = "pdcsi.gke.io/disk-type-conversion-infeasible-intent"
 
 	// Conversion States
 	ConversionStatePending = "Pending"

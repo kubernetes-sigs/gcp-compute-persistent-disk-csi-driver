@@ -69,6 +69,9 @@ func initGCEDriverWithCloudProvider(t *testing.T, cloudProvider gce.GCECompute, 
 	gceDriver := GetGCEDriver()
 
 	controllerServer := controllerServerForTest(cloudProvider, args)
+	// As in main, the controller belongs to the driver it is set up with, so
+	// that it sees the driver's name.
+	controllerServer.Driver = gceDriver
 	err := gceDriver.SetupGCEDriver(driver, vendorVersion, nil, nil, nil, controllerServer, nil)
 	if err != nil {
 		t.Fatalf("Failed to setup GCE Driver: %v", err)

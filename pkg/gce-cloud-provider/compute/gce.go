@@ -535,6 +535,36 @@ func IsGCEError(err error, reason string) bool {
 	return false
 }
 
+// GCEErrorReason returns the most specific machine readable reason carried by
+// a googleapi.Error, or the empty string if err is not one.
+//
+// The ErrorInfo detail is preferred over the top level error item: the top
+// level item often only says "badRequest" or "forbidden", while the detail
+// names the actual condition, such as a rate limit or an unsupported
+// conversion. Classifying by the top level item alone would treat a rate
+// limit that arrives as a 400 the same as a malformed request.
+func GCEErrorReason(err error) string {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
+		return ""
+	}
+	for _, detail := range apiErr.Details {
+		detailMap, ok := detail.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if reason, ok := detailMap["reason"].(string); ok && reason != "" {
+			return reason
+		}
+	}
+	for _, errItem := range apiErr.Errors {
+		if errItem.Reason != "" {
+			return errItem.Reason
+		}
+	}
+	return ""
+}
+
 // IsGCENotFoundError returns true if the error is a googleapi.Error with
 // notFound reason
 func IsGCENotFoundError(err error) bool {
