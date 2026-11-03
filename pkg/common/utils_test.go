@@ -1153,3 +1153,6 @@ func TestGetMinIopsThroughput(t *testing.T) {
 		})
 	}
 }
+
+// Do not mirror GCE's mutable provisioned-performance ceilings in
+// driver-side unit tests; the Compute Engine API validates those requests.

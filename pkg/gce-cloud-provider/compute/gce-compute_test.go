@@ -25,6 +25,7 @@ import (
 	computebeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	computev1 "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -690,5 +691,82 @@ func TestRepairUnderspecifiedVolumeKey(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUpdateDiskError(t *testing.T) {
+	volKey := meta.ZonalKey("test-disk", "us-central1-a")
+	withErrorInfo := func(code int, topLevel, detail string) error {
+		return &googleapi.Error{
+			Code:    code,
+			Message: "update failed",
+			Errors:  []googleapi.ErrorItem{{Reason: topLevel}},
+			Details: []interface{}{map[string]interface{}{
+				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": detail,
+			}},
+		}
+	}
+	testCases := []struct {
+		name    string
+		err     error
+		expCode codes.Code
+	}{
+		{
+			name:    "a value GCE rejects is infeasible",
+			err:     &googleapi.Error{Code: 400, Errors: []googleapi.ErrorItem{{Reason: "invalid"}}},
+			expCode: codes.InvalidArgument,
+		},
+		{
+			name:    "a generic bad request with nothing more specific is infeasible",
+			err:     &googleapi.Error{Code: 400, Errors: []googleapi.ErrorItem{{Reason: "badRequest"}}},
+			expCode: codes.InvalidArgument,
+		},
+		{
+			// The Hyperdisk cooldown between performance changes arrives as a
+			// 400 whose only top level reason is badRequest.
+			name:    "a rate limit behind a generic bad request is retried",
+			err:     withErrorInfo(400, "badRequest", "RESOURCE_OPERATION_RATE_EXCEEDED"),
+			expCode: codes.Unavailable,
+		},
+		{
+			name:    "a quota limit is retried",
+			err:     withErrorInfo(403, "forbidden", "QUOTA_EXCEEDED"),
+			expCode: codes.Unavailable,
+		},
+		{
+			name:    "a top level rate limit is retried",
+			err:     &googleapi.Error{Code: 429, Errors: []googleapi.ErrorItem{{Reason: "rateLimitExceeded"}}},
+			expCode: codes.Unavailable,
+		},
+		{
+			name:    "an error that is not from the API is retried",
+			err:     errors.New("connection reset by peer"),
+			expCode: codes.Unavailable,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := status.Code(updateDiskError(volKey, tc.err)); got != tc.expCode {
+				t.Errorf("updateDiskError(%v) code = %v; want %v", tc.err, got, tc.expCode)
+			}
+		})
+	}
+}
+
+func TestGCEErrorReasonPrefersErrorInfo(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &googleapi.Error{
+		Code:    400,
+		Errors:  []googleapi.ErrorItem{{Reason: "badRequest"}},
+		Details: []interface{}{map[string]interface{}{"reason": "RESOURCE_OPERATION_RATE_EXCEEDED"}},
+	})
+	if got := GCEErrorReason(err); got != "RESOURCE_OPERATION_RATE_EXCEEDED" {
+		t.Errorf("GCEErrorReason = %q; want the ErrorInfo reason", got)
+	}
+	if got := GCEErrorReason(&googleapi.Error{Code: 400, Errors: []googleapi.ErrorItem{{Reason: "badRequest"}}}); got != "badRequest" {
+		t.Errorf("GCEErrorReason = %q; want the top level reason when there is no ErrorInfo", got)
+	}
+	if got := GCEErrorReason(errors.New("not an API error")); got != "" {
+		t.Errorf("GCEErrorReason = %q; want empty for a non-API error", got)
 	}
 }

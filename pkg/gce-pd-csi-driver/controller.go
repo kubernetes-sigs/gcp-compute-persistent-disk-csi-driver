@@ -18,8 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	neturl "net/url"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,9 +35,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
@@ -56,6 +62,35 @@ type GCEControllerServer struct {
 	volumeEntries     []*csi.ListVolumesResponse_Entry
 	volumeEntriesSeen map[string]int
 	listVolumesLock   sync.Mutex
+
+	// The background watchers following disk type conversions, keyed by volume
+	// key. A watcher outlives the call that started it, so it has to be
+	// stoppable when the volume goes away.
+	conversionWatchers              map[string]*conversionWatcher
+	conversionWatchersLock          sync.Mutex
+	conversionReconciliationWorkers map[string]bool
+
+	// Tracks the background conversions started on detach, so that they can be
+	// waited for rather than assumed finished.
+	conversionWorkers sync.WaitGroup
+
+	// How often a running conversion is checked. Zero means the default,
+	// conversionPollBackoff. Tests set it so they need not wait minutes.
+	conversionPollBackoffOverride wait.Backoff
+
+	// conversionCtx is the parent of every context used by background
+	// conversion work, which outlives the request that started it. It is
+	// cancelled by StopConversionWorkers when the driver shuts down. It is
+	// created on first use by conversionContext.
+	conversionCtx     context.Context
+	stopConversionCtx context.CancelFunc
+	conversionCtxOnce sync.Once
+
+	// conversionPVNames maps a volume key to the PersistentVolume that backs
+	// it, for PersistentVolumes not named after their disk. It only saves a
+	// list of every PersistentVolume: an entry is checked against the
+	// PersistentVolume before it is used.
+	conversionPVNames sync.Map
 
 	snapshots         []*csi.ListSnapshotsResponse_Entry
 	snapshotTokens    map[string]int
@@ -141,7 +176,12 @@ type GCEControllerServer struct {
 	EnableDiskTopology       bool
 	EnableDiskSizeValidation bool
 
+	// EnablePdConversion lets ControllerPublish convert a disk so that it can be
+	// attached to a machine family it is not yet compatible with.
 	EnablePdConversion bool
+	// EnableDiskTypeConversion lets ControllerModifyVolume change a disk's type
+	// in place when its VolumeAttributesClass asks for a different one.
+	EnableDiskTypeConversion bool
 }
 
 type GCEControllerServerArgs struct {
@@ -150,6 +190,7 @@ type GCEControllerServerArgs struct {
 	EnableDynamicVolumes     bool
 	EnableGCEDiskStatus      bool
 	EnablePdConversion       bool
+	EnableDiskTypeConversion bool
 	ClusterOwnershipID       string
 }
 
@@ -375,16 +416,22 @@ func (gceCS *GCEControllerServer) createVolumeInternal(ctx context.Context, req 
 	// https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume
 	// mutable_parameters MUST take precedence over the values from parameters.
 	mutableParams := req.GetMutableParameters()
-	// If the disk type does not support dynamic provisioning, throw an error
-	supportsIopsChange := gceCS.diskSupportsIopsChange(params.DiskType)
-	supportsThroughputChange := gceCS.diskSupportsThroughputChange(params.DiskType)
 	if len(mutableParams) > 0 {
-		if !supportsIopsChange && !supportsThroughputChange {
-			return nil, status.Errorf(codes.InvalidArgument, "Disk type %s does not support dynamic provisioning", params.DiskType)
-		}
 		p, err := parameters.ExtractModifyVolumeParameters(mutableParams)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "Invalid mutable parameters: %v", err)
+		}
+		// A claim created with a VolumeAttributesClass that names a type gets a
+		// disk of that type, rather than one of the StorageClass type that
+		// would then need an offline conversion before it matched the class.
+		if p.DiskType != nil {
+			params.DiskType = *p.DiskType
+		}
+		// If the disk type does not support dynamic provisioning, throw an error
+		supportsIopsChange := gceCS.diskSupportsIopsChange(params.DiskType)
+		supportsThroughputChange := gceCS.diskSupportsThroughputChange(params.DiskType)
+		if (p.IOPS != nil || p.Throughput != nil) && !supportsIopsChange && !supportsThroughputChange {
+			return nil, status.Errorf(codes.InvalidArgument, "Disk type %s does not support dynamic provisioning", params.DiskType)
 		}
 		if p.IOPS != nil {
 			if !supportsIopsChange {
@@ -891,6 +938,15 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.NotFound, "volume ID is invalid: %v", err.Error())
 		return nil, err
 	}
+	//  Serialize ModifyVolume against attach and other disk operations
+	// while a conversion is being prepared and recorded.
+	// ModifyVolume may start a conversion that must exclude attach, detach,
+	// delete, and other modifications until its operation is recorded. Use the
+	// same per-volume lock as the other controller operations.
+	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer gceCS.volumeLocks.Release(volumeID)
 
 	volumeModifyParams, err := parameters.ExtractModifyVolumeParameters(req.GetMutableParameters())
 	if err != nil {
@@ -913,8 +969,76 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	// Check if the disk supports dynamic IOPS/Throughput provisioning
+	// Conversion state lives on the volume's PersistentVolume, which is only
+	// looked up when the feature is enabled.
+	pvName, hasPV := "", false
+	if gceCS.EnableDiskTypeConversion {
+		pvName, hasPV, err = gceCS.conversionPVName(ctx, project, volKey)
+		if err != nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot find the PersistentVolume of volume %s to read its conversion state: %v", volumeID, err)
+		}
+	}
+
+	// Removing the type cancels a queued conversion even if the new VAC still
+	// requests an IOPS or throughput change. An active GCE operation cannot be
+	// cancelled, and continues to block modifications until it finishes.
+	if hasPV && volumeModifyParams.DiskType == nil {
+		opVal, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+		if err != nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot determine the conversion state of volume %s: %v", volumeID, err)
+		}
+		if exists && opVal == constants.ConversionStatePending {
+			if err := gceCS.cancelQueuedConversion(ctx, volKey, pvName, "the VolumeAttributesClass no longer asks for a disk type"); err != nil {
+				return nil, status.Errorf(codes.Unavailable, "cannot cancel the queued conversion of volume %s: %v", volumeID, err)
+			}
+		} else if exists && opVal != "" && opVal != "null" {
+			return nil, status.Errorf(codes.Unavailable, "cannot modify volume %s while disk type conversion is in progress (%s)", volumeID, opVal)
+		}
+	}
+
+	if volumeModifyParams.DiskType == nil && volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		klog.V(4).Infof("Volume %s has empty parameters, nothing to modify.", volumeID)
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
+
+	// If the VolumeAttributesClass requests a disk type that doesn't match the
+	// disk's actual type, this is a disk type conversion request rather than an
+	// IOPS/throughput update. This must be handled before the checks below,
+	// which are keyed on the disk's current type and would reject types that
+	// are valid conversion sources.
 	diskType := existingDisk.GetPDType()
+	if volumeModifyParams.DiskType != nil && *volumeModifyParams.DiskType != diskType {
+		if !gceCS.EnableDiskTypeConversion {
+			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: disk type conversion is not enabled on this driver", volumeID, diskType, *volumeModifyParams.DiskType)
+		}
+		if !hasPV {
+			// A disk that can never be converted is reported as such whether or
+			// not there is anywhere to record a conversion.
+			if reason := unsupportedConversionReason(volKey, existingDisk); reason != "" {
+				return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, diskType, *volumeModifyParams.DiskType, reason)
+			}
+			return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s: no PersistentVolume found for it, and a conversion records its progress on the PersistentVolume", volumeID, diskType, *volumeModifyParams.DiskType)
+		}
+		return gceCS.convertDiskType(ctx, project, volKey, pvName, volumeID, existingDisk, volumeModifyParams)
+	}
+
+	// The disk already has the requested type, either because a conversion
+	// finished or because it never needed one.
+	if hasPV && volumeModifyParams.DiskType != nil {
+		if err := gceCS.completeConversionIfInProgress(ctx, project, volKey, pvName, volumeID, diskType); err != nil {
+			return nil, err
+		}
+	}
+
+	// The disk is already the requested type. If no other attributes were
+	// requested there is nothing left to do, which is also how a completed
+	// conversion is reported as successful on a subsequent retry.
+	if volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		klog.V(4).Infof("Volume %s already has the requested attributes", volumeID)
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
+
+	// Check if the disk supports dynamic IOPS/Throughput provisioning
 	supportsIopsChange := gceCS.diskSupportsIopsChange(diskType)
 	supportsThroughputChange := gceCS.diskSupportsThroughputChange(diskType)
 	if !supportsIopsChange && !supportsThroughputChange {
@@ -929,7 +1053,20 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.InvalidArgument, "Cannot specify throughput for disk type %s", diskType)
 		return nil, err
 	}
+	// A conversion may already have applied the requested performance values.
+	// Avoid a redundant Disks.Update, which can fail during Hyperdisk cooldowns.
+	if volumeModifyParams.IOPS != nil && *volumeModifyParams.IOPS == existingDisk.GetProvisionedIops() {
+		volumeModifyParams.IOPS = nil
+	}
+	if volumeModifyParams.Throughput != nil && *volumeModifyParams.Throughput == existingDisk.GetProvisionedThroughput() {
+		volumeModifyParams.Throughput = nil
+	}
+	if volumeModifyParams.IOPS == nil && volumeModifyParams.Throughput == nil {
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
 
+	// Let GCE validate provisioned performance limits so service-side
+	// updates and project allowlists remain authoritative.
 	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
 	if err != nil {
 		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
@@ -938,6 +1075,1513 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	}
 
 	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
+// conversionPVName returns the name of the PersistentVolume that backs a disk,
+// which is where the disk's conversion state is recorded, and whether there is
+// one.
+//
+// A dynamically provisioned PersistentVolume is named after its disk, but a
+// statically provisioned or migrated one can have any name, and a
+// PersistentVolume with the disk's name may belong to another disk. So the
+// PersistentVolume is identified by its volume handle, never by its name alone.
+func (gceCS *GCEControllerServer) conversionPVName(ctx context.Context, project string, volKey *meta.Key) (string, bool, error) {
+	cacheKey := volKey.String()
+	candidates := []string{}
+	if cached, ok := gceCS.conversionPVNames.Load(cacheKey); ok {
+		candidates = append(candidates, cached.(string))
+	}
+	candidates = append(candidates, volKey.Name)
+
+	pvName, found, err := k8sclient.FindPersistentVolumeName(ctx, candidates, func(pv *v1.PersistentVolume) bool {
+		return gceCS.pvBacksDisk(pv, project, volKey)
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if found && pvName != volKey.Name {
+		gceCS.conversionPVNames.Store(cacheKey, pvName)
+	} else {
+		gceCS.conversionPVNames.Delete(cacheKey)
+	}
+	return pvName, found, nil
+}
+
+// pvBacksDisk reports whether a PersistentVolume refers to the disk identified
+// by project and volKey.
+func (gceCS *GCEControllerServer) pvBacksDisk(pv *v1.PersistentVolume, project string, volKey *meta.Key) bool {
+	if source := pv.Spec.CSI; source != nil {
+		if source.Driver != gceCS.Driver.name {
+			return false
+		}
+		pvProject, pvKey, err := common.VolumeIDToKey(source.VolumeHandle)
+		if err != nil || pvKey.Name != volKey.Name {
+			return false
+		}
+		if pvProject != project && pvProject != constants.UnspecifiedValue && project != constants.UnspecifiedValue {
+			return false
+		}
+		if pvKey.Zone == constants.MultiZoneValue {
+			return volKey.Zone != ""
+		}
+		return pvKey.Zone == volKey.Zone && pvKey.Region == volKey.Region
+	}
+	// A PersistentVolume using the in-tree plugin is served by this driver
+	// through CSI migration. Its source names only the disk, so its zone is
+	// taken from its topology label, which lists every zone of a regional disk.
+	if source := pv.Spec.GCEPersistentDisk; source != nil {
+		if source.PDName != volKey.Name {
+			return false
+		}
+		zones := pv.Labels[v1.LabelTopologyZone]
+		if zones == "" {
+			zones = pv.Labels[v1.LabelFailureDomainBetaZone]
+		}
+		if zones == "" {
+			return true
+		}
+		// Kubernetes joins the zones of a regional disk with "__".
+		for _, zone := range strings.Split(zones, "__") {
+			if volKey.Zone != "" && zone == volKey.Zone {
+				return true
+			}
+			if volKey.Region != "" && strings.HasPrefix(zone, volKey.Region+"-") {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// convertDiskType starts an in-place disk type conversion for a volume whose
+// VolumeAttributesClass requests a type different from the disk's current type.
+//
+// The GCE conversion can run for minutes to hours, far longer than a single
+// ModifyVolume call may block, so this returns as soon as the operation has
+// been accepted. The modification stays pending and is retried; once the disk
+// reports the target type, the retry falls through to the regular
+// IOPS/throughput path and the modification completes.
+func (gceCS *GCEControllerServer) convertDiskType(ctx context.Context, project string, volKey *meta.Key, pvName string, volumeID string, existingDisk *gce.CloudDisk, params parameters.ModifyVolumeParameters) (*csi.ControllerModifyVolumeResponse, error) {
+	targetDiskType := *params.DiskType
+	currentDiskType := existingDisk.GetPDType()
+	intent := conversionIntent(targetDiskType, params.IOPS, params.Throughput)
+
+	// A conversion already found to be infeasible is answered from the record
+	// rather than by asking GCE again, because the external-resizer keeps
+	// retrying an Infeasible modification. The record only applies to the exact
+	// request that produced it: a class that changes the type, IOPS or
+	// throughput, such as one correcting a typo, is tried afresh.
+	if infeasible, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionInfeasibleKey); err != nil {
+		return nil, status.Errorf(codes.Unavailable, "cannot read the recorded conversion failure for volume %s: %v", volumeID, err)
+	} else if exists {
+		recordedIntent, intentExists, intentErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionInfeasibleIntentKey)
+		if intentErr != nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot read the request of the recorded conversion failure for volume %s: %v", volumeID, intentErr)
+		}
+		if intentExists && recordedIntent == intent {
+			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, infeasible)
+		}
+		if err := k8sclient.UpdatePVAnnotations(ctx, pvName, nil, nil, []string{
+			constants.DiskTypeConversionInfeasibleKey,
+			constants.DiskTypeConversionInfeasibleIntentKey,
+		}); err != nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot clear the prior conversion failure for volume %s: %v", volumeID, err)
+		}
+	}
+
+	if reason := unsupportedConversionReason(volKey, existingDisk); reason != "" {
+		gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volumeID, reason, intent)
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
+	}
+
+	// Conversion does not change disk size, so the target type's ceilings are
+	// checked against the disk's current size and IOPS, same as the plain
+	// IOPS/throughput update path below.
+	// An IOPS or throughput value that the target type does not support is
+	// rejected here rather than sent to the convert API, the same way it is
+	// rejected on the plain IOPS/throughput update path below.
+	if params.IOPS != nil && !gceCS.diskSupportsIopsChange(targetDiskType) {
+		reason := fmt.Sprintf("cannot specify IOPS for disk type %s", targetDiskType)
+		gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volumeID, reason, intent)
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
+	}
+	if params.Throughput != nil && !gceCS.diskSupportsThroughputChange(targetDiskType) {
+		reason := fmt.Sprintf("cannot specify throughput for disk type %s", targetDiskType)
+		gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volumeID, reason, intent)
+		return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %s", volumeID, currentDiskType, targetDiskType, reason)
+	}
+
+	// Conversion requires the disk to be detached. Report this as retryable so
+	// the conversion starts once the workload using the volume is scaled down.
+	if users := existingDisk.GetUsers(); len(users) > 0 {
+		// The annotation is what makes the detach hook start this conversion, so
+		// losing it means the conversion never resumes. The error returned below
+		// is retryable, and the next attempt writes the annotation again.
+		if err := gceCS.markConversionPending(ctx, volKey, pvName, volumeID, targetDiskType); err != nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot queue conversion of volume %s: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "cannot convert volume %s from %s to %s while it is attached to %v, detach the volume to start the conversion", volumeID, currentDiskType, targetDiskType, users)
+	}
+
+	operation, sentIntent, err := gceCS.startDiskTypeConversion(ctx, project, volKey, pvName, currentDiskType, targetDiskType, params)
+	if err != nil {
+		// A non-empty operation means GCE accepted the conversion but its durable
+		// state could not be recorded. Keep the volume fail-closed and let the
+		// next request reconcile it instead of allowing an unsafe attach.
+		if operation != "" {
+			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s started but could not be recorded; retry to reconcile it: %v", volumeID, currentDiskType, targetDiskType, err)
+		}
+		// A conversion already running means the disk is being rebuilt, so the
+		// volume stays blocked whatever the failure is classified as.
+		if isConversionInProgressError(err) {
+			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress", volumeID, currentDiskType, targetDiskType)
+		}
+		if isUnsupportedConversionIntentError(err) {
+			gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volumeID, err.Error(), sentIntent)
+			// A rejected replay of an earlier request says nothing about the
+			// class asked for now, which the next retry sends instead.
+			if sentIntent != intent {
+				return nil, status.Errorf(codes.Unavailable, "an earlier conversion request for volume %s was rejected and will be replaced by the current one: %v", volumeID, err)
+			}
+			return nil, status.Errorf(codes.InvalidArgument, "cannot convert volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+		}
+		// startDiskTypeConversion persisted Pending before invoking GCE, so a
+		// retry can safely resume from the durable state already on the PV.
+		if reason := conversionRetryReason(err); reason != "" {
+			return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s will be retried: %s: %v", volumeID, currentDiskType, targetDiskType, reason, err)
+		}
+		return nil, status.Errorf(codes.Unavailable, "failed to start conversion of volume %s from %s to %s: %v", volumeID, currentDiskType, targetDiskType, err)
+	}
+
+	// An earlier conversion that failed and was requeued is reported here, so
+	// that the reason it failed reaches the claim rather than being visible only
+	// as an event. The new conversion has already started, so the record of the
+	// old failure is no longer needed.
+	if lastErr, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionLastErrorKey); err != nil {
+		klog.Warningf("Could not read the recorded conversion failure of volume %s: %v", volumeID, err)
+	} else if exists && lastErr != "" {
+		if err := k8sclient.RemovePVAnnotation(ctx, pvName, constants.DiskTypeConversionLastErrorKey); err != nil {
+			klog.Warningf("Failed to clear the recorded conversion failure of volume %s: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s was retried after it failed with: %s; the new conversion is in progress (%s)", volumeID, currentDiskType, targetDiskType, lastErr, operation)
+	}
+
+	// The conversion has started but is not finished, so the requested
+	// attributes are not in effect yet.
+	return nil, status.Errorf(codes.Unavailable, "conversion of volume %s from %s to %s is in progress (%s)", volumeID, currentDiskType, targetDiskType, operation)
+}
+
+// conversionIntent identifies a requested conversion by everything GCE judges it
+// on: the target type and the IOPS and throughput the disk is to have.
+func conversionIntent(diskType string, iops, throughput *int64) string {
+	intent := "type=" + diskType
+	if iops != nil {
+		intent += fmt.Sprintf(",iops=%d", *iops)
+	}
+	if throughput != nil {
+		intent += fmt.Sprintf(",throughput=%d", *throughput)
+	}
+	return intent
+}
+
+// classConversionIntent is conversionIntent for the parameters of a
+// VolumeAttributesClass, or the empty string if the class asks for no type.
+func classConversionIntent(params parameters.ModifyVolumeParameters) string {
+	if params.DiskType == nil {
+		return ""
+	}
+	return conversionIntent(*params.DiskType, params.IOPS, params.Throughput)
+}
+
+// recordInfeasibleConversion records that the conversion a VolumeAttributesClass
+// asks for cannot be done, and releases the volume if it was only waiting for
+// that conversion.
+//
+// The claim itself is left alone. Following KEP-3751, a caller serving
+// ControllerModifyVolume returns InvalidArgument, and the external-resizer
+// records the claim's modifyVolumeStatus as Infeasible. Background work has no
+// call to return that through, so the reason is kept on the PersistentVolume
+// under intent, the request it applies to, and the next ModifyVolume retry for
+// the same request returns it.
+//
+// An empty intent records the reason without tying it to a request, so it is
+// reported but answers no retry.
+func (gceCS *GCEControllerServer) recordInfeasibleConversion(ctx context.Context, volKey *meta.Key, pvName string, volumeID, reason, intent string) {
+	if operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey); err != nil {
+		klog.Warningf("Could not check queued conversion state before recording why volume %s cannot be converted: %v", volumeID, err)
+		return
+	} else if exists && operation == constants.ConversionStatePending {
+		if err := gceCS.cancelQueuedConversion(ctx, volKey, pvName, reason); err != nil {
+			klog.Warningf("Could not clear queued conversion state of volume %s after finding it cannot be converted: %v", volumeID, err)
+			return
+		}
+	} else if exists && operation != "" && operation != "null" && operation != constants.ConversionStateReconciling {
+		// A running operation remains authoritative. Its outcome is recorded
+		// when it finishes, and reconciliation then inspects the latest class.
+		return
+	}
+
+	set := map[string]string{constants.DiskTypeConversionInfeasibleKey: reason}
+	var remove []string
+	if intent != "" {
+		set[constants.DiskTypeConversionInfeasibleIntentKey] = intent
+	} else {
+		remove = []string{constants.DiskTypeConversionInfeasibleIntentKey}
+	}
+	if err := k8sclient.UpdatePVAnnotations(ctx, pvName, nil, set, remove); err != nil {
+		klog.Warningf("Failed to record why volume %s cannot be converted: %v", volumeID, err)
+	}
+
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionFailedReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion of volume %q cannot be done: %s", volKey.Name, reason))
+}
+
+// markConversionPending records that a volume is waiting for a conversion that
+// has not started, so that the volume stays blocked and the conversion is
+// attempted again.
+//
+// A conversion that is already running keeps its operation instead. The
+// operation is the only record of which conversion is running: it is what a user
+// tracks, what a restarted driver polls, and what tells a later check that the
+// conversion has finished.
+func (gceCS *GCEControllerServer) markConversionPending(ctx context.Context, volKey *meta.Key, pvName string, volumeID string, targetDiskTypes ...string) error {
+	operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		// Without knowing whether a conversion is already running, replacing
+		// the annotation could erase the only record of its GCE operation.
+		return fmt.Errorf("could not read conversion state for volume %s: %w", volumeID, err)
+	} else if exists && operation != "" && operation != "null" && operation != constants.ConversionStatePending && operation != constants.ConversionStateReconciling {
+		klog.V(4).Infof("Volume %s is already being converted by operation %s, leaving it recorded", volumeID, operation)
+		return status.Errorf(codes.Unavailable, "volume %s is already being converted by operation %s", volumeID, operation)
+	}
+	if exists && operation == constants.ConversionStatePending {
+		requestID, requestExists, requestErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+		if requestErr != nil {
+			return fmt.Errorf("could not verify whether conversion of volume %s was accepted: %w", volumeID, requestErr)
+		}
+		if requestExists && requestID != "" {
+			return status.Errorf(codes.Unavailable, "volume %s has an accepted conversion request that must be recovered before it can be requeued", volumeID)
+		}
+	}
+
+	condition := k8sclient.PVAnnotationCondition{Value: operation, Exists: exists}
+	conditions := map[string]k8sclient.PVAnnotationCondition{
+		constants.DiskTypeConversionOperationKey: condition,
+		constants.DiskTypeConversionRequestIDKey: {Exists: false},
+	}
+	set := map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending}
+	if len(targetDiskTypes) > 0 && targetDiskTypes[0] != "" {
+		set[constants.DiskTypeConversionTargetKey] = targetDiskTypes[0]
+	}
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		conditions,
+		set,
+		[]string{constants.DiskTypeConversionReconciliationIDKey},
+	); err != nil {
+		return fmt.Errorf("failed to mark volume %s as pending conversion: %w", volumeID, err)
+	}
+	return nil
+}
+
+func recordedConversionValue(annotations map[string]string, key string) (*int64, error) {
+	value, exists := annotations[key]
+	if !exists {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func setRecordedConversionValue(annotations map[string]string, key string, value *int64) {
+	if value == nil {
+		delete(annotations, key)
+		return
+	}
+	annotations[key] = strconv.FormatInt(*value, 10)
+}
+
+// startDiskTypeConversion asks GCE to convert a disk and records the state that
+// lets the conversion be tracked and completed later, by whichever call sees the
+// disk next. It returns the conversion operation, and the intent of the request
+// it sent, which differs from the one asked for when an earlier request that
+// GCE may have accepted is being replayed.
+//
+// The caller decides what a failure means for the operation it is serving, and
+// is responsible for the checks that depend on that context, such as whether the
+// disk is still attached.
+func (gceCS *GCEControllerServer) startDiskTypeConversion(ctx context.Context, project string, volKey *meta.Key, pvName string, currentDiskType, targetDiskType string, params parameters.ModifyVolumeParameters) (string, string, error) {
+	klog.V(4).Infof("Converting disk %s from %s to %s", volKey.Name, currentDiskType, targetDiskType)
+
+	kubeClient, err := k8sclient.GetClient()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get Kubernetes client before converting disk %s: %w", volKey.Name, err)
+	}
+
+	// The PV is the durable source of truth. Before calling GCE, the Pending
+	// marker, the request and its stable GCE request ID are persisted in one
+	// resource-version-checked update. A concurrent writer either loses that
+	// update, in which case the decision is made again against the PV it wrote,
+	// or observes the request ID and replays the same request.
+	var requestID string
+	activeOperation := ""
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to read PersistentVolume %s before converting disk %s: %w", pvName, volKey.Name, err)
+		}
+		if current := pv.Annotations[constants.DiskTypeConversionOperationKey]; current != "" && current != "null" && current != constants.ConversionStatePending && current != constants.ConversionStateReconciling {
+			// A durable operation URL is authoritative. Reattach a watcher after
+			// a restart instead of sending another conversion request.
+			activeOperation = current
+			return nil
+		}
+		if pv.Annotations == nil {
+			pv.Annotations = map[string]string{}
+		}
+		requestID = pv.Annotations[constants.DiskTypeConversionRequestIDKey]
+		if requestID != "" {
+			// Pending plus a request ID means GCE may already have accepted this
+			// exact request. Replay it before considering a newer VAC.
+			storedTarget := pv.Annotations[constants.DiskTypeConversionTargetKey]
+			if storedTarget == "" {
+				return status.Errorf(codes.Unavailable, "disk %s has a conversion request ID but no recorded target", volKey.Name)
+			}
+			targetDiskType = storedTarget
+			if source := pv.Annotations[constants.DiskTypeConversionSourceKey]; source != "" {
+				currentDiskType = source
+			}
+			if params.IOPS, err = recordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestIopsKey); err != nil {
+				return status.Errorf(codes.Unavailable, "disk %s has invalid recorded conversion IOPS: %v", volKey.Name, err)
+			}
+			if params.Throughput, err = recordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestThroughputKey); err != nil {
+				return status.Errorf(codes.Unavailable, "disk %s has invalid recorded conversion throughput: %v", volKey.Name, err)
+			}
+		} else {
+			requestID = string(uuid.NewUUID())
+		}
+		pv.Annotations[constants.DiskTypeConversionSourceKey] = currentDiskType
+		pv.Annotations[constants.DiskTypeConversionOperationKey] = constants.ConversionStatePending
+		delete(pv.Annotations, constants.DiskTypeConversionReconciliationIDKey)
+		pv.Annotations[constants.DiskTypeConversionRequestIDKey] = requestID
+		pv.Annotations[constants.DiskTypeConversionTargetKey] = targetDiskType
+		setRecordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestIopsKey, params.IOPS)
+		setRecordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestThroughputKey, params.Throughput)
+		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to durably prepare conversion of disk %s: %w", volKey.Name, err)
+	}
+	if activeOperation != "" {
+		gceCS.watchConversion(project, volKey, pvName, activeOperation)
+		return "", "", status.Errorf(codes.Unavailable, "disk %s is already being converted by operation %s", volKey.Name, activeOperation)
+	}
+	intent := conversionIntent(targetDiskType, params.IOPS, params.Throughput)
+
+	operation, err := gceCS.CloudProvider.ConvertDiskType(ctx, project, volKey, targetDiskType, requestID, params.IOPS, params.Throughput)
+	if err != nil {
+		klog.Errorf("Failed to convert disk %s from %s to %s: %v", volKey.Name, currentDiskType, targetDiskType, err)
+		if isUnsupportedConversionIntentError(err) {
+			if cleanupErr := gceCS.clearRejectedConversionRequest(ctx, volKey, pvName, requestID); cleanupErr != nil {
+				return "", intent, fmt.Errorf("conversion was rejected but its request state could not be cleared: %w", cleanupErr)
+			}
+		}
+		return "", intent, err
+	}
+	if operation == "" || operation == "null" {
+		return "", intent, fmt.Errorf("GCE accepted conversion of disk %s without returning an operation reference", volKey.Name)
+	}
+
+	// The operation self link identifies this conversion for as long as it runs.
+	// It is what a user inspects to track the conversion, and what tells any
+	// later call, including one made by a restarted driver, that the volume is
+	// still being converted. A conversion the API accepted also clears any
+	// record of an earlier request it could not act on.
+	//
+	// The requested IOPS and throughput stay recorded until the conversion
+	// ends, so that a conversion which fails for good can be recorded against
+	// the request that produced it.
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{
+			constants.DiskTypeConversionOperationKey: {Value: constants.ConversionStatePending, Exists: true},
+			constants.DiskTypeConversionRequestIDKey: {Value: requestID, Exists: true},
+		},
+		map[string]string{constants.DiskTypeConversionOperationKey: operation},
+		[]string{
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionReconciliationIDKey,
+			constants.DiskTypeConversionInfeasibleKey,
+			constants.DiskTypeConversionInfeasibleIntentKey,
+		},
+	); err != nil {
+		klog.Errorf("Started conversion operation %s for disk %s but failed to record it: %v", operation, volKey.Name, err)
+		gceCS.watchConversionWithRequestID(project, volKey, pvName, operation, requestID)
+		return operation, intent, fmt.Errorf("conversion operation %s started but its state could not be recorded: %w", operation, err)
+	}
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeNormal, constants.DiskTypeConversionStartReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion started for volume %q from %s to %s", volKey.Name, currentDiskType, targetDiskType))
+
+	// Follow the conversion so that its completion is recorded when it happens
+	// rather than at the next operation on the volume. This is an optimisation:
+	// losing the watcher costs promptness, not correctness.
+	gceCS.watchConversion(project, volKey, pvName, operation)
+
+	return operation, intent, nil
+}
+
+// clearRejectedConversionRequest forgets a conversion request GCE rejected, so
+// that it is not replayed. The volume stays Pending for whoever records why.
+func (gceCS *GCEControllerServer) clearRejectedConversionRequest(ctx context.Context, volKey *meta.Key, pvName string, requestID string) error {
+	return k8sclient.UpdatePVAnnotations(ctx, pvName, map[string]k8sclient.PVAnnotationCondition{
+		constants.DiskTypeConversionOperationKey: {Value: constants.ConversionStatePending, Exists: true},
+		constants.DiskTypeConversionRequestIDKey: {Value: requestID, Exists: true},
+	}, nil, []string{
+		constants.DiskTypeConversionRequestIDKey,
+		constants.DiskTypeConversionRequestIopsKey,
+		constants.DiskTypeConversionRequestThroughputKey,
+		constants.DiskTypeConversionSourceKey,
+	})
+}
+
+// conversionPollBackoff paces the checks on a running conversion. Conversions
+// take from minutes to hours, so the interval grows to a cap rather than
+// polling at a fixed rate, and is capped so that a conversion which finishes
+// early is still noticed promptly.
+var conversionPollBackoff = wait.Backoff{
+	Duration: 10 * time.Second,
+	Factor:   1.5,
+	Jitter:   0.1,
+	Cap:      2 * time.Minute,
+	Steps:    math.MaxInt32,
+}
+
+// conversionLockBackoff paces background conversion work waiting for a volume
+// lock held by a controller call. Those calls finish in seconds, so the first
+// retries are quick, and the interval then grows so that a volume busy for
+// longer is not polled needlessly.
+var conversionLockBackoff = wait.Backoff{
+	Duration: 100 * time.Millisecond,
+	Factor:   2,
+	Jitter:   0.2,
+	Cap:      5 * time.Second,
+	Steps:    math.MaxInt32,
+}
+
+// conversionReconcileTimeout bounds each piece of background conversion work
+// that talks to the API server or GCE, so that an unreachable server cannot
+// hold a volume lock indefinitely. Work that times out is picked up again
+// from the state on the PersistentVolume.
+const conversionReconcileTimeout = 2 * time.Minute
+
+// conversionContext returns the parent context for background conversion
+// work. It is cancelled by StopConversionWorkers.
+func (gceCS *GCEControllerServer) conversionContext() context.Context {
+	gceCS.conversionCtxOnce.Do(func() {
+		gceCS.conversionCtx, gceCS.stopConversionCtx = context.WithCancel(context.Background())
+	})
+	return gceCS.conversionCtx
+}
+
+// StopConversionWorkers cancels the background conversion work and waits up
+// to timeout for it to stop, reporting whether it did. It is called on
+// shutdown, after the gRPC server has stopped taking requests, so that no new
+// work is started while it waits. Work that is interrupted resumes from the
+// state on the PersistentVolume when the next driver instance sees the
+// volume.
+func (gceCS *GCEControllerServer) StopConversionWorkers(timeout time.Duration) bool {
+	gceCS.conversionContext()
+	gceCS.stopConversionCtx()
+
+	done := make(chan struct{})
+	go func() {
+		gceCS.conversionWorkers.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// finishConversionReconciliation clears the marker that keeps a converted
+// volume blocked, and then applies the latest VolumeAttributesClass. The caller
+// holds the exclusive volume lock, so nothing can attach the volume between
+// the two.
+//
+// The marker is cleared first because the rest is not worth keeping the volume
+// unusable for. IOPS and throughput are online changes, and the
+// external-resizer retries ModifyVolume until they are applied. A class that
+// changed type during the conversion queues or starts another conversion, and
+// if that fails the ModifyVolume retry queues it again. Clearing last instead
+// would leave the volume unattachable for as long as any of that kept failing.
+func (gceCS *GCEControllerServer) finishConversionReconciliation(project string, volKey *meta.Key, pvName string, disk *gce.CloudDisk, reconciliationID string) bool {
+	ctx, cancel := context.WithTimeout(gceCS.conversionContext(), conversionReconcileTimeout)
+	defer cancel()
+	if err := gceCS.clearConversionReconciliation(ctx, volKey, pvName, disk.GetPDType(), reconciliationID); err != nil {
+		klog.Warningf("Could not clear completed reconciliation state for volume %s; it remains blocked for retry: %v", volKey.Name, err)
+		return false
+	}
+	if err := gceCS.reconcileLatestVACAfterConversion(ctx, project, volKey, pvName, disk); err != nil {
+		klog.Warningf("Could not act on the VolumeAttributesClass of volume %s after its conversion, ModifyVolume retries will: %v", volKey.Name, err)
+	}
+	return true
+}
+
+// conversionOperationName extracts the operation name from the value recorded in
+// the conversion annotation, which is normally a self link.
+func conversionOperationName(operation string) string {
+	if operation == "" || operation == constants.ConversionStatePending {
+		return ""
+	}
+	return path.Base(operation)
+}
+
+// watchConversion follows a running conversion in the background and records the
+// outcome when it finishes.
+//
+// This is only a way to notice a conversion promptly, never the record of one.
+// The state that matters is on the PersistentVolume, so a conversion whose
+// watcher is lost to a restart is still completed correctly by the next attach
+// or expand. That is why nothing here fails an operation.
+// Recreate a watcher from an active PV operation URL after restart.
+func (gceCS *GCEControllerServer) watchConversion(project string, volKey *meta.Key, pvName string, operation string) {
+	gceCS.watchConversionWithRequestID(project, volKey, pvName, operation, "")
+}
+
+func (gceCS *GCEControllerServer) watchConversionWithRequestID(project string, volKey *meta.Key, pvName string, operation, requestID string) {
+	opName := conversionOperationName(operation)
+	if opName == "" {
+		return
+	}
+
+	gceCS.conversionWatchersLock.Lock()
+	if existing, ok := gceCS.conversionWatchers[volKey.String()]; ok && existing.opName == opName && existing.requestID == requestID {
+		gceCS.conversionWatchersLock.Unlock()
+		return
+	}
+	if gceCS.conversionContext().Err() != nil {
+		// The driver is shutting down; the operation recorded on the
+		// PersistentVolume lets the next driver instance follow it.
+		gceCS.conversionWatchersLock.Unlock()
+		return
+	}
+	if gceCS.conversionWatchers == nil {
+		gceCS.conversionWatchers = map[string]*conversionWatcher{}
+	}
+	if previous, ok := gceCS.conversionWatchers[volKey.String()]; ok {
+		previous.cancel()
+	}
+	// The request that started the conversion is finished long before the
+	// conversion is, so the watcher gets a context that outlives it and is
+	// cancelled explicitly instead.
+	ctx, cancel := context.WithCancel(gceCS.conversionContext())
+	watcher := &conversionWatcher{
+		cancel:    cancel,
+		opName:    opName,
+		requestID: requestID,
+	}
+	gceCS.conversionWatchers[volKey.String()] = watcher
+
+	// Counted alongside the conversions started on detach, so a caller can wait
+	// for all the background work. A cancelled watcher leaves the registry at
+	// once but stops a moment later, so the registry alone does not say when the
+	// goroutine has finished.
+	gceCS.conversionWorkers.Add(1)
+	gceCS.conversionWatchersLock.Unlock()
+	go func() {
+		defer gceCS.conversionWorkers.Done()
+		defer gceCS.unregisterConversionWatcher(volKey, watcher)
+		gceCS.pollConversion(ctx, project, volKey, pvName, operation, opName, requestID)
+	}()
+}
+
+// conversionWatcher is a running watcher, identified by its own pointer so that
+// a watcher which has been replaced cannot deregister its replacement.
+type conversionWatcher struct {
+	cancel    context.CancelFunc
+	opName    string // Track which operation this watcher is following
+	requestID string // Used to recover if the operation URL could not be recorded
+}
+
+// unregisterConversionWatcher removes a watcher, but only if it is still the
+// registered one. A watcher that has been replaced must not remove the watcher
+// that replaced it, which it would otherwise do on its way out.
+func (gceCS *GCEControllerServer) unregisterConversionWatcher(volKey *meta.Key, watcher *conversionWatcher) {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if current, ok := gceCS.conversionWatchers[volKey.String()]; ok && current == watcher {
+		delete(gceCS.conversionWatchers, volKey.String())
+	}
+}
+
+// acquireConversionVolumeLock waits for an in-flight controller operation on
+// this volume to finish before background conversion work mutates it.
+func (gceCS *GCEControllerServer) acquireConversionVolumeLock(ctx context.Context, project string, volKey *meta.Key) (string, bool) {
+	volumeID, err := common.KeyToVolumeID(volKey, project)
+	if err != nil {
+		klog.Errorf("Could not make a volume ID for disk %s before conversion: %v", volKey.Name, err)
+		return "", false
+	}
+	delay := conversionLockBackoff.DelayFunc()
+	for !gceCS.volumeLocks.TryAcquire(volumeID) {
+		select {
+		case <-ctx.Done():
+			return volumeID, false
+		case <-time.After(delay()):
+		}
+	}
+	return volumeID, true
+}
+
+// stopConversionWatcher stops following a volume's conversion. It is called when
+// the volume is deleted, so that a watcher does not outlive the disk it is
+// polling.
+func (gceCS *GCEControllerServer) stopConversionWatcher(volKey *meta.Key) {
+	gceCS.conversionWatchersLock.Lock()
+	defer gceCS.conversionWatchersLock.Unlock()
+
+	if watcher, ok := gceCS.conversionWatchers[volKey.String()]; ok {
+		klog.V(4).Infof("Stopping the disk type conversion watcher for volume %s", volKey.Name)
+		watcher.cancel()
+		delete(gceCS.conversionWatchers, volKey.String())
+	}
+}
+
+// pollConversion checks a conversion until it finishes, the volume stops needing
+// it, or the watcher is cancelled.
+func (gceCS *GCEControllerServer) pollConversion(ctx context.Context, project string, volKey *meta.Key, pvName string, operation, opName, requestID string) {
+	klog.V(4).Infof("Watching disk type conversion %s of volume %s", opName, volKey.Name)
+	backoff := conversionPollBackoff
+	if gceCS.conversionPollBackoffOverride.Duration > 0 {
+		backoff = gceCS.conversionPollBackoffOverride
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			klog.V(4).Infof("Stopped watching disk type conversion %s of volume %s", opName, volKey.Name)
+			return
+		case <-time.After(backoff.Step()):
+		}
+
+		done, err := gceCS.CloudProvider.IsConvertOperationDone(ctx, project, volKey.Zone, opName)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if done {
+				// The conversion ran and failed. A failure the target
+				// configuration can never recover from is terminal, so the
+				// state is cleared and the volume released. Any other failure,
+				// including one that carries no recognised reason, is retriable:
+				// the volume goes back to waiting for a conversion, which keeps
+				// it blocked and starts a new conversion on the next attempt.
+				klog.Errorf("Disk type conversion %s of volume %s failed: %v", opName, volKey.Name, err)
+				if gceCS.finishFailedWatchedConversion(ctx, project, volKey, pvName, operation, requestID, err) {
+					return
+				}
+				continue
+			}
+			// The operation could not be read. Keep watching, because the
+			// conversion itself is unaffected by a failure to look at it.
+			klog.Warningf("Could not check disk type conversion %s of volume %s, still watching: %v", opName, volKey.Name, err)
+			continue
+		}
+		if !done {
+			continue
+		}
+
+		if gceCS.finishWatchedConversion(ctx, project, volKey, pvName, operation, requestID) {
+			return
+		}
+	}
+}
+
+func (gceCS *GCEControllerServer) finishFailedWatchedConversion(ctx context.Context, project string, volKey *meta.Key, pvName string, operation, requestID string, conversionErr error) bool {
+	volumeID, acquired := gceCS.acquireConversionVolumeLock(ctx, project, volKey)
+	if !acquired {
+		return ctx.Err() != nil
+	}
+	defer gceCS.volumeLocks.Release(volumeID)
+	ctx, cancel := context.WithTimeout(ctx, conversionReconcileTimeout)
+	defer cancel()
+
+	recorded, err := gceCS.ensureWatchedOperationRecorded(ctx, volKey, pvName, operation, requestID)
+	if err != nil {
+		klog.Warningf("Could not recover operation URL %s for failed conversion of volume %s; still watching: %v", operation, volKey.Name, err)
+		return false
+	}
+	if !recorded {
+		return true
+	}
+	if isUnsupportedConversionIntentError(conversionErr) {
+		if err := gceCS.recordFailedConversion(ctx, volKey, pvName, operation, conversionErr); err != nil {
+			klog.Warningf("Could not record failed conversion of volume %s; still watching: %v", volKey.Name, err)
+			return false
+		}
+		return true
+	}
+	if err := gceCS.requeueFailedConversion(ctx, volKey, pvName, operation, conversionErr); err != nil {
+		klog.Warningf("Could not requeue failed conversion of volume %s; still watching: %v", volKey.Name, err)
+		return false
+	}
+	return true
+}
+
+// finishWatchedConversion reconciles a completed conversion while holding the
+// exclusive volume lock. That keeps attach and resize from slipping between
+// clearing the completed operation and queuing or starting a newer conversion.
+// It returns false on transient errors so the poller can retry.
+func (gceCS *GCEControllerServer) finishWatchedConversion(ctx context.Context, project string, volKey *meta.Key, pvName string, operation, requestID string) bool {
+	volumeID, acquired := gceCS.acquireConversionVolumeLock(ctx, project, volKey)
+	if !acquired {
+		return ctx.Err() != nil
+	}
+	defer gceCS.volumeLocks.Release(volumeID)
+	ctx, cancel := context.WithTimeout(ctx, conversionReconcileTimeout)
+	defer cancel()
+
+	recorded, err := gceCS.ensureWatchedOperationRecorded(ctx, volKey, pvName, operation, requestID)
+	if err != nil {
+		klog.Warningf("Could not read or recover conversion state for completed operation %s of volume %s: %v", operation, volKey.Name, err)
+		return false
+	}
+	if !recorded {
+		return true
+	}
+	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+	if err != nil {
+		// Keep the watcher alive so it retries the disk read next poll.
+		klog.Warningf("Disk type conversion %s of volume %s finished but the disk could not be read; still watching: %v", conversionOperationName(operation), volKey.Name, err)
+		return false
+	}
+	if err := gceCS.recordCompletedConversion(ctx, volKey, pvName, operation, disk.GetPDType()); err != nil {
+		// Wait for durable completion state before reconciliation;
+		// the poller retries this path on its next tick.
+		klog.Warningf("Failed to record the completed conversion of volume %s; still watching: %v", volKey.Name, err)
+		return false
+	}
+
+	// recordCompletedConversion cancels this watcher's context, so reconciliation
+	// gets its own while the volume lock remains held. If the marker cannot be
+	// cleared, the next attach or modification resumes the reconciliation.
+	gceCS.finishConversionReconciliation(project, volKey, pvName, disk, operation)
+	return true
+}
+
+// ensureWatchedOperationRecorded restores the operation URL if a conversion
+// was accepted by GCE but only Pending plus its request ID made it to the PV.
+// The stable request ID proves ownership of that Pending marker.
+func (gceCS *GCEControllerServer) ensureWatchedOperationRecorded(ctx context.Context, volKey *meta.Key, pvName string, operation, requestID string) (bool, error) {
+	current, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		return false, err
+	}
+	if exists && current == operation {
+		return true, nil
+	}
+	if !exists || current != constants.ConversionStatePending || requestID == "" {
+		return false, nil
+	}
+	storedRequestID, requestIDExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+	if err != nil {
+		return false, err
+	}
+	if !requestIDExists || storedRequestID != requestID {
+		return false, nil
+	}
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{
+			constants.DiskTypeConversionOperationKey: {Value: constants.ConversionStatePending, Exists: true},
+			constants.DiskTypeConversionRequestIDKey: {Value: requestID, Exists: true},
+		},
+		map[string]string{constants.DiskTypeConversionOperationKey: operation},
+		[]string{
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionReconciliationIDKey,
+		},
+	); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// requeueFailedConversion puts a volume back to waiting for a conversion, after
+// one that ran and failed for a reason that can clear on its own or be cleared
+// by the user.
+//
+// The volume keeps the pending state, so it stays blocked and the conversion is
+// attempted again, and the failure is kept so that the next attempt can report
+// it on the claim rather than leaving it visible only as an event.
+func (gceCS *GCEControllerServer) requeueFailedConversion(ctx context.Context, volKey *meta.Key, pvName string, operation string, conversionErr error) error {
+	currentOp, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		klog.Errorf("Failed to read the conversion state of volume %s before requeueing: %v", volKey.Name, err)
+		return err
+	}
+	if !exists || currentOp != operation {
+		klog.V(4).Infof("Not requeueing failed conversion %s of volume %s, the volume is now on %q", operation, volKey.Name, currentOp)
+		return nil
+	}
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{constants.DiskTypeConversionOperationKey: {Value: operation, Exists: true}},
+		map[string]string{constants.DiskTypeConversionOperationKey: constants.ConversionStatePending, constants.DiskTypeConversionLastErrorKey: conversionErr.Error()},
+		[]string{
+			constants.DiskTypeConversionSourceKey,
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionRequestIopsKey,
+			constants.DiskTypeConversionRequestThroughputKey,
+			constants.DiskTypeConversionReconciliationIDKey,
+		},
+	); err != nil {
+		klog.Errorf("Failed to put volume %s back to waiting for conversion after its conversion failed, it will not be retried until this succeeds: %v", volKey.Name, err)
+		return err
+	}
+
+	message := fmt.Sprintf("Disk type conversion of volume %q failed and will be retried: %v", volKey.Name, conversionErr)
+	if reason := conversionRetryReason(conversionErr); reason != "" {
+		message = fmt.Sprintf("Disk type conversion of volume %q failed and will be retried: %s: %v", volKey.Name, reason, conversionErr)
+	}
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionRetryReason, constants.DiskTypeConversionAction, message)
+	return nil
+}
+
+// recordFailedConversion clears the state of a conversion that ran and failed,
+// so that the volume is usable and the modification can be attempted again.
+func (gceCS *GCEControllerServer) recordFailedConversion(ctx context.Context, volKey *meta.Key, pvName string, operation string, conversionErr error) error {
+	// A conversion that is no longer the one recorded on the volume has been
+	// superseded, so its failure is not written: clearing the state here would
+	// release a volume whose newer conversion is still running.
+	currentOp, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		klog.Errorf("Failed to read the conversion state of volume %s: %v", volKey.Name, err)
+		return err
+	}
+	if !exists || (operation != "" && currentOp != operation) {
+		klog.V(4).Infof("Not recording the failure of conversion %s of volume %s, the volume is now on %q", operation, volKey.Name, currentOp)
+		return nil
+	}
+
+	pv, err := k8sclient.GetPersistentVolumeWithRetry(ctx, pvName)
+	if err != nil {
+		klog.Errorf("Failed to read the request of the failed conversion of volume %s: %v", volKey.Name, err)
+		return err
+	}
+	// Record the terminal failure against the request that produced it, so that
+	// retries of the same request are answered without calling GCE again.
+	set := map[string]string{}
+	if target := pv.Annotations[constants.DiskTypeConversionTargetKey]; target != "" {
+		iops, iopsErr := recordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestIopsKey)
+		throughput, throughputErr := recordedConversionValue(pv.Annotations, constants.DiskTypeConversionRequestThroughputKey)
+		if iopsErr == nil && throughputErr == nil {
+			set[constants.DiskTypeConversionInfeasibleKey] = conversionErr.Error()
+			set[constants.DiskTypeConversionInfeasibleIntentKey] = conversionIntent(target, iops, throughput)
+		}
+	}
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{constants.DiskTypeConversionOperationKey: {Value: operation, Exists: true}},
+		set,
+		[]string{
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionRequestIopsKey,
+			constants.DiskTypeConversionRequestThroughputKey,
+			constants.DiskTypeConversionSourceKey,
+			constants.DiskTypeConversionTargetKey,
+			constants.DiskTypeConversionReconciliationIDKey,
+			constants.DiskTypeConversionOperationKey,
+		},
+	); err != nil {
+		klog.Errorf("Failed to clear the conversion state of volume %s after it failed, operations on it stay blocked until this succeeds: %v", volKey.Name, err)
+		return err
+	}
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionFailedReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion of volume %q failed: %v", volKey.Name, conversionErr))
+	return nil
+}
+
+// unsupportedConversionReason describes why a disk can never be converted, or
+// returns the empty string for one that can be. These are properties of the disk
+// rather than of the requested target, so they are worth answering before
+// calling the API, which would only reject the request anyway.
+func unsupportedConversionReason(volKey *meta.Key, disk *gce.CloudDisk) string {
+	// Regional disks have no conversion API.
+	if volKey.Type() != meta.Zonal {
+		return "disk type conversion is not supported for regional disks"
+	}
+	if disk == nil {
+		return ""
+	}
+	// A disk that more than one node can write to cannot be taken away and
+	// rebuilt the way a conversion needs to.
+	if disk.GetMultiWriter() || disk.GetAccessMode() == constants.GCEReadWriteManyAccessMode {
+		return "disk type conversion is not supported for multi-writer disks"
+	}
+	return ""
+}
+
+// completeConversionIfInProgress records a finished disk type conversion, for a
+// volume whose disk already reports the type its VolumeAttributesClass asks for.
+//
+// A matching type on its own does not mean a conversion happened: applying a
+// VolumeAttributesClass that names the type a disk was created with is an
+// IOPS and throughput update, and must not leave the volume claiming it was
+// migrated. The conversion annotation, written when the conversion started, is
+// what tells the two apart.
+func (gceCS *GCEControllerServer) completeConversionIfInProgress(ctx context.Context, project string, volKey *meta.Key, pvName string, volumeID string, diskType string) error {
+	operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		// Clearing the annotation is what unblocks attaches, so a volume whose
+		// state could not be read must be retried rather than reported modified.
+		klog.Errorf("Could not read the disk type conversion state of volume %s: %v", volumeID, err)
+		return status.Errorf(codes.Unavailable, "cannot complete the modification of volume %s: could not determine whether a disk type conversion is in progress: %v", volumeID, err)
+	}
+	if !exists || operation == "" || operation == "null" {
+		// No conversion was ever started for this volume.
+		return nil
+	}
+
+	// A conversion that was only ever queued never ran, so the disk having the
+	// requested type means the volume no longer needs one, not that one happened.
+	// Recording it as converted would claim a migration that never took place.
+	if operation == constants.ConversionStatePending {
+		requestID, requestExists, requestErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+		if requestErr != nil {
+			return status.Errorf(codes.Unavailable, "cannot determine whether conversion of volume %s was accepted: %v", volumeID, requestErr)
+		}
+		if requestExists && requestID != "" {
+			gceCS.startQueuedConversion(ctx, project, volKey, pvName)
+			return status.Errorf(codes.Unavailable, "conversion of volume %s was accepted and is being recovered", volumeID)
+		}
+		klog.V(4).Infof("Volume %s is already %s, dropping its queued disk type conversion", volumeID, diskType)
+		if err := gceCS.cancelQueuedConversion(ctx, volKey, pvName, "the disk already has the requested type"); err != nil {
+			klog.Errorf("Failed to clear the queued conversion of volume %s, attaches stay blocked until this succeeds: %v", volumeID, err)
+			return status.Errorf(codes.Unavailable, "cannot complete the modification of volume %s: could not clear its queued conversion: %v", volumeID, err)
+		}
+		return nil
+	}
+	if operation == constants.ConversionStateReconciling {
+		gceCS.startConversionReconciliation(project, volKey, pvName)
+		return status.Errorf(codes.Unavailable, "disk type conversion of volume %s is still being reconciled", volumeID)
+	}
+
+	// The operation URL is authoritative. The disk can report its new type
+	// before the long-running operation is fully complete, so restore a watcher
+	// after restart and leave the volume blocked until the operation is polled.
+	gceCS.watchConversion(project, volKey, pvName, operation)
+	return status.Errorf(codes.Unavailable, "disk type conversion of volume %s is still being reconciled (%s)", volumeID, operation)
+}
+
+// checkNoConversionInProgress returns an error if a disk type conversion is
+// running or queued for a volume, to keep operations that are unsafe during a
+// conversion from starting. The operation name is only used in messages.
+//
+// A conversion that has already finished does not block anything. Because the
+// driver is only called on volume lifecycle events, nothing is guaranteed to be
+// watching a conversion when it completes, so this doubles as the point where a
+// conversion nobody saw finish is noticed and recorded. Without that, a driver
+// restart during a conversion would leave the volume unattachable for good.
+// disk may be nil, which only costs the completion check.
+//
+// This fails closed: if the conversion state cannot be read, the operation is
+// rejected rather than allowed. Wrongly rejecting delays a pod, while wrongly
+// allowing can corrupt the volume the conversion is rebuilding. The returned
+// error is retryable, so the caller's sidecar tries again once the API server
+// is reachable.
+func (gceCS *GCEControllerServer) checkNoConversionInProgress(ctx context.Context, project string, volKey *meta.Key, disk *gce.CloudDisk, operation string) error {
+	// Without the feature there is nothing that could set the annotation, so
+	// clusters not converting disks keep their existing behaviour.
+	if !gceCS.EnableDiskTypeConversion {
+		return nil
+	}
+
+	pvName, found, err := gceCS.conversionPVName(ctx, project, volKey)
+	if err != nil {
+		klog.Errorf("Refusing to %s disk %s: could not find its PersistentVolume to read its disk type conversion state: %v", operation, volKey.Name, err)
+		return status.Errorf(codes.Unavailable, "cannot %s disk %s: could not determine whether a disk type conversion is in progress: %v", operation, volKey.Name, err)
+	}
+	if !found {
+		// Conversion state is only ever recorded on a PersistentVolume, so a
+		// disk without one cannot be converting.
+		return nil
+	}
+
+	opVal, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		klog.Errorf("Refusing to %s disk %s: could not read its disk type conversion state: %v", operation, volKey.Name, err)
+		return status.Errorf(codes.Unavailable, "cannot %s disk %s: could not determine whether a disk type conversion is in progress: %v", operation, volKey.Name, err)
+	}
+	if !exists || opVal == "" || opVal == "null" {
+		return nil
+	}
+	if opVal == constants.ConversionStateReconciling {
+		gceCS.startConversionReconciliation(project, volKey, pvName)
+		return status.Errorf(codes.Unavailable, "cannot %s disk %s: post-conversion reconciliation is still in progress", operation, volKey.Name)
+	}
+
+	// A conversion that never started cannot have finished, but it can have
+	// been abandoned: the detach that would run it may never come, so this is
+	// also checked here rather than only when the volume finally detaches.
+	if opVal == constants.ConversionStatePending {
+		requestID, requestExists, requestErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+		if requestErr != nil {
+			return status.Errorf(codes.Unavailable, "cannot determine whether queued conversion of disk %s was accepted: %v", volKey.Name, requestErr)
+		}
+		if requestExists && requestID != "" {
+			if disk == nil || len(disk.GetUsers()) == 0 {
+				gceCS.startQueuedConversion(ctx, project, volKey, pvName)
+			}
+			return status.Errorf(codes.Unavailable, "cannot %s disk %s: an accepted conversion request is being recovered", operation, volKey.Name)
+		}
+		params, cancelReason, infeasible, err := gceCS.queuedConversionOutcome(ctx, volKey, pvName, disk)
+		if err != nil {
+			klog.Errorf("Refusing to %s disk %s: could not tell whether its queued disk type conversion is still requested: %v", operation, volKey.Name, err)
+			return status.Errorf(codes.Unavailable, "cannot %s disk %s: could not determine whether the queued disk type conversion is still requested: %v", operation, volKey.Name, err)
+		}
+		if cancelReason != "" {
+			klog.V(4).Infof("Disk %s has a queued disk type conversion that is no longer requested, unblocking the %s: %s", volKey.Name, operation, cancelReason)
+			var err error
+			if infeasible {
+				gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name, cancelReason, classConversionIntent(params))
+				finalOperation, finalExists, finalErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+				if finalErr != nil {
+					return status.Errorf(codes.Unavailable, "cannot safely %s disk %s after withdrawing an infeasible conversion: %v", operation, volKey.Name, finalErr)
+				}
+				if finalExists && finalOperation != "" && finalOperation != "null" {
+					return status.Errorf(codes.Unavailable, "cannot safely %s disk %s because conversion state remains %q", operation, volKey.Name, finalOperation)
+				}
+				return nil
+			}
+			err = gceCS.cancelQueuedConversion(ctx, volKey, pvName, cancelReason)
+			if err != nil {
+				return status.Errorf(codes.Unavailable, "cannot cancel queued conversion of disk %s: %v", volKey.Name, err)
+			}
+			return nil
+		}
+	} else {
+		// The URL is the durable source of truth across restarts. Starting a
+		// watcher here restores prompt tracking; the caller stays blocked until
+		// that watcher polls the operation and reconciles the latest VAC.
+		gceCS.watchConversion(project, volKey, pvName, opVal)
+	}
+
+	klog.Errorf("Refusing to %s disk %s: disk type conversion is in progress: %s", operation, volKey.Name, opVal)
+	return status.Errorf(codes.Unavailable, "cannot %s disk %s: a disk type conversion is in progress (%s)", operation, volKey.Name, opVal)
+}
+
+// queuedConversionOutcome reports whether a queued (Pending) disk type
+// conversion is still requested by the volume's current
+// VolumeAttributesClass. A non-empty cancelReason means the conversion
+// should be abandoned rather than run; params is only meaningful when
+// cancelReason is empty and err is nil, in which case params.DiskType is
+// guaranteed to be set.
+//
+// disk may be nil, in which case the disk's current type cannot be checked
+// against the class and the conversion is treated as still wanted rather
+// than cancelled without proof.
+func (gceCS *GCEControllerServer) queuedConversionOutcome(ctx context.Context, volKey *meta.Key, pvName string, disk *gce.CloudDisk) (params parameters.ModifyVolumeParameters, cancelReason string, infeasible bool, err error) {
+	parameterMap, exists, err := k8sclient.GetVolumeAttributesClassForPV(ctx, pvName)
+	if err != nil {
+		return parameters.ModifyVolumeParameters{}, "", false, err
+	}
+	if !exists {
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass was removed", false, nil
+	}
+
+	extracted, err := parameters.ExtractModifyVolumeParameters(parameterMap)
+	if err != nil {
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err), true, nil
+	}
+	if extracted.DiskType == nil {
+		return parameters.ModifyVolumeParameters{}, "its VolumeAttributesClass no longer asks for a disk type", false, nil
+	}
+	if disk != nil && disk.GetPDType() == *extracted.DiskType {
+		return parameters.ModifyVolumeParameters{}, fmt.Sprintf("it is already %s", disk.GetPDType()), false, nil
+	}
+	if reason := gceCS.unconvertibleToTargetReason(volKey, disk, *extracted.DiskType, extracted); reason != "" {
+		return extracted, reason, true, nil
+	}
+	return extracted, "", false, nil
+}
+
+// unconvertibleToTargetReason describes why a volume can never be converted to
+// the type its VolumeAttributesClass asks for, or returns the empty string when
+// nothing rules the conversion out. A conversion ruled out here will not happen
+// however long the volume waits, so the volume is released rather than left
+// waiting for a conversion that cannot run.
+func (gceCS *GCEControllerServer) unconvertibleToTargetReason(volKey *meta.Key, disk *gce.CloudDisk, targetDiskType string, params parameters.ModifyVolumeParameters) string {
+	if reason := unsupportedConversionReason(volKey, disk); reason != "" {
+		return reason
+	}
+	if params.IOPS != nil && !gceCS.diskSupportsIopsChange(targetDiskType) {
+		return fmt.Sprintf("IOPS cannot be specified for disk type %s", targetDiskType)
+	}
+	if params.Throughput != nil && !gceCS.diskSupportsThroughputChange(targetDiskType) {
+		return fmt.Sprintf("throughput cannot be specified for disk type %s", targetDiskType)
+	}
+	return ""
+}
+
+// recordCompletedConversion writes the outcome of a finished conversion and
+// clears the state that blocks operations on the volume.
+// The operation parameter must match the current annotation to prevent stale
+// watchers from clearing newer conversions.
+func (gceCS *GCEControllerServer) recordCompletedConversion(ctx context.Context, volKey *meta.Key, pvName string, operation, diskType string) error {
+	// A conversion that is no longer the one recorded on the volume has been
+	// superseded, so its outcome is not written: clearing the state here would
+	// release a volume whose newer conversion is still running.
+	currentOperation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		klog.Errorf("Failed to read the conversion state of volume %s: %v", volKey.Name, err)
+		return err
+	}
+	if !exists || currentOperation != operation {
+		klog.V(4).Infof("Not recording conversion %s of volume %s, the volume is now on %q", operation, volKey.Name, currentOperation)
+		return nil
+	}
+	// The type the disk had when the conversion was requested only becomes the
+	// converted-from record now that the conversion has happened.
+	set := map[string]string{
+		constants.DiskTypeConvertedToKey:                diskType,
+		constants.DiskTypeConversionOperationKey:        constants.ConversionStateReconciling,
+		constants.DiskTypeConversionReconciliationIDKey: operation,
+	}
+	source, sourceExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionSourceKey)
+	if err != nil {
+		klog.Errorf("Failed to read the original type of converted volume %s: %v", volKey.Name, err)
+		return err
+	}
+	if sourceExists && source != "" {
+		set[constants.DiskTypeConvertedFromKey] = source
+	}
+	// Keep the volume blocked until the latest VAC is reconciled, and
+	// bind this marker to the completed URL so stale workers cannot clear newer work.
+	// Replace the active operation URL with a durable reconciliation marker.
+	// Attach and modification remain blocked across replicas until the latest VAC
+	// is applied and the marker is cleared (or atomically replaced by a new op).
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{constants.DiskTypeConversionOperationKey: {Value: operation, Exists: true}},
+		set,
+		[]string{
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionRequestIopsKey,
+			constants.DiskTypeConversionRequestThroughputKey,
+			constants.DiskTypeConversionSourceKey,
+			constants.DiskTypeConversionTargetKey,
+			constants.DiskTypeConversionLastErrorKey,
+		},
+	); err != nil {
+		klog.Errorf("Failed to clear the conversion annotation of disk %s, operations on it stay blocked until this succeeds: %v", volKey.Name, err)
+		return err
+	}
+
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeNormal, constants.DiskTypeConversionCompleteReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion completed for volume %q, the disk is now %s", volKey.Name, diskType))
+
+	// Whichever call records the completion first is the one that reports it, so
+	// any watcher still following the conversion is stopped rather than left to
+	// record and report the same completion again. This comes last because a
+	// watcher recording its own conversion is cancelling the context it is
+	// still using.
+	gceCS.stopConversionWatcher(volKey)
+	return nil
+}
+
+func (gceCS *GCEControllerServer) clearConversionReconciliation(ctx context.Context, volKey *meta.Key, pvName string, diskType, reconciliationID string) error {
+	operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		return err
+	}
+	if !exists || operation != constants.ConversionStateReconciling {
+		return nil
+	}
+	currentID, idExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionReconciliationIDKey)
+	if err != nil {
+		return err
+	}
+	if !idExists || currentID != reconciliationID {
+		return nil
+	}
+	return k8sclient.UpdatePVAnnotations(ctx, pvName, map[string]k8sclient.PVAnnotationCondition{
+		constants.DiskTypeConversionOperationKey:         {Value: constants.ConversionStateReconciling, Exists: true},
+		constants.DiskTypeConvertedToKey:                 {Value: diskType, Exists: true},
+		constants.DiskTypeConversionReconciliationIDKey:  {Value: reconciliationID, Exists: true},
+		constants.DiskTypeConversionRequestIDKey:         {Exists: false},
+		constants.DiskTypeConversionRequestIopsKey:       {Exists: false},
+		constants.DiskTypeConversionRequestThroughputKey: {Exists: false},
+		constants.DiskTypeConversionTargetKey:            {Exists: false},
+	}, nil, []string{constants.DiskTypeConversionOperationKey, constants.DiskTypeConversionReconciliationIDKey})
+}
+
+// startConversionReconciliation resumes durable post-conversion work after a
+// process restart or when another controller instance encounters the volume.
+func (gceCS *GCEControllerServer) startConversionReconciliation(project string, volKey *meta.Key, pvName string) {
+	gceCS.conversionWatchersLock.Lock()
+	if gceCS.conversionReconciliationWorkers == nil {
+		gceCS.conversionReconciliationWorkers = make(map[string]bool)
+	}
+	key := volKey.String()
+	if gceCS.conversionReconciliationWorkers[key] {
+		gceCS.conversionWatchersLock.Unlock()
+		return
+	}
+	if gceCS.conversionContext().Err() != nil {
+		// The driver is shutting down; the marker on the PersistentVolume
+		// lets the next driver instance resume this.
+		gceCS.conversionWatchersLock.Unlock()
+		return
+	}
+	gceCS.conversionReconciliationWorkers[key] = true
+	gceCS.conversionWorkers.Add(1)
+	gceCS.conversionWatchersLock.Unlock()
+
+	go func() {
+		defer gceCS.conversionWorkers.Done()
+		defer func() {
+			gceCS.conversionWatchersLock.Lock()
+			delete(gceCS.conversionReconciliationWorkers, key)
+			gceCS.conversionWatchersLock.Unlock()
+		}()
+		volumeID, acquired := gceCS.acquireConversionVolumeLock(gceCS.conversionContext(), project, volKey)
+		if !acquired {
+			return
+		}
+		defer gceCS.volumeLocks.Release(volumeID)
+		ctx, cancel := context.WithTimeout(gceCS.conversionContext(), conversionReconcileTimeout)
+		defer cancel()
+		operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+		if err != nil || !exists || operation != constants.ConversionStateReconciling {
+			return
+		}
+		reconciliationID, hasReconciliationID, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionReconciliationIDKey)
+		if err != nil {
+			return
+		}
+		if !hasReconciliationID || reconciliationID == "" {
+			// Recover markers written before the reconciliation identity was
+			// introduced. The conditional write gives all replicas the same
+			// identity before any of them can clear the marker.
+			reconciliationID = string(uuid.NewUUID())
+			convertedTo, convertedToExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConvertedToKey)
+			if err != nil || !convertedToExists {
+				return
+			}
+			if err := k8sclient.UpdatePVAnnotations(ctx, pvName, map[string]k8sclient.PVAnnotationCondition{
+				constants.DiskTypeConversionOperationKey:        {Value: constants.ConversionStateReconciling, Exists: true},
+				constants.DiskTypeConvertedToKey:                {Value: convertedTo, Exists: true},
+				constants.DiskTypeConversionReconciliationIDKey: {Exists: false},
+			}, map[string]string{constants.DiskTypeConversionReconciliationIDKey: reconciliationID}, nil); err != nil {
+				return
+			}
+		}
+		disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+		if err != nil {
+			klog.Warningf("Could not read disk %s while resuming conversion reconciliation: %v", volKey.Name, err)
+			return
+		}
+		gceCS.finishConversionReconciliation(project, volKey, pvName, disk, reconciliationID)
+	}()
+}
+
+// reconcileLatestVACAfterConversion checks if the VolumeAttributesClass (VAC)
+// still requires a disk type conversion after a conversion has completed.
+// This handles the case where the VAC was updated during the conversion.
+//
+// Returns:
+//   - nil: No new conversion needed (VAC removed, disk already matches, or conversion started successfully)
+//   - error: A new conversion is needed but couldn't be started
+func (gceCS *GCEControllerServer) reconcileLatestVACAfterConversion(
+	ctx context.Context,
+	project string,
+	volKey *meta.Key, pvName string,
+	disk *gce.CloudDisk,
+) error {
+	// Read the current class directly so invalid or infeasible parameters are
+	// recorded instead of being mistaken for an ordinary cancellation.
+	parameterMap, exists, err := k8sclient.GetVolumeAttributesClassForPV(ctx, pvName)
+	if err != nil {
+		return status.Errorf(codes.Unavailable,
+			"failed to read VolumeAttributesClass for disk %s after conversion: %v",
+			volKey.Name, err)
+	}
+	if !exists {
+		klog.V(4).Infof("No new conversion needed for disk %s: its VolumeAttributesClass was removed", volKey.Name)
+		return nil
+	}
+	// Validate the latest class after conversion and withdraw an
+	// infeasible target instead of silently treating it as ordinary completion.
+	params, err := parameters.ExtractModifyVolumeParameters(parameterMap)
+	if err != nil {
+		gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name, fmt.Sprintf("its VolumeAttributesClass is invalid: %v", err), "")
+		return nil
+	}
+
+	currentDiskType := disk.GetPDType()
+	if params.DiskType == nil {
+		klog.V(4).Infof("No disk type requested in VAC for disk %s, nothing to reconcile", volKey.Name)
+		return gceCS.reconcileProvisionedPerformance(ctx, project, volKey, pvName, disk, params)
+	}
+
+	desiredDiskType := *params.DiskType
+	if desiredDiskType == currentDiskType {
+		klog.V(4).Infof("Disk %s already has the desired type %s, no new conversion needed",
+			volKey.Name, currentDiskType)
+		return gceCS.reconcileProvisionedPerformance(ctx, project, volKey, pvName, disk, params)
+	}
+
+	klog.V(4).Infof("VAC changed during conversion: disk %s is now %s but VAC wants %s, starting new conversion",
+		volKey.Name, currentDiskType, desiredDiskType)
+
+	if reason := gceCS.unconvertibleToTargetReason(volKey, disk, desiredDiskType, params); reason != "" {
+		klog.Errorf("Cannot convert disk %s from %s to %s: %s",
+			volKey.Name, currentDiskType, desiredDiskType, reason)
+		gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name, reason, classConversionIntent(params))
+		return nil
+	}
+
+	// Check if the disk is attached
+	if users := disk.GetUsers(); len(users) > 0 {
+		// Disk is attached - mark as Pending and wait for detach
+		klog.V(4).Infof("Disk %s is still attached to %v, queuing new conversion from %s to %s",
+			volKey.Name, users, currentDiskType, desiredDiskType)
+
+		// Mark the conversion as pending - this will be picked up by startQueuedConversionOnDetach().
+		if err := gceCS.markConversionPending(ctx, volKey, pvName, volKey.String(), desiredDiskType); err != nil {
+			return status.Errorf(codes.Unavailable, "cannot queue conversion of disk %s: %v", volKey.Name, err)
+		}
+
+		k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeNormal,
+			constants.DiskTypeConversionQueuedReason,
+			constants.DiskTypeConversionAction,
+			fmt.Sprintf("Disk type conversion queued for volume %q from %s to %s (will start on detach)",
+				volKey.Name, currentDiskType, desiredDiskType))
+
+		return nil // Not an error, just queued
+	}
+
+	// Disk is detached - start the new conversion immediately
+	klog.V(4).Infof("Disk %s is detached, starting new conversion from %s to %s",
+		volKey.Name, currentDiskType, desiredDiskType)
+
+	_, sentIntent, convertErr := gceCS.startDiskTypeConversion(ctx, project, volKey, pvName,
+		currentDiskType, desiredDiskType, params)
+	if convertErr != nil {
+		if isUnsupportedConversionIntentError(convertErr) {
+			// Terminal error - don't retry
+			klog.Errorf("Cannot convert disk %s from %s to %s: %v",
+				volKey.Name, currentDiskType, desiredDiskType, convertErr)
+
+			gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name, convertErr.Error(), sentIntent)
+			return nil
+		}
+
+		// Retriable error - keep the volume queued
+		klog.Warningf("Failed to start new conversion for disk %s from %s to %s, will retry: %v",
+			volKey.Name, currentDiskType, desiredDiskType, convertErr)
+
+		return status.Errorf(codes.Unavailable,
+			"failed to start new conversion for disk %s: %v", volKey.Name, convertErr)
+	}
+
+	klog.V(4).Infof("Successfully started new conversion for disk %s from %s to %s",
+		volKey.Name, currentDiskType, desiredDiskType)
+
+	return nil
+}
+
+// Reasons that mean the requested conversion can never succeed. Everything
+// else, including errors that share their HTTP status with these, is treated as
+// transient and retried.
+//
+// The reason is read with gce.GCEErrorReason, which prefers the ErrorInfo
+// detail. A generic reason such as "badRequest" is therefore only seen when
+// GCE gave nothing more specific: the transient 400s a conversion meets, such
+// as a conversion already running, carry their own reason.
+//
+// A generic reason is still treated as terminal because of what the opposite
+// mistake costs. A conversion that is retried keeps its volume blocked from
+// attaching, so an invalid request misread as transient would leave the
+// workload down indefinitely. Misreading a transient failure as terminal only
+// marks the class Infeasible, leaves the volume usable, and is undone by any
+// change to the class.
+var terminalConversionReasons = sets.NewString(
+	// Rejections of the request itself.
+	"DISK_TYPE_CONVERSION_UNSUPPORTED",
+	"badRequest",
+	"invalidParameter",
+	"invalid",
+	// Failures of the operation after it was accepted. These are operation
+	// error codes rather than API reasons.
+	"UNSUPPORTED_OPERATION",
+	"INVALID_USAGE",
+)
+
+// Reasons returned by the convert API that describe a condition the user or the
+// cloud is expected to clear, so that the wait can be explained rather than
+// reported as an unspecified failure. Every one of them is retried.
+//
+// The reason strings the convert API uses for these conditions still need
+// confirming against the API itself. Getting one wrong only costs the specific
+// message, because anything unrecognised is retried anyway.
+var retriableConversionReasons = map[string]string{
+	"resourceNotReady":                     "the disk is not ready to be converted yet",
+	"rateLimitExceeded":                    "the limit on disk conversion calls for this region has been reached",
+	"quotaExceeded":                        "a quota needed for the conversion has been exhausted",
+	"limitExceeded":                        "the limit on concurrent disk conversions for this project and region has been reached",
+	"CONCURRENT_OPERATIONS_QUOTA_EXCEEDED": "the limit on concurrent operations for this project and region has been reached",
+	"ZONE_RESOURCE_POOL_EXHAUSTED":         "the zone does not currently have capacity for the target disk type",
+	"QUOTA_EXCEEDED":                       "a quota needed for the conversion has been exhausted",
+	"RESOURCE_OPERATION_RATE_LIMIT":        "the limit on disk conversion calls for this region has been reached",
+	// The conversion snapshots the disk behind the scenes, which another
+	// snapshot of the same disk blocks. This includes a snapshot the user took
+	// and a temporary snapshot left behind by an earlier conversion.
+	"RESOURCE_IN_USE_BY_ANOTHER_RESOURCE": "a snapshot of the disk is still in use and must be released before it can be converted",
+}
+
+// conversionRetryReason explains a retriable conversion failure, or returns the
+// empty string for one that has no specific explanation.
+func conversionRetryReason(err error) string {
+	return retriableConversionReasons[gce.GCEErrorReason(err)]
+}
+
+// conversionInProgressReason is returned when the disk is busy, which for a
+// conversion request means an earlier conversion is still running.
+const conversionInProgressReason = "resourceNotReady"
+
+// isUnsupportedConversionIntentError reports whether the conversion can never
+// succeed for the requested target configuration, meaning it should not be
+// retried. Note that the HTTP status alone cannot decide this: an in-progress
+// conversion is also reported as 400.
+func isUnsupportedConversionIntentError(err error) bool {
+	// The reason decides, not the HTTP status: a running conversion, a disk held
+	// by an instant snapshot and an out-of-range IOPS value all arrive as 400,
+	// and quota and rate limits arrive as 403. An unrecognised reason is
+	// retriable, so a delayed conversion keeps its volume blocked.
+	return terminalConversionReasons.Has(gce.GCEErrorReason(err))
+}
+
+// isConversionInProgressError reports whether the error means a conversion of
+// this disk is already running.
+func isConversionInProgressError(err error) bool {
+	return gce.GCEErrorReason(err) == conversionInProgressReason
 }
 
 func (gceCS *GCEControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -1031,6 +2675,19 @@ func (gceCS *GCEControllerServer) deleteSingleDeviceDisk(ctx context.Context, re
 	defer gceCS.volumeLocks.Release(volumeID)
 	disk, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	metrics.UpdateRequestMetadataFromDisk(ctx, disk)
+
+	// A conversion rebuilds the disk through a temporary snapshot, which the
+	// delete would fail on. Reporting it as a conversion in progress lets the
+	// delete be retried once the conversion ends.
+	if err := gceCS.checkNoConversionInProgress(ctx, project, volKey, disk, "delete"); err != nil {
+		return nil, err
+	}
+
+	// The disk is going away, so anything still following a conversion of it is
+	// polling an operation whose result nobody can use.
+	gceCS.stopConversionWatcher(volKey)
+	gceCS.conversionPVNames.Delete(volKey.String())
+
 	err = gceCS.CloudProvider.DeleteDisk(ctx, project, volKey)
 	if err != nil {
 		return nil, common.LoggedError("Failed to delete disk: ", err)
@@ -1203,6 +2860,13 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	// Acquires the lock for the volume on that node only, because we need to support the ability
 	// to publish the same volume onto different nodes concurrently
 	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
+	// A shared volume lock also excludes conversions, which take the exclusive
+	// volume lock. Keeping publish locks shared preserves concurrent read-only
+	// publishes to different nodes.
+	if acquired := gceCS.volumeLocks.TryAcquireShared(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID), nil
+	}
+	defer gceCS.volumeLocks.ReleaseShared(volumeID)
 	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, lockingVolumeID), nil
 	}
@@ -1263,6 +2927,13 @@ func (gceCS *GCEControllerServer) executeControllerPublishVolume(ctx context.Con
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "could not split nodeID: %v", err.Error()), disk
 	}
+
+	// Attaching a disk that is being converted risks corrupting it, because the
+	// conversion API requires the disk to stay detached for the whole operation.
+	if err := gceCS.checkNoConversionInProgress(ctx, project, volKey, disk, "attach"); err != nil {
+		return nil, err, disk
+	}
+
 	err = gceCS.CloudProvider.AttachDisk(ctx, project, volKey, readWrite, attachableDiskTypePersistent, instanceZone, instanceName, pdcsiContext.ForceAttach)
 	if err != nil {
 		var udErr *gce.UnsupportedDiskError
@@ -1314,7 +2985,7 @@ func (gceCS *GCEControllerServer) convertDiskAndReAttach(ctx context.Context, pr
 	}
 
 	// Slow conversion is required at this point, check for slow conversion opt-in
-	optedIn, err := gceCS.optedInForSlowConversion(ctx, volKey, instanceName)
+	optedIn, err := gceCS.optedInForSlowConversion(ctx, project, volKey, instanceName)
 	if err != nil {
 		return fmt.Errorf("error while retrieving conversion opt-in information: %w", err)
 	}
@@ -1345,15 +3016,26 @@ func isSlowConversionRequiredError(err error) bool {
 // An explicit "false" on any surface results in an opt-out.
 // Otherwise, a "true" on any surface results in an opt-in.
 // If the annotation is not present on any surface, it defaults to "true" i.e. opt-out.
-func (gceCS *GCEControllerServer) optedInForSlowConversion(ctx context.Context, volKey *meta.Key, instanceName string) (bool, error) {
+//
+// The PersistentVolume is found by its volume handle, as for disk type
+// conversion, because a statically provisioned or migrated PersistentVolume
+// need not be named after its disk.
+func (gceCS *GCEControllerServer) optedInForSlowConversion(ctx context.Context, project string, volKey *meta.Key, instanceName string) (bool, error) {
 	const pdConversionAnnotation = "pd-conversion.gke.io/slow-conversion-opt-in"
 	optInFound := false
 
 	// A PersistentVolume object is required to check for StorageClass and Pods.
-	pv, err := k8sclient.GetPersistentVolumeWithRetry(ctx, volKey.Name)
+	// If the PV can't be found, we can't determine the opt-in status.
+	pvName, found, err := gceCS.conversionPVName(ctx, project, volKey)
 	if err != nil {
-		// If the PV can't be found, we can't determine the opt-in status.
-		return false, status.Errorf(codes.Internal, "failed to get PersistentVolume %s: %v", volKey.Name, err)
+		return false, status.Errorf(codes.Internal, "failed to find the PersistentVolume for disk %s: %v", volKey.String(), err)
+	}
+	if !found {
+		return false, status.Errorf(codes.Internal, "no PersistentVolume found for disk %s", volKey.String())
+	}
+	pv, err := k8sclient.GetPersistentVolumeWithRetry(ctx, pvName)
+	if err != nil {
+		return false, status.Errorf(codes.Internal, "failed to get PersistentVolume %s: %v", pvName, err)
 	}
 
 	// 1. Check PersistentVolume
@@ -1498,6 +3180,14 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 	// Acquires the lock for the volume on that node only, because we need to support the ability
 	// to unpublish the same volume from different nodes concurrently
 	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
+	// As in publish, a shared volume lock keeps a detach from overlapping
+	// background conversion work, which holds the exclusive volume lock and
+	// decides from the disk's attachments whether a conversion can start.
+	// Detaches from different nodes still run concurrently.
+	if acquired := gceCS.volumeLocks.TryAcquireShared(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID), nil
+	}
+	defer gceCS.volumeLocks.ReleaseShared(volumeID)
 	if acquired := gceCS.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, lockingVolumeID), nil
 	}
@@ -1530,8 +3220,288 @@ func (gceCS *GCEControllerServer) executeControllerUnpublishVolume(ctx context.C
 		return nil, common.LoggedError("Failed to detach: ", err), diskToUnpublish
 	}
 
+	// A conversion queued while the disk was attached can run now that it is not.
+	gceCS.startQueuedConversionOnDetach(ctx, project, volKey)
+
 	klog.V(4).Infof("ControllerUnpublishVolume succeeded for disk %v from node %v", volKey, nodeID)
 	return &csi.ControllerUnpublishVolumeResponse{}, nil, diskToUnpublish
+}
+
+// reconcileProvisionedPerformance applies the latest VAC's IOPS and throughput
+// after a conversion. Those settings may have changed while the conversion was
+// running, so the values sent with the original convert request may be stale.
+func (gceCS *GCEControllerServer) reconcileProvisionedPerformance(
+	ctx context.Context,
+	project string,
+	volKey *meta.Key, pvName string,
+	disk *gce.CloudDisk,
+	params parameters.ModifyVolumeParameters,
+) error {
+	updates := parameters.ModifyVolumeParameters{}
+	if params.IOPS != nil && *params.IOPS != disk.GetProvisionedIops() {
+		updates.IOPS = params.IOPS
+	}
+	if params.Throughput != nil && *params.Throughput != disk.GetProvisionedThroughput() {
+		updates.Throughput = params.Throughput
+	}
+	if updates.IOPS == nil && updates.Throughput == nil {
+		return nil
+	}
+	if err := gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, disk, updates); err != nil {
+		// The disk already has its new type and is no longer blocked, so a
+		// failure here only delays the performance settings: the
+		// external-resizer retries ModifyVolume, which applies them, and reports
+		// a value GCE rejects as Infeasible.
+		k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionRetryReason, constants.DiskTypeConversionAction,
+			fmt.Sprintf("The IOPS or throughput of volume %q could not be applied after its conversion and will be retried: %v", volKey.Name, err))
+		return status.Errorf(codes.Unavailable,
+			"failed to apply the latest IOPS or throughput settings to disk %s after conversion: %v",
+			volKey.Name, err)
+	}
+	return nil
+}
+
+// startQueuedConversionOnDetach starts a disk type conversion that was waiting
+// for the disk to be detached, which has just happened.
+//
+// A conversion cannot be started from inside the detach itself, because it takes
+// far longer than the call may block for, so this only decides whether to start
+// one and hands the work to a background attempt. Nothing here fails the detach:
+// the detach has already succeeded, and a conversion that does not start stays
+// queued for the next detach or for the next time the class is applied.
+func (gceCS *GCEControllerServer) startQueuedConversionOnDetach(ctx context.Context, project string, volKey *meta.Key) {
+	if !gceCS.EnableDiskTypeConversion {
+		return
+	}
+	pvName, found, err := gceCS.conversionPVName(ctx, project, volKey)
+	if err != nil {
+		klog.Warningf("Could not find the PersistentVolume of disk %s to check for a conversion waiting for it to detach: %v", volKey.Name, err)
+		return
+	}
+	if !found {
+		return
+	}
+	gceCS.startQueuedConversion(ctx, project, volKey, pvName)
+}
+
+// startQueuedConversion is startQueuedConversionOnDetach for a caller that has
+// already found the volume's PersistentVolume.
+func (gceCS *GCEControllerServer) startQueuedConversion(ctx context.Context, project string, volKey *meta.Key, pvName string) {
+	opVal, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		klog.Warningf("Could not check whether disk %s has a conversion waiting for it to detach: %v", volKey.Name, err)
+		return
+	}
+	if !exists {
+		return
+	}
+	if opVal == constants.ConversionStateReconciling {
+		gceCS.startConversionReconciliation(project, volKey, pvName)
+		return
+	}
+	if opVal != constants.ConversionStatePending {
+		return
+	}
+
+	klog.V(4).Infof("Disk %s detached with a conversion queued, starting it", volKey.Name)
+	// The detach's context is cancelled when this call returns, so the
+	// conversion gets one that outlives it.
+	if gceCS.conversionContext().Err() != nil {
+		// The driver is shutting down. The conversion stays queued on the
+		// PersistentVolume for the next driver instance.
+		return
+	}
+	gceCS.conversionWorkers.Add(1)
+	go func() {
+		defer gceCS.conversionWorkers.Done()
+		gceCS.runQueuedConversion(gceCS.conversionContext(), project, volKey, pvName)
+	}()
+}
+
+// WaitForConversionWorkers blocks until the background conversion work has
+// finished, both the conversions started on detach and the watchers following
+// running ones. The work happens in the background, so this is how a caller that
+// needs it settled, such as a test, can wait for it.
+func (gceCS *GCEControllerServer) WaitForConversionWorkers() {
+	gceCS.conversionWorkers.Wait()
+}
+
+// runQueuedConversion starts the conversion a volume's VolumeAttributesClass
+// currently asks for.
+//
+// The class is read now rather than recorded when the conversion was queued, so
+// that this acts on what the user is asking for at the moment the conversion can
+// actually run. A user who no longer wants the conversion clears the class on
+// their claim, and this is where that takes effect.
+func (gceCS *GCEControllerServer) runQueuedConversion(ctx context.Context, project string, volKey *meta.Key, pvName string) {
+	// Serialize queued conversion with publish, resize, snapshot, and
+	// other modifications through the shared per-volume lock.
+	volumeID, acquired := gceCS.acquireConversionVolumeLock(ctx, project, volKey)
+	if !acquired {
+		klog.V(4).Infof("Could not acquire the volume lock to start queued conversion of disk %s", volKey.Name)
+		return
+	}
+	defer gceCS.volumeLocks.Release(volumeID)
+	ctx, cancel := context.WithTimeout(ctx, conversionReconcileTimeout)
+	defer cancel()
+
+	// The detach callback may have been queued before the VAC was withdrawn or
+	// the pending state was otherwise reconciled. Recheck ownership after taking
+	// the lock so a stale worker cannot start an abandoned conversion.
+	opVal, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil || !exists || opVal != constants.ConversionStatePending {
+		if err != nil {
+			klog.Warningf("Could not verify queued conversion state of disk %s: %v", volKey.Name, err)
+		}
+		return
+	}
+
+	disk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+	if err != nil {
+		klog.Warningf("Could not read disk %s to convert it, leaving its conversion queued: %v", volKey.Name, err)
+		return
+	}
+
+	requestID, requestExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+	if err != nil {
+		klog.Warningf("Could not determine whether queued conversion of disk %s reached GCE: %v", volKey.Name, err)
+		return
+	}
+	if requestExists && requestID != "" {
+		if len(disk.GetUsers()) > 0 {
+			klog.V(4).Infof("Disk %s still has users; leaving its accepted conversion request blocked", volKey.Name)
+			return
+		}
+		target, targetExists, targetErr := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionTargetKey)
+		if targetErr != nil || !targetExists || target == "" {
+			klog.Warningf("Could not recover the target of conversion request for disk %s: %v", volKey.Name, targetErr)
+			return
+		}
+		// Reissue exactly the persisted request ID and parameters. GCE returns
+		// the existing operation if the earlier call was accepted, and accepts
+		// it once if the driver stopped before sending it.
+		if _, sentIntent, err := gceCS.startDiskTypeConversion(ctx, project, volKey, pvName, disk.GetPDType(), target, parameters.ModifyVolumeParameters{}); err != nil {
+			klog.Warningf("Could not recover accepted conversion request for disk %s: %v", volKey.Name, err)
+			if isUnsupportedConversionIntentError(err) {
+				gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name,
+					fmt.Sprintf("GCE rejected its conversion request: %v", err), sentIntent)
+			}
+		}
+		return
+	}
+
+	params, cancelReason, infeasible, err := gceCS.queuedConversionOutcome(ctx, volKey, pvName, disk)
+	if err != nil {
+		klog.Warningf("Could not read the VolumeAttributesClass of disk %s, leaving its conversion queued: %v", volKey.Name, err)
+		return
+	}
+	if cancelReason != "" {
+		// The user withdrew the conversion, its class is invalid, or the disk is
+		// already the requested type, which is also how a conversion that
+		// completed elsewhere is noticed.
+		klog.V(4).Infof("Cancelling the queued conversion of disk %s: %s", volKey.Name, cancelReason)
+		if infeasible {
+			gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name, cancelReason, classConversionIntent(params))
+			return
+		}
+		if err := gceCS.cancelQueuedConversion(ctx, volKey, pvName, cancelReason); err != nil {
+			klog.Warningf("Could not cancel queued conversion of disk %s: %v", volKey.Name, err)
+		}
+		return
+	}
+
+	currentDiskType := disk.GetPDType()
+	// A disk still listing users just after it detached is usually the detach not
+	// yet visible rather than a new attachment, so the disk is read again for a
+	// short while before the conversion is left queued.
+	if users := disk.GetUsers(); len(users) > 0 {
+		klog.V(4).Infof("Disk %s still lists users %v, waiting for the detach to become visible", volKey.Name, users)
+
+		pollErr := wait.PollUntilContextTimeout(ctx, time.Second, 10*time.Second, true, func(ctx context.Context) (bool, error) {
+			refetchedDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+			if err != nil {
+				return false, err
+			}
+			if len(refetchedDisk.GetUsers()) == 0 {
+				disk = refetchedDisk
+				return true, nil
+			}
+			return false, nil
+		})
+		if pollErr != nil {
+			klog.V(4).Infof("Disk %s still lists users, leaving its conversion queued", volKey.Name)
+			return
+		}
+	}
+
+	if _, sentIntent, err := gceCS.startDiskTypeConversion(ctx, project, volKey, pvName, currentDiskType, *params.DiskType, params); err != nil {
+		if isUnsupportedConversionIntentError(err) {
+			// A terminal rejection must remain visible so a later retry does not
+			// submit the same infeasible request again.
+			gceCS.recordInfeasibleConversion(ctx, volKey, pvName, volKey.Name,
+				fmt.Sprintf("it cannot be converted from %s to %s: %v", currentDiskType, *params.DiskType, err), sentIntent)
+			return
+		}
+		// The volume stays queued, so the next detach or the next time the class
+		// is applied tries again.
+		if reason := conversionRetryReason(err); reason != "" {
+			klog.Warningf("Conversion of disk %s from %s to %s will be retried: %s: %v", volKey.Name, currentDiskType, *params.DiskType, reason, err)
+			k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionRetryReason, constants.DiskTypeConversionAction,
+				fmt.Sprintf("Disk type conversion of volume %q has not started and will be retried: %s", volKey.Name, reason))
+			return
+		}
+		klog.Warningf("Failed to start the queued conversion of disk %s from %s to %s, it stays queued: %v", volKey.Name, currentDiskType, *params.DiskType, err)
+		k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeWarning, constants.DiskTypeConversionRetryReason, constants.DiskTypeConversionAction,
+			fmt.Sprintf("Disk type conversion of volume %q has not started and will be retried: %v", volKey.Name, err))
+	}
+}
+
+// cancelQueuedConversion clears the state that keeps a volume waiting for a
+// conversion that is not going to run, so that the volume can be used again.
+func (gceCS *GCEControllerServer) cancelQueuedConversion(ctx context.Context, volKey *meta.Key, pvName string, reason string) error {
+	operation, exists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionOperationKey)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if operation != constants.ConversionStatePending {
+		return status.Errorf(codes.Unavailable, "cannot cancel conversion of disk %s because it is no longer queued (%s)", volKey.Name, operation)
+	}
+	requestID, requestExists, err := k8sclient.GetPVAnnotation(ctx, pvName, constants.DiskTypeConversionRequestIDKey)
+	if err != nil {
+		return err
+	}
+	if requestExists && requestID != "" {
+		return status.Errorf(codes.Unavailable, "cannot cancel conversion of disk %s because GCE may have accepted request %s", volKey.Name, requestID)
+	}
+	if err := k8sclient.UpdatePVAnnotations(
+		ctx,
+		pvName,
+		map[string]k8sclient.PVAnnotationCondition{
+			constants.DiskTypeConversionOperationKey: {Value: constants.ConversionStatePending, Exists: true},
+			constants.DiskTypeConversionRequestIDKey: {Exists: false},
+		},
+		nil,
+		[]string{
+			constants.DiskTypeConversionLastErrorKey,
+			constants.DiskTypeConversionRequestIDKey,
+			constants.DiskTypeConversionRequestIopsKey,
+			constants.DiskTypeConversionRequestThroughputKey,
+			constants.DiskTypeConversionSourceKey,
+			constants.DiskTypeConversionTargetKey,
+			constants.DiskTypeConversionReconciliationIDKey,
+			constants.DiskTypeConversionOperationKey,
+		},
+	); err != nil {
+		klog.Errorf("Failed to cancel the queued conversion of disk %s, operations on it stay blocked until this succeeds: %v", volKey.Name, err)
+		return err
+	}
+	klog.V(4).Infof("Cancelled the queued conversion of disk %s: %s", volKey.Name, reason)
+	k8sclient.EmitPVEvent(ctx, pvName, v1.EventTypeNormal, constants.DiskTypeConversionCancelReason, constants.DiskTypeConversionAction,
+		fmt.Sprintf("Disk type conversion of volume %q will not run because %s", volKey.Name, reason))
+	return nil
 }
 
 func (gceCS *GCEControllerServer) parameterProcessor() *parameters.ParameterProcessor {
@@ -1840,6 +3810,14 @@ func (gceCS *GCEControllerServer) CreateSnapshot(ctx context.Context, req *csi.C
 			return nil, status.Errorf(codes.NotFound, "CreateSnapshot could not find disk %v: %v", volKey.String(), err.Error())
 		}
 		return nil, common.LoggedError("CreateSnapshot, failed to getDisk: ", err)
+	}
+
+	// A disk type conversion snapshots the disk behind the scenes, so a
+	// concurrent snapshot request would race it for the same underlying
+	// resource. Serializing behind the conversion here means the caller sees
+	// a clear, retryable error instead of a GCE-side conflict.
+	if err := gceCS.checkNoConversionInProgress(ctx, project, volKey, disk, "snapshot"); err != nil {
+		return nil, err
 	}
 
 	snapshotParams, err := parameters.ExtractAndDefaultSnapshotParameters(req.GetParameters(), gceCS.Driver.name, gceCS.Driver.extraTags)
@@ -2196,9 +4174,20 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	if gceCS.multiZoneVolumeHandleConfig.Enable && volumeIsMultiZone {
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerExpandVolume is not supported with the multi-zone PVC volumeHandle feature. Please re-create the volume %v from source if you want a larger size", volumeID)
 	}
+	if acquired := gceCS.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, constants.VolumeOperationAlreadyExistsFmt, volumeID)
+	}
+	defer gceCS.volumeLocks.Release(volumeID)
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
+
+	// Resizing a disk mid-conversion would race the conversion's own copy of the
+	// data, and the size the conversion restores is the one it started with.
+	if err := gceCS.checkNoConversionInProgress(ctx, project, volKey, sourceDisk, "expand"); err != nil {
+		return nil, err
+	}
+
 	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
 
 	if err != nil {

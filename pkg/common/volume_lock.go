@@ -18,20 +18,23 @@ package common
 
 import (
 	"sync"
-
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // VolumeLocks implements a map with atomic operations. It stores a set of all volume IDs
 // with an ongoing operation.
 type VolumeLocks struct {
-	locks sets.String
+	locks map[string]volumeLockState
 	mux   sync.Mutex
+}
+
+type volumeLockState struct {
+	writer  bool
+	readers int
 }
 
 func NewVolumeLocks() *VolumeLocks {
 	return &VolumeLocks{
-		locks: sets.NewString(),
+		locks: make(map[string]volumeLockState),
 	}
 }
 
@@ -40,15 +43,53 @@ func NewVolumeLocks() *VolumeLocks {
 func (vl *VolumeLocks) TryAcquire(volumeID string) bool {
 	vl.mux.Lock()
 	defer vl.mux.Unlock()
-	if vl.locks.Has(volumeID) {
+	if state := vl.locks[volumeID]; state.writer || state.readers > 0 {
 		return false
 	}
-	vl.locks.Insert(volumeID)
+	vl.locks[volumeID] = volumeLockState{writer: true}
+	return true
+}
+
+// TryAcquireShared acquires a read lock for volumeID. Multiple shared
+// operations can coexist, but none can run while an exclusive volume
+// operation, such as conversion, is in progress.
+// This preserves concurrent publishes while excluding conversion.
+func (vl *VolumeLocks) TryAcquireShared(volumeID string) bool {
+	vl.mux.Lock()
+	defer vl.mux.Unlock()
+	state := vl.locks[volumeID]
+	if state.writer {
+		return false
+	}
+	state.readers++
+	vl.locks[volumeID] = state
 	return true
 }
 
 func (vl *VolumeLocks) Release(volumeID string) {
 	vl.mux.Lock()
 	defer vl.mux.Unlock()
-	vl.locks.Delete(volumeID)
+	state := vl.locks[volumeID]
+	state.writer = false
+	if state.readers == 0 {
+		delete(vl.locks, volumeID)
+	} else {
+		vl.locks[volumeID] = state
+	}
+}
+
+// ReleaseShared releases a read lock previously acquired with
+// TryAcquireShared.
+func (vl *VolumeLocks) ReleaseShared(volumeID string) {
+	vl.mux.Lock()
+	defer vl.mux.Unlock()
+	state := vl.locks[volumeID]
+	if state.readers > 0 {
+		state.readers--
+	}
+	if !state.writer && state.readers == 0 {
+		delete(vl.locks, volumeID)
+	} else {
+		vl.locks[volumeID] = state
+	}
 }

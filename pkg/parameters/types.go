@@ -130,4 +130,5 @@ func (pp *ParameterProcessor) isDynamicVolumesDisabled() bool {
 type ModifyVolumeParameters struct {
 	IOPS       *int64
 	Throughput *int64
+	DiskType   *string
 }
