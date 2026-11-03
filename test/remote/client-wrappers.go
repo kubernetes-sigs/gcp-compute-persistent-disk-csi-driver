@@ -136,6 +136,26 @@ func (c *CsiClient) CreateVolume(volName string, params map[string]string, sizeI
 	return c.CreateVolumeWithCaps(volName, params, sizeInGb, topReq, stdVolCaps, volContentSrc)
 }
 
+// CreateVolumeWithMutableParameters creates a volume the way the
+// external-provisioner does for a claim that names a VolumeAttributesClass:
+// the class parameters are sent as mutable_parameters alongside the
+// StorageClass parameters.
+func (c *CsiClient) CreateVolumeWithMutableParameters(volName string, params, mutableParams map[string]string, sizeInGb int64, topReq *csipb.TopologyRequirement) (*csipb.Volume, error) {
+	cvr := &csipb.CreateVolumeRequest{
+		Name:                      volName,
+		VolumeCapabilities:        stdVolCaps,
+		Parameters:                params,
+		MutableParameters:         mutableParams,
+		CapacityRange:             &csipb.CapacityRange{RequiredBytes: common.GbToBytes(sizeInGb)},
+		AccessibilityRequirements: topReq,
+	}
+	cresp, err := c.ctrlClient.CreateVolume(context.Background(), cvr)
+	if err != nil {
+		return nil, err
+	}
+	return cresp.Volume, nil
+}
+
 func (c *CsiClient) DeleteVolume(volId string) error {
 	dvr := &csipb.DeleteVolumeRequest{
 		VolumeId: volId,
