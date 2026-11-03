@@ -2985,7 +2985,7 @@ func (gceCS *GCEControllerServer) convertDiskAndReAttach(ctx context.Context, pr
 	}
 
 	// Slow conversion is required at this point, check for slow conversion opt-in
-	optedIn, err := gceCS.optedInForSlowConversion(ctx, volKey, instanceName)
+	optedIn, err := gceCS.optedInForSlowConversion(ctx, project, volKey, instanceName)
 	if err != nil {
 		return fmt.Errorf("error while retrieving conversion opt-in information: %w", err)
 	}
@@ -3016,15 +3016,26 @@ func isSlowConversionRequiredError(err error) bool {
 // An explicit "false" on any surface results in an opt-out.
 // Otherwise, a "true" on any surface results in an opt-in.
 // If the annotation is not present on any surface, it defaults to "true" i.e. opt-out.
-func (gceCS *GCEControllerServer) optedInForSlowConversion(ctx context.Context, volKey *meta.Key, instanceName string) (bool, error) {
+//
+// The PersistentVolume is found by its volume handle, as for disk type
+// conversion, because a statically provisioned or migrated PersistentVolume
+// need not be named after its disk.
+func (gceCS *GCEControllerServer) optedInForSlowConversion(ctx context.Context, project string, volKey *meta.Key, instanceName string) (bool, error) {
 	const pdConversionAnnotation = "pd-conversion.gke.io/slow-conversion-opt-in"
 	optInFound := false
 
 	// A PersistentVolume object is required to check for StorageClass and Pods.
-	pv, err := k8sclient.GetPersistentVolumeWithRetry(ctx, volKey.Name)
+	// If the PV can't be found, we can't determine the opt-in status.
+	pvName, found, err := gceCS.conversionPVName(ctx, project, volKey)
 	if err != nil {
-		// If the PV can't be found, we can't determine the opt-in status.
-		return false, status.Errorf(codes.Internal, "failed to get PersistentVolume %s: %v", volKey.Name, err)
+		return false, status.Errorf(codes.Internal, "failed to find the PersistentVolume for disk %s: %v", volKey.String(), err)
+	}
+	if !found {
+		return false, status.Errorf(codes.Internal, "no PersistentVolume found for disk %s", volKey.String())
+	}
+	pv, err := k8sclient.GetPersistentVolumeWithRetry(ctx, pvName)
+	if err != nil {
+		return false, status.Errorf(codes.Internal, "failed to get PersistentVolume %s: %v", pvName, err)
 	}
 
 	// 1. Check PersistentVolume

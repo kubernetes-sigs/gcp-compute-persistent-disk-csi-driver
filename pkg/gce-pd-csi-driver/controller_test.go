@@ -6498,7 +6498,7 @@ func TestControllerPublishVolume_PDConversion(t *testing.T) {
 		Spec: corev1.PersistentVolumeSpec{
 			PersistentVolumeSource: corev1.PersistentVolumeSource{
 				CSI: &corev1.CSIPersistentVolumeSource{
-					Driver:       "pd.csi.storage.gke.io",
+					Driver:       driver,
 					VolumeHandle: testVolumeID,
 				},
 			},
@@ -6508,6 +6508,14 @@ func TestControllerPublishVolume_PDConversion(t *testing.T) {
 			},
 			StorageClassName: "test-sc",
 		},
+	}
+	// staticPV backs the disk under a name of its own, as a statically
+	// provisioned PersistentVolume may.
+	staticPV := func(optIn string) *corev1.PersistentVolume {
+		pv := basePV.DeepCopy()
+		pv.Name = "static-pv"
+		pv.Annotations = map[string]string{pdConversionAnnotation: optIn}
+		return pv
 	}
 
 	testCases := []struct {
@@ -6577,6 +6585,42 @@ func TestControllerPublishVolume_PDConversion(t *testing.T) {
 			expectSlowConversion: false,
 			expectAttachSuccess:  true,
 			expErrCode:           codes.OK,
+		},
+		{
+			name: "should read opt-in from a PV found by its volume handle",
+			k8sObjects: []runtime.Object{
+				baseSC.DeepCopy(),
+				baseNode.DeepCopy(),
+				staticPV("true"),
+				basePod.DeepCopy(),
+				basePVC.DeepCopy(),
+			},
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+			},
+			expectSlowConversion: true,
+			expectAttachSuccess:  true,
+			expErrCode:           codes.OK,
+		},
+		{
+			name: "should ignore a PV that only shares the disk's name",
+			k8sObjects: func() []runtime.Object {
+				// A PV named after the disk, but backing a disk in another
+				// zone, opts in. The disk's own PV opts out, and wins.
+				decoy := basePV.DeepCopy()
+				decoy.Annotations = map[string]string{pdConversionAnnotation: "true"}
+				decoy.Spec.CSI.VolumeHandle = fmt.Sprintf("projects/%s/zones/%s/disks/%s", project, "other-zone", name)
+				decoy.Spec.ClaimRef = &corev1.ObjectReference{Name: "other-pvc", Namespace: "default"}
+				return []runtime.Object{baseSC.DeepCopy(), baseNode.DeepCopy(), decoy, staticPV("false"), basePod.DeepCopy(), basePVC.DeepCopy()}
+			}(),
+			conversionTestParams: gcecloudprovider.ConversionTestParams{
+				InitialAttachFails:  true,
+				FastConversionFails: true,
+			},
+			expectSlowConversion: false,
+			expectAttachSuccess:  false,
+			expErrCode:           codes.FailedPrecondition,
 		},
 		{
 			name: "should fail if slow conversion fails",
