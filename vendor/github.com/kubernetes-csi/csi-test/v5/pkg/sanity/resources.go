@@ -189,6 +189,11 @@ func (cl *Resources) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshot
 	return snap, err
 }
 
+func (cl *Resources) GetSnapshot(ctx context.Context, req *csi.GetSnapshotRequest, opts ...grpc.CallOption) (*csi.GetSnapshotResponse, error) {
+	GinkgoHelper()
+	return cl.ControllerClient.GetSnapshot(ctx, req, opts...)
+}
+
 func (cl *Resources) registerSnapshot(id string) {
 	GinkgoHelper()
 	cl.mutex.Lock()
