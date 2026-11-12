@@ -98,15 +98,10 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 			return fmt.Errorf("failed to set kubernetes runtime config: %w", err)
 		}
 		klog.V(4).Infof("Set Kubernetes runtime config: %v", *kubeRuntimeConfig)
-		// If runtime config is set, we will update the machine type to support hyperdisks
-		err = os.Setenv("NODE_SIZE", "c3-standard-4")
-		if err != nil {
-			return fmt.Errorf("failed to set NODE_SIZE: %w", err)
-		}
-		// The node disk type also needs to be updated
-		err = os.Setenv("NODE_DISK_TYPE", "pd-ssd")
-		if err != nil {
-			return fmt.Errorf("failed to set NODE_DISK_TYPE: %w", err)
+		// If runtime config is set, the cluster runs the hyperdisk tests, so
+		// the nodes need a machine type and boot disk type that support them.
+		if err := setGCEHyperdiskNodeEnvs(); err != nil {
+			return err
 		}
 	}
 
@@ -138,15 +133,21 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 		}
 	}
 
-	err = os.Setenv("KUBE_GCE_ZONE", gceZone)
+	// Cap how long kube-up waits for the node instance group to become stable
+	// so that a zonal capacity stockout surfaces with enough of the job's time
+	// budget left to retry in another zone. kube-up ignores this timeout
+	// expiring and lets validate-cluster keep waiting for nodes to join, so a
+	// merely slow bring-up still succeeds.
+	if len(os.Getenv("MIG_WAIT_UNTIL_STABLE_TIMEOUT")) == 0 {
+		err = os.Setenv("MIG_WAIT_UNTIL_STABLE_TIMEOUT", defaultMIGWaitUntilStableTimeout)
+		if err != nil {
+			return fmt.Errorf("failed to set MIG_WAIT_UNTIL_STABLE_TIMEOUT: %w", err)
+		}
+	}
+
+	_, err = bringUpGCEClusterWithZoneFallback(k8sDir, gceZone)
 	if err != nil {
 		return err
-	}
-	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
-	cmd.Env = os.Environ()
-	err = runCommand("Starting E2E Cluster on GCE", cmd)
-	if err != nil {
-		return fmt.Errorf("failed to bring up kubernetes e2e cluster on gce: %v", err.Error())
 	}
 
 	// In GCE clusters created by kube-up.sh, the master node is tainted with
@@ -175,6 +176,187 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 	}
 
 	return nil
+}
+
+var (
+	// defaultMIGWaitUntilStableTimeout bounds, in seconds, how long kube-up
+	// waits for the node managed instance group to become stable. kube-up's
+	// own default is 1800s; on a zonal stockout that wait plus
+	// validate-cluster's ~25 minute node wait burns over an hour before the
+	// failure surfaces, leaving no room for a retry within the CI job timeout.
+	defaultMIGWaitUntilStableTimeout = "600"
+
+	// gceHyperdiskNodeMachineType is the node machine type of GCE kube-up
+	// clusters that run the hyperdisk tests. The whole suite runs on these
+	// nodes, the pd-balanced storage class and snapshot tests as well as the
+	// hyperdisk-balanced VolumeAttributesClass tests, and they boot from
+	// gceHyperdiskNodeDiskType, so the machine type has to support both
+	// Persistent Disk and Hyperdisk Balanced. That rules out the Hyperdisk-only
+	// N4 and C4 families; C3 and C3D are the generally available x86 families
+	// that support both. C3D is used rather than C3 because C3 capacity in the
+	// CI zones has been the recurring cause of node stockouts.
+	gceHyperdiskNodeMachineType = "c3d-standard-4"
+
+	// gceHyperdiskNodeDiskType is the node boot disk type to go with
+	// gceHyperdiskNodeMachineType; kube-up's default pd-standard is not
+	// supported by C3 or C3D.
+	gceHyperdiskNodeDiskType = "pd-ssd"
+
+	// fallbackGCEZones are tried, after the remaining zones of the requested
+	// region, when kube-up cannot get node capacity in the requested zone.
+	fallbackGCEZones = []string{"us-central1-b", "us-central1-c", "us-central1-a", "us-central1-f", "us-west1-b", "us-west1-c", "us-east1-b", "us-east1-c"}
+
+	// Indirections so that the zone fallback logic can be unit tested.
+	runGCEClusterUp           = runGCEClusterUpScript
+	runGCEClusterDown         = clusterDownGCE
+	gceMachineTypeInZone      = gceMachineTypeAvailableInZone
+	logGCEInstanceGroupErrors = logGCEManagedInstanceGroupErrors
+)
+
+// setGCEHyperdiskNodeEnvs points kube-up at a node machine type and boot disk
+// type that support the hyperdisk tests. Values already set in the environment
+// are kept, so that a job can try another machine type without a code change.
+func setGCEHyperdiskNodeEnvs() error {
+	defaults := []struct{ name, value string }{
+		{"NODE_SIZE", gceHyperdiskNodeMachineType},
+		{"NODE_DISK_TYPE", gceHyperdiskNodeDiskType},
+	}
+	for _, d := range defaults {
+		if cur := os.Getenv(d.name); len(cur) != 0 {
+			klog.Infof("Keeping %s=%s from the environment instead of the default %s", d.name, cur, d.value)
+			continue
+		}
+		if err := os.Setenv(d.name, d.value); err != nil {
+			return fmt.Errorf("failed to set %s: %w", d.name, err)
+		}
+		klog.Infof("Set %s=%s for the hyperdisk tests", d.name, d.value)
+	}
+	return nil
+}
+
+// candidateGCEZones returns the zones to try for a GCE kube-up cluster: the
+// requested zone first, then the other zones of its region, then
+// fallbackGCEZones. Zones that do not exist or lack the node machine type are
+// skipped at attempt time by gceMachineTypeInZone.
+func candidateGCEZones(primaryZone string) []string {
+	zones := []string{primaryZone}
+	seen := map[string]bool{primaryZone: true}
+	add := func(zone string) {
+		if !seen[zone] {
+			seen[zone] = true
+			zones = append(zones, zone)
+		}
+	}
+	if idx := strings.LastIndex(primaryZone, "-"); idx > 0 {
+		region := primaryZone[:idx]
+		for _, suffix := range []string{"a", "b", "c", "d", "f"} {
+			add(region + "-" + suffix)
+		}
+	}
+	for _, zone := range fallbackGCEZones {
+		add(zone)
+	}
+	return zones
+}
+
+// isGCEStockoutOutput reports whether kube-up output shows that GCE could not
+// provide the node VMs, as opposed to a cluster configuration or Kubernetes
+// failure that another zone would not fix.
+func isGCEStockoutOutput(output string) bool {
+	stockoutPatterns := []string{
+		// cluster/gce/util.sh gave up waiting for the node MIG to finish
+		// creating its instances.
+		"Timeout while waiting for group to become stable",
+		"RESOURCE_POOL_EXHAUSTED",
+		"does not have enough resources available",
+		"GCE_STOCKOUT",
+	}
+	for _, pattern := range stockoutPatterns {
+		if strings.Contains(output, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func runGCEClusterUpScript(k8sDir string) (string, error) {
+	cmd := exec.Command(filepath.Join(k8sDir, "hack", "e2e-internal", "e2e-up.sh"))
+	cmd.Env = os.Environ()
+	return runCommandWithOutput("Starting E2E Cluster on GCE", cmd)
+}
+
+func gceMachineTypeAvailableInZone(machineType, zone string) bool {
+	err := exec.Command("gcloud", "compute", "machine-types", "describe", machineType, "--zone", zone, "--verbosity", "none").Run()
+	return err == nil
+}
+
+// logGCEManagedInstanceGroupErrors logs the errors recorded by the managed
+// instance groups in zone, which state why instance creation failed (for
+// example ZONE_RESOURCE_POOL_EXHAUSTED). kube-up does not surface them.
+// Diagnostics only; failures are logged and ignored.
+func logGCEManagedInstanceGroupErrors(zone string) {
+	out, err := exec.Command("gcloud", "compute", "instance-groups", "managed", "list",
+		"--filter", fmt.Sprintf("zone:(%s)", zone), "--format", "value(name)").CombinedOutput()
+	if err != nil {
+		klog.Warningf("Failed to list managed instance groups in zone %s: %v %s", zone, err, out)
+		return
+	}
+	for _, mig := range strings.Fields(string(out)) {
+		out, err := exec.Command("gcloud", "compute", "instance-groups", "managed", "list-errors", mig,
+			"--zone", zone, "--format", "value(error.code,error.message)").CombinedOutput()
+		if err != nil {
+			klog.Warningf("Failed to list errors of managed instance group %s in zone %s: %v %s", mig, zone, err, out)
+			continue
+		}
+		klog.Infof("Errors reported by managed instance group %s in zone %s:\n%s", mig, zone, out)
+	}
+}
+
+// bringUpGCEClusterWithZoneFallback runs kube-up in primaryZone and, when that
+// fails because GCE has no node capacity there, tears the partial cluster down
+// and retries in the other candidate zones. It returns the zone the cluster
+// came up in and leaves KUBE_GCE_ZONE set to it so that kube-down tears down
+// the right cluster.
+func bringUpGCEClusterWithZoneFallback(k8sDir, primaryZone string) (string, error) {
+	nodeMachineType := os.Getenv("NODE_SIZE")
+	if len(nodeMachineType) == 0 {
+		// kube-up's default, see cluster/gce/config-test.sh.
+		nodeMachineType = "e2-standard-2"
+	}
+
+	zones := candidateGCEZones(primaryZone)
+	var lastErr error
+	for i, zone := range zones {
+		if i > 0 && !gceMachineTypeInZone(nodeMachineType, zone) {
+			klog.Infof("Skipping fallback zone %s: machine type %s is not available there", zone, nodeMachineType)
+			continue
+		}
+		if err := os.Setenv("KUBE_GCE_ZONE", zone); err != nil {
+			return "", err
+		}
+
+		out, err := runGCEClusterUp(k8sDir)
+		if err == nil {
+			if zone != primaryZone {
+				klog.Warningf("Brought up GCE cluster in fallback zone %s instead of %s", zone, primaryZone)
+			}
+			return zone, nil
+		}
+		lastErr = fmt.Errorf("failed to bring up kubernetes e2e cluster on gce in zone %s: %w", zone, err)
+		if !isGCEStockoutOutput(out) {
+			return "", lastErr
+		}
+		if i == len(zones)-1 {
+			break
+		}
+
+		klog.Warningf("%v: GCE did not provide node capacity in zone %s, tearing the partial cluster down and retrying in another zone", lastErr, zone)
+		logGCEInstanceGroupErrors(zone)
+		if err := runGCEClusterDown(k8sDir); err != nil {
+			return "", fmt.Errorf("%v; also failed to tear down the partial cluster: %w", lastErr, err)
+		}
+	}
+	return "", lastErr
 }
 
 func setImageTypeEnvs(imageType string) error {
