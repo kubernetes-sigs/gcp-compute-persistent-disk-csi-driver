@@ -98,15 +98,10 @@ func clusterUpGCE(k8sDir, gceZone string, numNodes int, numWindowsNodes int, ima
 			return fmt.Errorf("failed to set kubernetes runtime config: %w", err)
 		}
 		klog.V(4).Infof("Set Kubernetes runtime config: %v", *kubeRuntimeConfig)
-		// If runtime config is set, we will update the machine type to support hyperdisks
-		err = os.Setenv("NODE_SIZE", "c3-standard-4")
-		if err != nil {
-			return fmt.Errorf("failed to set NODE_SIZE: %w", err)
-		}
-		// The node disk type also needs to be updated
-		err = os.Setenv("NODE_DISK_TYPE", "pd-ssd")
-		if err != nil {
-			return fmt.Errorf("failed to set NODE_DISK_TYPE: %w", err)
+		// If runtime config is set, the cluster runs the hyperdisk tests, so
+		// the nodes need a machine type and boot disk type that support them.
+		if err := setGCEHyperdiskNodeEnvs(); err != nil {
+			return err
 		}
 	}
 
@@ -191,6 +186,22 @@ var (
 	// failure surfaces, leaving no room for a retry within the CI job timeout.
 	defaultMIGWaitUntilStableTimeout = "600"
 
+	// gceHyperdiskNodeMachineType is the node machine type of GCE kube-up
+	// clusters that run the hyperdisk tests. The whole suite runs on these
+	// nodes, the pd-balanced storage class and snapshot tests as well as the
+	// hyperdisk-balanced VolumeAttributesClass tests, and they boot from
+	// gceHyperdiskNodeDiskType, so the machine type has to support both
+	// Persistent Disk and Hyperdisk Balanced. That rules out the Hyperdisk-only
+	// N4 and C4 families; C3 and C3D are the generally available x86 families
+	// that support both. C3D is used rather than C3 because C3 capacity in the
+	// CI zones has been the recurring cause of node stockouts.
+	gceHyperdiskNodeMachineType = "c3d-standard-4"
+
+	// gceHyperdiskNodeDiskType is the node boot disk type to go with
+	// gceHyperdiskNodeMachineType; kube-up's default pd-standard is not
+	// supported by C3 or C3D.
+	gceHyperdiskNodeDiskType = "pd-ssd"
+
 	// fallbackGCEZones are tried, after the remaining zones of the requested
 	// region, when kube-up cannot get node capacity in the requested zone.
 	fallbackGCEZones = []string{"us-central1-b", "us-central1-c", "us-central1-a", "us-central1-f", "us-west1-b", "us-west1-c", "us-east1-b", "us-east1-c"}
@@ -201,6 +212,27 @@ var (
 	gceMachineTypeInZone      = gceMachineTypeAvailableInZone
 	logGCEInstanceGroupErrors = logGCEManagedInstanceGroupErrors
 )
+
+// setGCEHyperdiskNodeEnvs points kube-up at a node machine type and boot disk
+// type that support the hyperdisk tests. Values already set in the environment
+// are kept, so that a job can try another machine type without a code change.
+func setGCEHyperdiskNodeEnvs() error {
+	defaults := []struct{ name, value string }{
+		{"NODE_SIZE", gceHyperdiskNodeMachineType},
+		{"NODE_DISK_TYPE", gceHyperdiskNodeDiskType},
+	}
+	for _, d := range defaults {
+		if cur := os.Getenv(d.name); len(cur) != 0 {
+			klog.Infof("Keeping %s=%s from the environment instead of the default %s", d.name, cur, d.value)
+			continue
+		}
+		if err := os.Setenv(d.name, d.value); err != nil {
+			return fmt.Errorf("failed to set %s: %w", d.name, err)
+		}
+		klog.Infof("Set %s=%s for the hyperdisk tests", d.name, d.value)
+	}
+	return nil
+}
 
 // candidateGCEZones returns the zones to try for a GCE kube-up cluster: the
 // requested zone first, then the other zones of its region, then

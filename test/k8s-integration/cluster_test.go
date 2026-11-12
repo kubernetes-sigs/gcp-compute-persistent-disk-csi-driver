@@ -163,6 +163,36 @@ func TestIsGCEStockoutOutput(t *testing.T) {
 	}
 }
 
+func TestSetGCEHyperdiskNodeEnvs(t *testing.T) {
+	t.Run("sets the defaults", func(t *testing.T) {
+		t.Setenv("NODE_SIZE", "")
+		t.Setenv("NODE_DISK_TYPE", "")
+		if err := setGCEHyperdiskNodeEnvs(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := os.Getenv("NODE_SIZE"); got != gceHyperdiskNodeMachineType {
+			t.Errorf("NODE_SIZE = %q, want %q", got, gceHyperdiskNodeMachineType)
+		}
+		if got := os.Getenv("NODE_DISK_TYPE"); got != gceHyperdiskNodeDiskType {
+			t.Errorf("NODE_DISK_TYPE = %q, want %q", got, gceHyperdiskNodeDiskType)
+		}
+	})
+
+	t.Run("keeps values set in the environment", func(t *testing.T) {
+		t.Setenv("NODE_SIZE", "e4-standard-4")
+		t.Setenv("NODE_DISK_TYPE", "hyperdisk-balanced")
+		if err := setGCEHyperdiskNodeEnvs(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := os.Getenv("NODE_SIZE"); got != "e4-standard-4" {
+			t.Errorf("NODE_SIZE = %q, want the value from the environment", got)
+		}
+		if got := os.Getenv("NODE_DISK_TYPE"); got != "hyperdisk-balanced" {
+			t.Errorf("NODE_DISK_TYPE = %q, want the value from the environment", got)
+		}
+	})
+}
+
 // fakeGCEClusterUp records the zones kube-up was attempted in and answers
 // each attempt from results, keyed by zone.
 type fakeGCEClusterUp struct {
@@ -194,7 +224,7 @@ func installFakeGCEClusterUp(t *testing.T, f *fakeGCEClusterUp, available func(z
 	gceMachineTypeInZone = func(_, zone string) bool { return available(zone) }
 	logGCEInstanceGroupErrors = func(string) {}
 	t.Setenv("KUBE_GCE_ZONE", "")
-	t.Setenv("NODE_SIZE", "c3-standard-4")
+	t.Setenv("NODE_SIZE", gceHyperdiskNodeMachineType)
 }
 
 func TestBringUpGCEClusterWithZoneFallback(t *testing.T) {
