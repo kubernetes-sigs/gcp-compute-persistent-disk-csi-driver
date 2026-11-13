@@ -81,9 +81,11 @@ then
 
 	# Delete ALL EXISTING Bindings
 	gcloud projects get-iam-policy "${PROJECT}" --format json > "${PKGDIR}/deploy/iam.json"
-	sed -i "/serviceAccount:${IAM_NAME}/d" "${PKGDIR}/deploy/iam.json"
+	# The backup suffix is attached to -i so that this works with both GNU sed
+	# and the BSD sed on macOS, which requires one.
+	sed -i.bak "/serviceAccount:${IAM_NAME}/d" "${PKGDIR}/deploy/iam.json"
 	gcloud projects set-iam-policy "${PROJECT}" "${PKGDIR}/deploy/iam.json"
-	rm -f "${PKGDIR}/deploy/iam.json"
+	rm -f "${PKGDIR}/deploy/iam.json" "${PKGDIR}/deploy/iam.json.bak"
 	# Delete Service Account
 	gcloud iam service-accounts delete "${IAM_NAME}" --project "${PROJECT}" --quiet || true
 
