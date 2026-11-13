@@ -60,9 +60,37 @@ See Github [Issues](https://github.com/kubernetes-sigs/gcp-compute-persistent-di
 | disk-encryption-kms-key     | Fully qualified resource identifier for the key to use to encrypt new disks. | Empty string. | Encrypt disk using Customer Managed Encryption Key (CMEK). See [GKE Docs](https://cloud.google.com/kubernetes-engine/docs/how-to/using-cmek#create_a_cmek_protected_attached_disk) for details. |
 | labels                      | `key1=value1,key2=value2` |               | Labels allow you to assign custom [GCE Disk labels](https://cloud.google.com/compute/docs/labeling-resources). |
 | provisioned-iops-on-create  | string (int64 format). Values typically between 10,000 and 120,000 |               | Indicates how many IOPS to provision for the disk. See the [Extreme persistent disk documentation](https://cloud.google.com/compute/docs/disks/extreme-persistent-disk) for details, including valid ranges for IOPS. |
-| provisioned-throughput-on-create  | string (int64 format). Values typically between 1 and 7,124 mb per second |               | Indicates how much throughput to provision for the disk. See the [hyperdisk documentation]([TBD](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk#create)) for details, including valid ranges for throughput. |
+| provisioned-throughput-on-create  | Quantity in MiB per second, eg `250Mi`. Values typically between 1 and 7,124 MiB per second |               | Indicates how much throughput to provision for the disk. The value is parsed as a Kubernetes quantity and rounded up to MiB, so a value without a unit, such as `250`, is read as bytes per second and provisions 1 MiB per second. See the [hyperdisk documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk#create) for details, including valid ranges for throughput. |
 | resource-tags               | `<parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>` |               | Resource tags allow you to attach user-defined tags to each Compute Disk, Image and Snapshot. See [Tags overview](https://cloud.google.com/resource-manager/docs/tags/tags-overview), [Creating and managing tags](https://cloud.google.com/resource-manager/docs/tags/tags-creating-and-managing). |
-| use-allowed-disk-topologies | `true` or `false`         | `false`       | Allows the use of specific disk topologies for provisioning. Must be used in combination with the `--disk-topology=true` flag on PDCSI binary to yield disk support labels in PV NodeAffinity blocks. |
+| use-allowed-disk-topology   | `true` or `false`         | `false`       | Allows the use of specific disk topologies for provisioning. Must be used in combination with the `--disk-topology=true` flag on PDCSI binary to yield disk support labels in PV NodeAffinity blocks. |
+| availability-class          | `none` OR `regional-hard-failover` | `none` | With `regional-hard-failover`, the driver force attaches the disk, so that it can be attached to a node in its other replica zone even if it is still attached to an unreachable node. Only valid for regional disks, that is with `replication-type: regional-pd` or `type: hyperdisk-balanced-high-availability`. See [Regional disk failover](https://cloud.google.com/compute/docs/disks/repd-failover). |
+| enable-confidential-storage | `true` or `false`         | `false`       | Creates the disk in confidential mode. Requires `disk-encryption-kms-key` to be set. See [Confidential GKE Nodes](https://cloud.google.com/kubernetes-engine/docs/how-to/confidential-gke-nodes#creating_chd_pv) for the supported disk types and requirements. |
+| storage-pools               | `projects/<project>/zones/<zone>/storagePools/<pool>`, comma separated |  | Provisions the disk in a Hyperdisk Storage Pool. Requires the `--enable-storage-pools=true` flag on PDCSI binary. See the [Storage Pools user guide](docs/kubernetes/user-guides/storage-pools.md). |
+| data-cache-size             | Quantity, eg `100Gi`      |               | Size of the Local SSD cache that the node sets up for the volume. Requires the `--enable-data-cache` flag on PDCSI binary. See [Data Cache](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/data-cache). |
+| data-cache-mode             | `writethrough` OR `writeback` | `writethrough` when `data-cache-size` is set | Caching mode of the Local SSD cache. Requires the `--enable-data-cache` flag on PDCSI binary. |
+| enable-multi-zone-provisioning | `true` or `false`      | `false`       | Creates a disk with the same name and contents in each zone allowed by the volume's topology, and returns a single volume that can only be attached read-only. The disk type must be listed in the `--multi-zone-volume-handle-disk-types` flag, and the `--multi-zone-volume-handle-enable` flag must be set on PDCSI binary. See [Hyperdisk ML](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml). |
+
+To let the driver choose between a Persistent Disk and a Hyperdisk type for each volume with `type: dynamic` and the `pd-type`, `hyperdisk-type` and `disk-type-preference` parameters, see the [Dynamic Volumes user guide](docs/kubernetes/user-guides/dynamic-volumes.md).
+
+### VolumeAttributesClass Parameters
+
+These parameters can be set in a [VolumeAttributesClass](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/) to set or change the attributes of a volume. When a volume is created, they take precedence over the StorageClass parameters. See the [VolumeAttributesClass user guide](docs/kubernetes/user-guides/volume-attributes-class.md).
+
+| Parameter  | Values                                | Description |
+|------------|---------------------------------------|-------------|
+| iops       | string (int64 format)                 | Provisioned IOPS of the disk. Only supported for the disk types listed in the `--supports-dynamic-iops-provisioning` flag on PDCSI binary. |
+| throughput | Quantity in MiB per second, eg `250Mi` | Provisioned throughput of the disk. Only supported for the disk types listed in the `--supports-dynamic-throughput-provisioning` flag on PDCSI binary. |
+| type       | Any disk type                         | Type of the disk. A volume created with this class gets a disk of this type instead of the StorageClass `type`. Changing it for an existing volume converts the disk, which requires the `--enable-disk-type-conversion` flag on PDCSI binary. |
+
+### VolumeSnapshotClass Parameters
+
+| Parameter         | Values                    | Default       | Description |
+|-------------------|---------------------------|---------------|-------------|
+| snapshot-type     | `snapshots` OR `images`   | `snapshots`   | Whether to back up the disk as a [snapshot](https://cloud.google.com/compute/docs/disks/snapshots) or as a disk image. |
+| storage-locations | A single region or multi-region, eg `us-central1` or `us` |  | Where to store the snapshot or image. If not set, Compute Engine uses its default storage location. |
+| image-family      | Image family name         |               | Image family to add the image to. Only used when `snapshot-type` is `images`. See [Image families](https://cloud.google.com/compute/docs/images/image-families-best-practices). |
+| labels            | `key1=value1,key2=value2` |               | [GCE labels](https://cloud.google.com/compute/docs/labeling-resources) to add to the snapshot or image. |
+| resource-tags     | `<parent_id1>/<tag_key1>/<tag_value1>,<parent_id2>/<tag_key2>/<tag_value2>` |  | [Resource tags](https://cloud.google.com/resource-manager/docs/tags/tags-overview) to attach to the snapshot or image. |
 
 ### Topology
 
