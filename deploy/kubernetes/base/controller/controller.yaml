@@ -144,8 +144,8 @@ spec:
           args:
             - "--v=5"
             - "--endpoint=unix:/csi/csi.sock"
-            - "--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme"
-            - "--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml"
+            - "--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-balanced-high-availability,hyperdisk-extreme"
+            - "--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-balanced-high-availability,hyperdisk-throughput,hyperdisk-ml"
             - --enable-data-cache
             - --run-node-service=false
             - --enable-multitenancy=false

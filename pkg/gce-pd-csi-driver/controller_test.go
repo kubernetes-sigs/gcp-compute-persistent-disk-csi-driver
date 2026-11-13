@@ -3224,6 +3224,23 @@ func TestVolumeModifyOperation(t *testing.T) {
 			expErrMessage: "",
 		},
 		{
+			name: "Update regional hyperdisk-balanced-high-availability volume with valid parameters",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId:          testRegionalID,
+				MutableParameters: map[string]string{"iops": "20000", "throughput": "600Mi"},
+			},
+			diskType: parameters.DiskTypeHdHA,
+			params: &parameters.DiskParameters{
+				DiskType:                      parameters.DiskTypeHdHA,
+				ReplicationType:               "regional-pd",
+				ProvisionedIOPSOnCreate:       10000,
+				ProvisionedThroughputOnCreate: 500,
+			},
+			expIops:       20000,
+			expThroughput: 600,
+			expErrMessage: "",
+		},
+		{
 			name: "Update volume with invalid parameters",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId:          testVolumeID,
@@ -3265,7 +3282,7 @@ func TestVolumeModifyOperation(t *testing.T) {
 		}
 
 		gceDriver := initGCEDriverWithCloudProvider(t, fcp, &GCEControllerServerArgs{})
-		project, volKey, err := common.VolumeIDToKey(testVolumeID)
+		project, volKey, err := common.VolumeIDToKey(tc.req.VolumeId)
 		if err != nil {
 			t.Fatalf("Failed convert key: %v", err)
 		}
