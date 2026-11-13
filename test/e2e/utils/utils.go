@@ -100,8 +100,8 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--multi-zone-volume-handle-disk-types=pd-standard,hyperdisk-ml",
 		"--use-instance-api-to-poll-attachment-disk-types=pd-ssd",
 		"--use-instance-api-to-list-volumes-published-nodes",
-		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
-		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
+		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-balanced-high-availability,hyperdisk-extreme",
+		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-balanced-high-availability,hyperdisk-throughput,hyperdisk-ml",
 		"--allow-hdha-provisioning",
 		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
