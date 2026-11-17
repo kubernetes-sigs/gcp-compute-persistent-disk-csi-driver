@@ -71,3 +71,46 @@ func TestDeviceCache_Concurrent(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestShouldWarnForSymlinkEvaluationError(t *testing.T) {
+	tests := []struct {
+		name            string
+		device          deviceMapping
+		hasResolvedPath bool
+		want            bool
+	}{
+		{
+			name:            "unresolved alternate alias with another working path",
+			device:          deviceMapping{volumeID: "volume-1"},
+			hasResolvedPath: true,
+			want:            false,
+		},
+		{
+			name:            "previously resolved alias disappeared",
+			device:          deviceMapping{volumeID: "volume-1", realPath: "/dev/nvme0n1"},
+			hasResolvedPath: true,
+			want:            true,
+		},
+		{
+			name:            "all aliases are unavailable",
+			device:          deviceMapping{volumeID: "volume-1"},
+			hasResolvedPath: false,
+			want:            true,
+		},
+		{
+			name:            "single unresolved alias",
+			device:          deviceMapping{volumeID: "volume-1"},
+			hasResolvedPath: false,
+			want:            true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldWarnForSymlinkEvaluationError(tt.device, tt.hasResolvedPath); got != tt.want {
+				t.Errorf("shouldWarnForSymlinkEvaluationError() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
