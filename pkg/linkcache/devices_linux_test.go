@@ -86,7 +86,7 @@ func TestShouldWarnForSymlinkEvaluationError(t *testing.T) {
 			want:            false,
 		},
 		{
-			name:            "previously resolved alias disappeared",
+			name:            "previously resolved alias disappeared while another path works",
 			device:          deviceMapping{volumeID: "volume-1", realPath: "/dev/nvme0n1"},
 			hasResolvedPath: true,
 			want:            true,
@@ -114,3 +114,51 @@ func TestShouldWarnForSymlinkEvaluationError(t *testing.T) {
 	}
 }
 
+func TestDeviceCache_ListAndUpdateWithUnavailableAlternateSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "device")
+	if err := os.WriteFile(target, []byte("device"), 0600); err != nil {
+		t.Fatalf("failed to create target device file: %v", err)
+	}
+
+	workingSymlink := filepath.Join(tmpDir, "scsi-alias")
+	if err := os.Symlink(target, workingSymlink); err != nil {
+		t.Fatalf("failed to create working symlink: %v", err)
+	}
+	missingSymlink := filepath.Join(tmpDir, "nvme-alias")
+
+	d := &DeviceCache{
+		symlinks: map[string]deviceMapping{
+			workingSymlink: {volumeID: "volume-1"},
+			missingSymlink: {volumeID: "volume-1"},
+		},
+	}
+
+	d.listAndUpdate()
+
+	if got := d.symlinks[workingSymlink].realPath; got != target {
+		t.Errorf("working symlink realPath = %q, want %q", got, target)
+	}
+	if got := d.symlinks[missingSymlink].realPath; got != "" {
+		t.Errorf("unavailable alternate symlink realPath = %q, want empty", got)
+	}
+}
+
+func TestDeviceCache_ListAndUpdatePreservesPreviouslyResolvedPathOnError(t *testing.T) {
+	tmpDir := t.TempDir()
+	missingSymlink := filepath.Join(tmpDir, "removed-alias")
+	d := &DeviceCache{
+		symlinks: map[string]deviceMapping{
+			missingSymlink: {
+				volumeID: "volume-1",
+				realPath: "/dev/nvme0n1",
+			},
+		},
+	}
+
+	d.listAndUpdate()
+
+	if got := d.symlinks[missingSymlink].realPath; got != "/dev/nvme0n1" {
+		t.Errorf("realPath after symlink evaluation failure = %q, want previous path %q", got, "/dev/nvme0n1")
+	}
+}
