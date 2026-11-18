@@ -1,0 +1,14 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-gcepd-btrfs
+provisioner: pd.csi.storage.gke.io
+mountOptions:
+  - discard=async
+  - compress=zstd:3
+  - btrfs-bdi-read_ahead_kb=128
+  - btrfs-allocation-data-dynamic_reclaim=1
+parameters:
+  type: pd-balanced
+  csi.storage.k8s.io/fstype: btrfs
+volumeBindingMode: WaitForFirstConsumer

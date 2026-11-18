@@ -102,19 +102,29 @@ func generateDriverConfigFile(testParams *testParameters) (string, error) {
 			} else {
 				gkeVer = mustParseVersion(testParams.clusterVersion)
 			}
-			if gkeVer.lessThan(mustParseVersion("1.18.0")) {
-				// XFS is not supported on COS before 1.18.0
-			} else {
+
+			if gkeVer.atLeast(mustParseVersion("1.18.0")) {
 				fsTypes = append(fsTypes, "xfs")
 			}
+
+			if gkeVer.atLeast(mustParseVersion("1.34.0")) {
+				fsTypes = append(fsTypes, "btrfs")
+			}
 		} else {
-			// XFS is supported on all non-COS images.
-			fsTypes = append(fsTypes, "xfs")
+			// XFS and Btrfs are supported on all non-COS images.
+			fsTypes = append(fsTypes, "xfs", "btrfs")
 		}
 	case "gce":
-		fsTypes = append(fsTypes, "xfs")
+		fsTypes = append(fsTypes, "xfs", "btrfs")
 	default:
 		return "", fmt.Errorf("got unknown deployment start %s, expected gce or gke", testParams.deploymentStrategy)
+	}
+
+	if testParams.storageClassFile == "sc-btrfs.yaml" {
+		// sc-btrfs.yaml carries btrfs-only mount options. The external storage
+		// test suite overrides the fstype per test pattern but keeps the
+		// StorageClass mountOptions, so non-btrfs patterns fail to mount.
+		fsTypes = []string{"btrfs"}
 	}
 
 	var absSnapshotClassFilePath string
