@@ -196,7 +196,7 @@ func requireConversionSuccess(err error, message string) {
 	}
 }
 
-var _ = Describe("PD to Hyperdisk disk type conversion", Ordered, func() {
+var _ = Describe("Kubernetes PD to Hyperdisk disk type conversion", Ordered, func() {
 	var (
 		ctx           context.Context
 		cancel        context.CancelFunc
@@ -205,6 +205,13 @@ var _ = Describe("PD to Hyperdisk disk type conversion", Ordered, func() {
 	)
 
 	BeforeAll(func() {
+		// Unlike the rest of the e2e tests, which call the CSI driver directly
+		// and do not depend on an orchestrator, these tests run against
+		// Kubernetes: a conversion is driven by a VolumeAttributesClass on a
+		// PVC and records its state on the PersistentVolume. To run them, point
+		// KUBECONFIG at an existing cluster with the PD CSI driver deployed,
+		// set GCP_PROJECT to the project of its disks, and set
+		// RUN_PD_TO_HD_CONVERSION_E2E=true.
 		if os.Getenv("RUN_PD_TO_HD_CONVERSION_E2E") != "true" {
 			Skip("set RUN_PD_TO_HD_CONVERSION_E2E=true to run against an existing Kubernetes cluster")
 		}
