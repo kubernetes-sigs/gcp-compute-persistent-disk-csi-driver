@@ -157,32 +157,56 @@ func (d *DeviceCache) RemoveVolume(volumeID string) {
 	}
 }
 
-func (d *DeviceCache) getSymlinksMap() map[string]string {
+func (d *DeviceCache) getSymlinksMap() map[string]deviceMapping {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	m := make(map[string]string, len(d.symlinks))
-	for s, device := range d.symlinks {
-		m[s] = device.volumeID
+	m := make(map[string]deviceMapping, len(d.symlinks))
+	for symlink, device := range d.symlinks {
+		m[symlink] = device
 	}
 	return m
 }
 
-func (d *DeviceCache) listAndUpdate() {
-	// 1. Copy symlinks to volume IDs map under lock
-	symlinksMap := d.getSymlinksMap()
+// shouldWarnForSymlinkEvaluationError reports whether a failed candidate is
+// worth logging. An alias that has never resolved is expected to be absent
+// when another alias for the same volume is usable. A previously resolved
+// alias disappearing, or every alias failing, remains warning-worthy.
+func shouldWarnForSymlinkEvaluationError(device deviceMapping, hasResolvedPath bool) bool {
+	return device.realPath != "" || !hasResolvedPath
+}
 
-	// 2. Perform filesystem I/O outside the lock
+func (d *DeviceCache) listAndUpdate() {
+	// 1. Snapshot the cached mappings under lock, then perform filesystem I/O
+	// outside the lock.
+	symlinksMap := d.getSymlinksMap()
 	updates := make(map[string]string)
-	for symlink, volumeID := range symlinksMap {
+	resolvedVolumes := make(map[string]bool)
+	evaluationErrors := make(map[string]error)
+
+	for symlink, device := range symlinksMap {
 		realPath, err := filepath.EvalSymlinks(symlink)
 		if err != nil {
-			klog.Warningf("Error evaluating symlink for volume %s: %v", volumeID, err)
+			evaluationErrors[symlink] = err
 			continue
 		}
 		updates[symlink] = realPath
+		resolvedVolumes[device.volumeID] = true
 	}
 
-	// 3. Apply updates under lock
+	// 2. Report failures after checking all candidates for each volume. This
+	// avoids warning about an unused alternate alias when another alias works.
+	for symlink, err := range evaluationErrors {
+		device := symlinksMap[symlink]
+		if shouldWarnForSymlinkEvaluationError(device, resolvedVolumes[device.volumeID]) {
+			klog.Warningf("Error evaluating symlink for volume %s: %v", device.volumeID, err)
+		} else {
+			klog.V(5).Infof("Skipping unavailable alternate symlink for volume %s: %v", device.volumeID, err)
+		}
+	}
+
+	// 3. Apply successful path updates under lock. Failed candidates retain
+	// their previous mapping so that a previously working alias disappearing
+	// can continue to be reported on subsequent checks.
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	for symlink, realPath := range updates {
@@ -193,7 +217,6 @@ func (d *DeviceCache) listAndUpdate() {
 					d.metricsManager.RecordUnexpectedDevicePathChangesMetric()
 				}
 
-				// Update the cache with the new realPath
 				device.realPath = realPath
 				d.symlinks[symlink] = device
 			}
