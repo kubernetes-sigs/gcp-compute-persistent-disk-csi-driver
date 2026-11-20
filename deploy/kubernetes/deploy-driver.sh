@@ -54,9 +54,10 @@ fi
 function check_service_account()
 {
 	# Using bash magic to parse JSON for IAM
-	# Grepping for a line with client email returning anything quoted after the colon
-	readonly IAM_NAME=$(grep -Po '"client_email": *\K"[^"]*"' "${GCE_PD_SA_DIR}/cloud-sa.json" | tr -d '"')
-	readonly PROJECT=$(grep -Po '"project_id": *\K"[^"]*"' "${GCE_PD_SA_DIR}/cloud-sa.json" | tr -d '"')
+	# Printing whatever is quoted after the colon on the line with the key. This
+	# sticks to POSIX sed, as grep -P is not available on macOS.
+	readonly IAM_NAME=$(sed -n 's/.*"client_email": *"\([^"]*\)".*/\1/p' "${GCE_PD_SA_DIR}/cloud-sa.json")
+	readonly PROJECT=$(sed -n 's/.*"project_id": *"\([^"]*\)".*/\1/p' "${GCE_PD_SA_DIR}/cloud-sa.json")
 	readonly GOTTEN_BIND_ROLES=$(gcloud projects get-iam-policy "${PROJECT}" --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:${IAM_NAME}")
 	readonly BIND_ROLES=$(get_needed_roles)
 	MISSING_ROLES=false
