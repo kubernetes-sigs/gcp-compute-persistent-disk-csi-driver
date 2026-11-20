@@ -48,9 +48,9 @@ Update persistent volume reclaim policy to `Retain`:
 kubectl patch pv <pv-name> -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
 ```
 
-### Step 3. Create a Hyperdisk-based storage class
+### Step 3 (recommended). Create a Hyperdisk-based storage class
 
-Create a Hyperdisk-based storage class that you plan to upgrade your volumes to and for creating new volumes.
+Create a Hyperdisk-based storage class for creating new volumes. This is usually not necessary for simply converting existing volumes, but is needed to create new Hyperdisk volumes.
 
 **Specify target storage class**, for example, `hyperdisk-balanced-rwo` storage class like the following:
 
@@ -96,7 +96,7 @@ parameters:
   type: hyperdisk-balanced   # target disk type
 ```
 
-You may optionally specify the desired throughput and IOPS values in the parameters of `VolumeAttributesClass`. If you don't set throughput and IOPS parameters, GCE will apply [default](https://docs.cloud.google.com/compute/docs/disks/hyperdisk-performance#default-perf) values that you can later customize using `VolumeAttributesClass`.
+You may optionally specify the desired throughput and IOPS values in the parameters of `VolumeAttributesClass`. If you don't set throughput and IOPS parameters, GCE will apply [default](https://docs.cloud.google.com/compute/docs/disks/hyperdisk-performance#default-perf) values that you can later [customize](#updating-iops-and-throughput-of-existing-hyperdisks) using `VolumeAttributesClass`.
 
 **Make the target volume configuration available** for use in the cluster:
 
@@ -117,7 +117,7 @@ kubectl get statefulset <statefulset-name> -o yaml > original-statefulset.yaml
 
 **Create a file with the updated workload controller configuration** (e.g. `updated-statefulset.yaml`), where you set `volumeClaimTemplates[].spec.storageClassName` to the target Hyperdisk-based storage class (e.g. `hyperdisk-balanced-rwo`).
 
-> **Note: Do not apply the updated configuration yet**, you will apply it after disk conversion. Once applied, the updated storage class in the workload controller configuration will have no impact on the existing replicas with persistent disk volumes. When you increase the replica count, any new Pods will use the updated template and automatically provision their persistent volume claims (PVCs) using the new storage class.
+> **Note: Do not apply the updated configuration yet**, you will [apply it after disk conversion](#3-redeploy-the-controller-to-recover-replicas-after-conversion). Once applied, the updated storage class in the workload controller configuration will have no impact on the existing replicas with persistent disk volumes. When you increase the replica count, any new Pods will use the updated template and automatically provision their persistent volume claims (PVCs) using the new storage class.
 
 ### Step 6 (recommended). Create disk snapshots
 
@@ -125,7 +125,7 @@ You may reduce conversion time by up to 50% by creating a [standard snapshot](ht
 
 We recommend migrating up to 30 TiB simultaneously in aggregate provisioned disk size to minimize conversion time per disk.
 
-We recommend keeping snapshots around for a safe period (e.g. two months) to ensure that you have a rollback mechanism after the Persistent disks are upgraded. This enables you to create a Persistent Disk from a snapshot, if needed. You will also be able to convert Hyperdisks back to Persistent Disks if you need to preserve the latest data written to a Hyperdisk after the disk upgrade.
+We recommend keeping snapshots around for a safe period (e.g. two months) to ensure that you have a rollback mechanism after the Persistent disks are upgraded. This enables you to create a Persistent Disk from a snapshot, if needed. You will also be able to [convert Hyperdisks back to Persistent Disks](#converting-persistent-volume-to-the-original-disk-type) if you need to preserve the latest data written to a Hyperdisk after the disk upgrade.
 
 The best practice approach is to continue taking snapshots regularly from a detached disk for data consistency, including after upgrading the disk to Hyperdisk. The snapshots allow restoring data to a disk of a desired type when you need it. Your [snapshot schedule](https://docs.cloud.google.com/compute/docs/disks/scheduled-snapshots) will continue to work after disk conversion.
 
@@ -191,11 +191,11 @@ To track conversion progress and completion, see [Observe Disk Type Conversion](
 
 The volume must be detached before the underlying GCE conversion operation can run. You can detach the volume either by forcing rescheduling of its Pod to a different node or by deleting the Pod.
 
-If the `PersistentVolume`'s node affinity enables scheduling the replicas that use the volume to compatible nodes after disk conversion, detach the volume by evicting a Pod from its node. It is a simpler and less error-prone approach.
+[Approach 1](#approach-1-detach-the-volume-by-evicting-a-pod-from-its-node). If the `PersistentVolume`'s node affinity [enables](#step-1-determine-compatibility-of-the-volumes-node-affinity) scheduling the replicas that use the volume to compatible nodes after disk conversion, detach the volume by evicting a Pod from its node. It is a simpler and less error-prone approach.
 
-If the `PersistentVolume`'s node affinity does not allow scheduling the replicas that use the volume to compatible nodes after disk conversion, or if you'd also like to update your PVC and PV configuration to accurately reflect disk type after conversion, you'll need to recreate the `PersistentVolume` by orphaning and deleting its Pod before updating and recreating the PVC and PV.
+[Approach 2](#approach-2-recreate-the-volume-to-convert-and-update-its-node-affinity-by-orphaning-and-deleting-a-pod). If the `PersistentVolume`'s node affinity does not allow scheduling the replicas that use the volume to compatible nodes after disk conversion, or if you'd also like to update your PVC and PV configuration to accurately reflect disk type after conversion, you'll need to recreate the `PersistentVolume` by orphaning and deleting its Pod before updating and recreating the PVC and PV.
 
-#### Detach the volume by evicting a Pod from its node
+#### Approach 1. Detach the volume by evicting a Pod from its node
 
 You can detach the volume by forcing the workload controller, such as `StatefulSet`, to evict the Pod that uses the volume from its node.
 
@@ -214,9 +214,9 @@ While the conversion is in progress, the CSI driver will fail disk attach attemp
 
 The workload controller will schedule the Pod after conversion is completed.
 
-#### Updating node affinity by orphaning and deleting a Pod, and recreating the Persistent Volume (PV)
+#### Approach 2. Recreate the volume to convert and update its node affinity by orphaning and deleting a Pod
 
-This is only necessary if the node affinity on the PV prevents it from being scheduled on the desired new node. See the discussion in [Step 1](#step-1-determine-compatibility-of-the-volumes-node-affinity).
+This is only necessary if the node affinity on the PV prevents it from being scheduled on the desired new node. See the guidance in [Step 1](#step-1-determine-compatibility-of-the-volumes-node-affinity).
 
 ##### 1. Delete workload controller and Pod to detach the volume
 
@@ -245,7 +245,7 @@ Conversion begins automatically as soon as the disk is detached, provided the VA
 
 ##### 2. (If necessary) Update persistent volume's node affinity
 
-See the discussion in [Step 1](#step-1-determine-compatibility-of-the-volumes-node-affinity). This step is only necessary if your PV has node affinity that would prevent it from attaching to gen3/4 instance types.
+See the guidance in [Step 1](#step-1-determine-compatibility-of-the-volumes-node-affinity). This step is only necessary if your PV has node affinity that would prevent it from attaching to [compatible](https://docs.cloud.google.com/compute/docs/disks/hyperdisks#machine-type-support) instance types.
 
 Follow these steps to update node affinity of a specific persistent volume:
 
@@ -420,7 +420,7 @@ kubectl get pvc $PVC_NAME -o jsonpath='{.status.modifyVolumeStatus}'
 # {"status":"InProgress","targetVolumeAttributesClassName":"vac-hyperdisk"}
 ```
 
-You can identify and track the active disk type conversion [GCE operation](https://docs.cloud.google.com/compute/docs/instances/viewing-compute-operations) by inspecting the annotations on the `PersistentVolume` object:
+You can identify and track the active disk type conversion [GCE operation](https://docs.cloud.google.com/compute/docs/instances/viewing-compute-operations) by [inspecting](#inspect-persistent-volume-annotations) the annotations on the `PersistentVolume` object:
 
 ```yaml
 apiVersion: v1
@@ -484,7 +484,7 @@ The PVC status transitions to `currentVolumeAttributesClassName: vac-hyperdisk` 
 
 ### Observe Disk Type Conversion Cancellation
 
-When you cancel conversion retries, PD CSI driver removes the `pdcsi.gke.io/disk-type-conversion-operation: "Pending"` annotation (and associated pending conversion annotations) from the `PersistentVolume`, emits a `DiskTypeConversionCancelled` event, and unblocks normal volume attachment. You can verify the current conversion state at any time by inspecting the annotations on the `PersistentVolume`.
+When you [cancel conversion retries](#canceling-future-conversion-retries), PD CSI driver removes the `pdcsi.gke.io/disk-type-conversion-operation: "Pending"` annotation (and associated pending conversion annotations) from the `PersistentVolume`, emits a `DiskTypeConversionCancelled` event, and unblocks normal volume attachment. You can verify the current conversion state at any time by [inspecting](#inspect-persistent-volume-annotations) the annotations on the `PersistentVolume`.
 
 ### PersistentVolume Conversion Annotations Reference
 
@@ -573,7 +573,7 @@ Examples of unsupported conversion intents include:
 1. **Same storage generation**: The target disk type is in the same generation as the original disk type (for example, converting from `hyperdisk-balanced` to `hyperdisk-throughput`).
    - *Note*: Applying a VAC whose `type` exactly matches the disk's current type is allowed, does not trigger conversion, and cancels any queued (`Pending`) conversion when replacing another VAC.
 2. **Regional Persistent Disk**: The original disk is a regional Persistent Disk (disk type conversion is not supported for regional disks).
-3. **Unsupported VAC parameters**: The VAC specifies `iops` or `throughput` for a target disk type that does not support dynamic IOPS/throughput provisioning (as configured via `--supports-dynamic-iops-provisioning` and `--supports-dynamic-throughput-provisioning`), or specifies values outside GCE limits (such as provisioned IOPS below the minimum for the target disk type).
+3. **Unsupported VAC parameters**: The VAC specifies `iops` or `throughput` for a target disk type that does not support dynamic IOPS/throughput provisioning (as [configured](#configure-the-pd-csi-driver) via `--supports-dynamic-iops-provisioning` and `--supports-dynamic-throughput-provisioning`), or specifies values outside GCE limits (such as provisioned IOPS below the minimum for the target disk type).
 4. **Multi-writer access mode**: The original disk uses [multi-writer](https://cloud.google.com/compute/docs/disks/sharing-disks-between-vms#pd_multi_writer_mode) (`READ_WRITE_MANY`) access mode (disk type conversion is not supported for multi-writer disks).
 
 Example of a PVC status with a pass-through error message when an unsupported configuration is set in the VAC (`kubectl get pvc storage-volume-demo-ss-0 -o yaml`):
@@ -608,7 +608,7 @@ status:
     targetVolumeAttributesClassName: tiny-vac
 ```
 
-If your VAC configuration is unsupported and you observe `status.modifyVolumeStatus.status: Infeasible` on your PVC, you can clear `volumeAttributesClassName` on the PVC (supported in Kubernetes 1.34+) and cancel future conversion retries:
+If your VAC configuration is unsupported and you observe `status.modifyVolumeStatus.status: Infeasible` on your PVC, you can clear `volumeAttributesClassName` on the PVC (supported in Kubernetes 1.34+) and [cancel future conversion retries](#canceling-future-conversion-retries):
 
 ```bash
 kubectl patch pvc $PVC_NAME -p '{"spec": {"volumeAttributesClassName": null}}'
@@ -645,17 +645,17 @@ To cancel future retry attempts, set `spec.volumeAttributesClassName` on the PVC
    kubectl patch pvc $PVC_NAME -p '{"spec": {"volumeAttributesClassName": "vac-pd-balanced"}}'
    ```
 
-> **Note:** Updating `volumeAttributesClassName` during an already running GCE `disks.convert` operation does **not** cancel the in-flight GCE operation. However, if the conversion is currently in the `"Pending"` state (waiting for disk detachment or waiting for a retry after a failure), patching the PVC to a VAC matching the disk's current type (or a VAC without `type`) removes the `pdcsi.gke.io/disk-type-conversion-operation: "Pending"` annotation (and associated pending conversion annotations) from the `PersistentVolume`, emits a `DiskTypeConversionCancelled` event, and unblocks normal volume attachment. You can verify the current conversion state at any time by inspecting the annotations on the `PersistentVolume`.
+> **Note:** Updating `volumeAttributesClassName` during an already running GCE `disks.convert` operation does **not** cancel the in-flight GCE operation. However, if the conversion is currently in the `"Pending"` state (waiting for disk detachment or waiting for a retry after a failure), patching the PVC to a VAC matching the disk's current type (or a VAC without `type`) removes the `pdcsi.gke.io/disk-type-conversion-operation: "Pending"` annotation (and associated pending conversion annotations) from the `PersistentVolume`, emits a `DiskTypeConversionCancelled` event, and unblocks normal volume attachment. You can verify the current conversion state at any time by [inspecting](#inspect-persistent-volume-annotations) the annotations on the `PersistentVolume`.
 
 ### Converting Persistent Volume to the Original Disk Type
 
-You can convert the volume back from Hyperdisk to Persistent Disk, e.g. from `hyperdisk-balanced` to `pd-balanced` disk type, by configuring `VolumeAttributesClass` with the target PD type (e.g. `pd-balanced`) and patching the PVC. Disk type conversion works in both directions.
+You can convert the volume back from Hyperdisk to Persistent Disk, e.g. from `hyperdisk-balanced` to `pd-balanced` disk type, by [configuring](#step-4-specify-and-deploy-target-persistent-volume-configuration) `VolumeAttributesClass` with the target PD type (e.g. `pd-balanced`) and [patching](#step-2-mark-the-volume-for-conversion-to-the-upgraded-disk-type) the PVC. Disk type conversion works in both directions.
 
 ### Converting Regional Persistent Disk
 
 The `VolumeAttributesClass` API does not support conversion of Regional PDs. You can convert Regional PDs to Hyperdisk Balanced HA by creating a snapshot from the Regional PD and then creating Hyperdisk Balanced HA from the snapshot. The following disk conversion steps preserve disk name and URL so that CSI volume handle stays the same:
 
-1. Detach the original disk `example-disk`.
+1. [Detach](#step-3-detach-the-volume-to-begin-conversion) the original disk `example-disk`.
 2. Create a snapshot from the original disk `example-disk`.
 3. Create a temporary Hyperdisk from the snapshot: `temp-example-disk`.
 4. Delete the original disk `example-disk`.
