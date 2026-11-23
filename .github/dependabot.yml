@@ -45,6 +45,9 @@ updates:
         - "k8s.io*"
         - "sigs.k8s.io*"
         - "github.com/kubernetes-csi*"
+      update-types:
+        - "minor"
+        - "patch"
   labels:
     - "area/dependency"
     - "release-note-none"
