@@ -13,7 +13,7 @@ updates:
 - package-ecosystem: gomod
   directory: "/"
   allow:
-  - dependency-type: "direct"
+  - dependency-type: "all"
   schedule:
     interval: weekly
   groups:
