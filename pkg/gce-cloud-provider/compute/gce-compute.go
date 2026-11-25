@@ -707,17 +707,12 @@ var updateDiskInvalidReasons = sets.NewString(
 	"invalidParameter",
 )
 
+// UpdateDisk updates the provisioned IOPS and throughput of a disk. Most
+// Hyperdisks are zonal, but hyperdisk-balanced-high-availability disks are
+// regional, so both kinds of key are supported. Whether a disk type supports
+// these updates is decided by the caller; pd disks do not support them.
 func (cloud *CloudProvider) UpdateDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
-	// hyperdisks are zonal disks
-	// pd-disks do not support modification of IOPS and Throughput
-	if volKey.Type() == meta.Regional {
-		return status.Error(codes.InvalidArgument, "Cannot update regional disk")
-	}
 	klog.V(5).Infof("Updating disk %v", volKey)
-	return cloud.updateZonalDisk(ctx, project, volKey, existingDisk, params)
-}
-
-func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string, volKey *meta.Key, existingDisk *CloudDisk, params parameters.ModifyVolumeParameters) error {
 	specifiedIops := params.IOPS != nil && *params.IOPS != 0
 	specifiedThroughput := params.Throughput != nil && *params.Throughput != 0
 	if !specifiedIops && !specifiedThroughput {
@@ -736,10 +731,15 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 		paths = append(paths, "provisionedThroughput")
 	}
 
-	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
-	diskUpdateOp.Paths(paths...)
-	_, err := diskUpdateOp.Context(ctx).Do()
-
+	var err error
+	switch volKey.Type() {
+	case meta.Zonal:
+		_, err = cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk).Paths(paths...).Context(ctx).Do()
+	case meta.Regional:
+		_, err = cloud.service.RegionDisks.Update(project, volKey.Region, volKey.Name, updatedDisk).Paths(paths...).Context(ctx).Do()
+	default:
+		return fmt.Errorf("could not update disk, key was neither zonal nor regional, instead got: %v", volKey.String())
+	}
 	if err != nil {
 		return updateDiskError(volKey, err)
 	}

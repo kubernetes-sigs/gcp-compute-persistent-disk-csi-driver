@@ -53,8 +53,8 @@ func controllerServerForTest(cloudProvider gce.GCECompute, args *GCEControllerSe
 	multiZoneVolumeHandleConfig := MultiZoneVolumeHandleConfig{}
 	listVolumesConfig := ListVolumesConfig{}
 	provisionableDisksConfig := ProvisionableDisksConfig{
-		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-extreme"},
-		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-throughput", "hyperdisk-ml"},
+		SupportsIopsChange:       []string{"hyperdisk-balanced", "hyperdisk-balanced-high-availability", "hyperdisk-extreme"},
+		SupportsThroughputChange: []string{"hyperdisk-balanced", "hyperdisk-balanced-high-availability", "hyperdisk-throughput", "hyperdisk-ml"},
 	}
 	cs := NewControllerServer(gceDriver, cloudProvider, errorBackoffInitialDuration, errorBackoffMaxDuration, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig, listVolumesConfig, provisionableDisksConfig, true /* enableHdHA */, args)
 	// The production conversion poll waits at least 10s before its first check,

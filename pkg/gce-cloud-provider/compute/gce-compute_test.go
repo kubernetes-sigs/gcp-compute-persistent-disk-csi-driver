@@ -16,9 +16,14 @@ package gcecloudprovider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -26,6 +31,7 @@ import (
 	"google.golang.org/api/compute/v1"
 	computev1 "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
@@ -689,6 +695,107 @@ func TestRepairUnderspecifiedVolumeKey(t *testing.T) {
 				if key.Name != tc.expectedKey.Name || key.Zone != tc.expectedKey.Zone || key.Region != tc.expectedKey.Region {
 					t.Errorf("Got key %+v, expected %+v", key, tc.expectedKey)
 				}
+			}
+		})
+	}
+}
+
+func TestUpdateDisk(t *testing.T) {
+	iops := int64(5000)
+	throughput := int64(250)
+	testCases := []struct {
+		name         string
+		volKey       *meta.Key
+		params       parameters.ModifyVolumeParameters
+		rejectUpdate bool
+		expPath      string
+		expFields    []string
+		expDisk      computev1.Disk
+		expErrCode   codes.Code
+	}{
+		{
+			name:      "zonal disk",
+			volKey:    meta.ZonalKey("test-disk", "us-central1-a"),
+			params:    parameters.ModifyVolumeParameters{IOPS: &iops, Throughput: &throughput},
+			expPath:   "/compute/v1/projects/test-project/zones/us-central1-a/disks/test-disk",
+			expFields: []string{"provisionedIops", "provisionedThroughput"},
+			expDisk:   computev1.Disk{Name: "test-disk", ProvisionedIops: iops, ProvisionedThroughput: throughput},
+		},
+		{
+			// hyperdisk-balanced-high-availability disks are regional.
+			name:      "regional disk",
+			volKey:    meta.RegionalKey("test-disk", "us-central1"),
+			params:    parameters.ModifyVolumeParameters{IOPS: &iops, Throughput: &throughput},
+			expPath:   "/compute/v1/projects/test-project/regions/us-central1/disks/test-disk",
+			expFields: []string{"provisionedIops", "provisionedThroughput"},
+			expDisk:   computev1.Disk{Name: "test-disk", ProvisionedIops: iops, ProvisionedThroughput: throughput},
+		},
+		{
+			name:      "regional disk, throughput only",
+			volKey:    meta.RegionalKey("test-disk", "us-central1"),
+			params:    parameters.ModifyVolumeParameters{Throughput: &throughput},
+			expPath:   "/compute/v1/projects/test-project/regions/us-central1/disks/test-disk",
+			expFields: []string{"provisionedThroughput"},
+			expDisk:   computev1.Disk{Name: "test-disk", ProvisionedThroughput: throughput},
+		},
+		{
+			name:         "regional disk, value rejected by GCE",
+			volKey:       meta.RegionalKey("test-disk", "us-central1"),
+			params:       parameters.ModifyVolumeParameters{IOPS: &iops},
+			rejectUpdate: true,
+			expPath:      "/compute/v1/projects/test-project/regions/us-central1/disks/test-disk",
+			expFields:    []string{"provisionedIops"},
+			expDisk:      computev1.Disk{Name: "test-disk", ProvisionedIops: iops},
+			expErrCode:   codes.InvalidArgument,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.Method != http.MethodPatch {
+					t.Errorf("got method %s; want %s", r.Method, http.MethodPatch)
+				}
+				if r.URL.Path != tc.expPath {
+					t.Errorf("got path %s; want %s", r.URL.Path, tc.expPath)
+				}
+				if got, want := r.URL.Query()["paths"], tc.expFields; strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Errorf("got paths %v; want %v", got, want)
+				}
+				var disk computev1.Disk
+				if body, err := io.ReadAll(r.Body); err != nil {
+					t.Errorf("failed to read request body: %v", err)
+				} else if err := json.Unmarshal(body, &disk); err != nil {
+					t.Errorf("failed to decode request body %q: %v", body, err)
+				}
+				if disk.Name != tc.expDisk.Name || disk.ProvisionedIops != tc.expDisk.ProvisionedIops || disk.ProvisionedThroughput != tc.expDisk.ProvisionedThroughput {
+					t.Errorf("got disk %+v; want %+v", disk, tc.expDisk)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				if tc.rejectUpdate {
+					w.WriteHeader(http.StatusBadRequest)
+					fmt.Fprint(w, `{"error": {"code": 400, "message": "IOPS is out of range", "errors": [{"reason": "invalid"}]}}`)
+					return
+				}
+				fmt.Fprint(w, `{"name": "operation-update"}`)
+			}))
+			defer server.Close()
+
+			service, err := computev1.NewService(context.Background(), option.WithEndpoint(server.URL+"/compute/v1/"), option.WithHTTPClient(server.Client()))
+			if err != nil {
+				t.Fatalf("failed to create compute service: %v", err)
+			}
+			cloud := &CloudProvider{service: service}
+			existingDisk := CloudDiskFromV1(&computev1.Disk{Name: tc.volKey.Name})
+
+			err = cloud.UpdateDisk(context.Background(), "test-project", tc.volKey, existingDisk, tc.params)
+			if got := status.Code(err); got != tc.expErrCode {
+				t.Errorf("UpdateDisk(%v) got code %v (err: %v); want %v", tc.volKey, got, err, tc.expErrCode)
+			}
+			if got := requests.Load(); got != 1 {
+				t.Errorf("got %d update requests; want 1", got)
 			}
 		})
 	}
