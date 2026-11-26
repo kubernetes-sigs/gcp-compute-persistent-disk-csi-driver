@@ -457,7 +457,7 @@ func clusterUpGKE(z, r string, numNodes int, numWindowsNodes int, imageType stri
 		return err
 	}
 
-	machineType := "e2-standard-2"
+	machineType := "e2-standard-4"
 	if isVariableSet(gkeMachineType) {
 		machineType = *gkeMachineType
 	}
